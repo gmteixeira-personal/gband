@@ -15,12 +15,7 @@ fn first_attach_starts_a_server_in_the_client_directory() {
     client.wait_for_prompt();
     client.shell_pid(&env);
     client.run("pwd");
-    client.wait_for(&env.work.display().to_string(), |screen| {
-        screen
-            .contents()
-            .lines()
-            .any(|line| line == env.work.to_str().unwrap())
-    });
+    client.wait_for_line(env.work.to_str().unwrap());
     assert!(env.log_text("client").contains("client started"));
     assert!(env.log_text("server").contains("server started"));
 }
@@ -57,15 +52,14 @@ fn detach_leaves_the_session_running() {
     first.shell_pid(&env);
     first.run("sleep 100");
     thread::sleep(Duration::from_millis(300));
-    first.send(b"\x01d");
+    first.send(b"\x01D");
     assert_eq!(first.wait_exit(), 0);
     first.wait_for_text("[detached]");
     assert!(!first.screen().alternate_screen());
 
     let second = Attached::start(&env, 80, 24);
-    second.wait_for("sleep 100 still running", |screen| {
-        let contents = screen.contents();
-        let last = contents.lines().rfind(|line| !line.is_empty());
+    second.wait_for_focused("sleep 100 still running", |lines| {
+        let last = lines.iter().rfind(|line| !line.is_empty());
         last.is_some_and(|line| line.ends_with("$ sleep 100"))
     });
 }
@@ -107,12 +101,7 @@ fn prefix_key_passes_ctrl_a_and_discards_unbound_keys() {
     thread::sleep(Duration::from_millis(200));
     client.send(b"echo ");
     client.send(b"\x01x\r");
-    client.wait_for("echo abc output", |screen| {
-        screen
-            .contents()
-            .lines()
-            .any(|line| line.trim_end() == "abc")
-    });
+    client.wait_for_line("abc");
 }
 
 #[test]
@@ -161,12 +150,7 @@ fn terminal_resize_reaches_the_program() {
     client.resize(70, 24);
     thread::sleep(Duration::from_millis(300));
     client.run("clear; tput cols");
-    client.wait_for("tput cols to print 70", |screen| {
-        screen
-            .contents()
-            .lines()
-            .any(|line| line.trim_end() == "70")
-    });
+    client.wait_for_line("33");
 }
 
 #[test]
@@ -180,7 +164,7 @@ fn debug_client_replaces_a_server_from_another_build() {
     old.wait_for_prompt();
     let old_shell = old.shell_pid(&env);
     let old_server = env.server_pid();
-    old.send(b"\x01d");
+    old.send(b"\x01D");
     assert_eq!(old.wait_exit(), 0);
 
     let mut new = Attached::start(&env, 80, 24);
@@ -190,4 +174,136 @@ fn debug_client_replaces_a_server_from_another_build() {
     assert_ne!(env.server_pid(), old_server);
     wait_until(|| !is_running(old_shell), "the old shell to stop");
     wait_until(|| !is_running(old_server), "the old server to stop");
+}
+
+fn pane_number(lines: &[String]) -> Option<u32> {
+    lines
+        .iter()
+        .find_map(|line| line.strip_prefix("pane="))
+        .and_then(|number| number.parse().ok())
+}
+
+fn open_second_pane(env: &TestEnv) -> Attached {
+    let mut client = Attached::start(env, 80, 24);
+    client.wait_for_prompt();
+    client.shell_pid(env);
+    client.send(b"\x01\r");
+    client.wait_for("two tiles with the second focused", |screen| {
+        let tiles = tiles(screen);
+        tiles.len() == 2 && tiles[1].focused && tiles[1].left == 40
+    });
+    client.wait_for_prompt();
+    client.shell_pid(env);
+    client
+}
+
+#[test]
+fn lowercase_d_does_not_detach() {
+    let env = TestEnv::new("lower-d");
+    let mut client = Attached::start(&env, 80, 24);
+    client.wait_for_prompt();
+    client.shell_pid(&env);
+    client.send(b"\x01d");
+    thread::sleep(Duration::from_millis(300));
+    assert!(client.child.try_wait().unwrap().is_none());
+    client.run("echo still-attached");
+    client.wait_for_line("still-attached");
+}
+
+#[test]
+fn leader_enter_opens_a_focused_pane() {
+    let env = TestEnv::new("open");
+    let mut client = Attached::start(&env, 80, 24);
+    client.wait_for_prompt();
+    client.shell_pid(&env);
+    client.run("echo pane=$GBAND_PANE");
+    client.wait_for_focused("the first pane number", |lines| {
+        pane_number(lines).is_some()
+    });
+    let first = pane_number(&client.focused_lines()).unwrap();
+
+    client.send(b"\x01\r");
+    client.wait_for("two tiles with the second focused", |screen| {
+        let tiles = tiles(screen);
+        tiles.len() == 2 && tiles[1].focused && tiles[1].left == 40
+    });
+    client.wait_for_prompt();
+    client.shell_pid(&env);
+    client.run("echo pane=$GBAND_PANE");
+    client.wait_for_focused("the second pane number", |lines| {
+        pane_number(lines).is_some()
+    });
+    assert_ne!(pane_number(&client.focused_lines()), Some(first));
+}
+
+#[test]
+fn leader_h_focuses_the_left_pane() {
+    let env = TestEnv::new("focus-left");
+    let mut client = open_second_pane(&env);
+    client.send(b"\x01h");
+    client.wait_for("the first tile focused", |screen| tiles(screen)[0].focused);
+    client.run("echo left");
+    client.wait_for_line("left");
+    let screen = client.screen();
+    let tiles = tiles(&screen);
+    assert!(!tiles[1].lines(&screen).iter().any(|line| line == "left"));
+}
+
+#[test]
+fn leader_q_closes_the_focused_pane() {
+    let env = TestEnv::new("close");
+    let mut client = open_second_pane(&env);
+    let second = client.last_pid();
+    client.send(b"\x01q");
+    client.wait_for("one tile left", |screen| {
+        let tiles = tiles(screen);
+        tiles.len() == 1 && tiles[0].focused && tiles[0].left == 0
+    });
+    wait_until(|| !is_running(second), "the closed shell to stop");
+    client.run("echo after-close");
+    client.wait_for_line("after-close");
+}
+
+#[test]
+fn leader_u_and_i_switch_workspaces() {
+    let env = TestEnv::new("workspaces");
+    let mut client = Attached::start(&env, 80, 24);
+    client.wait_for_prompt();
+    client.shell_pid(&env);
+    client.run("echo first-workspace");
+    client.wait_for_line("first-workspace");
+
+    client.send(b"\x01u");
+    client.wait_for("an empty workspace", |screen| tiles(screen).is_empty());
+    client.send(b"\x01\r");
+    client.wait_for("a pane in the second workspace", |screen| {
+        tiles(screen).len() == 1
+    });
+    client.wait_for_prompt();
+    client.shell_pid(&env);
+    client.run("echo second-workspace");
+    client.wait_for_line("second-workspace");
+
+    client.send(b"\x01i");
+    client.wait_for_focused("the first workspace", |lines| {
+        lines.iter().any(|line| line == "first-workspace")
+    });
+    client.run("echo back-on-first");
+    client.wait_for_line("back-on-first");
+
+    client.send(b"\x01u");
+    client.wait_for_focused("the second workspace", |lines| {
+        lines.iter().any(|line| line == "second-workspace")
+    });
+}
+
+#[test]
+fn kill_server_ends_a_session_of_two_panes() {
+    let env = TestEnv::new("kill-two");
+    let mut client = open_second_pane(&env);
+    let status = env.command(GBAND, &["kill-server"]).status().unwrap();
+    assert!(status.success());
+    assert_eq!(client.wait_exit(), 0);
+    client.wait_for_text("[exited]");
+    wait_until(|| !env.socket().exists(), "the socket to be removed");
 }

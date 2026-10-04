@@ -1,7 +1,5 @@
 mod common;
 
-use std::time::Duration;
-
 use common::*;
 use gband_core::input::{Key, KeyCode};
 use gband_protocol::{ClientMessage, Hello, HelloReply, PROTOCOL_VERSION};
@@ -15,22 +13,36 @@ async fn snapshot_and_updates_match_the_server() {
         .await;
     client.wait_for_text("green done").await;
     assert_converges(&server, &mut client).await;
-    assert!(client.parser.screen().application_cursor());
-    assert!(client.parser.screen().bracketed_paste());
+    assert!(client.screen().application_cursor());
+    assert!(client.screen().bracketed_paste());
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn slow_client_converges() {
     let runtime_dir = runtime_dir("slow");
-    let marker = runtime_dir.join("printed");
+    let first_marker = runtime_dir.join("first");
+    let second_marker = runtime_dir.join("second");
     let server = TestServer::start_in(runtime_dir, &["/bin/sh"]).await;
     let mut client = server.attach(80, 24).await;
+    let first = client.first();
+    let second = client.open_after(first).await;
     client
-        .type_line(&format!("seq 1 10000; touch {}", marker.display()))
+        .type_line_to(
+            first,
+            &format!("seq 1 10000; touch {}", first_marker.display()),
+        )
         .await;
-    wait_for_file(&marker).await;
+    client
+        .type_line_to(
+            second,
+            &format!("seq 5 10005; touch {}", second_marker.display()),
+        )
+        .await;
+    wait_for_file(&first_marker).await;
+    wait_for_file(&second_marker).await;
     assert_converges(&server, &mut client).await;
-    assert!(client.parser.screen().contents().contains("10000"));
+    assert!(client.pane_screen(first).contents().contains("10000"));
+    assert!(client.pane_screen(second).contents().contains("10005"));
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -105,9 +117,7 @@ async fn up_is_encoded_with_application_cursor_mode() {
     client
         .wait_for(|screen| screen.application_cursor() && screen.contents().contains("ready"))
         .await;
-    client
-        .send(&ClientMessage::Key(Key::plain(KeyCode::Up)))
-        .await;
+    client.key(Key::plain(KeyCode::Up)).await;
     client.wait_for_text("1b 4f 41").await;
 }
 
@@ -125,45 +135,12 @@ async fn keys_from_two_clients_reach_the_program() {
     let mut first = server.attach(80, 24).await;
     let mut second = server.attach(80, 24).await;
     first.wait_for_text("ready").await;
-    first
-        .send(&ClientMessage::Key(Key::plain(KeyCode::Char('a'))))
-        .await;
-    second
-        .send(&ClientMessage::Key(Key::plain(KeyCode::Char('b'))))
-        .await;
+    first.key(Key::plain(KeyCode::Char('a'))).await;
+    second.key(Key::plain(KeyCode::Char('b'))).await;
     first
         .wait_for(|screen| {
             let contents = screen.contents();
             contents.contains('a') && contents.lines().any(|line| line.contains(" b"))
         })
         .await;
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn latest_client_sets_the_pty_size() {
-    let server = TestServer::start("size", &["/bin/sh"]).await;
-    let mut first = server.attach(120, 40).await;
-    first.type_line("stty size").await;
-    first.wait_for_text("40 120").await;
-
-    let mut second = server.attach(100, 30).await;
-    assert_eq!(second.parser.screen().size(), (30, 100));
-    second.type_line("stty size").await;
-    second.wait_for_text("30 100").await;
-
-    first
-        .send(&ClientMessage::Resize { cols: 90, rows: 25 })
-        .await;
-    first.wait_for(|screen| screen.size() == (25, 90)).await;
-    first.type_line("stty size").await;
-    first.wait_for_text("25 90").await;
-
-    second.send(&ClientMessage::Detach).await;
-    assert!(closes(&mut second.stream).await);
-    tokio::time::sleep(Duration::from_millis(100)).await;
-    first.type_line("clear; stty size").await;
-    first
-        .wait_for(|screen| screen.contents().starts_with("25 90"))
-        .await;
-    assert_eq!(first.parser.screen().size(), (25, 90));
 }

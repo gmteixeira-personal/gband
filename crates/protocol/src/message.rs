@@ -1,7 +1,8 @@
 use gband_core::input::Key;
+use gband_core::layout::{Layout, PaneId, SessionAction};
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u32 = 1;
+pub const PROTOCOL_VERSION: u32 = 2;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Hello {
@@ -18,9 +19,10 @@ pub enum HelloReply {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ClientMessage {
-    Key(Key),
-    Paste(String),
+    Key { pane: PaneId, key: Key },
+    Paste { pane: PaneId, text: String },
     Resize { cols: u16, rows: u16 },
+    Action(SessionAction),
     Detach,
 }
 
@@ -30,12 +32,22 @@ pub enum ServerMessage {
         pid: u32,
         executable: ExecutableId,
     },
+    Layout {
+        cols: u16,
+        rows: u16,
+        layout: Layout,
+    },
     Snapshot {
+        pane: PaneId,
         cols: u16,
         rows: u16,
         contents: Vec<u8>,
     },
-    Update(Vec<u8>),
+    Update {
+        pane: PaneId,
+        contents: Vec<u8>,
+    },
+    Focus(PaneId),
     Exited,
 }
 

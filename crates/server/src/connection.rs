@@ -1,7 +1,10 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use anyhow::{Context as _, Result};
+use gband_core::geometry::Size;
+use gband_core::layout::{PaneId, SessionAction};
 use gband_protocol::{
     ClientMessage, Decoder, Hello, HelloReply, PROTOCOL_VERSION, ServerMessage, encode,
 };
@@ -9,17 +12,25 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::UnixStream;
-use tokio::sync::{mpsc, watch};
+use tokio::sync::{mpsc, oneshot, watch};
 
-use crate::pane::{Input, Pane};
+use crate::pane::Input;
+use crate::session::{Command, State};
 
 const READ_BUFFER_LEN: usize = 64 * 1024;
 
 pub struct Context {
-    pub pane: Arc<Pane>,
-    pub input: mpsc::UnboundedSender<Input>,
+    pub state: watch::Receiver<Arc<State>>,
+    pub changed: watch::Receiver<u64>,
+    pub commands: mpsc::UnboundedSender<Command>,
     pub ended: watch::Receiver<bool>,
     pub info: ServerMessage,
+}
+
+#[derive(Default)]
+struct Sent {
+    state: Option<Arc<State>>,
+    panes: HashMap<PaneId, (u64, vt100::Screen)>,
 }
 
 pub async fn serve(stream: UnixStream, context: Arc<Context>) {
@@ -66,20 +77,35 @@ async fn handle(stream: UnixStream, context: &Context) -> Result<()> {
     .await?;
     send(&mut writer, &context.info).await?;
 
-    context.pane.resize(hello.cols, hello.rows);
-    let mut generation = context.pane.subscribe();
-    generation.borrow_and_update();
-    let mut last = context.pane.screen();
-    send(&mut writer, &snapshot(&last)).await?;
+    let (applied_tx, applied) = oneshot::channel();
+    command(
+        context,
+        Command::Area {
+            size: Size::new(hello.cols, hello.rows),
+            applied: Some(applied_tx),
+        },
+    );
+    let _ = applied.await;
 
+    let mut changed = context.changed.clone();
+    changed.borrow_and_update();
+    let mut sent = Sent::default();
+    sync(&mut writer, context, &mut sent).await?;
+
+    let (focus_tx, mut focus) = mpsc::unbounded_channel();
     let mut ended = context.ended.clone();
     loop {
         tokio::select! {
-            _ = generation.changed() => {
-                send_update(&mut writer, context, &mut generation, &mut last).await?;
+            _ = changed.changed() => {
+                changed.borrow_and_update();
+                sync(&mut writer, context, &mut sent).await?;
+            }
+            Some(pane) = focus.recv() => {
+                sync(&mut writer, context, &mut sent).await?;
+                send(&mut writer, &ServerMessage::Focus(pane)).await?;
             }
             _ = async { ended.wait_for(|ended| *ended).await.is_ok() } => {
-                send_update(&mut writer, context, &mut generation, &mut last).await?;
+                sync(&mut writer, context, &mut sent).await?;
                 send(&mut writer, &ServerMessage::Exited).await?;
                 return Ok(());
             }
@@ -91,9 +117,22 @@ async fn handle(stream: UnixStream, context: &Context) -> Result<()> {
                 decoder.feed(&buffer[..n])?;
                 while let Some(message) = decoder.next_message::<ClientMessage>()? {
                     match message {
-                        ClientMessage::Key(key) => forward(context, Input::Key(key)),
-                        ClientMessage::Paste(text) => forward(context, Input::Paste(text)),
-                        ClientMessage::Resize { cols, rows } => context.pane.resize(cols, rows),
+                        ClientMessage::Key { pane, key } => forward(context, pane, Input::Key(key)),
+                        ClientMessage::Paste { pane, text } => {
+                            forward(context, pane, Input::Paste(text));
+                        }
+                        ClientMessage::Resize { cols, rows } => command(
+                            context,
+                            Command::Area {
+                                size: Size::new(cols, rows),
+                                applied: None,
+                            },
+                        ),
+                        ClientMessage::Action(action) => {
+                            let focus = matches!(action, SessionAction::OpenPane { .. })
+                                .then(|| focus_tx.clone());
+                            command(context, Command::Action { action, focus });
+                        }
                         ClientMessage::Detach => return Ok(()),
                     }
                 }
@@ -102,36 +141,82 @@ async fn handle(stream: UnixStream, context: &Context) -> Result<()> {
     }
 }
 
-fn forward(context: &Context, input: Input) {
-    if context.input.send(input).is_err() {
-        tracing::debug!("input dropped because the PTY writer has stopped");
+fn command(context: &Context, command: Command) {
+    if context.commands.send(command).is_err() {
+        tracing::debug!("command dropped because the session has ended");
     }
 }
 
-async fn send_update(
-    writer: &mut (impl AsyncWrite + Unpin),
-    context: &Context,
-    generation: &mut watch::Receiver<u64>,
-    last: &mut vt100::Screen,
-) -> Result<()> {
-    generation.borrow_and_update();
-    let screen = context.pane.screen();
-    let message = if screen.size() != last.size() {
-        snapshot(&screen)
-    } else {
-        let diff = screen.state_diff(last);
-        if diff.is_empty() {
-            return Ok(());
-        }
-        ServerMessage::Update(diff)
+fn forward(context: &Context, pane: PaneId, input: Input) {
+    let state = context.state.borrow();
+    let Some(entry) = state.panes.get(&pane) else {
+        tracing::debug!(pane = %pane, "input dropped for a pane not in the layout");
+        return;
     };
-    *last = screen;
-    send(writer, &message).await
+    if entry.input.send(input).is_err() {
+        tracing::debug!(pane = %pane, "input dropped because the PTY writer has stopped");
+    }
 }
 
-fn snapshot(screen: &vt100::Screen) -> ServerMessage {
+async fn sync(
+    writer: &mut (impl AsyncWrite + Unpin),
+    context: &Context,
+    sent: &mut Sent,
+) -> Result<()> {
+    let state = Arc::clone(&context.state.borrow());
+    if !sent
+        .state
+        .as_ref()
+        .is_some_and(|last| Arc::ptr_eq(last, &state))
+    {
+        send(
+            writer,
+            &ServerMessage::Layout {
+                cols: state.area.cols,
+                rows: state.area.rows,
+                layout: state.layout.clone(),
+            },
+        )
+        .await?;
+        sent.panes.retain(|pane, _| state.panes.contains_key(pane));
+        sent.state = Some(Arc::clone(&state));
+    }
+    for pane in state.layout.panes() {
+        let Some(entry) = state.panes.get(&pane) else {
+            continue;
+        };
+        let generation = entry.pane.generation();
+        if sent
+            .panes
+            .get(&pane)
+            .is_some_and(|(last, _)| *last == generation)
+        {
+            continue;
+        }
+        let (generation, screen) = entry.pane.screen();
+        let message = match sent.panes.get(&pane) {
+            Some((_, last)) if last.size() == screen.size() => {
+                let contents = screen.state_diff(last);
+                if contents.is_empty() {
+                    None
+                } else {
+                    Some(ServerMessage::Update { pane, contents })
+                }
+            }
+            _ => Some(snapshot(pane, &screen)),
+        };
+        sent.panes.insert(pane, (generation, screen));
+        if let Some(message) = message {
+            send(writer, &message).await?;
+        }
+    }
+    Ok(())
+}
+
+fn snapshot(pane: PaneId, screen: &vt100::Screen) -> ServerMessage {
     let (rows, cols) = screen.size();
     ServerMessage::Snapshot {
+        pane,
         cols,
         rows,
         contents: screen.state_formatted(),

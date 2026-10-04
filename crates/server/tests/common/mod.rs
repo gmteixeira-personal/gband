@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+use std::collections::HashMap;
 use std::ffi::OsString;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
@@ -7,7 +8,9 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use anyhow::Result;
+use gband_core::geometry::Size;
 use gband_core::input::{Key, KeyCode};
+use gband_core::layout::{Layout, PaneId, SessionAction};
 use gband_protocol::{
     ClientMessage, Decoder, ExecutableId, Hello, HelloReply, PROTOCOL_VERSION, ServerMessage,
     encode, socket_path,
@@ -83,11 +86,15 @@ impl TestServer {
         TestClient::attach(&self.socket(), cols, rows).await
     }
 
-    pub async fn screen(&self) -> vt100::Screen {
+    pub async fn screens(&self) -> HashMap<PaneId, vt100::Screen> {
         let mut client = self.attach(0, 0).await;
-        let screen = client.parser.screen().clone();
+        let screens = client
+            .parsers
+            .iter()
+            .map(|(&pane, parser)| (pane, parser.screen().clone()))
+            .collect();
         client.send(&ClientMessage::Detach).await;
-        screen
+        screens
     }
 
     pub async fn finished(self) -> Result<()> {
@@ -101,7 +108,10 @@ impl TestServer {
 pub struct TestClient {
     pub stream: UnixStream,
     pub decoder: Decoder,
-    pub parser: vt100::Parser,
+    pub parsers: HashMap<PaneId, vt100::Parser>,
+    pub layout: Layout,
+    pub area: Size,
+    pub focus: Vec<PaneId>,
     pub info: ServerMessage,
     pub exited: bool,
 }
@@ -134,65 +144,185 @@ impl TestClient {
         let mut client = Self {
             stream,
             decoder,
-            parser: vt100::Parser::new(24, 80, 0),
+            parsers: HashMap::new(),
+            layout: Layout::new(),
+            area: Size::new(0, 0),
+            focus: Vec::new(),
             info,
             exited: false,
         };
         match client.receive().await {
-            Some(ServerMessage::Snapshot { .. }) => {}
-            other => panic!("expected a snapshot, got {other:?}"),
+            Some(ServerMessage::Layout { .. }) => {}
+            other => panic!("expected a layout, got {other:?}"),
+        }
+        while client
+            .layout
+            .panes()
+            .any(|pane| !client.parsers.contains_key(&pane))
+        {
+            match client.receive().await {
+                Some(ServerMessage::Snapshot { .. }) => {}
+                other => panic!("expected a snapshot, got {other:?}"),
+            }
         }
         client
+    }
+
+    pub fn panes(&self) -> Vec<PaneId> {
+        self.layout.panes().collect()
+    }
+
+    pub fn first(&self) -> PaneId {
+        self.layout
+            .panes()
+            .next()
+            .expect("the layout holds no pane")
+    }
+
+    pub fn screen(&self) -> &vt100::Screen {
+        self.pane_screen(self.first())
+    }
+
+    pub fn pane_screen(&self, pane: PaneId) -> &vt100::Screen {
+        self.parsers
+            .get(&pane)
+            .unwrap_or_else(|| panic!("no screen for pane {pane}"))
+            .screen()
     }
 
     pub async fn send(&mut self, message: &ClientMessage) {
         write_frame(&mut self.stream, message).await;
     }
 
+    pub async fn act(&mut self, action: SessionAction) {
+        self.send(&ClientMessage::Action(action)).await;
+    }
+
+    pub async fn key(&mut self, key: Key) {
+        let pane = self.first();
+        self.key_to(pane, key).await;
+    }
+
+    pub async fn key_to(&mut self, pane: PaneId, key: Key) {
+        self.send(&ClientMessage::Key { pane, key }).await;
+    }
+
     pub async fn type_line(&mut self, line: &str) {
-        self.send(&ClientMessage::Paste(line.to_string())).await;
-        self.send(&ClientMessage::Key(Key::plain(KeyCode::Enter)))
-            .await;
+        let pane = self.first();
+        self.type_line_to(pane, line).await;
+    }
+
+    pub async fn type_line_to(&mut self, pane: PaneId, line: &str) {
+        self.send(&ClientMessage::Paste {
+            pane,
+            text: line.to_string(),
+        })
+        .await;
+        self.key_to(pane, Key::plain(KeyCode::Enter)).await;
+    }
+
+    pub async fn open_after(&mut self, after: PaneId) -> PaneId {
+        let workspace = self.layout.workspaces()[self.layout.locate(after).unwrap().workspace].id;
+        let seen = self.focus.len();
+        self.act(SessionAction::OpenPane {
+            workspace,
+            after: Some(after),
+        })
+        .await;
+        self.wait_until(|client| client.focus.len() > seen).await;
+        let opened = self.focus[seen];
+        self.wait_for_prompt(opened).await;
+        opened
     }
 
     pub async fn receive(&mut self) -> Option<ServerMessage> {
         let message: ServerMessage = read_frame(&mut self.stream, &mut self.decoder).await?;
         match &message {
+            ServerMessage::Layout { cols, rows, layout } => {
+                self.layout = layout.clone();
+                self.area = Size::new(*cols, *rows);
+                self.parsers.retain(|pane, _| layout.contains(*pane));
+            }
             ServerMessage::Snapshot {
+                pane,
                 cols,
                 rows,
                 contents,
             } => {
-                self.parser = vt100::Parser::new(*rows, *cols, 0);
-                self.parser.process(contents);
+                assert!(self.layout.contains(*pane), "snapshot before its layout");
+                let mut parser = vt100::Parser::new(*rows, *cols, 0);
+                parser.process(contents);
+                self.parsers.insert(*pane, parser);
             }
-            ServerMessage::Update(contents) => self.parser.process(contents),
+            ServerMessage::Update { pane, contents } => self
+                .parsers
+                .get_mut(pane)
+                .unwrap_or_else(|| panic!("update before a snapshot of pane {pane}"))
+                .process(contents),
+            ServerMessage::Focus(pane) => {
+                assert!(self.parsers.contains_key(pane), "focus before a snapshot");
+                self.focus.push(*pane);
+            }
             ServerMessage::Exited => self.exited = true,
             ServerMessage::Info { .. } => panic!("unexpected second info"),
         }
         Some(message)
     }
 
-    pub async fn wait_for(&mut self, predicate: impl Fn(&vt100::Screen) -> bool) {
+    fn describe(&self) -> String {
+        self.layout
+            .panes()
+            .filter_map(|pane| {
+                self.parsers
+                    .get(&pane)
+                    .map(|parser| format!("pane {pane}:\n{}", parser.screen().contents()))
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    pub async fn wait_until(&mut self, predicate: impl Fn(&Self) -> bool) {
         let deadline = Instant::now() + TIMEOUT;
-        while !predicate(self.parser.screen()) {
+        while !predicate(self) {
             let remaining = deadline.saturating_duration_since(Instant::now());
             match timeout(remaining, self.receive()).await {
                 Ok(Some(_)) => {}
-                Ok(None) => panic!(
-                    "connection closed while waiting; screen:\n{}",
-                    self.parser.screen().contents()
-                ),
-                Err(_) => panic!(
-                    "timed out waiting; screen:\n{}",
-                    self.parser.screen().contents()
-                ),
+                Ok(None) => panic!("connection closed while waiting\n{}", self.describe()),
+                Err(_) => panic!("timed out waiting\n{}", self.describe()),
             }
         }
     }
 
+    pub async fn wait_for(&mut self, predicate: impl Fn(&vt100::Screen) -> bool) {
+        self.wait_until(|client| predicate(client.screen())).await;
+    }
+
+    pub async fn wait_for_pane(
+        &mut self,
+        pane: PaneId,
+        predicate: impl Fn(&vt100::Screen) -> bool,
+    ) {
+        self.wait_until(|client| {
+            client
+                .parsers
+                .get(&pane)
+                .is_some_and(|p| predicate(p.screen()))
+        })
+        .await;
+    }
+
+    pub async fn wait_for_prompt(&mut self, pane: PaneId) {
+        self.wait_for_pane(pane, |screen| screen.contents().trim_end().ends_with('$'))
+            .await;
+    }
+
     pub async fn wait_for_text(&mut self, text: &str) {
         self.wait_for(|screen| screen.contents().contains(text))
+            .await;
+    }
+
+    pub async fn wait_for_pane_text(&mut self, pane: PaneId, text: &str) {
+        self.wait_for_pane(pane, |screen| screen.contents().contains(text))
             .await;
     }
 
@@ -228,15 +358,21 @@ pub async fn assert_converges(server: &TestServer, client: &mut TestClient) {
     let deadline = Instant::now() + TIMEOUT;
     loop {
         client.pump(Duration::from_millis(100)).await;
-        let expected = server.screen().await;
-        if same_screen(client.parser.screen(), &expected) {
+        let expected = server.screens().await;
+        let matches = expected.len() == client.parsers.len()
+            && expected.iter().all(|(pane, screen)| {
+                client
+                    .parsers
+                    .get(pane)
+                    .is_some_and(|parser| same_screen(parser.screen(), screen))
+            });
+        if matches {
             return;
         }
         assert!(
             Instant::now() < deadline,
-            "client never matched the server\nclient:\n{}\nserver:\n{}",
-            client.parser.screen().contents(),
-            expected.contents()
+            "client never matched the server\nclient:\n{}",
+            client.describe()
         );
     }
 }

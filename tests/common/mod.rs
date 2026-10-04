@@ -232,38 +232,44 @@ impl Attached {
         self.wait_for(text, |screen| screen.contents().contains(text));
     }
 
+    pub fn tiles(&self) -> Vec<Tile> {
+        tiles(&self.screen())
+    }
+
+    pub fn focused_lines(&self) -> Vec<String> {
+        focused_lines(&self.screen())
+    }
+
+    pub fn wait_for_focused(&self, what: &str, predicate: impl Fn(&[String]) -> bool) {
+        self.wait_for(what, |screen| predicate(&focused_lines(screen)));
+    }
+
+    pub fn wait_for_line(&self, expected: &str) {
+        self.wait_for_focused(expected, |lines| lines.iter().any(|line| line == expected));
+    }
+
     pub fn wait_for_prompt(&self) {
-        self.wait_for("a prompt", |screen| {
-            screen
-                .contents()
-                .lines()
-                .any(|line| line.trim_end().ends_with('$'))
+        self.wait_for_focused("a prompt", |lines| {
+            lines.iter().any(|line| line.ends_with('$'))
         });
     }
 
     pub fn shell_pid(&mut self, env: &TestEnv) -> i32 {
         self.run("echo pid=$$");
-        let mut found = None;
-        self.wait_for("the shell pid", |screen| {
-            screen
-                .contents()
-                .lines()
-                .any(|line| parse_pid(line).is_some())
+        self.wait_for_focused("the shell pid", |lines| {
+            lines.iter().any(|line| parse_pid(line).is_some())
         });
-        for line in self.contents().lines() {
-            found = found.or(parse_pid(line));
-        }
-        let pid = found.unwrap();
+        let pid = self.last_pid();
         env.track_shell(pid);
         pid
     }
 
     pub fn last_pid(&self) -> i32 {
-        self.contents()
-            .lines()
-            .filter_map(parse_pid)
+        self.focused_lines()
+            .iter()
+            .filter_map(|line| parse_pid(line))
             .next_back()
-            .expect("no pid line on screen")
+            .expect("no pid line in the focused pane")
     }
 
     pub fn wait_exit(&mut self) -> u32 {
@@ -307,6 +313,78 @@ impl Drop for Attached {
             let _ = self.child.wait();
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Tile {
+    pub top: u16,
+    pub left: u16,
+    pub bottom: u16,
+    pub right: u16,
+    pub focused: bool,
+}
+
+impl Tile {
+    pub fn lines(&self, screen: &vt100::Screen) -> Vec<String> {
+        (self.top + 1..self.bottom)
+            .map(|row| {
+                (self.left + 1..self.right)
+                    .map(|col| {
+                        screen
+                            .cell(row, col)
+                            .map(|cell| cell.contents().to_string())
+                            .filter(|contents| !contents.is_empty())
+                            .unwrap_or_else(|| " ".to_string())
+                    })
+                    .collect::<String>()
+                    .trim_end()
+                    .to_string()
+            })
+            .collect()
+    }
+}
+
+fn symbol_at(screen: &vt100::Screen, row: u16, col: u16) -> Option<(String, bool)> {
+    screen
+        .cell(row, col)
+        .map(|cell| (cell.contents().to_string(), cell.bold()))
+}
+
+pub fn tiles(screen: &vt100::Screen) -> Vec<Tile> {
+    let (rows, cols) = screen.size();
+    let mut found = Vec::new();
+    for top in 0..rows {
+        for left in 0..cols {
+            let Some((symbol, focused)) = symbol_at(screen, top, left) else {
+                continue;
+            };
+            if symbol != "┌" {
+                continue;
+            }
+            let right = (left + 1..cols)
+                .find(|&col| symbol_at(screen, top, col).is_some_and(|(s, _)| s == "┐"));
+            let bottom = (top + 1..rows)
+                .find(|&row| symbol_at(screen, row, left).is_some_and(|(s, _)| s == "└"));
+            if let (Some(right), Some(bottom)) = (right, bottom) {
+                found.push(Tile {
+                    top,
+                    left,
+                    bottom,
+                    right,
+                    focused,
+                });
+            }
+        }
+    }
+    found
+}
+
+pub fn focused_lines(screen: &vt100::Screen) -> Vec<String> {
+    tiles(screen)
+        .into_iter()
+        .find(|tile| tile.focused)
+        .map(|tile| tile.lines(screen))
+        .unwrap_or_default()
 }
 
 fn parse_pid(line: &str) -> Option<i32> {

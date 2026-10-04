@@ -1,7 +1,9 @@
+use gband_core::layout::PaneId;
 use gband_protocol::{ClientMessage, Decoder, FrameError, MAX_FRAME_LEN, ServerMessage, encode};
 
 fn sample() -> ServerMessage {
     ServerMessage::Snapshot {
+        pane: PaneId(1),
         cols: 80,
         rows: 24,
         contents: b"\x1b[1;31mhello\x1b[m".to_vec(),
@@ -44,7 +46,10 @@ fn frame_fed_byte_by_byte_decodes_once() {
 
 #[test]
 fn two_frames_in_one_chunk_decode_in_order() {
-    let first = ServerMessage::Update(b"one".to_vec());
+    let first = ServerMessage::Update {
+        pane: PaneId(1),
+        contents: b"one".to_vec(),
+    };
     let second = ServerMessage::Exited;
     let chunk = [encode(&first).unwrap(), encode(&second).unwrap()].concat();
     let mut decoder = Decoder::new();
@@ -81,7 +86,7 @@ fn largest_allowed_header_is_accepted() {
 #[test]
 fn trailing_bytes_are_an_error() {
     let mut decoder = Decoder::new();
-    decoder.feed(&[0, 0, 0, 3, 0x03, 0x00, 0x00]).unwrap();
+    decoder.feed(&[0, 0, 0, 3, 0x04, 0x00, 0x00]).unwrap();
     assert!(matches!(
         decoder.next_message::<ClientMessage>(),
         Err(FrameError::TrailingBytes(2))

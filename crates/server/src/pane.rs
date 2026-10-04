@@ -1,11 +1,15 @@
 use std::ffi::OsString;
 use std::io::{Read, Write};
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, mpsc as std_mpsc};
 use std::thread;
+use std::time::Duration;
 
 use anyhow::{Context, Result};
+use gband_core::geometry::Size;
 use gband_core::input::{Key, Modes, encode_key, encode_paste};
+use gband_core::layout::PaneId;
 use portable_pty::{
     ChildKiller, CommandBuilder, ExitStatus, MasterPty, PtySize, native_pty_system,
 };
@@ -13,8 +17,7 @@ use tokio::sync::{mpsc, watch};
 
 use crate::callbacks::LoggingCallbacks;
 
-const INITIAL_COLS: u16 = 80;
-const INITIAL_ROWS: u16 = 24;
+const DRAIN_TIMEOUT: Duration = Duration::from_millis(500);
 
 pub enum Input {
     Key(Key),
@@ -23,7 +26,8 @@ pub enum Input {
 
 pub struct Pane {
     terminal: Mutex<Terminal>,
-    generation: watch::Sender<u64>,
+    generation: AtomicU64,
+    changed: Arc<watch::Sender<u64>>,
 }
 
 struct Terminal {
@@ -31,18 +35,43 @@ struct Terminal {
     master: Box<dyn MasterPty + Send>,
 }
 
-pub struct Session {
+#[derive(Clone)]
+pub struct PaneEntry {
     pub pane: Arc<Pane>,
     pub input: mpsc::UnboundedSender<Input>,
-    pub exit: watch::Receiver<Option<ExitStatus>>,
-    pub drained: watch::Receiver<bool>,
+}
+
+pub struct Spawned {
+    pub entry: PaneEntry,
     pub killer: Box<dyn ChildKiller + Send + Sync>,
     pub pid: Option<u32>,
+    pub exit: watch::Receiver<Option<ExitStatus>>,
+}
+
+pub struct PaneExit {
+    pub pane: PaneId,
+    pub status: ExitStatus,
+}
+
+pub struct SpawnRequest<'a> {
+    pub id: PaneId,
+    pub program: &'a [OsString],
+    pub cwd: &'a Path,
+    pub socket: &'a Path,
+    pub size: Size,
 }
 
 impl Pane {
-    pub fn screen(&self) -> vt100::Screen {
-        self.terminal.lock().unwrap().parser.screen().clone()
+    pub fn screen(&self) -> (u64, vt100::Screen) {
+        let terminal = self.terminal.lock().unwrap();
+        (
+            self.generation.load(Ordering::Acquire),
+            terminal.parser.screen().clone(),
+        )
+    }
+
+    pub fn generation(&self) -> u64 {
+        self.generation.load(Ordering::Acquire)
     }
 
     pub fn modes(&self) -> Modes {
@@ -54,15 +83,12 @@ impl Pane {
         }
     }
 
-    pub fn subscribe(&self) -> watch::Receiver<u64> {
-        self.generation.subscribe()
-    }
-
     pub fn foreground_group(&self) -> Option<i32> {
         self.terminal.lock().unwrap().master.process_group_leader()
     }
 
-    pub fn resize(&self, cols: u16, rows: u16) {
+    pub fn resize(&self, size: Size) {
+        let Size { cols, rows } = size;
         if cols == 0 || rows == 0 {
             return;
         }
@@ -71,35 +97,52 @@ impl Pane {
             if terminal.parser.screen().size() == (rows, cols) {
                 return;
             }
-            if let Err(error) = terminal.master.resize(pty_size(cols, rows)) {
+            if let Err(error) = terminal.master.resize(pty_size(size)) {
                 tracing::warn!("cannot resize the PTY to {cols}x{rows}: {error:#}");
                 return;
             }
             terminal.parser.screen_mut().set_size(rows, cols);
+            self.generation.fetch_add(1, Ordering::AcqRel);
         }
         tracing::debug!("PTY resized to {cols}x{rows}");
-        self.bump();
+        self.notify();
     }
 
     fn process(&self, bytes: &[u8]) {
-        self.terminal.lock().unwrap().parser.process(bytes);
-        self.bump();
+        {
+            let mut terminal = self.terminal.lock().unwrap();
+            terminal.parser.process(bytes);
+            self.generation.fetch_add(1, Ordering::AcqRel);
+        }
+        self.notify();
     }
 
-    fn bump(&self) {
-        self.generation.send_modify(|generation| *generation += 1);
+    fn notify(&self) {
+        self.changed.send_modify(|generation| *generation += 1);
     }
 }
 
-pub fn spawn(program: &[OsString], cwd: &Path, socket: &Path) -> Result<Session> {
+pub fn spawn(
+    request: SpawnRequest<'_>,
+    changed: &Arc<watch::Sender<u64>>,
+    exits: mpsc::UnboundedSender<PaneExit>,
+) -> Result<Spawned> {
+    let SpawnRequest {
+        id,
+        program,
+        cwd,
+        socket,
+        size,
+    } = request;
     let pair = native_pty_system()
-        .openpty(pty_size(INITIAL_COLS, INITIAL_ROWS))
+        .openpty(pty_size(size))
         .context("cannot open a PTY")?;
 
     let mut command = CommandBuilder::from_argv(program.to_vec());
     command.env("TERM", "xterm-256color");
     command.env("COLORTERM", "truecolor");
     command.env("GBAND", socket);
+    command.env("GBAND_PANE", id.to_string());
     command.cwd(cwd);
     let mut child = pair
         .slave
@@ -108,7 +151,7 @@ pub fn spawn(program: &[OsString], cwd: &Path, socket: &Path) -> Result<Session>
     drop(pair.slave);
     let pid = child.process_id();
     let killer = child.clone_killer();
-    tracing::info!(pid, "started {}", display_argv(program));
+    tracing::info!(pane = %id, pid, "started {}", display_argv(program));
 
     let reader = pair
         .master
@@ -117,20 +160,19 @@ pub fn spawn(program: &[OsString], cwd: &Path, socket: &Path) -> Result<Session>
     let writer = pair.master.take_writer().context("cannot write the PTY")?;
     let pane = Arc::new(Pane {
         terminal: Mutex::new(Terminal {
-            parser: vt100::Parser::new_with_callbacks(
-                INITIAL_ROWS,
-                INITIAL_COLS,
-                0,
-                LoggingCallbacks,
-            ),
+            parser: vt100::Parser::new_with_callbacks(size.rows, size.cols, 0, LoggingCallbacks),
             master: pair.master,
         }),
-        generation: watch::Sender::new(0),
+        generation: AtomicU64::new(0),
+        changed: Arc::clone(changed),
     });
 
-    let (drained_tx, drained) = watch::channel(false);
+    let (drained_tx, drained) = std_mpsc::channel::<()>();
     let output_pane = Arc::clone(&pane);
-    thread::spawn(move || read_output(reader, &output_pane, &drained_tx));
+    thread::spawn(move || {
+        read_output(reader, &output_pane);
+        drop(drained_tx);
+    });
 
     let (exit_tx, exit) = watch::channel(None);
     thread::spawn(move || {
@@ -138,21 +180,21 @@ pub fn spawn(program: &[OsString], cwd: &Path, socket: &Path) -> Result<Session>
             tracing::warn!("cannot wait for the program: {error:#}");
             ExitStatus::with_exit_code(1)
         });
-        exit_tx.send_replace(Some(status));
+        exit_tx.send_replace(Some(status.clone()));
+        let _ = drained.recv_timeout(DRAIN_TIMEOUT);
+        let _ = exits.send(PaneExit { pane: id, status });
     });
 
     let input = spawn_input(Arc::clone(&pane), writer);
-    Ok(Session {
-        pane,
-        input,
-        exit,
-        drained,
+    Ok(Spawned {
+        entry: PaneEntry { pane, input },
         killer,
         pid,
+        exit,
     })
 }
 
-fn read_output(mut reader: Box<dyn Read + Send>, pane: &Pane, drained: &watch::Sender<bool>) {
+fn read_output(mut reader: Box<dyn Read + Send>, pane: &Pane) {
     let mut buffer = vec![0; 64 * 1024];
     loop {
         match reader.read(&mut buffer) {
@@ -160,7 +202,6 @@ fn read_output(mut reader: Box<dyn Read + Send>, pane: &Pane, drained: &watch::S
             Ok(n) => pane.process(&buffer[..n]),
         }
     }
-    drained.send_replace(true);
 }
 
 fn spawn_input(pane: Arc<Pane>, mut writer: Box<dyn Write + Send>) -> mpsc::UnboundedSender<Input> {
@@ -181,10 +222,10 @@ fn spawn_input(pane: Arc<Pane>, mut writer: Box<dyn Write + Send>) -> mpsc::Unbo
     sender
 }
 
-fn pty_size(cols: u16, rows: u16) -> PtySize {
+fn pty_size(size: Size) -> PtySize {
     PtySize {
-        rows,
-        cols,
+        rows: size.rows,
+        cols: size.cols,
         pixel_width: 0,
         pixel_height: 0,
     }

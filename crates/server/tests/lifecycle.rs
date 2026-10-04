@@ -75,7 +75,7 @@ async fn output_without_a_client_is_drained() {
     wait_for_file(&marker).await;
     let mut client = server.attach(80, 24).await;
     client.wait_for_text("last-line").await;
-    let rows: Vec<String> = client.parser.screen().rows(0, 80).collect();
+    let rows: Vec<String> = client.screen().rows(0, 80).collect();
     assert!(rows.iter().any(|row| row == "last-line"), "{rows:?}");
 }
 
