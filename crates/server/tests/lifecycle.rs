@@ -5,8 +5,9 @@ use std::os::unix::net::UnixListener;
 use std::time::Duration;
 
 use common::*;
-use gband_protocol::{ClientMessage, ServerMessage, socket_path};
-use gband_server::lock_path;
+use std::os::unix::fs::PermissionsExt;
+
+use gband_protocol::{ClientMessage, ServerMessage, lock_path, socket_path};
 
 #[tokio::test(flavor = "multi_thread")]
 async fn second_server_is_refused_and_first_keeps_running() {
@@ -56,8 +57,33 @@ async fn unspawnable_program_fails_before_the_socket_exists() {
 #[tokio::test(flavor = "multi_thread")]
 async fn lock_file_holds_the_server_pid() {
     let server = TestServer::start("pid", &["/bin/sh"]).await;
-    let record = fs::read_to_string(lock_path(&server.runtime_dir)).unwrap();
+    let record = fs::read_to_string(lock_path(&server.socket())).unwrap();
     assert_eq!(record, format!("{}\n", std::process::id()));
+    let mut client = server.attach(80, 24).await;
+    client.type_line("exit").await;
+    server.finished().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn explicit_socket_records_its_pid_beside_it() {
+    let runtime_dir = runtime_dir("explicit");
+    let config = gband_server::ServerConfig {
+        socket: runtime_dir.join("s"),
+        ..config(&runtime_dir, &["/bin/sh"])
+    };
+    let server = TestServer::start_with(runtime_dir.clone(), config).await;
+    let record = fs::read_to_string(runtime_dir.join("s.lock")).unwrap();
+    assert_eq!(record, format!("{}\n", std::process::id()));
+    let mut client = server.attach(80, 24).await;
+    client.type_line("exit").await;
+    server.finished().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn socket_is_private() {
+    let server = TestServer::start("private", &["/bin/sh"]).await;
+    let mode = fs::metadata(server.socket()).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode, 0o600);
     let mut client = server.attach(80, 24).await;
     client.type_line("exit").await;
     server.finished().await.unwrap();
@@ -137,7 +163,7 @@ async fn detaching_leaves_the_program_running() {
 fn kill_without_a_server_reports_it_and_creates_nothing() {
     let parent = runtime_dir("kill-none");
     let missing = parent.join("gband");
-    let error = gband_server::kill(&missing).unwrap_err();
+    let error = gband_server::kill(&socket_path(&missing)).unwrap_err();
     let message = format!("{error:#}");
     assert!(
         message.contains(socket_path(&missing).to_str().unwrap()),
@@ -145,7 +171,8 @@ fn kill_without_a_server_reports_it_and_creates_nothing() {
     );
     assert!(!missing.exists());
 
-    fs::write(lock_path(&parent), "12345\n").unwrap();
-    let message = format!("{:#}", gband_server::kill(&parent).unwrap_err());
+    let socket = socket_path(&parent);
+    fs::write(lock_path(&socket), "12345\n").unwrap();
+    let message = format!("{:#}", gband_server::kill(&socket).unwrap_err());
     assert!(message.contains("no server is running"), "{message}");
 }

@@ -10,6 +10,7 @@ use gband_core::layout::{Layout, PaneId, SessionAction, WorkspaceId};
 use portable_pty::{ChildKiller, ExitStatus};
 use rustix::process::{Pid, Signal};
 use tokio::sync::{mpsc, oneshot, watch};
+use tracing::Instrument;
 
 use crate::pane::{self, Pane, PaneEntry, PaneExit, SpawnRequest};
 
@@ -189,11 +190,10 @@ impl Session {
         if let Err(error) = live.killer.kill() {
             tracing::warn!("cannot send SIGHUP to the program: {error:#}");
         }
-        tokio::spawn(kill_if_running(
-            live.exit.clone(),
-            Arc::clone(&live.entry.pane),
-            live.pid,
-        ));
+        tokio::spawn(
+            kill_if_running(live.exit.clone(), Arc::clone(&live.entry.pane), live.pid)
+                .in_current_span(),
+        );
     }
 
     fn terminal_size(&self, pane: PaneId) -> Option<Size> {

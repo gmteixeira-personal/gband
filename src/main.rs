@@ -1,14 +1,15 @@
 use std::io::IsTerminal;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use anyhow::{Context, Result, bail};
-use clap::{Parser, Subcommand};
+use clap::error::ErrorKind;
+use clap::{Args, CommandFactory, Parser, Subcommand};
+use gband::executable;
 use gband::logging::{self, Role};
-use gband::{executable, paths};
+use gband::paths::{self, ServerName};
 use gband_client::{ClientConfig, Outcome};
-use gband_server::ServerConfig;
-
-const STALE_SERVER_NOTE: &str = "gband: the server runs a different gband build; stop it with gband kill-server and attach again";
+use gband_server::{SUN_PATH_MAX, ServerConfig};
 
 #[derive(Parser)]
 #[command(
@@ -17,8 +18,56 @@ const STALE_SERVER_NOTE: &str = "gband: the server runs a different gband build;
     disable_help_subcommand = true
 )]
 struct Cli {
+    #[command(flatten)]
+    selection: Selection,
     #[command(subcommand)]
     command: Command,
+}
+
+#[derive(Args)]
+struct Selection {
+    #[arg(
+        short = 'S',
+        long = "server",
+        value_name = "NAME",
+        global = true,
+        help = "Address the server named NAME"
+    )]
+    server: Option<ServerName>,
+    #[arg(
+        short = 'p',
+        long = "socket",
+        value_name = "PATH",
+        global = true,
+        help = "Address the server listening on PATH"
+    )]
+    socket: Option<PathBuf>,
+}
+
+impl Selection {
+    fn resolve(&self, runtime_dir: &Path) -> Result<PathBuf> {
+        let socket = paths::resolve_socket(
+            self.socket.as_deref(),
+            self.server.as_ref(),
+            std::env::var_os("GBAND"),
+            runtime_dir,
+        )?;
+        if socket.as_os_str().len() > SUN_PATH_MAX {
+            bail!(
+                "socket path {} is longer than the {SUN_PATH_MAX} bytes a Unix socket allows",
+                socket.display()
+            );
+        }
+        Ok(socket)
+    }
+
+    fn kill_command(&self) -> String {
+        match (&self.server, &self.socket) {
+            (Some(name), _) => format!("gband -S {} kill-server", name.as_str()),
+            (None, Some(socket)) => format!("gband -p {} kill-server", socket.display()),
+            (None, None) => "gband kill-server".to_owned(),
+        }
+    }
 }
 
 #[derive(Subcommand)]
@@ -42,6 +91,14 @@ impl Command {
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
+    if cli.selection.server.is_some() && cli.selection.socket.is_some() {
+        Cli::command()
+            .error(
+                ErrorKind::ArgumentConflict,
+                "the argument '--server <NAME>' cannot be used with '--socket <PATH>'",
+            )
+            .exit();
+    }
     let role = cli.command.role();
 
     let _guard = match logging::init(role) {
@@ -58,11 +115,17 @@ fn main() -> ExitCode {
         "{} started",
         role.as_str()
     );
-    let result = match cli.command {
-        Command::Server => server(),
-        Command::Attach => attach(),
-        Command::KillServer => kill_server(),
-    };
+    let runtime_dir = paths::runtime_dir();
+    let socket = cli.selection.resolve(&runtime_dir);
+    let _span = socket
+        .as_ref()
+        .ok()
+        .map(|socket| tracing::error_span!("gband", socket = %socket.display()).entered());
+    let result = socket.and_then(|socket| match cli.command {
+        Command::Server => server(socket, &runtime_dir),
+        Command::Attach => attach(socket, &cli.selection),
+        Command::KillServer => kill_server(&socket),
+    });
     result.unwrap_or_else(|error| {
         tracing::error!("{error:#}");
         eprintln!("gband: {error:#}");
@@ -70,11 +133,16 @@ fn main() -> ExitCode {
     })
 }
 
-fn server() -> Result<ExitCode> {
-    let runtime_dir = paths::runtime_dir();
-    paths::prepare(&runtime_dir)?;
+fn server(socket: PathBuf, runtime_dir: &Path) -> Result<ExitCode> {
+    match socket.parent() {
+        Some(parent) if parent == runtime_dir => paths::prepare(runtime_dir)?,
+        Some(parent) if !parent.is_dir() => {
+            bail!("socket directory {} does not exist", parent.display())
+        }
+        _ => {}
+    }
     let config = ServerConfig {
-        runtime_dir,
+        socket,
         program: vec![gband_server::user_shell()],
         cwd: std::env::current_dir().context("cannot read the current directory")?,
         executable: executable::identity().context("cannot identify the gband executable")?,
@@ -85,19 +153,25 @@ fn server() -> Result<ExitCode> {
     Ok(ExitCode::SUCCESS)
 }
 
-fn attach() -> Result<ExitCode> {
-    if std::env::var_os("GBAND").is_some_and(|value| !value.is_empty()) {
-        bail!("already inside a gband pane; attaching here would feed the session into itself");
+fn attach(socket: PathBuf, selection: &Selection) -> Result<ExitCode> {
+    if std::env::var_os("GBAND").is_some_and(|pane| Path::new(&pane) == socket) {
+        bail!(
+            "already inside a gband pane of the server on {}; attaching here would feed the \
+             session into itself",
+            socket.display()
+        );
     }
     if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
         bail!("gband attach needs a terminal on standard input and standard output");
     }
+    let kill_command = selection.kill_command();
     let config = ClientConfig {
-        runtime_dir: paths::runtime_dir(),
+        socket,
         executable_path: std::env::current_exe().context("cannot locate the gband executable")?,
         identity: executable::identity().context("cannot identify the gband executable")?,
         replace_mismatched: cfg!(debug_assertions),
         log_dir: logging::log_directory()?,
+        kill_command: kill_command.clone(),
     };
     let report = gband_client::run(config)?;
     let (line, status) = match report.outcome {
@@ -107,12 +181,15 @@ fn attach() -> Result<ExitCode> {
     };
     println!("{line}");
     if report.stale_server {
-        eprintln!("{STALE_SERVER_NOTE}");
+        eprintln!(
+            "gband: the server runs a different gband build; stop it with {kill_command} and \
+             attach again"
+        );
     }
     Ok(status)
 }
 
-fn kill_server() -> Result<ExitCode> {
-    gband_server::kill(&paths::runtime_dir())?;
+fn kill_server(socket: &Path) -> Result<ExitCode> {
+    gband_server::kill(socket)?;
     Ok(ExitCode::SUCCESS)
 }

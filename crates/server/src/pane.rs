@@ -14,6 +14,7 @@ use portable_pty::{
     ChildKiller, CommandBuilder, ExitStatus, MasterPty, PtySize, native_pty_system,
 };
 use tokio::sync::{mpsc, watch};
+use tracing::Span;
 
 use crate::callbacks::PaneCallbacks;
 
@@ -190,7 +191,9 @@ pub fn spawn(
     });
 
     let (exit_tx, exit) = watch::channel(None);
+    let span = Span::current();
     thread::spawn(move || {
+        let _span = span.enter();
         let status = child.wait().unwrap_or_else(|error| {
             tracing::warn!("cannot wait for the program: {error:#}");
             ExitStatus::with_exit_code(1)
@@ -224,7 +227,9 @@ fn spawn_input(
     mut receiver: mpsc::UnboundedReceiver<Input>,
     mut writer: Box<dyn Write + Send>,
 ) {
+    let span = Span::current();
     thread::spawn(move || {
+        let _span = span.enter();
         while let Some(input) = receiver.blocking_recv() {
             let bytes = match input {
                 Input::Key(key) => encode_key(key, pane.modes()),

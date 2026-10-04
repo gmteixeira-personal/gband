@@ -41,7 +41,7 @@ pub fn runtime_dir(name: &str) -> PathBuf {
 
 pub fn config(runtime_dir: &Path, program: &[&str]) -> ServerConfig {
     ServerConfig {
-        runtime_dir: runtime_dir.to_path_buf(),
+        socket: socket_path(runtime_dir),
         program: program.iter().map(OsString::from).collect(),
         cwd: runtime_dir.to_path_buf(),
         executable: IDENTITY,
@@ -50,6 +50,7 @@ pub fn config(runtime_dir: &Path, program: &[&str]) -> ServerConfig {
 
 pub struct TestServer {
     pub runtime_dir: PathBuf,
+    socket: PathBuf,
     pub handle: JoinHandle<Result<()>>,
 }
 
@@ -60,12 +61,17 @@ impl TestServer {
     }
 
     pub async fn start_in(runtime_dir: PathBuf, program: &[&str]) -> Self {
+        let config = config(&runtime_dir, program);
+        Self::start_with(runtime_dir, config).await
+    }
+
+    pub async fn start_with(runtime_dir: PathBuf, config: ServerConfig) -> Self {
         let _ = tracing_subscriber::fmt()
             .with_test_writer()
             .with_max_level(tracing::Level::DEBUG)
             .try_init();
-        let handle = tokio::spawn(gband_server::run(config(&runtime_dir, program)));
-        let socket = socket_path(&runtime_dir);
+        let socket = config.socket.clone();
+        let handle = tokio::spawn(gband_server::run(config));
         let deadline = Instant::now() + TIMEOUT;
         while UnixStream::connect(&socket).await.is_err() {
             assert!(!handle.is_finished(), "server stopped before listening");
@@ -74,12 +80,13 @@ impl TestServer {
         }
         Self {
             runtime_dir,
+            socket,
             handle,
         }
     }
 
     pub fn socket(&self) -> PathBuf {
-        socket_path(&self.runtime_dir)
+        self.socket.clone()
     }
 
     pub async fn attach(&self, cols: u16, rows: u16) -> TestClient {

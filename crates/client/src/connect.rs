@@ -1,14 +1,19 @@
+use std::ffi::OsStr;
+use std::fs;
 use std::io::{self, ErrorKind};
+use std::os::fd::AsFd;
+use std::os::unix::ffi::OsStrExt;
 use std::os::unix::process::CommandExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
 use gband_protocol::{
     ClientMessage, Decoder, ExecutableId, Hello, HelloReply, PROTOCOL_VERSION, ServerMessage,
-    encode, socket_path,
+    encode, lock_path,
 };
+use rustix::process::Uid;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -20,6 +25,7 @@ use crate::ClientConfig;
 const RETRY_INTERVAL: Duration = Duration::from_millis(25);
 const START_TIMEOUT: Duration = Duration::from_secs(5);
 const READ_BUFFER_LEN: usize = 64 * 1024;
+const REPLACED_EXECUTABLE_SUFFIX: &[u8] = b" (deleted)";
 
 pub struct Connection {
     pub stream: UnixStream,
@@ -49,7 +55,7 @@ pub async fn connect(config: &ClientConfig) -> Result<Connection> {
             Handshake::Ready(connection) => return Ok(connection),
             Handshake::Replace(reason) => {
                 tracing::info!("replacing the server: {reason}");
-                stop_server(&config.executable_path)?;
+                stop_server(&config.executable_path, &config.socket)?;
                 replaced = true;
             }
         }
@@ -63,7 +69,7 @@ async fn handshake(
     rows: u16,
     may_replace: bool,
 ) -> Result<Handshake> {
-    let may_replace = may_replace && config.replace_mismatched;
+    let may_replace = may_replace && config.replace_mismatched && runs_like_the_client(config);
     let mut decoder = Decoder::new();
     write_frame(
         &mut stream,
@@ -83,7 +89,8 @@ async fn handshake(
         }
         HelloReply::Rejected { version } => bail!(
             "the server speaks protocol version {version} and this client speaks version \
-             {PROTOCOL_VERSION}; stop the server with gband kill-server"
+             {PROTOCOL_VERSION}; stop the server with {}",
+            config.kill_command
         ),
     }
     let ServerMessage::Info { pid, executable } = read_frame(&mut stream, &mut decoder).await?
@@ -110,16 +117,16 @@ async fn handshake(
 }
 
 async fn connect_or_start(config: &ClientConfig) -> Result<UnixStream> {
-    let socket = socket_path(&config.runtime_dir);
-    match UnixStream::connect(&socket).await {
-        Ok(stream) => return Ok(stream),
+    let socket = &config.socket;
+    match UnixStream::connect(socket).await {
+        Ok(stream) => return owned_by_user(stream, socket),
         Err(error) if is_absent(&error) => {}
         Err(error) => {
             return Err(error).with_context(|| format!("cannot connect to {}", socket.display()));
         }
     }
     tracing::info!("no server on {}, starting one", socket.display());
-    let mut child = start_server(&config.executable_path)?;
+    let mut child = start_server(&config.executable_path, socket)?;
     let deadline = Instant::now() + START_TIMEOUT;
     let not_started = || {
         format!(
@@ -130,8 +137,8 @@ async fn connect_or_start(config: &ClientConfig) -> Result<UnixStream> {
     };
     loop {
         sleep(RETRY_INTERVAL).await;
-        match UnixStream::connect(&socket).await {
-            Ok(stream) => return Ok(stream),
+        match UnixStream::connect(socket).await {
+            Ok(stream) => return owned_by_user(stream, socket),
             Err(error) if is_absent(&error) => {}
             Err(error) => return Err(error).with_context(not_started),
         }
@@ -145,6 +152,41 @@ async fn connect_or_start(config: &ClientConfig) -> Result<UnixStream> {
     }
 }
 
+fn owned_by_user(stream: UnixStream, socket: &Path) -> Result<UnixStream> {
+    check_peer(&stream, socket, rustix::process::getuid())?;
+    Ok(stream)
+}
+
+fn check_peer(stream: impl AsFd, socket: &Path, uid: Uid) -> Result<()> {
+    let peer = rustix::net::sockopt::socket_peercred(stream)
+        .with_context(|| format!("cannot read the user serving {}", socket.display()))?
+        .uid;
+    if peer != uid {
+        bail!(
+            "{} is served by uid {}, not by uid {}",
+            socket.display(),
+            peer.as_raw(),
+            uid.as_raw()
+        );
+    }
+    Ok(())
+}
+
+fn runs_like_the_client(config: &ClientConfig) -> bool {
+    server_executable(&config.socket).is_some_and(|server| server == config.executable_path)
+}
+
+fn server_executable(socket: &Path) -> Option<PathBuf> {
+    let record = fs::read_to_string(lock_path(socket)).ok()?;
+    let pid: u32 = record.trim().parse().ok()?;
+    let link = fs::read_link(format!("/proc/{pid}/exe")).ok()?;
+    let bytes = link.as_os_str().as_bytes();
+    let path = bytes
+        .strip_suffix(REPLACED_EXECUTABLE_SUFFIX)
+        .unwrap_or(bytes);
+    Some(PathBuf::from(OsStr::from_bytes(path)))
+}
+
 fn is_absent(error: &io::Error) -> bool {
     matches!(
         error.kind(),
@@ -152,9 +194,11 @@ fn is_absent(error: &io::Error) -> bool {
     )
 }
 
-fn start_server(executable: &Path) -> Result<std::process::Child> {
+fn start_server(executable: &Path, socket: &Path) -> Result<std::process::Child> {
     let mut command = Command::new(executable);
     command
+        .arg("-p")
+        .arg(socket)
         .arg("server")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -167,8 +211,10 @@ fn start_server(executable: &Path) -> Result<std::process::Child> {
         .with_context(|| format!("cannot start {} server", executable.display()))
 }
 
-fn stop_server(executable: &Path) -> Result<()> {
+fn stop_server(executable: &Path, socket: &Path) -> Result<()> {
     let output = Command::new(executable)
+        .arg("-p")
+        .arg(socket)
         .arg("kill-server")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -207,5 +253,35 @@ async fn read_frame<T: DeserializeOwned>(
             bail!("the server closed the connection during the handshake");
         }
         decoder.feed(&buffer[..n])?;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::os::unix::net::UnixStream;
+
+    use rustix::process::getuid;
+
+    use super::*;
+
+    const SOCKET: &str = "/tmp/s.sock";
+
+    #[test]
+    fn peer_of_the_same_user_passes() {
+        let (stream, _peer) = UnixStream::pair().unwrap();
+        check_peer(&stream, Path::new(SOCKET), getuid()).unwrap();
+    }
+
+    #[test]
+    fn peer_of_another_user_is_refused() {
+        let (stream, _peer) = UnixStream::pair().unwrap();
+        let other = Uid::from_raw(getuid().as_raw() + 1);
+        let error = check_peer(&stream, Path::new(SOCKET), other).unwrap_err();
+        let message = format!("{error:#}");
+        assert!(message.contains(SOCKET), "{message}");
+        assert!(
+            message.contains(&format!("uid {},", getuid().as_raw())),
+            "{message}"
+        );
     }
 }

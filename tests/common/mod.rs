@@ -14,6 +14,18 @@ use rustix::process::{Pid, Signal};
 pub const TIMEOUT: Duration = Duration::from_secs(10);
 pub const GBAND: &str = env!("CARGO_BIN_EXE_gband");
 
+const FNV_OFFSET: u32 = 0x811c_9dc5;
+const FNV_PRIME: u32 = 0x0100_0193;
+
+pub fn scratch_root(prefix: &str, name: &str) -> PathBuf {
+    let worktree = env!("CARGO_MANIFEST_DIR")
+        .bytes()
+        .fold(FNV_OFFSET, |hash, byte| {
+            (hash ^ u32::from(byte)).wrapping_mul(FNV_PRIME)
+        });
+    std::env::temp_dir().join(format!("{prefix}-{worktree:08x}-{name}"))
+}
+
 pub struct TestEnv {
     pub root: PathBuf,
     pub work: PathBuf,
@@ -22,7 +34,7 @@ pub struct TestEnv {
 
 impl TestEnv {
     pub fn new(name: &str) -> Self {
-        let root = std::env::temp_dir().join(format!("gband-e2e-{name}"));
+        let root = scratch_root("gband-e2e", name);
         if root.exists() {
             fs::remove_dir_all(&root).unwrap();
         }
@@ -48,7 +60,11 @@ impl TestEnv {
     }
 
     pub fn socket(&self) -> PathBuf {
-        self.runtime_dir().join("default.sock")
+        self.socket_named("default")
+    }
+
+    pub fn socket_named(&self, name: &str) -> PathBuf {
+        self.runtime_dir().join(format!("{name}.sock"))
     }
 
     pub fn lock(&self) -> PathBuf {
@@ -116,16 +132,33 @@ impl TestEnv {
     }
 
     pub fn start_server(&self, shell: &str) -> Process {
+        self.spawn_server(&["server"], shell, &self.socket())
+    }
+
+    pub fn start_named_server(&self, name: &str, shell: &str) -> Process {
+        self.spawn_server(&["-S", name, "server"], shell, &self.socket_named(name))
+    }
+
+    fn spawn_server(&self, args: &[&str], shell: &str, socket: &Path) -> Process {
         let process = self
-            .command(GBAND, &["server"])
+            .command(GBAND, args)
             .env("SHELL", shell)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
             .unwrap();
-        wait_until(|| self.socket().exists(), "the server socket");
+        wait_until(|| socket.exists(), "the server socket");
         process
+    }
+
+    pub fn shell_of(&self, server: &Process) -> i32 {
+        let server = server.id() as i32;
+        wait_until(|| !children(server).is_empty(), "the server's shell");
+        let shells = children(server);
+        assert_eq!(shells.len(), 1, "{shells:?}");
+        self.track_shell(shells[0]);
+        shells[0]
     }
 }
 
@@ -148,12 +181,13 @@ pub struct Attached {
 
 impl Attached {
     pub fn start(env: &TestEnv, cols: u16, rows: u16) -> Self {
-        Self::start_with(env, GBAND, cols, rows, |_| {})
+        Self::start_with(env, GBAND, &["attach"], cols, rows, |_| {})
     }
 
     pub fn start_with(
         env: &TestEnv,
         executable: impl AsRef<Path>,
+        args: &[&str],
         cols: u16,
         rows: u16,
         adjust: impl FnOnce(&mut CommandBuilder),
@@ -167,7 +201,7 @@ impl Attached {
             })
             .unwrap();
         let mut command = CommandBuilder::new(executable.as_ref());
-        command.arg("attach");
+        command.args(args);
         env.configure(&mut command);
         adjust(&mut command);
         let child = pair.slave.spawn_command(command).unwrap();
@@ -389,6 +423,17 @@ pub fn focused_lines(screen: &vt100::Screen) -> Vec<String> {
 
 fn parse_pid(line: &str) -> Option<i32> {
     line.trim_end().strip_prefix("pid=")?.parse().ok()
+}
+
+pub fn wait_process_exit(process: &mut Process) -> std::process::ExitStatus {
+    let deadline = Instant::now() + TIMEOUT;
+    loop {
+        if let Some(status) = process.try_wait().unwrap() {
+            return status;
+        }
+        assert!(Instant::now() < deadline, "the process did not exit");
+        thread::sleep(Duration::from_millis(20));
+    }
 }
 
 pub fn wait_until(condition: impl Fn() -> bool, what: &str) {
