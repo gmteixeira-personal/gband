@@ -26,13 +26,13 @@ The facts this design relies on are unchanged from `server-client-split`. `vt100
 
 | module | holds |
 |---|---|
-| `layout` | `PaneId`, `WorkspaceId`, `Proportion`, `ColumnWidth`, `Column`, `Workspace`, `Layout`, `Direction`, `SessionAction`, and the operations that change a layout |
+| `layout` | `PaneId`, `WorkspaceId`, `Proportion`, `Column`, `Workspace`, `Layout`, `Direction`, `SessionAction`, and the operations that change a layout |
 | `geometry` | `Size`, `Tile`, and `tiles(&Workspace, area) -> Vec<Tile>`: each pane's strip rectangle and terminal size |
 | `view` | `View`, `ViewAction`, focus movement, reconciliation after a layout change, and the camera |
 
 `Layout` is the whole session state the server shares. It holds the workspaces and the counters that allocate pane and workspace identifiers, so that identifiers are never reused. The server allocates a pane identifier before spawning, because the program's environment carries `GBAND_PANE`. `Layout::apply(SessionAction)` covers every change except opening a pane, which is `Layout::open(PaneId, WorkspaceId, Option<PaneId>)` because the server must spawn the program first. `Layout::remove(PaneId)` runs when a program exits. Every operation re-establishes the two invariants, no empty column and exactly one trailing empty workspace, before it returns. Tests can then assert the invariants after any sequence of operations.
 
-**Widths are exact fractions.** `Proportion { num: u8, den: u8 }` compares by cross-multiplication. The presets and the "smallest preset larger than the current width" rule are then exact, and tests compare equal values instead of floats. A fixed-cell width can later be added as a second `ColumnWidth` variant.
+**Widths are exact fractions.** `Proportion { num: u8, den: u8 }` compares by cross-multiplication. The presets and the "smallest preset larger than the current width" rule are then exact, and tests compare equal values instead of floats. A column holds its proportion and a full-width flag; a fixed-cell width can later turn the proportion into an enum.
 
 **Geometry is a function of a workspace and an area**, not stored state. The server calls it to size PTYs, and the client calls it, with the area from the latest layout message, to place tiles. Both sides compute identical tiles from identical inputs, so tile sizes never travel on the wire.
 
@@ -43,7 +43,7 @@ The facts this design relies on are unchanged from `server-client-split`. `vt100
 - a focus position (workspace index, column index, row index), refreshed whenever focus is set. When the focused pane vanishes, reconciliation clamps this position into the new layout.
 - a monotonic counter with the tick at which each pane was last focused. Focusing a column picks its most recent pane.
 
-`View::sync(&Layout, area, viewport_cols)` runs after every layout message and every terminal resize. It reconciles the workspace and focus, then runs the camera rule. `View::apply(ViewAction, ...)` and `View::focus_pane(PaneId, ...)` end the same way. Alternative: hold focus on the server per client. Rejected, because view actions would then wait for a round trip, which the summary's split between view and session exists to avoid.
+`View::sync(Scene)`, where a `Scene` bundles the layout, the screen area and the terminal width, runs after every layout message and every terminal resize. It reconciles the workspace and focus, then runs the camera rule. `View::apply(ViewAction, ...)` and `View::focus_pane(PaneId, ...)` end the same way. Alternative: hold focus on the server per client. Rejected, because view actions would then wait for a round trip, which the summary's split between view and session exists to avoid.
 
 ### Session actions carry their target
 

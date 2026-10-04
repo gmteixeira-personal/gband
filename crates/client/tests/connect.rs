@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use gband_client::{ClientConfig, connect};
+use gband_core::layout::PaneId;
 use gband_protocol::{ClientMessage, ExecutableId, socket_path};
 use gband_server::ServerConfig;
 
@@ -76,13 +77,17 @@ async fn mismatched_server_is_kept_when_replacing_is_off() {
     assert_eq!(connection.executable, SERVER_IDENTITY);
 
     connection
-        .send(&ClientMessage::Paste("exit".into()))
+        .send(&ClientMessage::Paste {
+            pane: PaneId(1),
+            text: "exit".into(),
+        })
         .await
         .unwrap();
     connection
-        .send(&ClientMessage::Key(gband_core::input::Key::plain(
-            gband_core::input::KeyCode::Enter,
-        )))
+        .send(&ClientMessage::Key {
+            pane: PaneId(1),
+            key: gband_core::input::Key::plain(gband_core::input::KeyCode::Enter),
+        })
         .await
         .unwrap();
     tokio::time::timeout(Duration::from_secs(10), server)

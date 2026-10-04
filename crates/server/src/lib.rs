@@ -2,6 +2,7 @@ mod callbacks;
 mod connection;
 mod lock;
 mod pane;
+mod session;
 
 use std::ffi::OsString;
 use std::io::ErrorKind;
@@ -12,20 +13,17 @@ use std::time::Duration;
 use anyhow::{Context as _, Result, bail};
 use gband_protocol::{ExecutableId, ServerMessage, socket_path};
 use portable_pty::CommandBuilder;
-use rustix::process::{Pid, Signal};
 use tokio::net::UnixListener;
 use tokio::signal::unix::{SignalKind, signal};
-use tokio::sync::watch;
+use tokio::sync::{mpsc, watch};
 use tokio::task::JoinSet;
 
 use crate::connection::Context;
-use crate::pane::{Pane, Session};
+use crate::session::{Session, SessionConfig};
 
 pub use crate::lock::{LOCK_NAME, kill, lock_path};
 
 const SUN_PATH_MAX: usize = 107;
-const KILL_GRACE: Duration = Duration::from_secs(2);
-const DRAIN_TIMEOUT: Duration = Duration::from_millis(500);
 const FAREWELL_TIMEOUT: Duration = Duration::from_secs(1);
 
 pub struct ServerConfig {
@@ -49,21 +47,24 @@ pub async fn run(config: ServerConfig) -> Result<()> {
     }
     let _lock = lock::acquire(&config.runtime_dir)?;
     let mut terminate = signal(SignalKind::terminate()).context("cannot handle SIGTERM")?;
-    let Session {
-        pane,
-        input,
-        mut exit,
-        mut drained,
-        mut killer,
-        pid,
-    } = pane::spawn(&config.program, &config.cwd, &socket)?;
+    let (exits_tx, mut exits) = mpsc::unbounded_channel();
+    let mut session = Session::start(
+        SessionConfig {
+            program: config.program,
+            cwd: config.cwd,
+            socket: socket.clone(),
+        },
+        exits_tx,
+    )?;
     let listener = bind(&socket)?;
     tracing::info!(socket = %socket.display(), "listening");
 
+    let (commands_tx, mut commands) = mpsc::unbounded_channel();
     let (ended_tx, ended) = watch::channel(false);
     let context = Arc::new(Context {
-        pane: Arc::clone(&pane),
-        input,
+        state: session.state(),
+        changed: session.changed(),
+        commands: commands_tx,
         ended,
         info: ServerMessage::Info {
             pid: std::process::id(),
@@ -71,7 +72,7 @@ pub async fn run(config: ServerConfig) -> Result<()> {
         },
     });
     let mut clients = JoinSet::new();
-    loop {
+    while !session.is_over() {
         tokio::select! {
             accepted = listener.accept() => match accepted {
                 Ok((stream, _)) => {
@@ -79,20 +80,17 @@ pub async fn run(config: ServerConfig) -> Result<()> {
                 }
                 Err(error) => tracing::warn!("cannot accept a client: {error:#}"),
             },
-            _ = async { exit.wait_for(Option::is_some).await.is_ok() } => break,
+            Some(command) = commands.recv() => session.handle(command),
+            Some(exit) = exits.recv() => session.exited(exit),
             Some(()) = terminate.recv() => {
-                tracing::info!("received SIGTERM, hanging up the program");
-                if let Err(error) = killer.kill() {
-                    tracing::warn!("cannot send SIGHUP to the program: {error:#}");
-                }
-                tokio::spawn(kill_if_running(exit.clone(), Arc::clone(&pane), pid));
+                tracing::info!("received SIGTERM, hanging up every pane");
+                session.terminate();
             }
             Some(_) = clients.join_next(), if !clients.is_empty() => {}
         }
     }
     drop(listener);
 
-    let _ = tokio::time::timeout(DRAIN_TIMEOUT, drained.wait_for(|drained| *drained)).await;
     ended_tx.send_replace(true);
     let _ = tokio::time::timeout(FAREWELL_TIMEOUT, async {
         while clients.join_next().await.is_some() {}
@@ -103,9 +101,9 @@ pub async fn run(config: ServerConfig) -> Result<()> {
     if let Err(error) = std::fs::remove_file(&socket) {
         tracing::warn!("cannot remove {}: {error:#}", socket.display());
     }
-    match exit.borrow().as_ref() {
-        Some(status) => tracing::info!("program exited: {status}"),
-        None => tracing::info!("program exited"),
+    match session.last_status() {
+        Some(status) => tracing::info!("session ended, last program exited: {status}"),
+        None => tracing::info!("session ended"),
     }
     Ok(())
 }
@@ -119,22 +117,4 @@ fn bind(socket: &Path) -> Result<UnixListener> {
         }
     }
     UnixListener::bind(socket).with_context(|| format!("cannot listen on {}", socket.display()))
-}
-
-async fn kill_if_running(
-    mut exit: watch::Receiver<Option<portable_pty::ExitStatus>>,
-    pane: Arc<Pane>,
-    pid: Option<u32>,
-) {
-    let exited = tokio::time::timeout(KILL_GRACE, exit.wait_for(Option::is_some)).await;
-    if exited.is_ok() {
-        return;
-    }
-    tracing::warn!("program still running after SIGHUP, sending SIGKILL");
-    if let Some(group) = pane.foreground_group().and_then(Pid::from_raw) {
-        let _ = rustix::process::kill_process_group(group, Signal::KILL);
-    }
-    if let Some(program) = pid.and_then(|pid| Pid::from_raw(pid as i32)) {
-        let _ = rustix::process::kill_process(program, Signal::KILL);
-    }
 }
