@@ -40,9 +40,12 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+gband-protocol.workspace = true
 gband-server.workspace = true
 gband-client.workspace = true
 clap.workspace = true
+rustix.workspace = true
+tokio.workspace = true
 directories.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
@@ -50,9 +53,5 @@ tracing-appender.workspace = true
 anyhow.workspace = true
 
 [dev-dependencies]
-gband-core.workspace = true
 portable-pty.workspace = true
 vt100.workspace = true
-tui-term.workspace = true
-ratatui.workspace = true
-crossterm.workspace = true
