@@ -7,6 +7,7 @@ use std::time::Duration;
 use anyhow::Result;
 use gband_core::geometry::{Size, tiles};
 use gband_core::layout::{Layout, PaneId, SessionAction, WorkspaceId};
+use gband_protocol::SessionName;
 use portable_pty::{ChildKiller, ExitStatus};
 use rustix::process::{Pid, Signal};
 use tokio::sync::{mpsc, oneshot, watch};
@@ -32,12 +33,15 @@ pub enum Command {
         action: SessionAction,
         focus: Option<mpsc::UnboundedSender<PaneId>>,
     },
+    CloseAll,
 }
 
 pub struct SessionConfig {
+    pub name: SessionName,
     pub program: Vec<OsString>,
     pub cwd: PathBuf,
     pub socket: PathBuf,
+    pub area: Size,
 }
 
 struct Live {
@@ -60,14 +64,15 @@ pub struct Session {
 
 impl Session {
     pub fn start(config: SessionConfig, exits: mpsc::UnboundedSender<PaneExit>) -> Result<Self> {
+        let area = config.area;
         let mut session = Self {
             config,
             layout: Layout::new(),
-            area: INITIAL_AREA,
+            area,
             panes: HashMap::new(),
             state: watch::Sender::new(Arc::new(State {
                 layout: Layout::new(),
-                area: INITIAL_AREA,
+                area,
                 panes: HashMap::new(),
             })),
             changed: Arc::new(watch::Sender::new(0)),
@@ -92,10 +97,6 @@ impl Session {
         self.layout.is_empty()
     }
 
-    pub fn last_status(&self) -> Option<&ExitStatus> {
-        self.last_status.as_ref()
-    }
-
     pub fn handle(&mut self, command: Command) {
         match command {
             Command::Area { size, applied } => {
@@ -108,6 +109,7 @@ impl Session {
                 }
             }
             Command::Action { action, focus } => self.act(action, focus),
+            Command::CloseAll => self.terminate(),
         }
     }
 
@@ -160,6 +162,7 @@ impl Session {
             program: &self.config.program,
             cwd: &self.config.cwd,
             socket: &self.config.socket,
+            session: &self.config.name,
             size,
         };
         match pane::spawn(request, &self.changed, self.exits.clone()) {
@@ -224,6 +227,23 @@ impl Session {
             panes,
         }));
         self.changed.send_modify(|generation| *generation += 1);
+    }
+}
+
+pub async fn drive(
+    mut session: Session,
+    mut commands: mpsc::UnboundedReceiver<Command>,
+    mut exits: mpsc::UnboundedReceiver<PaneExit>,
+) {
+    while !session.is_over() {
+        tokio::select! {
+            Some(command) = commands.recv() => session.handle(command),
+            Some(exit) = exits.recv() => session.exited(exit),
+        }
+    }
+    match session.last_status {
+        Some(status) => tracing::info!("session ended, last program exited: {status}"),
+        None => tracing::info!("session ended"),
     }
 }
 

@@ -86,7 +86,7 @@ fn largest_allowed_header_is_accepted() {
 #[test]
 fn trailing_bytes_are_an_error() {
     let mut decoder = Decoder::new();
-    decoder.feed(&[0, 0, 0, 3, 0x04, 0x00, 0x00]).unwrap();
+    decoder.feed(&[0, 0, 0, 3, 0x01, 0x00, 0x00]).unwrap();
     assert!(matches!(
         decoder.next_message::<ClientMessage>(),
         Err(FrameError::TrailingBytes(2))

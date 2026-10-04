@@ -163,12 +163,17 @@ When the server receives SIGTERM, it SHALL send SIGHUP to every pane's program i
 - **THEN** the program is killed within 3 seconds and the server exits with status 0
 
 ### Requirement: Kill-server subcommand
-`gband kill-server` SHALL stop the server for the socket path it resolves, with every session it hosts, using only the server's pid record and signals, so that it stops a server of any protocol version. When no server holds the single-server guard, it SHALL print one line to standard error naming the socket path and exit with status 1. Otherwise it SHALL send SIGTERM to the recorded process and wait up to 5 seconds for the guard to be released. It SHALL exit with status 0, printing nothing, when the guard is released. When the guard is still held after 5 seconds, it SHALL print one line to standard error naming the process id and exit with status 1. It SHALL NOT create the runtime directory.
+`gband kill-server` SHALL stop the server for the socket path it resolves, with every session it hosts, using only the server's pid record and signals, so that it stops a server of any protocol version. It SHALL leave every server on another socket path running. When no server holds the single-server guard, it SHALL print one line to standard error naming the socket path and exit with status 1. Otherwise it SHALL send SIGTERM to the recorded process and wait up to 5 seconds for the guard to be released. It SHALL exit with status 0, printing nothing, when the guard is released. When the guard is still held after 5 seconds, it SHALL print one line to standard error naming the process id and exit with status 1. It SHALL NOT create the runtime directory or any directory of a socket path.
 
 #### Scenario: Stop a running server
 - **WHEN** a server is running and the user runs `gband kill-server`
 - **THEN** the server and its shell are no longer running
 - **AND** `gband kill-server` exits with status 0 and prints nothing
+
+#### Scenario: Stop one named server
+- **WHEN** servers named `a` and `b` are running and the user runs `gband -S a kill-server`
+- **THEN** the server named `a` is no longer running
+- **AND** the server named `b` and its shell keep running
 
 #### Scenario: Stop every session
 - **WHEN** a server hosts `default` and `work` and the user runs `gband kill-server`

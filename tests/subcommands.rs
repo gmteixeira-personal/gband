@@ -172,7 +172,69 @@ fn help_lists_subcommands() {
         .take_while(|line| !line.is_empty())
         .filter_map(|line| line.split_whitespace().next())
         .collect();
-    assert_eq!(commands, ["server", "attach", "kill-server"]);
+    assert_eq!(
+        commands,
+        [
+            "server",
+            "attach",
+            "list-sessions",
+            "kill-session",
+            "kill-server"
+        ]
+    );
+    assert!(stdout.contains("-s, --session <NAME>"), "{stdout}");
+}
+
+#[test]
+fn invalid_session_name_is_rejected_without_a_log() {
+    let state = state_home("invalid_session");
+    for args in [["attach", "-s", "a/b"], ["-s", "a/b", "kill-session"]] {
+        let output = gband(&state, None, &args);
+        assert_eq!(output.status.code(), Some(2), "{args:?}");
+        let stderr = String::from_utf8(output.stderr).unwrap();
+        assert!(stderr.contains("'a/b'"), "{stderr}");
+        assert!(stderr.contains("session name"), "{stderr}");
+        assert!(stderr.contains("ASCII letters, digits"), "{stderr}");
+    }
+    assert!(!state.join("gband").exists());
+    assert!(!runtime_home(&state).exists());
+}
+
+#[test]
+fn session_option_on_a_subcommand_without_sessions_is_rejected() {
+    let state = state_home("session_not_applicable");
+    for (args, subcommand) in [
+        (["kill-server", "-s", "work"], "kill-server"),
+        (["-s", "work", "kill-server"], "kill-server"),
+        (["list-sessions", "-s", "work"], "list-sessions"),
+    ] {
+        let output = gband(&state, None, &args);
+        assert_eq!(output.status.code(), Some(2), "{args:?}");
+        let stderr = String::from_utf8(output.stderr).unwrap();
+        assert!(stderr.contains("'-s'"), "{stderr}");
+        assert!(stderr.contains(subcommand), "{stderr}");
+    }
+    assert!(!state.join("gband").exists());
+    assert!(!runtime_home(&state).exists());
+}
+
+#[test]
+fn session_requests_without_a_server_fail_and_create_nothing() {
+    let state = state_home("requests_no_server");
+    let socket = runtime_home(&state).join("gband").join("default.sock");
+    for args in [
+        &["list-sessions"][..],
+        &["kill-session"],
+        &["-s", "work", "kill-session"],
+    ] {
+        let output = gband(&state, None, args);
+        let stderr = assert_one_line_failure(&output);
+        assert!(stderr.contains("no server is running"), "{stderr}");
+        assert!(stderr.contains(socket.to_str().unwrap()), "{stderr}");
+    }
+    assert!(log_text(&state, "client").contains("client started"));
+    assert!(log_files(&state, "server").is_empty());
+    assert!(!runtime_home(&state).exists());
 }
 
 #[test]

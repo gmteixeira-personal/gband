@@ -73,3 +73,21 @@ fn next_attach_after_kill_server_starts_a_fresh_shell() {
     second.wait_for_prompt();
     assert_ne!(second.shell_pid(&env), old_shell);
 }
+
+#[test]
+fn kill_server_stops_every_session() {
+    let env = TestEnv::new("kill-sessions");
+    let mut default = Attached::start(&env, 80, 24);
+    default.wait_for_prompt();
+    let first = default.shell_pid(&env);
+    let mut work = Attached::start_with(&env, GBAND, &["attach", "-s", "work"], 80, 24, |_| {});
+    work.wait_for_prompt();
+    let second = work.shell_pid(&env);
+
+    let output = env.command(GBAND, &["kill-server"]).output().unwrap();
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    assert_eq!(default.wait_exit(), 0);
+    assert_eq!(work.wait_exit(), 0);
+    assert!(!is_running(first));
+    assert!(!is_running(second));
+}

@@ -1,10 +1,11 @@
 use std::fmt::Debug;
+use std::path::PathBuf;
 
 use gband_core::input::{Key, KeyCode, Modifiers};
 use gband_core::layout::{Direction, Layout, PaneId, SessionAction};
 use gband_protocol::{
     ClientMessage, Decoder, ExecutableId, Hello, HelloReply, PROTOCOL_VERSION, ServerMessage,
-    encode,
+    SessionName, SessionSummary, encode,
 };
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -16,9 +17,92 @@ fn round_trip<T: Serialize + DeserializeOwned + PartialEq + Debug>(message: T) {
     assert_eq!(decoder.next_message::<T>().unwrap(), None);
 }
 
+fn session(name: &str) -> SessionName {
+    name.parse().unwrap()
+}
+
 #[test]
-fn protocol_version_is_two() {
-    assert_eq!(PROTOCOL_VERSION, 2);
+fn protocol_version_is_three() {
+    assert_eq!(PROTOCOL_VERSION, 3);
+}
+
+#[test]
+fn valid_session_names_parse_and_decode() {
+    let longest = "x".repeat(64);
+    for name in ["default", "work-2", "a_b", longest.as_str()] {
+        assert_eq!(session(name).as_str(), name);
+        let mut decoder = Decoder::new();
+        decoder.feed(&encode(&name.to_owned()).unwrap()).unwrap();
+        assert_eq!(
+            decoder.next_message::<SessionName>().unwrap(),
+            Some(session(name))
+        );
+    }
+}
+
+#[test]
+fn invalid_session_names_are_refused_when_parsed_and_decoded() {
+    let too_long = "x".repeat(65);
+    for name in ["", too_long.as_str(), "work.2", "a/b", "a b"] {
+        assert!(name.parse::<SessionName>().is_err(), "{name:?}");
+        let mut decoder = Decoder::new();
+        decoder.feed(&encode(&name.to_owned()).unwrap()).unwrap();
+        assert!(
+            decoder.next_message::<SessionName>().is_err(),
+            "{name:?} decoded"
+        );
+    }
+}
+
+#[test]
+fn invalid_session_name_in_a_request_is_refused() {
+    let mut decoder = Decoder::new();
+    let valid = encode(&ClientMessage::KillSession {
+        session: session("abc"),
+    })
+    .unwrap();
+    let invalid: Vec<u8> = valid
+        .iter()
+        .map(|&byte| if byte == b'b' { b'/' } else { byte })
+        .collect();
+    decoder.feed(&invalid).unwrap();
+    assert!(decoder.next_message::<ClientMessage>().is_err());
+}
+
+#[test]
+fn session_name_defaults_to_default() {
+    assert_eq!(SessionName::default().as_str(), "default");
+}
+
+#[test]
+fn requests_round_trip() {
+    round_trip(ClientMessage::Attach {
+        session: session("work"),
+        cwd: PathBuf::from("/tmp"),
+    });
+    round_trip(ClientMessage::ListSessions);
+    round_trip(ClientMessage::KillSession {
+        session: session("work"),
+    });
+}
+
+#[test]
+fn session_answers_round_trip() {
+    round_trip(ServerMessage::Sessions(vec![
+        SessionSummary {
+            name: session("default"),
+            panes: 1,
+            clients: 0,
+        },
+        SessionSummary {
+            name: session("work"),
+            panes: 2,
+            clients: 1,
+        },
+    ]));
+    round_trip(ServerMessage::Sessions(Vec::new()));
+    round_trip(ServerMessage::Killed);
+    round_trip(ServerMessage::NoSuchSession);
 }
 
 #[test]

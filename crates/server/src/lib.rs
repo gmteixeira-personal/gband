@@ -2,6 +2,7 @@ mod callbacks;
 mod connection;
 mod lock;
 mod pane;
+mod registry;
 mod session;
 
 use std::ffi::OsString;
@@ -11,17 +12,18 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context as _, Result, bail};
-use gband_protocol::{ExecutableId, ServerMessage};
+use gband_protocol::{ExecutableId, ServerMessage, SessionName};
 use portable_pty::CommandBuilder;
 use rustix::fs::Mode;
 use tokio::net::UnixListener;
 use tokio::signal::unix::{SignalKind, signal};
-use tokio::sync::{mpsc, watch};
+use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 use tracing::Instrument;
 
 use crate::connection::Context;
-use crate::session::{Session, SessionConfig};
+use crate::registry::Registry;
+use crate::session::INITIAL_AREA;
 
 pub use crate::lock::kill;
 
@@ -31,6 +33,7 @@ const FAREWELL_TIMEOUT: Duration = Duration::from_secs(1);
 
 pub struct ServerConfig {
     pub socket: PathBuf,
+    pub session: SessionName,
     pub program: Vec<OsString>,
     pub cwd: PathBuf,
     pub executable: ExecutableId,
@@ -50,32 +53,21 @@ pub async fn run(config: ServerConfig) -> Result<()> {
     }
     let _lock = lock::acquire(&socket)?;
     let mut terminate = signal(SignalKind::terminate()).context("cannot handle SIGTERM")?;
-    let (exits_tx, mut exits) = mpsc::unbounded_channel();
-    let mut session = Session::start(
-        SessionConfig {
-            program: config.program,
-            cwd: config.cwd,
-            socket: socket.clone(),
-        },
-        exits_tx,
-    )?;
+    let (requests_tx, mut requests) = mpsc::unbounded_channel();
+    let mut registry = Registry::new(config.program, socket.clone(), requests_tx.clone());
+    registry.create(config.session, config.cwd, INITIAL_AREA)?;
     let listener = bind(&socket)?;
     tracing::info!("listening");
 
-    let (commands_tx, mut commands) = mpsc::unbounded_channel();
-    let (ended_tx, ended) = watch::channel(false);
     let context = Arc::new(Context {
-        state: session.state(),
-        changed: session.changed(),
-        commands: commands_tx,
-        ended,
+        registry: requests_tx,
         info: ServerMessage::Info {
             pid: std::process::id(),
             executable: config.executable,
         },
     });
     let mut clients = JoinSet::new();
-    while !session.is_over() {
+    while !registry.is_empty() {
         tokio::select! {
             accepted = listener.accept() => match accepted {
                 Ok((stream, _)) => {
@@ -83,18 +75,17 @@ pub async fn run(config: ServerConfig) -> Result<()> {
                 }
                 Err(error) => tracing::warn!("cannot accept a client: {error:#}"),
             },
-            Some(command) = commands.recv() => session.handle(command),
-            Some(exit) = exits.recv() => session.exited(exit),
+            Some(request) = requests.recv() => registry.handle(request),
             Some(()) = terminate.recv() => {
-                tracing::info!("received SIGTERM, hanging up every pane");
-                session.terminate();
+                tracing::info!("received SIGTERM, hanging up every pane of every session");
+                registry.terminate();
             }
             Some(_) = clients.join_next(), if !clients.is_empty() => {}
         }
     }
     drop(listener);
+    drop(requests);
 
-    ended_tx.send_replace(true);
     let _ = tokio::time::timeout(FAREWELL_TIMEOUT, async {
         while clients.join_next().await.is_some() {}
     })
@@ -104,10 +95,7 @@ pub async fn run(config: ServerConfig) -> Result<()> {
     if let Err(error) = std::fs::remove_file(&socket) {
         tracing::warn!("cannot remove {}: {error:#}", socket.display());
     }
-    match session.last_status() {
-        Some(status) => tracing::info!("session ended, last program exited: {status}"),
-        None => tracing::info!("session ended"),
-    }
+    tracing::info!("last session ended");
     Ok(())
 }
 
