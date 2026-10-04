@@ -39,6 +39,17 @@ cargo build --release
 
 The binary is `target/release/gband`.
 
+## Branches
+
+- `dev` is the default branch.
+  All development happens there.
+- Every other working branch forks from `dev` and merges back into it.
+- `main` holds releases only.
+  It moves forward only when a release is made from `dev`.
+
+Branch from `dev` and open pull requests against `dev`.
+Never commit to `main` directly or branch from it.
+
 ## Acknowledgements
 
 The layout model comes from [niri](https://github.com/YaLTeR/niri), a scrollable-tiling Wayland compositor.
