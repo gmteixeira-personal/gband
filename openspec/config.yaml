@@ -1,0 +1,36 @@
+schema: spec-driven
+
+# Project context, shown to AI when creating artifacts.
+context: |
+  Domain: gband is a terminal multiplexer inspired by the niri Wayland compositor.
+  Layout model: panes sit in columns on a strip that scrolls sideways without limit.
+  A new pane adds a column, and existing panes keep their size.
+  The view scrolls to follow focus. A column can stack several panes vertically.
+  Each workspace has its own strip, and workspaces stack vertically.
+  When a behavior is unspecified, follow niri's behavior unless a spec says otherwise.
+  Tech stack: Rust (stable toolchain, built with cargo).
+  Scripting: an embedded Lua runtime handles configuration and automation,
+  such as key bindings, layout behavior and custom commands.
+  Status: early development; no code exists yet.
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always include a "Non-goals" section
+#     tasks:
+#       - Break tasks into chunks of max 2 hours
+
+# Per-operation guidance (optional)
+# Add advisory guidance for how apply and archive work should be conducted.
+# This is separate from artifact rules above.
+# Example:
+#   operations:
+#     apply:
+#       guidance:
+#         - Keep test summaries concise
+#     archive:
+#       guidance:
+#         - Summarize the archive outcome before finishing
