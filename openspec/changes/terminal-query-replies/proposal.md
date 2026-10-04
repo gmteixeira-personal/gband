@@ -48,5 +48,7 @@ None.
 ### Expected Files
 - crates/server/src/callbacks.rs
 - crates/server/src/pane.rs
+- crates/server/tests/lifecycle.rs
+- crates/server/tests/panes.rs
 - crates/server/tests/queries.rs
 - openspec/changes/terminal-query-replies/
