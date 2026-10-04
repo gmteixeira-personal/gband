@@ -42,5 +42,5 @@
 
 - [x] 6.1 Run `.claude/flow-gate` and verify that formatting, clippy with `-D warnings` and the workspace tests all pass
 - [x] 6.2 Check every new or changed Rust file against the repository's coding rules, which forbid narrative comments, and verify that no comment remains except one explaining an upstream API restriction
-- [ ] 6.3 Run `gband attach` in a real terminal, run `ls` and start `sleep 100`, close the terminal window, open a new one, run `gband attach`, and verify that the `ls` output and the running `sleep` are there exactly as left
-- [ ] 6.4 With a session running from a debug build, change any server log message, run `cargo build` and `gband attach`, and verify that a new shell appears and that the server log of the new process shows the changed message
+- [x] 6.3 Run `gband attach` in a real terminal, run `ls` and start `sleep 100`, close the terminal window, open a new one, run `gband attach`, and verify that the `ls` output and the running `sleep` are there exactly as left
+- [x] 6.4 With a session running from a debug build, change any server log message, run `cargo build` and `gband attach`, and verify that a new shell appears and that the server log of the new process shows the changed message
