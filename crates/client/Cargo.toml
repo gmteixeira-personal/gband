@@ -5,6 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+gband-core.workspace = true
 gband-protocol.workspace = true
 ratatui.workspace = true
 crossterm.workspace = true

@@ -894,12 +894,18 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "crossterm",
  "directories",
  "gband-client",
+ "gband-core",
  "gband-server",
+ "portable-pty",
+ "ratatui",
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
+ "tui-term",
+ "vt100",
 ]
 
 [[package]]
@@ -907,6 +913,7 @@ name = "gband-client"
 version = "0.1.0"
 dependencies = [
  "crossterm",
+ "gband-core",
  "gband-protocol",
  "mlua",
  "notify-rust",
