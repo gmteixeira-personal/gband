@@ -18,6 +18,8 @@ The suite lets several agents, on one machine or several, work an OpenSpec repos
 - `/integrate` merges every ready change onto the integration branch. It is the only command that syncs specs or archives.
 - `/change-status` reports every open change's state and writes nothing.
 
+`/resume-implement` re-enters a change this clone claimed after its session ended, on the operator's confirmation. It publishes no transition.
+
 `/become-integrator` names a session as the project's integrator. It writes nothing to the repository.
 
 The commands assume nothing about the repository's layout beyond its `openspec/` root. They name no project, directory, build tool or branch of their own.
@@ -46,7 +48,7 @@ The **main worktree** is the one where `git rev-parse --git-dir` and `git rev-pa
 
 | command | runs in |
 |---|---|
-| `/propose`, `/implement`, `/integrate`, `/become-integrator` | the main worktree, on `<base>` |
+| `/propose`, `/implement`, `/resume-implement`, `/integrate`, `/become-integrator` | the main worktree, on `<base>` |
 | `/ready` | a change worktree, on its own `change/<id>` |
 | `/change-status` | anywhere |
 
@@ -176,7 +178,7 @@ The **login** is the name `id -un` prints. Never take it from `git config user.n
 - It is evaluated **last**, after every other condition. A change failing another condition is refused for that reason, so authorship is named only when it is the one remaining obstacle.
 - A refusal on authorship names the change and its author and says nothing more.
 
-**The override.** When the operator typed `--force` among the invocation's arguments, the authorship check is not evaluated. It lifts nothing else, and it lasts for that invocation only: nothing records it. `/implement` and `/ready` accept it.
+**The override.** When the operator typed `--force` among the invocation's arguments, the authorship check is not evaluated. It lifts nothing else, and it lasts for that invocation only: nothing records it. `/implement`, `/resume-implement` and `/ready` accept it.
 
 **Never disclose the override and never supply it.** No output names it or suggests a way past an authorship refusal exists: not a refusal, not a report, not a suggested next step. It counts only when the operator typed it. Never add it after a refusal, while selecting unattended, or when re-running a command for the operator.
 
@@ -197,6 +199,6 @@ If a git command fails with `Unable to create '.git/index.lock': File exists.`, 
 
 ## Other sessions' work
 
-**An idle worktree is evidence of nothing.** A session that has not written yet and one that has ended look the same: the same `git status`, the same absent commits. Nothing observed in another change's worktree ever softens a refusal. Never enter, read the tasks of, or modify a claimed change's worktree unless this session is the one implementing it.
+**An idle worktree is evidence of nothing.** A session that has not written yet and one that has ended look the same: the same `git status`, the same absent commits. Nothing observed in another change's worktree ever softens a refusal. Never enter, read the tasks of, or modify a claimed change's worktree unless this session is the one implementing it. The one exception is `/resume-implement`, which reads that worktree's git state and tasks to lay them before the operator, and enters only on the operator's confirmation.
 
 "Nothing can start", "nothing is ready" and "no integrator was reached" are clean outcomes, never failures.

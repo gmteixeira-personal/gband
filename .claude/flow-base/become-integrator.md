@@ -12,7 +12,7 @@ Give this session the name `<integrator>`, so `/ready` announces changes to it a
 
 **Input**: none.
 
-**The model cannot rename a session.** Claude Code gives it no tool for that. Only the operator sets the name `ListAgents` reports: with `/rename <name>` in the session, or `claude --name <name>` at launch. This command derives the name, checks that no live session holds it, and gives the operator the exact line to type.
+**A hook renames the session before this command runs.** The model has no tool that renames a session, but a `UserPromptSubmit` hook can. The `flow-become-integrator.sh` hook sees this command's prompt and returns `<integrator>` as its `sessionTitle`, so the session already holds the name when step 1 begins. The hook renames only from the main worktree on `<base>`, and only when no other live session holds the name. This command checks the same conditions and confirms the name with `ListAgents`. It hands the rename to the operator only when the hook did not run.
 
 ## Steps
 
@@ -36,13 +36,16 @@ Derive `<integrator>` by the conventions' rule.
 ListAgents
 ```
 
-- **This session is already `<integrator>`.** Report it and stop. Nothing is left to do.
-- **Another session named `<integrator>` is anything but offline.** Refuse and name it. Two integrators collide on `.git/index.lock` mid-archive. Claude Code also gives a duplicate name a two-word suffix, so the rename would produce a name `/integrate` refuses. The operator retires the peer first.
-- **This session is named `integrator`, without the project prefix.** Say that the bare name receives no announcement, then continue.
+**Only an exact match is a collision.** A session holds the name only when its name equals `<integrator>` as exact text. A bare `integrator`, another project's `<project>-integrator` and every other name are not collisions. Never stop or warn because of one.
+
+- **Another session named `<integrator>` is anything but offline.** Refuse and name it. Two integrators collide on `.git/index.lock` mid-archive. The hook declined the rename for the same reason. The operator retires the peer, then runs this command again.
+- **This session is `<integrator>`.** Report that it holds the name, so `/ready` announces to it and `/integrate` accepts it. Stop.
+- **This session is `<integrator>` followed by a suffix.** Claude Code gives a name already held a two-word suffix, which `/integrate` refuses. Name the session `ListAgents` lists as `<integrator>`, and say to retire it and run this command again.
+- **Any other name.** The hook did not run. Continue at step 4.
 
 ### 4. Hand the rename to the operator
 
-Print the line for the operator to type, alone in a code block:
+The hook is absent from this operator's configuration. Print the line for the operator to type, alone in a code block:
 
 ```
 /rename <integrator>
@@ -53,6 +56,6 @@ Then say how to confirm it: run this command again, and step 3 reports the name.
 ## Guardrails
 
 - Refuse from any position other than the main worktree on `<base>`.
-- Refuse while another live session holds `<integrator>`.
-- Never report the session as renamed. Only the operator's `/rename` renames it, and only `ListAgents` confirms it.
+- Refuse while another live session holds `<integrator>` as exact text. Never stop for any other name.
+- Report the session as named only when `ListAgents` reports it.
 - Write nothing: no file, tag, branch or commit.

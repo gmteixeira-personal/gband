@@ -50,7 +50,7 @@ Read each open change's coordination block for its author, dependencies and expe
 test -d .claude/worktrees/<id>    # exists: refuse, evaluate nothing further
 ```
 
-Step 6 creates that directory and nothing else does, so its presence is a record that a start already ran, not an inference about another session. Name the change and the worktree, and say that re-entering a claimed change is the operator's decision. Create and enter nothing. A directory either exists or does not; a claim tag is a fact an agent weighs, and weighed against "the worktree looks idle" it loses.
+Step 6 creates that directory and nothing else does, so its presence is a record that a start already ran, not an inference about another session. Name the change, the worktree and `/resume-implement`, the command the operator runs to re-enter it. Create and enter nothing. A directory either exists or does not; a claim tag is a fact an agent weighs, and weighed against "the worktree looks idle" it loses.
 
 A change is **eligible** when all six hold, checked in this order:
 
@@ -78,7 +78,7 @@ Announce the selection and why it won before claiming.
 
 When nothing is eligible, that is **not an error**. List each open change with the one reason it cannot start, claim nothing, and stop.
 
-**Stopping is the whole of it.** Do not enter a claimed change's worktree, read its `tasks.md`, open its files or modify it. An ineligible change is ineligible whatever closer inspection finds. A claimed change with no visible progress reads as abandoned and is indistinguishable from one claimed a minute ago. This command never resumes a change.
+**Stopping is the whole of it.** Do not enter a claimed change's worktree, read its `tasks.md`, open its files or modify it. An ineligible change is ineligible whatever closer inspection finds. A claimed change with no visible progress reads as abandoned and is indistinguishable from one claimed a minute ago. This command never resumes a change: re-entering one is `/resume-implement`, which the operator asks for by name.
 
 ### 5. Claim it
 
@@ -132,7 +132,7 @@ State the change claimed, the branch and worktree created, and the task progress
 ## Guardrails
 
 - Refuse from any position other than the main worktree on `<base>`, and when `.claude/worktrees/` is not ignored.
-- Refuse a change whose `.claude/worktrees/<id>` exists before evaluating any other condition. This command never resumes.
+- Refuse a change whose `.claude/worktrees/<id>` exists before evaluating any other condition, and name `/resume-implement`. This command never resumes.
 - Never claim a change that is claimed, archived, unpublished, waiting on an unarchived dependency, or contesting a path.
 - Never claim a change recorded to another author, or one whose `### Author` is malformed, unless the operator typed `--force`. Never name the override or supply it.
 - Claim tag-first and treat a failure as the rejection. Withdraw the local tag when the push is rejected, and leave no branch or worktree.
