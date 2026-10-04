@@ -72,7 +72,6 @@ gband serves one pane today, so it is a remote shell rather than a multiplexer. 
 - crates/core/tests/geometry.rs
 - crates/core/tests/view.rs
 - crates/protocol/src/message.rs
-- crates/protocol/src/lib.rs
 - crates/protocol/tests/messages.rs
 - crates/protocol/tests/framing.rs
 - crates/server/src/
