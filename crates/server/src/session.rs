@@ -13,6 +13,7 @@ use rustix::process::{Pid, Signal};
 use tokio::sync::{mpsc, oneshot, watch};
 use tracing::Instrument;
 
+use crate::event::{Bus, SessionEvent};
 use crate::pane::{self, Pane, PaneEntry, PaneExit, SpawnRequest};
 
 const KILL_GRACE: Duration = Duration::from_secs(2);
@@ -42,6 +43,7 @@ pub struct SessionConfig {
     pub cwd: PathBuf,
     pub socket: PathBuf,
     pub area: Size,
+    pub events: Bus,
 }
 
 struct Live {
@@ -93,6 +95,10 @@ impl Session {
         self.changed.subscribe()
     }
 
+    pub fn events(&self) -> Bus {
+        self.config.events.clone()
+    }
+
     pub fn is_over(&self) -> bool {
         self.layout.is_empty()
     }
@@ -115,9 +121,15 @@ impl Session {
 
     pub fn exited(&mut self, exit: PaneExit) {
         tracing::info!(pane = %exit.pane, "program exited: {}", exit.status);
+        self.config.events.send(SessionEvent::PaneExited {
+            pane: exit.pane,
+            status: exit.status.to_string(),
+        });
         self.last_status = Some(exit.status);
         self.panes.remove(&exit.pane);
-        if self.layout.remove(exit.pane) {
+        let events = self.layout.remove(exit.pane);
+        if !events.is_empty() {
+            self.config.events.layout(events);
             self.publish();
         }
     }
@@ -143,7 +155,9 @@ impl Session {
             },
             SessionAction::ClosePane(pane) => self.close(pane),
             other => {
-                if self.layout.apply(other) {
+                let events = self.layout.apply(other);
+                if !events.is_empty() {
+                    self.config.events.layout(events);
                     self.publish();
                 }
             }
@@ -155,7 +169,8 @@ impl Session {
             return Ok(None);
         }
         let id = self.layout.allocate_pane();
-        self.layout.open(id, workspace, after);
+        let events = self.layout.open(id, workspace, after);
+        self.config.events.layout(events);
         let size = self.terminal_size(id).expect("an opened pane has a tile");
         let request = SpawnRequest {
             id,
@@ -179,7 +194,8 @@ impl Session {
                 Ok(Some(id))
             }
             Err(error) => {
-                self.layout.remove(id);
+                let events = self.layout.remove(id);
+                self.config.events.layout(events);
                 Err(error)
             }
         }

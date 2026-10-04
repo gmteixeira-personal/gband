@@ -1,11 +1,11 @@
 use vt100::{MouseProtocolEncoding, MouseProtocolMode, Screen};
 
 #[derive(Default)]
-pub struct PaneCallbacks {
-    pub replies: Vec<u8>,
+pub struct Callbacks {
+    pub write_back: Vec<u8>,
 }
 
-impl vt100::Callbacks for PaneCallbacks {
+impl vt100::Callbacks for Callbacks {
     fn audible_bell(&mut self, _: &mut Screen) {
         tracing::debug!("bell");
     }
@@ -28,7 +28,7 @@ impl vt100::Callbacks for PaneCallbacks {
         c: char,
     ) {
         if let Some(reply) = query_reply(screen, i1, i2, params, c) {
-            self.replies.extend_from_slice(reply.as_bytes());
+            self.write_back.extend_from_slice(reply.as_bytes());
             return;
         }
         let params = params
@@ -113,12 +113,14 @@ fn private_mode_state(screen: &Screen, mode: u16) -> u8 {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use gband_core::geometry::Size;
+
+    use crate::{Emulator, Grid};
 
     fn replies(output: &str) -> String {
-        let mut parser = vt100::Parser::new_with_callbacks(24, 80, 0, PaneCallbacks::default());
-        parser.process(output.as_bytes());
-        String::from_utf8(std::mem::take(&mut parser.callbacks_mut().replies)).unwrap()
+        let mut grid = Grid::new(Size::new(80, 24));
+        grid.process(output.as_bytes());
+        String::from_utf8(grid.take_write_back()).unwrap()
     }
 
     #[test]

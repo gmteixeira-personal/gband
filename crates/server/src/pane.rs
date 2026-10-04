@@ -10,6 +10,7 @@ use anyhow::{Context, Result};
 use gband_core::geometry::Size;
 use gband_core::input::{Key, Modes, encode_key, encode_paste};
 use gband_core::layout::PaneId;
+use gband_emulator::{Emulator, Grid};
 use gband_protocol::SessionName;
 use portable_pty::{
     ChildKiller, CommandBuilder, ExitStatus, MasterPty, PtySize, native_pty_system,
@@ -17,26 +18,36 @@ use portable_pty::{
 use tokio::sync::{mpsc, watch};
 use tracing::Span;
 
-use crate::callbacks::PaneCallbacks;
-
 const DRAIN_TIMEOUT: Duration = Duration::from_millis(500);
+
+pub type Checkpoint = <Grid as Emulator>::Checkpoint;
 
 pub enum Input {
     Key(Key),
     Paste(String),
-    Reply(Vec<u8>),
+    WriteBack(Vec<u8>),
 }
 
 pub struct Pane {
     terminal: Mutex<Terminal>,
     generation: AtomicU64,
     changed: Arc<watch::Sender<u64>>,
-    replies: mpsc::WeakUnboundedSender<Input>,
+    write_back: mpsc::WeakUnboundedSender<Input>,
 }
 
 struct Terminal {
-    parser: vt100::Parser<PaneCallbacks>,
+    grid: Grid,
     master: Box<dyn MasterPty + Send>,
+}
+
+pub struct Seen {
+    size: Size,
+    checkpoint: Checkpoint,
+}
+
+pub enum Contents {
+    Snapshot(Size, Vec<u8>),
+    Update(Vec<u8>),
 }
 
 #[derive(Clone)]
@@ -67,12 +78,19 @@ pub struct SpawnRequest<'a> {
 }
 
 impl Pane {
-    pub fn screen(&self) -> (u64, vt100::Screen) {
+    pub fn catch_up(&self, seen: Option<&Seen>) -> (u64, Seen, Contents) {
         let terminal = self.terminal.lock().unwrap();
-        (
-            self.generation.load(Ordering::Acquire),
-            terminal.parser.screen().clone(),
-        )
+        let grid = &terminal.grid;
+        let size = grid.size();
+        let contents = match seen {
+            Some(seen) if seen.size == size => Contents::Update(grid.diff(&seen.checkpoint)),
+            _ => Contents::Snapshot(size, grid.snapshot()),
+        };
+        let seen = Seen {
+            size,
+            checkpoint: grid.checkpoint(),
+        };
+        (self.generation.load(Ordering::Acquire), seen, contents)
     }
 
     pub fn generation(&self) -> u64 {
@@ -80,12 +98,7 @@ impl Pane {
     }
 
     pub fn modes(&self) -> Modes {
-        let terminal = self.terminal.lock().unwrap();
-        let screen = terminal.parser.screen();
-        Modes {
-            application_cursor: screen.application_cursor(),
-            bracketed_paste: screen.bracketed_paste(),
-        }
+        self.terminal.lock().unwrap().grid.modes()
     }
 
     pub fn foreground_group(&self) -> Option<i32> {
@@ -99,14 +112,14 @@ impl Pane {
         }
         {
             let mut terminal = self.terminal.lock().unwrap();
-            if terminal.parser.screen().size() == (rows, cols) {
+            if terminal.grid.size() == size {
                 return;
             }
             if let Err(error) = terminal.master.resize(pty_size(size)) {
                 tracing::warn!("cannot resize the PTY to {cols}x{rows}: {error:#}");
                 return;
             }
-            terminal.parser.screen_mut().set_size(rows, cols);
+            terminal.grid.resize(size);
             self.generation.fetch_add(1, Ordering::AcqRel);
         }
         tracing::debug!("PTY resized to {cols}x{rows}");
@@ -116,13 +129,13 @@ impl Pane {
     fn process(&self, bytes: &[u8]) {
         {
             let mut terminal = self.terminal.lock().unwrap();
-            terminal.parser.process(bytes);
+            terminal.grid.process(bytes);
             self.generation.fetch_add(1, Ordering::AcqRel);
-            let replies = std::mem::take(&mut terminal.parser.callbacks_mut().replies);
-            if !replies.is_empty()
-                && let Some(sender) = self.replies.upgrade()
+            let write_back = terminal.grid.take_write_back();
+            if !write_back.is_empty()
+                && let Some(sender) = self.write_back.upgrade()
             {
-                let _ = sender.send(Input::Reply(replies));
+                let _ = sender.send(Input::WriteBack(write_back));
             }
         }
         self.notify();
@@ -174,17 +187,12 @@ pub fn spawn(
     let (input, receiver) = mpsc::unbounded_channel();
     let pane = Arc::new(Pane {
         terminal: Mutex::new(Terminal {
-            parser: vt100::Parser::new_with_callbacks(
-                size.rows,
-                size.cols,
-                0,
-                PaneCallbacks::default(),
-            ),
+            grid: Grid::new(size),
             master: pair.master,
         }),
         generation: AtomicU64::new(0),
         changed: Arc::clone(changed),
-        replies: input.downgrade(),
+        write_back: input.downgrade(),
     });
 
     let (drained_tx, drained) = std_mpsc::channel::<()>();
@@ -238,7 +246,7 @@ fn spawn_input(
             let bytes = match input {
                 Input::Key(key) => encode_key(key, pane.modes()),
                 Input::Paste(text) => encode_paste(&text, pane.modes()),
-                Input::Reply(bytes) => bytes,
+                Input::WriteBack(bytes) => bytes,
             };
             if let Err(error) = writer.write_all(&bytes).and_then(|()| writer.flush()) {
                 tracing::warn!("cannot write to the PTY: {error:#}");

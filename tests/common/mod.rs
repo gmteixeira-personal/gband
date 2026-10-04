@@ -4,11 +4,15 @@ use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child as Process, Command, Stdio};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use gband_core::geometry::Size;
+pub use gband_emulator::{Emulator, Grid};
+use gband_test_support::cell;
 use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
+use ratatui::style::Modifier;
 use rustix::process::{Pid, Signal};
 
 pub const TIMEOUT: Duration = Duration::from_secs(10);
@@ -176,7 +180,7 @@ pub struct Attached {
     pub child: Box<dyn Child + Send + Sync>,
     pub master: Box<dyn MasterPty + Send>,
     writer: Box<dyn Write + Send>,
-    parser: Arc<Mutex<vt100::Parser>>,
+    grid: Arc<Mutex<Grid>>,
 }
 
 impl Attached {
@@ -207,9 +211,9 @@ impl Attached {
         let child = pair.slave.spawn_command(command).unwrap();
         drop(pair.slave);
 
-        let parser = Arc::new(Mutex::new(vt100::Parser::new(rows, cols, 0)));
+        let grid = Arc::new(Mutex::new(Grid::new(Size::new(cols, rows))));
         let mut reader = pair.master.try_clone_reader().unwrap();
-        let output = Arc::clone(&parser);
+        let output = Arc::clone(&grid);
         thread::spawn(move || {
             let mut buffer = [0u8; 8192];
             while let Ok(n) = reader.read(&mut buffer) {
@@ -224,12 +228,12 @@ impl Attached {
             child,
             master: pair.master,
             writer,
-            parser,
+            grid,
         }
     }
 
-    pub fn screen(&self) -> vt100::Screen {
-        self.parser.lock().unwrap().screen().clone()
+    pub fn screen(&self) -> MutexGuard<'_, Grid> {
+        self.grid.lock().unwrap()
     }
 
     pub fn contents(&self) -> String {
@@ -246,18 +250,20 @@ impl Attached {
         self.send(b"\r");
     }
 
-    pub fn wait_for(&self, what: &str, predicate: impl Fn(&vt100::Screen) -> bool) {
+    pub fn wait_for(&self, what: &str, predicate: impl Fn(&Grid) -> bool) {
         let deadline = Instant::now() + TIMEOUT;
         loop {
-            let screen = self.screen();
-            if predicate(&screen) {
-                return;
+            {
+                let screen = self.screen();
+                if predicate(&screen) {
+                    return;
+                }
+                assert!(
+                    Instant::now() < deadline,
+                    "timed out waiting for {what}; screen:\n{}",
+                    screen.contents()
+                );
             }
-            assert!(
-                Instant::now() < deadline,
-                "timed out waiting for {what}; screen:\n{}",
-                screen.contents()
-            );
             thread::sleep(Duration::from_millis(20));
         }
     }
@@ -359,15 +365,13 @@ pub struct Tile {
 }
 
 impl Tile {
-    pub fn lines(&self, screen: &vt100::Screen) -> Vec<String> {
+    pub fn lines(&self, screen: &Grid) -> Vec<String> {
         (self.top + 1..self.bottom)
             .map(|row| {
                 (self.left + 1..self.right)
                     .map(|col| {
-                        screen
-                            .cell(row, col)
-                            .map(|cell| cell.contents().to_string())
-                            .filter(|contents| !contents.is_empty())
+                        cell(screen, row, col)
+                            .map(|cell| cell.symbol().to_string())
                             .unwrap_or_else(|| " ".to_string())
                     })
                     .collect::<String>()
@@ -378,14 +382,17 @@ impl Tile {
     }
 }
 
-fn symbol_at(screen: &vt100::Screen, row: u16, col: u16) -> Option<(String, bool)> {
-    screen
-        .cell(row, col)
-        .map(|cell| (cell.contents().to_string(), cell.bold()))
+fn symbol_at(screen: &Grid, row: u16, col: u16) -> Option<(String, bool)> {
+    cell(screen, row, col).map(|cell| {
+        (
+            cell.symbol().to_string(),
+            cell.modifier.contains(Modifier::BOLD),
+        )
+    })
 }
 
-pub fn tiles(screen: &vt100::Screen) -> Vec<Tile> {
-    let (rows, cols) = screen.size();
+pub fn tiles(screen: &Grid) -> Vec<Tile> {
+    let Size { cols, rows } = screen.size();
     let mut found = Vec::new();
     for top in 0..rows {
         for left in 0..cols {
@@ -413,7 +420,7 @@ pub fn tiles(screen: &vt100::Screen) -> Vec<Tile> {
     found
 }
 
-pub fn focused_lines(screen: &vt100::Screen) -> Vec<String> {
+pub fn focused_lines(screen: &Grid) -> Vec<String> {
     tiles(screen)
         .into_iter()
         .find(|tile| tile.focused)

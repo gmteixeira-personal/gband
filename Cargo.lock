@@ -469,6 +469,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "console"
+version = "0.16.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e96a4956774c13c126a8b5af4daa79384f4d826534c95a02d76afb39e2ab64e3"
+dependencies = [
+ "encode_unicode",
+ "libc",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "convert_case"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -697,6 +708,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "edd0f118536f44f5ccd48bcb8b111bdc3de888b58c74639dfb034a357d0f206d"
 
 [[package]]
+name = "encode_unicode"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "34aa73646ffb006b8f5147f3dc182bd4bcb190227ce861fc4a4844bf8e3cb2c0"
+
+[[package]]
 name = "endi"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -896,15 +913,18 @@ dependencies = [
  "clap",
  "directories",
  "gband-client",
+ "gband-core",
+ "gband-emulator",
  "gband-protocol",
  "gband-server",
+ "gband-test-support",
  "portable-pty",
+ "ratatui",
  "rustix",
  "tokio",
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
- "vt100",
 ]
 
 [[package]]
@@ -914,8 +934,11 @@ dependencies = [
  "anyhow",
  "crossterm",
  "gband-core",
+ "gband-emulator",
  "gband-protocol",
  "gband-server",
+ "gband-test-support",
+ "insta",
  "mlua",
  "notify-rust",
  "ratatui",
@@ -925,7 +948,6 @@ dependencies = [
  "tokio",
  "tracing",
  "tui-term",
- "vt100",
 ]
 
 [[package]]
@@ -937,6 +959,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "gband-emulator"
+version = "0.1.0"
+dependencies = [
+ "gband-core",
+ "ratatui",
+ "tracing",
+ "tui-term",
+ "vt100",
+]
+
+[[package]]
 name = "gband-protocol"
 version = "0.1.0"
 dependencies = [
@@ -945,6 +978,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.21",
+ "tokio",
 ]
 
 [[package]]
@@ -953,7 +987,9 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "gband-core",
+ "gband-emulator",
  "gband-protocol",
+ "gband-test-support",
  "mlua",
  "notify",
  "portable-pty",
@@ -962,8 +998,24 @@ dependencies = [
  "thiserror 2.0.21",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "gband-test-support"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "gband-client",
+ "gband-core",
+ "gband-emulator",
+ "gband-protocol",
+ "gband-server",
+ "ratatui",
+ "serde",
+ "tokio",
+ "tracing",
  "tracing-subscriber",
- "vt100",
+ "tui-term",
 ]
 
 [[package]]
@@ -1105,6 +1157,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c033f80b2c113cdf91ab7a33faa9cbc014726dcad99880c8609af2a370edf37d"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "insta"
+version = "1.49.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b67d3d2e287e4b86c10b3f3b641033d1f89b74bdb39d05f34952e2b9a6fe21cd"
+dependencies = [
+ "console",
+ "once_cell",
+ "similar",
+ "tempfile",
 ]
 
 [[package]]
@@ -2252,6 +2316,12 @@ dependencies = [
  "errno",
  "libc",
 ]
+
+[[package]]
+name = "similar"
+version = "2.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbbb5d9659141646ae647b42fe094daf6c6192d1620870b449d9557f748b2daa"
 
 [[package]]
 name = "siphasher"

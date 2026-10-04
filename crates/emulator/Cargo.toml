@@ -1,0 +1,14 @@
+[package]
+name = "gband-emulator"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+gband-core.workspace = true
+vt100.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+ratatui.workspace = true
+tui-term.workspace = true

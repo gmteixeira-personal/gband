@@ -1,17 +1,19 @@
 use std::collections::HashMap;
 
-use gband_client::render::{FOCUSED_BORDER, Ribbon, UNFOCUSED_BORDER, render};
+use gband_client::render::{Ribbon, draw_frame};
 use gband_core::geometry::{Size, tiles};
-use gband_core::layout::{Layout, PaneId, SessionAction};
+use gband_core::layout::{Direction, Layout, PaneId, SessionAction};
 use gband_core::view::{Scene, View, ViewAction};
-use ratatui::buffer::Buffer;
-use ratatui::layout::{Position, Rect};
+use gband_emulator::{Emulator, Grid};
+use insta::assert_snapshot;
+use ratatui::Terminal;
+use ratatui::backend::TestBackend;
 
 struct Fixture {
     layout: Layout,
     area: Size,
     view: View,
-    parsers: HashMap<PaneId, vt100::Parser>,
+    grids: HashMap<PaneId, Grid>,
 }
 
 impl Fixture {
@@ -33,53 +35,59 @@ impl Fixture {
             layout,
             area,
             view,
-            parsers: HashMap::new(),
+            grids: HashMap::new(),
         };
-        fixture.reset_parsers();
+        fixture.reset_grids();
         (fixture, panes)
     }
 
-    fn reset_parsers(&mut self) {
-        self.parsers.clear();
+    fn reset_grids(&mut self) {
+        self.grids.clear();
         for workspace in self.layout.workspaces() {
             for tile in tiles(workspace, self.area) {
-                let size = tile.terminal_size();
-                self.parsers
-                    .insert(tile.pane, vt100::Parser::new(size.rows, size.cols, 0));
+                self.grids
+                    .insert(tile.pane, Grid::new(tile.terminal_size()));
             }
         }
     }
 
+    fn change(&mut self, action: SessionAction, viewport_cols: u16) {
+        self.layout.apply(action);
+        let scene = Scene {
+            layout: &self.layout,
+            area: self.area,
+            viewport_cols,
+        };
+        self.view.sync(scene);
+        self.reset_grids();
+    }
+
     fn act(&mut self, action: ViewAction, viewport_cols: u16) {
-        self.view.apply(
-            action,
-            Scene {
-                layout: &self.layout,
-                area: self.area,
-                viewport_cols,
-            },
-        );
+        let scene = Scene {
+            layout: &self.layout,
+            area: self.area,
+            viewport_cols,
+        };
+        self.view.apply(action, scene);
     }
 
     fn write(&mut self, pane: PaneId, bytes: &[u8]) {
-        self.parsers.get_mut(&pane).unwrap().process(bytes);
+        self.grids.get_mut(&pane).unwrap().process(bytes);
     }
 
-    fn render(&self, terminal: Size) -> (Buffer, Option<Position>) {
-        let mut buffer = Buffer::empty(Rect::new(0, 0, terminal.cols, terminal.rows));
+    fn render(&self, terminal: Size) -> String {
+        let mut terminal = Terminal::new(TestBackend::new(terminal.cols, terminal.rows)).unwrap();
         let ribbon = Ribbon {
             layout: &self.layout,
             area: self.area,
             view: &self.view,
-            parsers: &self.parsers,
+            grids: &self.grids,
         };
-        let cursor = render(&ribbon, &mut buffer);
-        (buffer, cursor)
+        terminal.draw(|frame| draw_frame(frame, &ribbon)).unwrap();
+        let backend = terminal.backend();
+        let cursor = backend.cursor_visible().then(|| backend.cursor_position());
+        format!("{:?}\ncursor: {cursor:?}", backend.buffer())
     }
-}
-
-fn symbol(buffer: &Buffer, x: u16, y: u16) -> &str {
-    buffer[(x, y)].symbol()
 }
 
 #[test]
@@ -88,66 +96,25 @@ fn two_columns_side_by_side() {
     fixture.write(panes[0], b"left");
     fixture.write(panes[1], b"right");
     fixture.act(ViewAction::FocusRight, 80);
-    let (buffer, cursor) = fixture.render(Size::new(80, 24));
-
-    assert_eq!(symbol(&buffer, 0, 0), "┌");
-    assert_eq!(symbol(&buffer, 39, 0), "┐");
-    assert_eq!(symbol(&buffer, 40, 0), "┌");
-    assert_eq!(symbol(&buffer, 79, 0), "┐");
-    assert_eq!(symbol(&buffer, 0, 23), "└");
-    assert_eq!(symbol(&buffer, 79, 23), "┘");
-    assert_eq!(symbol(&buffer, 1, 1), "l");
-    assert_eq!(symbol(&buffer, 41, 1), "r");
-
-    assert!(
-        buffer[(40, 0)]
-            .modifier
-            .contains(FOCUSED_BORDER.add_modifier)
-    );
-    assert!(
-        buffer[(0, 0)]
-            .modifier
-            .contains(UNFOCUSED_BORDER.add_modifier)
-    );
-    assert!(
-        !buffer[(0, 0)]
-            .modifier
-            .contains(FOCUSED_BORDER.add_modifier)
-    );
-    assert_eq!(cursor, Some(Position::new(46, 1)));
+    assert_snapshot!(fixture.render(Size::new(80, 24)));
 }
 
 #[test]
 fn column_clipped_at_the_left_edge() {
     let (mut fixture, panes) = Fixture::new(Size::new(80, 24), 2, 80);
     for &pane in &panes {
-        fixture.layout.apply(SessionAction::CycleWidth(pane));
+        fixture.change(SessionAction::CycleWidth(pane), 80);
     }
-    fixture.reset_parsers();
     fixture.write(panes[0], "0123456789".repeat(5).as_bytes());
     fixture.act(ViewAction::FocusRight, 80);
     assert_eq!(fixture.view.camera(), 26);
-    let (buffer, _) = fixture.render(Size::new(80, 24));
-
-    assert_eq!(symbol(&buffer, 27, 0), "┌");
-    assert_eq!(symbol(&buffer, 79, 0), "┐");
-    assert_eq!(symbol(&buffer, 26, 0), "┐");
-    assert_eq!(symbol(&buffer, 0, 0), "─");
-    assert_eq!(symbol(&buffer, 0, 5), " ");
-    assert_eq!(symbol(&buffer, 0, 1), "5");
-    assert_eq!(symbol(&buffer, 1, 1), "6");
+    assert_snapshot!(fixture.render(Size::new(80, 24)));
 }
 
 #[test]
 fn tile_larger_than_the_terminal_is_cut() {
     let (fixture, _) = Fixture::new(Size::new(120, 40), 1, 100);
-    let (buffer, _) = fixture.render(Size::new(100, 30));
-    assert_eq!(symbol(&buffer, 0, 0), "┌");
-    assert_eq!(symbol(&buffer, 59, 0), "┐");
-    assert_eq!(symbol(&buffer, 0, 29), "│");
-    assert_eq!(symbol(&buffer, 59, 29), "│");
-    assert_eq!(symbol(&buffer, 60, 0), " ");
-    assert_eq!(symbol(&buffer, 99, 29), " ");
+    assert_snapshot!(fixture.render(Size::new(100, 30)));
 }
 
 #[test]
@@ -155,25 +122,58 @@ fn empty_workspace_is_blank_without_a_cursor() {
     let (mut fixture, _) = Fixture::new(Size::new(80, 24), 1, 80);
     fixture.act(ViewAction::WorkspaceDown, 80);
     assert_eq!(fixture.view.focused(), None);
-    let (buffer, cursor) = fixture.render(Size::new(80, 24));
-    assert_eq!(buffer, Buffer::empty(Rect::new(0, 0, 80, 24)));
-    assert_eq!(cursor, None);
+    assert_snapshot!(fixture.render(Size::new(80, 24)));
 }
 
 #[test]
 fn hidden_pane_cursor_hides_the_cursor() {
-    let (mut fixture, panes) = Fixture::new(Size::new(80, 24), 1, 80);
-    let (_, cursor) = fixture.render(Size::new(80, 24));
-    assert_eq!(cursor, Some(Position::new(1, 1)));
+    let (mut fixture, panes) = Fixture::new(Size::new(40, 6), 1, 40);
+    assert_snapshot!("cursor_shown", fixture.render(Size::new(40, 6)));
     fixture.write(panes[0], b"\x1b[?25l");
-    let (_, cursor) = fixture.render(Size::new(80, 24));
-    assert_eq!(cursor, None);
+    assert_snapshot!("cursor_hidden", fixture.render(Size::new(40, 6)));
 }
 
 #[test]
 fn offscreen_column_is_not_drawn() {
     let (fixture, _) = Fixture::new(Size::new(80, 24), 3, 80);
-    let (buffer, _) = fixture.render(Size::new(80, 24));
-    assert_eq!(symbol(&buffer, 40, 0), "┌");
-    assert_eq!(symbol(&buffer, 79, 0), "┐");
+    assert_snapshot!(fixture.render(Size::new(80, 24)));
+}
+
+#[test]
+fn coloured_pane() {
+    let (mut fixture, panes) = Fixture::new(Size::new(60, 6), 1, 60);
+    fixture.write(
+        panes[0],
+        b"\x1b[1;31mred\x1b[0m \x1b[42mgreen\x1b[0m \x1b[4;38;2;10;20;30mrgb\x1b[0m",
+    );
+    assert_snapshot!(fixture.render(Size::new(60, 6)));
+}
+
+#[test]
+fn wide_character_cut_at_the_clip_edge() {
+    let (mut fixture, panes) = Fixture::new(Size::new(80, 8), 2, 80);
+    for &pane in &panes {
+        fixture.change(SessionAction::CycleWidth(pane), 80);
+    }
+    fixture.write(panes[0], "漢字".repeat(13).as_bytes());
+    fixture.act(ViewAction::FocusRight, 80);
+    assert_eq!(fixture.view.camera(), 26);
+    assert_snapshot!(fixture.render(Size::new(80, 8)));
+}
+
+#[test]
+fn stacked_column() {
+    let (mut fixture, panes) = Fixture::new(Size::new(60, 12), 2, 60);
+    fixture.change(
+        SessionAction::ConsumeOrExpel {
+            pane: panes[1],
+            direction: Direction::Left,
+        },
+        60,
+    );
+    fixture.write(panes[0], b"top");
+    fixture.write(panes[1], b"bottom");
+    fixture.act(ViewAction::FocusDown, 60);
+    assert_eq!(fixture.view.focused(), Some(panes[1]));
+    assert_snapshot!(fixture.render(Size::new(60, 12)));
 }

@@ -1,5 +1,5 @@
-mod callbacks;
 mod connection;
+mod event;
 mod lock;
 mod pane;
 mod registry;
@@ -17,7 +17,7 @@ use portable_pty::CommandBuilder;
 use rustix::fs::Mode;
 use tokio::net::UnixListener;
 use tokio::signal::unix::{SignalKind, signal};
-use tokio::sync::mpsc;
+use tokio::sync::{broadcast, mpsc};
 use tokio::task::JoinSet;
 use tracing::Instrument;
 
@@ -25,6 +25,7 @@ use crate::connection::Context;
 use crate::registry::Registry;
 use crate::session::INITIAL_AREA;
 
+pub use crate::event::{CAPACITY, Published, SessionEvent};
 pub use crate::lock::kill;
 
 pub const SUN_PATH_MAX: usize = 107;
@@ -44,6 +45,13 @@ pub fn user_shell() -> OsString {
 }
 
 pub async fn run(config: ServerConfig) -> Result<()> {
+    run_with_events(config, event::channel()).await
+}
+
+pub async fn run_with_events(
+    config: ServerConfig,
+    events: broadcast::Sender<Published>,
+) -> Result<()> {
     let socket = config.socket;
     if socket.as_os_str().len() > SUN_PATH_MAX {
         bail!(
@@ -53,8 +61,9 @@ pub async fn run(config: ServerConfig) -> Result<()> {
     }
     let _lock = lock::acquire(&socket)?;
     let mut terminate = signal(SignalKind::terminate()).context("cannot handle SIGTERM")?;
+    tokio::spawn(event::log(events.subscribe()).in_current_span());
     let (requests_tx, mut requests) = mpsc::unbounded_channel();
-    let mut registry = Registry::new(config.program, socket.clone(), requests_tx.clone());
+    let mut registry = Registry::new(config.program, socket.clone(), requests_tx.clone(), events);
     registry.create(config.session, config.cwd, INITIAL_AREA)?;
     let listener = bind(&socket)?;
     tracing::info!("listening");
@@ -71,7 +80,10 @@ pub async fn run(config: ServerConfig) -> Result<()> {
         tokio::select! {
             accepted = listener.accept() => match accepted {
                 Ok((stream, _)) => {
-                    clients.spawn(connection::serve(stream, Arc::clone(&context)).in_current_span());
+                    let (reader, writer) = stream.into_split();
+                    clients.spawn(
+                        connection::serve(reader, writer, Arc::clone(&context)).in_current_span(),
+                    );
                 }
                 Err(error) => tracing::warn!("cannot accept a client: {error:#}"),
             },

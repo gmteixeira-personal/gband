@@ -7,9 +7,9 @@ rust-version.workspace = true
 [dependencies]
 gband-core.workspace = true
 gband-protocol.workspace = true
+gband-emulator.workspace = true
 portable-pty.workspace = true
-vt100.workspace = true
-tokio.workspace = true
+tokio = { workspace = true, features = ["full"] }
 mlua.workspace = true
 rustix.workspace = true
 notify.workspace = true
@@ -19,4 +19,4 @@ tracing.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
-tracing-subscriber.workspace = true
+gband-test-support.workspace = true

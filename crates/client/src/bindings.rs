@@ -1,3 +1,4 @@
+use gband_core::action::{Action, ClientAction, SessionCommand};
 use gband_core::input::{Key, KeyCode, Modifiers};
 use gband_core::layout::Direction;
 use gband_core::view::ViewAction;
@@ -7,23 +8,6 @@ pub const PREFIX: Key = Key {
     modifiers: Modifiers::CTRL,
 };
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum SessionCommand {
-    OpenPane,
-    ClosePane,
-    ConsumeOrExpel(Direction),
-    CycleWidth,
-    ToggleFullWidth,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Binding {
-    View(ViewAction),
-    Session(SessionCommand),
-    Detach,
-    SendPrefix,
-}
-
 const fn char_key(c: char) -> Key {
     Key {
         code: KeyCode::Char(c),
@@ -31,42 +15,42 @@ const fn char_key(c: char) -> Key {
     }
 }
 
-pub const BINDINGS: &[(Key, Binding)] = &[
-    (char_key('h'), Binding::View(ViewAction::FocusLeft)),
-    (char_key('l'), Binding::View(ViewAction::FocusRight)),
-    (char_key('j'), Binding::View(ViewAction::FocusDown)),
-    (char_key('k'), Binding::View(ViewAction::FocusUp)),
-    (char_key('u'), Binding::View(ViewAction::WorkspaceDown)),
-    (char_key('i'), Binding::View(ViewAction::WorkspaceUp)),
+pub const BINDINGS: &[(Key, Action)] = &[
+    (char_key('h'), Action::View(ViewAction::FocusLeft)),
+    (char_key('l'), Action::View(ViewAction::FocusRight)),
+    (char_key('j'), Action::View(ViewAction::FocusDown)),
+    (char_key('k'), Action::View(ViewAction::FocusUp)),
+    (char_key('u'), Action::View(ViewAction::WorkspaceDown)),
+    (char_key('i'), Action::View(ViewAction::WorkspaceUp)),
     (
         Key {
             code: KeyCode::Enter,
             modifiers: Modifiers::NONE,
         },
-        Binding::Session(SessionCommand::OpenPane),
+        Action::Session(SessionCommand::OpenPane),
     ),
-    (char_key('q'), Binding::Session(SessionCommand::ClosePane)),
+    (char_key('q'), Action::Session(SessionCommand::ClosePane)),
     (
         char_key('['),
-        Binding::Session(SessionCommand::ConsumeOrExpel(Direction::Left)),
+        Action::Session(SessionCommand::ConsumeOrExpel(Direction::Left)),
     ),
     (
         char_key(']'),
-        Binding::Session(SessionCommand::ConsumeOrExpel(Direction::Right)),
+        Action::Session(SessionCommand::ConsumeOrExpel(Direction::Right)),
     ),
-    (char_key('r'), Binding::Session(SessionCommand::CycleWidth)),
+    (char_key('r'), Action::Session(SessionCommand::CycleWidth)),
     (
         char_key('f'),
-        Binding::Session(SessionCommand::ToggleFullWidth),
+        Action::Session(SessionCommand::ToggleFullWidth),
     ),
-    (char_key('D'), Binding::Detach),
-    (PREFIX, Binding::SendPrefix),
+    (char_key('D'), Action::Client(ClientAction::Detach)),
+    (PREFIX, Action::Client(ClientAction::SendKey(PREFIX))),
 ];
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Command {
     Send(Key),
-    Run(Binding),
+    Run(Action),
     Discard,
 }
 
@@ -87,7 +71,7 @@ impl Leader {
         BINDINGS
             .iter()
             .find(|(bound, _)| matches(*bound, key))
-            .map_or(Command::Discard, |&(_, binding)| Command::Run(binding))
+            .map_or(Command::Discard, |&(_, action)| Command::Run(action))
     }
 }
 
@@ -114,48 +98,90 @@ mod tests {
 
     #[test]
     fn every_table_entry_runs_after_the_prefix() {
-        for &(key, binding) in BINDINGS {
-            assert_eq!(after_prefix(key), Command::Run(binding), "{key:?}");
+        for &(key, action) in BINDINGS {
+            assert_eq!(after_prefix(key), Command::Run(action), "{key:?}");
         }
     }
 
     #[test]
     fn table_keys_follow_the_spec() {
         let expected = [
-            ('h', Binding::View(ViewAction::FocusLeft)),
-            ('l', Binding::View(ViewAction::FocusRight)),
-            ('j', Binding::View(ViewAction::FocusDown)),
-            ('k', Binding::View(ViewAction::FocusUp)),
-            ('u', Binding::View(ViewAction::WorkspaceDown)),
-            ('i', Binding::View(ViewAction::WorkspaceUp)),
-            ('q', Binding::Session(SessionCommand::ClosePane)),
+            ('h', Action::View(ViewAction::FocusLeft)),
+            ('l', Action::View(ViewAction::FocusRight)),
+            ('j', Action::View(ViewAction::FocusDown)),
+            ('k', Action::View(ViewAction::FocusUp)),
+            ('u', Action::View(ViewAction::WorkspaceDown)),
+            ('i', Action::View(ViewAction::WorkspaceUp)),
+            ('q', Action::Session(SessionCommand::ClosePane)),
             (
                 '[',
-                Binding::Session(SessionCommand::ConsumeOrExpel(Direction::Left)),
+                Action::Session(SessionCommand::ConsumeOrExpel(Direction::Left)),
             ),
             (
                 ']',
-                Binding::Session(SessionCommand::ConsumeOrExpel(Direction::Right)),
+                Action::Session(SessionCommand::ConsumeOrExpel(Direction::Right)),
             ),
-            ('r', Binding::Session(SessionCommand::CycleWidth)),
-            ('f', Binding::Session(SessionCommand::ToggleFullWidth)),
+            ('r', Action::Session(SessionCommand::CycleWidth)),
+            ('f', Action::Session(SessionCommand::ToggleFullWidth)),
         ];
-        for (c, binding) in expected {
-            assert_eq!(after_prefix(char_key(c)), Command::Run(binding), "{c}");
+        for (c, action) in expected {
+            assert_eq!(after_prefix(char_key(c)), Command::Run(action), "{c}");
         }
         assert_eq!(
             after_prefix(Key::plain(KeyCode::Enter)),
-            Command::Run(Binding::Session(SessionCommand::OpenPane))
+            Command::Run(Action::Session(SessionCommand::OpenPane))
         );
+    }
+
+    #[test]
+    fn every_table_entry_names_an_action_of_its_kind() {
+        #[derive(Debug, PartialEq)]
+        enum Kind {
+            View,
+            Session,
+            Client,
+        }
+        let kind = |action: &Action| match action {
+            Action::View(_) => Kind::View,
+            Action::Session(_) => Kind::Session,
+            Action::Client(_) => Kind::Client,
+        };
+        let expected = [
+            (char_key('h'), Kind::View),
+            (char_key('l'), Kind::View),
+            (char_key('j'), Kind::View),
+            (char_key('k'), Kind::View),
+            (char_key('u'), Kind::View),
+            (char_key('i'), Kind::View),
+            (Key::plain(KeyCode::Enter), Kind::Session),
+            (char_key('q'), Kind::Session),
+            (char_key('['), Kind::Session),
+            (char_key(']'), Kind::Session),
+            (char_key('r'), Kind::Session),
+            (char_key('f'), Kind::Session),
+            (char_key('D'), Kind::Client),
+            (PREFIX, Kind::Client),
+        ];
+        assert_eq!(BINDINGS.len(), expected.len());
+        for (key, expected) in expected {
+            let (_, action) = BINDINGS
+                .iter()
+                .find(|(bound, _)| *bound == key)
+                .unwrap_or_else(|| panic!("{key:?} is not bound"));
+            assert_eq!(kind(action), expected, "{key:?}");
+        }
     }
 
     #[test]
     fn shift_d_detaches_with_or_without_the_shift_flag() {
         assert_eq!(
             after_prefix(Key::new(KeyCode::Char('D'), Modifiers::SHIFT)),
-            Command::Run(Binding::Detach)
+            Command::Run(Action::Client(ClientAction::Detach))
         );
-        assert_eq!(after_prefix(char_key('D')), Command::Run(Binding::Detach));
+        assert_eq!(
+            after_prefix(char_key('D')),
+            Command::Run(Action::Client(ClientAction::Detach))
+        );
     }
 
     #[test]
@@ -167,7 +193,10 @@ mod tests {
     fn prefix_twice_sends_one_prefix() {
         let mut leader = Leader::default();
         assert_eq!(leader.handle(PREFIX), Command::Discard);
-        assert_eq!(leader.handle(PREFIX), Command::Run(Binding::SendPrefix));
+        assert_eq!(
+            leader.handle(PREFIX),
+            Command::Run(Action::Client(ClientAction::SendKey(PREFIX)))
+        );
         assert_eq!(leader.handle(char_key('h')), Command::Send(char_key('h')));
     }
 

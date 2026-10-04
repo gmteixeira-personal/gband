@@ -1,27 +1,30 @@
-#![allow(dead_code)]
-
 use std::collections::HashMap;
 use std::ffi::OsString;
+use std::fmt;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use anyhow::Result;
+use anyhow::{Result, bail};
+use gband_client::{Connection, Link, Transport};
 use gband_core::geometry::Size;
 use gband_core::input::{Key, KeyCode};
 use gband_core::layout::{Layout, PaneId, SessionAction};
+pub use gband_emulator::{Emulator, Grid};
 use gband_protocol::{
-    ClientMessage, Decoder, ExecutableId, Hello, HelloReply, PROTOCOL_VERSION, ServerMessage,
-    SessionName, SessionSummary, encode, socket_path,
+    ClientMessage, ExecutableId, Hello, HelloReply, IoError, MessageReader, MessageWriter,
+    PROTOCOL_VERSION, ServerMessage, SessionName, SessionSummary, socket_path,
 };
 use gband_server::ServerConfig;
+use ratatui::buffer::Cell;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 use tokio::net::UnixStream;
 use tokio::task::JoinHandle;
 use tokio::time::{Instant, sleep, timeout};
+use tui_term::widget::{Cell as _, Screen};
 
 pub const TIMEOUT: Duration = Duration::from_secs(10);
 pub const IDENTITY: ExecutableId = ExecutableId {
@@ -29,9 +32,21 @@ pub const IDENTITY: ExecutableId = ExecutableId {
     inode: 4242,
 };
 
+const FNV_OFFSET: u32 = 0x811c_9dc5;
+const FNV_PRIME: u32 = 0x0100_0193;
+const RELAY_BUFFER_LEN: usize = 64 * 1024;
+
+pub type Reader = MessageReader<Box<dyn AsyncRead + Send + Unpin>>;
+pub type Writer = MessageWriter<Box<dyn AsyncWrite + Send + Unpin>>;
+
 pub fn runtime_dir(name: &str) -> PathBuf {
-    let path = Path::new(env!("CARGO_TARGET_TMPDIR"))
-        .join("srv")
+    let worktree = env!("CARGO_MANIFEST_DIR")
+        .bytes()
+        .fold(FNV_OFFSET, |hash, byte| {
+            (hash ^ u32::from(byte)).wrapping_mul(FNV_PRIME)
+        });
+    let path = std::env::temp_dir()
+        .join(format!("gband-srv-{worktree:08x}"))
         .join(name);
     let _ = fs::remove_dir_all(&path);
     fs::create_dir_all(&path).unwrap();
@@ -53,6 +68,13 @@ pub fn config(runtime_dir: &Path, program: &[&str]) -> ServerConfig {
     }
 }
 
+pub fn cell(grid: &Grid, row: u16, col: u16) -> Option<Cell> {
+    let source = Screen::cell(grid.screen(), row, col)?;
+    let mut cell = Cell::default();
+    source.apply(&mut cell);
+    Some(cell)
+}
+
 pub struct TestServer {
     pub runtime_dir: PathBuf,
     socket: PathBuf,
@@ -71,12 +93,20 @@ impl TestServer {
     }
 
     pub async fn start_with(runtime_dir: PathBuf, config: ServerConfig) -> Self {
+        let socket = config.socket.clone();
+        Self::start_running(runtime_dir, socket, gband_server::run(config)).await
+    }
+
+    pub async fn start_running(
+        runtime_dir: PathBuf,
+        socket: PathBuf,
+        server: impl Future<Output = Result<()>> + Send + 'static,
+    ) -> Self {
         let _ = tracing_subscriber::fmt()
             .with_test_writer()
             .with_max_level(tracing::Level::DEBUG)
             .try_init();
-        let socket = config.socket.clone();
-        let handle = tokio::spawn(gband_server::run(config));
+        let handle = tokio::spawn(server);
         let deadline = Instant::now() + TIMEOUT;
         while UnixStream::connect(&socket).await.is_err() {
             assert!(!handle.is_finished(), "server stopped before listening");
@@ -103,13 +133,13 @@ impl TestServer {
     }
 
     pub async fn list(&self) -> Vec<SessionSummary> {
-        let (mut stream, mut decoder, _) = TestClient::accepted(&self.socket(), 0, 0).await;
-        write_frame(&mut stream, &ClientMessage::ListSessions).await;
-        let reply = read_frame(&mut stream, &mut decoder).await;
+        let (mut peer, _) = TestClient::accepted(&self.socket(), 0, 0).await;
+        peer.send(&ClientMessage::ListSessions).await;
+        let reply = peer.recv().await;
         let Some(ServerMessage::Sessions(sessions)) = reply else {
             panic!("expected sessions, got {reply:?}");
         };
-        assert!(closes(&mut stream).await);
+        assert!(peer.closes().await);
         sessions
     }
 
@@ -122,33 +152,26 @@ impl TestServer {
     }
 
     pub async fn kill(&self, name: &str) -> ServerMessage {
-        let (mut stream, mut decoder, _) = TestClient::accepted(&self.socket(), 0, 0).await;
-        write_frame(
-            &mut stream,
-            &ClientMessage::KillSession {
-                session: session(name),
-            },
-        )
+        let (mut peer, _) = TestClient::accepted(&self.socket(), 0, 0).await;
+        peer.send(&ClientMessage::KillSession {
+            session: session(name),
+        })
         .await;
-        let reply = timeout(TIMEOUT, read_frame(&mut stream, &mut decoder))
+        let reply = timeout(TIMEOUT, peer.recv())
             .await
             .expect("no answer to the kill request")
             .expect("connection closed before answering");
-        assert!(closes(&mut stream).await);
+        assert!(peer.closes().await);
         reply
     }
 
-    pub async fn screens(&self) -> HashMap<PaneId, vt100::Screen> {
+    pub async fn screens(&self) -> HashMap<PaneId, Grid> {
         self.screens_of("default").await
     }
 
-    pub async fn screens_of(&self, name: &str) -> HashMap<PaneId, vt100::Screen> {
+    pub async fn screens_of(&self, name: &str) -> HashMap<PaneId, Grid> {
         let mut client = self.attach_to(name, &self.runtime_dir, 0, 0).await;
-        let screens = client
-            .parsers
-            .iter()
-            .map(|(&pane, parser)| (pane, parser.screen().clone()))
-            .collect();
+        let screens = std::mem::take(&mut client.grids);
         client.send(&ClientMessage::Detach).await;
         screens
     }
@@ -161,10 +184,70 @@ impl TestServer {
     }
 }
 
+pub struct Peer {
+    pub reader: Reader,
+    pub writer: Writer,
+}
+
+impl Peer {
+    pub async fn connect(socket: &Path) -> Self {
+        let (reader, writer) = UnixStream::connect(socket).await.unwrap().into_split();
+        Self::new(Box::new(reader), Box::new(writer))
+    }
+
+    pub fn new(
+        reader: Box<dyn AsyncRead + Send + Unpin>,
+        writer: Box<dyn AsyncWrite + Send + Unpin>,
+    ) -> Self {
+        Self {
+            reader: MessageReader::new(reader),
+            writer: MessageWriter::new(writer),
+        }
+    }
+
+    pub async fn send<T: Serialize>(&mut self, message: &T) {
+        self.writer.send(message).await.unwrap();
+    }
+
+    pub async fn send_bytes(&mut self, bytes: &[u8]) {
+        self.writer.get_mut().write_all(bytes).await.unwrap();
+    }
+
+    pub async fn recv<T: DeserializeOwned>(&mut self) -> Option<T> {
+        match self.reader.recv().await {
+            Ok(message) => message,
+            Err(IoError::Io(_)) => None,
+            Err(error) => panic!("undecodable frame: {error}"),
+        }
+    }
+
+    pub async fn closes(&mut self) -> bool {
+        timeout(TIMEOUT, async {
+            loop {
+                match self.reader.fill().await {
+                    Ok(true) => {}
+                    Ok(false) | Err(IoError::Io(_)) => return,
+                    Err(error) => panic!("undecodable frame: {error}"),
+                }
+            }
+        })
+        .await
+        .is_ok()
+    }
+}
+
+impl From<Connection> for Peer {
+    fn from(connection: Connection) -> Self {
+        Self {
+            reader: connection.reader,
+            writer: connection.writer,
+        }
+    }
+}
+
 pub struct TestClient {
-    pub stream: UnixStream,
-    pub decoder: Decoder,
-    pub parsers: HashMap<PaneId, vt100::Parser>,
+    pub peer: Peer,
+    pub grids: HashMap<PaneId, Grid>,
     pub layout: Layout,
     pub area: Size,
     pub focus: Vec<PaneId>,
@@ -173,40 +256,28 @@ pub struct TestClient {
 }
 
 impl TestClient {
-    pub async fn connect(socket: &Path) -> UnixStream {
-        UnixStream::connect(socket).await.unwrap()
-    }
-
     pub async fn attach(socket: &Path, cols: u16, rows: u16) -> Self {
         Self::attach_to(socket, SessionName::default(), Path::new("/"), cols, rows).await
     }
 
-    pub async fn accepted(
-        socket: &Path,
-        cols: u16,
-        rows: u16,
-    ) -> (UnixStream, Decoder, ServerMessage) {
-        let mut stream = Self::connect(socket).await;
-        write_frame(
-            &mut stream,
-            &Hello {
-                version: PROTOCOL_VERSION,
-                cols,
-                rows,
-            },
-        )
+    pub async fn accepted(socket: &Path, cols: u16, rows: u16) -> (Peer, ServerMessage) {
+        let mut peer = Peer::connect(socket).await;
+        peer.send(&Hello {
+            version: PROTOCOL_VERSION,
+            cols,
+            rows,
+        })
         .await;
-        let mut decoder = Decoder::new();
-        let reply: HelloReply = read_frame(&mut stream, &mut decoder).await.unwrap();
+        let reply: HelloReply = peer.recv().await.unwrap();
         assert_eq!(
             reply,
             HelloReply::Accepted {
                 version: PROTOCOL_VERSION
             }
         );
-        let info: ServerMessage = read_frame(&mut stream, &mut decoder).await.unwrap();
+        let info: ServerMessage = peer.recv().await.unwrap();
         assert!(matches!(info, ServerMessage::Info { .. }), "{info:?}");
-        (stream, decoder, info)
+        (peer, info)
     }
 
     pub async fn attach_to(
@@ -216,19 +287,24 @@ impl TestClient {
         cols: u16,
         rows: u16,
     ) -> Self {
-        let (mut stream, decoder, info) = Self::accepted(socket, cols, rows).await;
-        write_frame(
-            &mut stream,
-            &ClientMessage::Attach {
-                session,
-                cwd: cwd.to_path_buf(),
-            },
-        )
+        let (peer, info) = Self::accepted(socket, cols, rows).await;
+        Self::attach_over(peer, info, session, cwd).await
+    }
+
+    pub async fn attach_over(
+        mut peer: Peer,
+        info: ServerMessage,
+        session: SessionName,
+        cwd: &Path,
+    ) -> Self {
+        peer.send(&ClientMessage::Attach {
+            session,
+            cwd: cwd.to_path_buf(),
+        })
         .await;
         let mut client = Self {
-            stream,
-            decoder,
-            parsers: HashMap::new(),
+            peer,
+            grids: HashMap::new(),
             layout: Layout::new(),
             area: Size::new(0, 0),
             focus: Vec::new(),
@@ -242,7 +318,7 @@ impl TestClient {
         while client
             .layout
             .panes()
-            .any(|pane| !client.parsers.contains_key(&pane))
+            .any(|pane| !client.grids.contains_key(&pane))
         {
             match client.receive().await {
                 Some(ServerMessage::Snapshot { .. }) => {}
@@ -263,19 +339,18 @@ impl TestClient {
             .expect("the layout holds no pane")
     }
 
-    pub fn screen(&self) -> &vt100::Screen {
+    pub fn screen(&self) -> &Grid {
         self.pane_screen(self.first())
     }
 
-    pub fn pane_screen(&self, pane: PaneId) -> &vt100::Screen {
-        self.parsers
+    pub fn pane_screen(&self, pane: PaneId) -> &Grid {
+        self.grids
             .get(&pane)
             .unwrap_or_else(|| panic!("no screen for pane {pane}"))
-            .screen()
     }
 
     pub async fn send(&mut self, message: &ClientMessage) {
-        write_frame(&mut self.stream, message).await;
+        self.peer.send(message).await;
     }
 
     pub async fn act(&mut self, action: SessionAction) {
@@ -320,12 +395,17 @@ impl TestClient {
     }
 
     pub async fn receive(&mut self) -> Option<ServerMessage> {
-        let message: ServerMessage = read_frame(&mut self.stream, &mut self.decoder).await?;
-        match &message {
+        let message: ServerMessage = self.peer.recv().await?;
+        self.apply(&message);
+        Some(message)
+    }
+
+    pub fn apply(&mut self, message: &ServerMessage) {
+        match message {
             ServerMessage::Layout { cols, rows, layout } => {
                 self.layout = layout.clone();
                 self.area = Size::new(*cols, *rows);
-                self.parsers.retain(|pane, _| layout.contains(*pane));
+                self.grids.retain(|pane, _| layout.contains(*pane));
             }
             ServerMessage::Snapshot {
                 pane,
@@ -334,17 +414,17 @@ impl TestClient {
                 contents,
             } => {
                 assert!(self.layout.contains(*pane), "snapshot before its layout");
-                let mut parser = vt100::Parser::new(*rows, *cols, 0);
-                parser.process(contents);
-                self.parsers.insert(*pane, parser);
+                let mut grid = Grid::new(Size::new(*cols, *rows));
+                grid.process(contents);
+                self.grids.insert(*pane, grid);
             }
             ServerMessage::Update { pane, contents } => self
-                .parsers
+                .grids
                 .get_mut(pane)
                 .unwrap_or_else(|| panic!("update before a snapshot of pane {pane}"))
                 .process(contents),
             ServerMessage::Focus(pane) => {
-                assert!(self.parsers.contains_key(pane), "focus before a snapshot");
+                assert!(self.grids.contains_key(pane), "focus before a snapshot");
                 self.focus.push(*pane);
             }
             ServerMessage::Exited => self.exited = true,
@@ -353,16 +433,15 @@ impl TestClient {
             | ServerMessage::Killed
             | ServerMessage::NoSuchSession => panic!("unexpected {message:?} after attaching"),
         }
-        Some(message)
     }
 
-    fn describe(&self) -> String {
+    pub fn describe(&self) -> String {
         self.layout
             .panes()
             .filter_map(|pane| {
-                self.parsers
+                self.grids
                     .get(&pane)
-                    .map(|parser| format!("pane {pane}:\n{}", parser.screen().contents()))
+                    .map(|grid| format!("pane {pane}:\n{}", grid.contents()))
             })
             .collect::<Vec<_>>()
             .join("\n")
@@ -380,22 +459,13 @@ impl TestClient {
         }
     }
 
-    pub async fn wait_for(&mut self, predicate: impl Fn(&vt100::Screen) -> bool) {
+    pub async fn wait_for(&mut self, predicate: impl Fn(&Grid) -> bool) {
         self.wait_until(|client| predicate(client.screen())).await;
     }
 
-    pub async fn wait_for_pane(
-        &mut self,
-        pane: PaneId,
-        predicate: impl Fn(&vt100::Screen) -> bool,
-    ) {
-        self.wait_until(|client| {
-            client
-                .parsers
-                .get(&pane)
-                .is_some_and(|p| predicate(p.screen()))
-        })
-        .await;
+    pub async fn wait_for_pane(&mut self, pane: PaneId, predicate: impl Fn(&Grid) -> bool) {
+        self.wait_until(|client| client.grids.get(&pane).is_some_and(&predicate))
+            .await;
     }
 
     pub async fn wait_for_prompt(&mut self, pane: PaneId) {
@@ -405,6 +475,11 @@ impl TestClient {
 
     pub async fn wait_for_text(&mut self, text: &str) {
         self.wait_for(|screen| screen.contents().contains(text))
+            .await;
+    }
+
+    pub async fn wait_for_line(&mut self, line: &str) {
+        self.wait_for(|screen| screen.contents().lines().any(|candidate| candidate == line))
             .await;
     }
 
@@ -432,13 +507,11 @@ impl TestClient {
     }
 }
 
-pub fn same_screen(a: &vt100::Screen, b: &vt100::Screen) -> bool {
+pub fn same_screen(a: &Grid, b: &Grid) -> bool {
     a.size() == b.size()
-        && a.contents_formatted() == b.contents_formatted()
-        && a.cursor_position() == b.cursor_position()
-        && a.hide_cursor() == b.hide_cursor()
-        && a.application_cursor() == b.application_cursor()
-        && a.bracketed_paste() == b.bracketed_paste()
+        && a.snapshot() == b.snapshot()
+        && a.cursor() == b.cursor()
+        && a.modes() == b.modes()
 }
 
 pub async fn assert_converges(server: &TestServer, client: &mut TestClient) {
@@ -446,12 +519,12 @@ pub async fn assert_converges(server: &TestServer, client: &mut TestClient) {
     loop {
         client.pump(Duration::from_millis(100)).await;
         let expected = server.screens().await;
-        let matches = expected.len() == client.parsers.len()
+        let matches = expected.len() == client.grids.len()
             && expected.iter().all(|(pane, screen)| {
                 client
-                    .parsers
+                    .grids
                     .get(pane)
-                    .is_some_and(|parser| same_screen(parser.screen(), screen))
+                    .is_some_and(|grid| same_screen(grid, screen))
             });
         if matches {
             return;
@@ -476,37 +549,41 @@ pub async fn wait_for_file(path: &Path) {
     }
 }
 
-pub async fn write_frame<T: Serialize>(stream: &mut UnixStream, message: &T) {
-    stream.write_all(&encode(message).unwrap()).await.unwrap();
+pub struct RelayTransport {
+    pub socket: PathBuf,
 }
 
-pub async fn read_frame<T: DeserializeOwned>(
-    stream: &mut UnixStream,
-    decoder: &mut Decoder,
-) -> Option<T> {
-    let mut buffer = vec![0; 64 * 1024];
-    loop {
-        if let Some(message) = decoder.next_message().unwrap() {
-            return Some(message);
-        }
-        let n = stream.read(&mut buffer).await.ok()?;
-        if n == 0 {
-            return None;
-        }
-        decoder.feed(&buffer[..n]).unwrap();
+impl fmt::Display for RelayTransport {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "a relay to {}", self.socket.display())
     }
 }
 
-pub async fn closes(stream: &mut UnixStream) -> bool {
-    let mut buffer = [0; 256];
-    let result = timeout(TIMEOUT, async {
-        loop {
-            match stream.read(&mut buffer).await {
-                Ok(0) | Err(_) => return,
-                Ok(_) => {}
-            }
-        }
-    })
-    .await;
-    result.is_ok()
+impl Transport for RelayTransport {
+    async fn open(&self) -> Result<Link> {
+        let (mut socket_reader, mut socket_writer) =
+            UnixStream::connect(&self.socket).await?.into_split();
+        let (reader, mut to_client) = tokio::io::duplex(RELAY_BUFFER_LEN);
+        let (mut from_client, writer) = tokio::io::duplex(RELAY_BUFFER_LEN);
+        tokio::spawn(async move {
+            let _ = tokio::io::copy(&mut socket_reader, &mut to_client).await;
+            let _ = to_client.shutdown().await;
+        });
+        tokio::spawn(async move {
+            let _ = tokio::io::copy(&mut from_client, &mut socket_writer).await;
+            let _ = socket_writer.shutdown().await;
+        });
+        Ok(Link {
+            reader: Box::new(reader),
+            writer: Box::new(writer),
+        })
+    }
+
+    fn may_replace_server(&self) -> bool {
+        false
+    }
+
+    async fn replace_server(&self) -> Result<()> {
+        bail!("{self} cannot replace the server")
+    }
 }

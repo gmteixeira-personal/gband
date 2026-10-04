@@ -3,6 +3,8 @@ use std::collections::HashMap;
 use gband_core::geometry::{BORDER, Size, Tile, tiles};
 use gband_core::layout::{Layout, PaneId};
 use gband_core::view::View;
+use gband_emulator::{Emulator, Grid};
+use ratatui::Frame;
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Position, Rect};
 use ratatui::style::{Modifier, Style};
@@ -16,7 +18,13 @@ pub struct Ribbon<'a> {
     pub layout: &'a Layout,
     pub area: Size,
     pub view: &'a View,
-    pub parsers: &'a HashMap<PaneId, vt100::Parser>,
+    pub grids: &'a HashMap<PaneId, Grid>,
+}
+
+pub fn draw_frame(frame: &mut Frame<'_>, ribbon: &Ribbon<'_>) {
+    if let Some(cursor) = render(ribbon, frame.buffer_mut()) {
+        frame.set_cursor_position(cursor);
+    }
 }
 
 pub fn render(ribbon: &Ribbon<'_>, buffer: &mut Buffer) -> Option<Position> {
@@ -32,8 +40,8 @@ pub fn render(ribbon: &Ribbon<'_>, buffer: &mut Buffer) -> Option<Position> {
             continue;
         }
         let is_focused = focused == Some(tile.pane);
-        let screen = ribbon.parsers.get(&tile.pane).map(vt100::Parser::screen);
-        let scratch = draw_tile(&tile, screen, is_focused);
+        let grid = ribbon.grids.get(&tile.pane);
+        let scratch = draw_tile(&tile, grid, is_focused);
         for row in 0..tile.height {
             let y = tile.y + row;
             if y >= target.height {
@@ -48,13 +56,13 @@ pub fn render(ribbon: &Ribbon<'_>, buffer: &mut Buffer) -> Option<Position> {
             }
         }
         if is_focused {
-            cursor = screen.and_then(|screen| cursor_position(&tile, left, screen, target));
+            cursor = grid.and_then(|grid| cursor_position(&tile, left, grid, target));
         }
     }
     cursor
 }
 
-fn draw_tile(tile: &Tile, screen: Option<&vt100::Screen>, focused: bool) -> Buffer {
+fn draw_tile(tile: &Tile, grid: Option<&Grid>, focused: bool) -> Buffer {
     let area = Rect::new(0, 0, tile.width, tile.height);
     let mut scratch = Buffer::empty(area);
     let style = if focused {
@@ -65,24 +73,16 @@ fn draw_tile(tile: &Tile, screen: Option<&vt100::Screen>, focused: bool) -> Buff
     let block = Block::bordered().border_style(style);
     let inner = block.inner(area);
     block.render(area, &mut scratch);
-    if let Some(screen) = screen {
-        PseudoTerminal::new(screen)
+    if let Some(grid) = grid {
+        PseudoTerminal::new(grid.screen())
             .cursor(Cursor::default().visibility(false))
             .render(inner, &mut scratch);
     }
     scratch
 }
 
-fn cursor_position(
-    tile: &Tile,
-    left: i64,
-    screen: &vt100::Screen,
-    target: Rect,
-) -> Option<Position> {
-    if screen.hide_cursor() {
-        return None;
-    }
-    let (row, column) = screen.cursor_position();
+fn cursor_position(tile: &Tile, left: i64, grid: &Grid, target: Rect) -> Option<Position> {
+    let (row, column) = grid.cursor()?;
     let inner = tile.terminal_size();
     if row >= inner.rows || column >= inner.cols {
         return None;

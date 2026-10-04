@@ -3,13 +3,16 @@ use std::time::Duration;
 use anyhow::{Result, bail};
 use gband_protocol::{ClientMessage, ServerMessage, SessionSummary};
 
-use crate::{ClientConfig, connect, runtime};
+use crate::{ClientConfig, Transport, connect, runtime};
 
 const KILL_TIMEOUT: Duration = Duration::from_secs(5);
 
-pub fn list_sessions(config: &ClientConfig) -> Result<Vec<SessionSummary>> {
+pub fn list_sessions(
+    config: &ClientConfig,
+    transport: &impl Transport,
+) -> Result<Vec<SessionSummary>> {
     runtime()?.block_on(async {
-        let mut connection = connect(config).await?;
+        let mut connection = connect(config, transport).await?;
         connection.send(&ClientMessage::ListSessions).await?;
         match connection.receive().await? {
             ServerMessage::Sessions(sessions) => Ok(sessions),
@@ -18,10 +21,10 @@ pub fn list_sessions(config: &ClientConfig) -> Result<Vec<SessionSummary>> {
     })
 }
 
-pub fn kill_session(config: &ClientConfig) -> Result<()> {
+pub fn kill_session(config: &ClientConfig, transport: &impl Transport) -> Result<()> {
     let session = &config.session;
     runtime()?.block_on(async {
-        let mut connection = connect(config).await?;
+        let mut connection = connect(config, transport).await?;
         connection
             .send(&ClientMessage::KillSession {
                 session: session.clone(),
@@ -36,7 +39,7 @@ pub fn kill_session(config: &ClientConfig) -> Result<()> {
         match answer? {
             ServerMessage::Killed => Ok(()),
             ServerMessage::NoSuchSession => {
-                bail!("no session named {session} on {}", config.socket.display())
+                bail!("no session named {session} on {transport}")
             }
             _ => bail!("the server sent an unexpected answer to a kill request"),
         }

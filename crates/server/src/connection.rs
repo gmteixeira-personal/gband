@@ -8,32 +8,33 @@ use anyhow::{Context as _, Result, anyhow, bail};
 use gband_core::geometry::Size;
 use gband_core::layout::{PaneId, SessionAction};
 use gband_protocol::{
-    ClientMessage, Decoder, Hello, HelloReply, PROTOCOL_VERSION, ServerMessage, SessionName, encode,
+    ClientMessage, Hello, HelloReply, MessageReader, MessageWriter, PROTOCOL_VERSION,
+    ServerMessage, SessionName, decode, leading_version,
 };
 use serde::Serialize;
-use serde::de::DeserializeOwned;
-use tokio::io::{AsyncReadExt, AsyncWrite, AsyncWriteExt};
-use tokio::net::UnixStream;
-use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
+use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::{mpsc, oneshot};
 
-use crate::pane::Input;
+use crate::event::SessionEvent;
+use crate::pane::{Contents, Input, Seen};
 use crate::registry::{Request, SessionHandle};
 use crate::session::{Command, INITIAL_AREA, State};
-
-const READ_BUFFER_LEN: usize = 64 * 1024;
 
 pub struct Context {
     pub registry: mpsc::UnboundedSender<Request>,
     pub info: ServerMessage,
 }
 
-struct Attachment(Arc<SessionHandle>);
+struct Attachment {
+    handle: Arc<SessionHandle>,
+    client: u64,
+}
 
 impl Attachment {
-    fn new(handle: Arc<SessionHandle>) -> Self {
+    fn new(handle: Arc<SessionHandle>, client: u64) -> Self {
         handle.clients.fetch_add(1, Ordering::AcqRel);
-        Self(handle)
+        handle.events.send(SessionEvent::ClientAttached { client });
+        Self { handle, client }
     }
 }
 
@@ -41,76 +42,83 @@ impl Deref for Attachment {
     type Target = SessionHandle;
 
     fn deref(&self) -> &SessionHandle {
-        &self.0
+        &self.handle
     }
 }
 
 impl Drop for Attachment {
     fn drop(&mut self) {
-        self.0.clients.fetch_sub(1, Ordering::AcqRel);
+        self.handle.clients.fetch_sub(1, Ordering::AcqRel);
+        self.handle.events.send(SessionEvent::ClientDetached {
+            client: self.client,
+        });
     }
 }
 
-struct Link {
-    reader: OwnedReadHalf,
-    writer: OwnedWriteHalf,
-    decoder: Decoder,
-    buffer: Vec<u8>,
+struct Link<R, W> {
+    reader: MessageReader<R>,
+    writer: MessageWriter<W>,
+}
+
+impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Link<R, W> {
+    async fn send<T: Serialize>(&mut self, message: &T) -> Result<()> {
+        send(&mut self.writer, message).await
+    }
 }
 
 #[derive(Default)]
 struct Sent {
     state: Option<Arc<State>>,
-    panes: HashMap<PaneId, (u64, vt100::Screen)>,
+    panes: HashMap<PaneId, (u64, Seen)>,
 }
 
-pub async fn serve(stream: UnixStream, context: Arc<Context>) {
+pub async fn serve(
+    reader: impl AsyncRead + Unpin,
+    writer: impl AsyncWrite + Unpin,
+    context: Arc<Context>,
+) {
     static NEXT_ID: AtomicU64 = AtomicU64::new(1);
     let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
     tracing::debug!(client = id, "client connected");
-    match handle(stream, &context).await {
+    let link = Link {
+        reader: MessageReader::new(reader),
+        writer: MessageWriter::new(writer),
+    };
+    match handle(link, &context, id).await {
         Ok(()) => tracing::debug!(client = id, "client disconnected"),
         Err(error) => tracing::warn!(client = id, "closing client connection: {error:#}"),
     }
 }
 
-async fn handle(stream: UnixStream, context: &Context) -> Result<()> {
-    let (reader, writer) = stream.into_split();
-    let mut link = Link {
-        reader,
-        writer,
-        decoder: Decoder::new(),
-        buffer: vec![0; READ_BUFFER_LEN],
-    };
-
-    let Some(hello) = link.read::<Hello>().await.context("invalid hello")? else {
+async fn handle(
+    mut link: Link<impl AsyncRead + Unpin, impl AsyncWrite + Unpin>,
+    context: &Context,
+    client: u64,
+) -> Result<()> {
+    let Some(payload) = link.reader.recv_payload().await.context("invalid hello")? else {
         return Ok(());
     };
-    if hello.version != PROTOCOL_VERSION {
-        tracing::warn!(
-            "rejecting a client speaking protocol version {}",
-            hello.version
-        );
-        send(
-            &mut link.writer,
-            &HelloReply::Rejected {
-                version: PROTOCOL_VERSION,
-            },
-        )
+    let Some(version) = leading_version(&payload) else {
+        bail!("the first frame does not begin with a protocol version");
+    };
+    if version != PROTOCOL_VERSION {
+        tracing::warn!("rejecting a client speaking protocol version {version}");
+        link.send(&HelloReply::Rejected {
+            version: PROTOCOL_VERSION,
+        })
         .await?;
         return Ok(());
     }
-    send(
-        &mut link.writer,
-        &HelloReply::Accepted {
-            version: PROTOCOL_VERSION,
-        },
-    )
+    let hello: Hello = decode(&payload).context("invalid hello")?;
+    link.send(&HelloReply::Accepted {
+        version: PROTOCOL_VERSION,
+    })
     .await?;
-    send(&mut link.writer, &context.info).await?;
+    link.send(&context.info).await?;
 
     let Some(request) = link
-        .read::<ClientMessage>()
+        .reader
+        .recv::<ClientMessage>()
         .await
         .context("invalid request")?
     else {
@@ -119,11 +127,11 @@ async fn handle(stream: UnixStream, context: &Context) -> Result<()> {
     match request {
         ClientMessage::Attach { session, cwd } => {
             let size = Size::new(hello.cols, hello.rows);
-            attach(link, context, session, cwd, size).await
+            attach(link, context, client, session, cwd, size).await
         }
         ClientMessage::ListSessions => {
             let sessions = ask(context, |reply| Request::List { reply }).await?;
-            send(&mut link.writer, &ServerMessage::Sessions(sessions)).await
+            link.send(&ServerMessage::Sessions(sessions)).await
         }
         ClientMessage::KillSession { session } => {
             let handle = ask(context, |reply| Request::Kill {
@@ -132,11 +140,11 @@ async fn handle(stream: UnixStream, context: &Context) -> Result<()> {
             })
             .await?;
             let Some(handle) = handle else {
-                return send(&mut link.writer, &ServerMessage::NoSuchSession).await;
+                return link.send(&ServerMessage::NoSuchSession).await;
             };
             let mut ended = handle.ended.clone();
             let _ = ended.wait_for(|ended| *ended).await;
-            send(&mut link.writer, &ServerMessage::Killed).await
+            link.send(&ServerMessage::Killed).await
         }
         _ => bail!("the first message after info is not a request"),
     }
@@ -155,8 +163,9 @@ async fn ask<T>(
 }
 
 async fn attach(
-    mut link: Link,
+    mut link: Link<impl AsyncRead + Unpin, impl AsyncWrite + Unpin>,
     context: &Context,
+    client: u64,
     name: SessionName,
     cwd: PathBuf,
     size: Size,
@@ -173,7 +182,7 @@ async fn attach(
         reply,
     })
     .await??;
-    let session = Attachment::new(handle);
+    let session = Attachment::new(handle, client);
     tracing::debug!(session = %session.name, "client attached");
 
     let (applied_tx, applied) = oneshot::channel();
@@ -191,7 +200,7 @@ async fn attach(
     let (focus_tx, mut focus) = mpsc::unbounded_channel();
     let mut ended = session.ended.clone();
     loop {
-        if dispatch(&mut link.decoder, &session, &focus_tx)? {
+        if dispatch(&mut link.reader, &session, &focus_tx)? {
             return Ok(());
         }
         tokio::select! {
@@ -201,30 +210,28 @@ async fn attach(
             }
             Some(pane) = focus.recv() => {
                 sync(&mut link.writer, &session, &mut sent).await?;
-                send(&mut link.writer, &ServerMessage::Focus(pane)).await?;
+                link.send(&ServerMessage::Focus(pane)).await?;
             }
             _ = async { ended.wait_for(|ended| *ended).await.is_ok() } => {
                 sync(&mut link.writer, &session, &mut sent).await?;
-                send(&mut link.writer, &ServerMessage::Exited).await?;
+                link.send(&ServerMessage::Exited).await?;
                 return Ok(());
             }
-            read = link.reader.read(&mut link.buffer) => {
-                let n = read.context("cannot read from the client")?;
-                if n == 0 {
+            filled = link.reader.fill() => {
+                if !filled.context("cannot read from the client")? {
                     return Ok(());
                 }
-                link.decoder.feed(&link.buffer[..n])?;
             }
         }
     }
 }
 
 fn dispatch(
-    decoder: &mut Decoder,
+    reader: &mut MessageReader<impl AsyncRead + Unpin>,
     session: &SessionHandle,
     focus_tx: &mpsc::UnboundedSender<PaneId>,
 ) -> Result<bool> {
-    while let Some(message) = decoder.next_message::<ClientMessage>()? {
+    while let Some(message) = reader.try_recv::<ClientMessage>()? {
         match message {
             ClientMessage::Key { pane, key } => forward(session, pane, Input::Key(key)),
             ClientMessage::Paste { pane, text } => forward(session, pane, Input::Paste(text)),
@@ -258,7 +265,7 @@ fn forward(session: &SessionHandle, pane: PaneId, input: Input) {
 }
 
 async fn sync(
-    writer: &mut (impl AsyncWrite + Unpin),
+    writer: &mut MessageWriter<impl AsyncWrite + Unpin>,
     session: &SessionHandle,
     sent: &mut Sent,
 ) -> Result<()> {
@@ -292,54 +299,31 @@ async fn sync(
         {
             continue;
         }
-        let (generation, screen) = entry.pane.screen();
-        let message = match sent.panes.get(&pane) {
-            Some((_, last)) if last.size() == screen.size() => {
-                let contents = screen.state_diff(last);
-                if contents.is_empty() {
-                    None
-                } else {
-                    Some(ServerMessage::Update { pane, contents })
-                }
-            }
-            _ => Some(snapshot(pane, &screen)),
+        let (generation, seen, contents) = entry
+            .pane
+            .catch_up(sent.panes.get(&pane).map(|(_, seen)| seen));
+        sent.panes.insert(pane, (generation, seen));
+        let message = match contents {
+            Contents::Update(contents) if contents.is_empty() => continue,
+            Contents::Update(contents) => ServerMessage::Update { pane, contents },
+            Contents::Snapshot(size, contents) => ServerMessage::Snapshot {
+                pane,
+                cols: size.cols,
+                rows: size.rows,
+                contents,
+            },
         };
-        sent.panes.insert(pane, (generation, screen));
-        if let Some(message) = message {
-            send(writer, &message).await?;
-        }
+        send(writer, &message).await?;
     }
     Ok(())
 }
 
-fn snapshot(pane: PaneId, screen: &vt100::Screen) -> ServerMessage {
-    let (rows, cols) = screen.size();
-    ServerMessage::Snapshot {
-        pane,
-        cols,
-        rows,
-        contents: screen.state_formatted(),
-    }
-}
-
-impl Link {
-    async fn read<T: DeserializeOwned>(&mut self) -> Result<Option<T>> {
-        loop {
-            if let Some(message) = self.decoder.next_message()? {
-                return Ok(Some(message));
-            }
-            let n = self.reader.read(&mut self.buffer).await?;
-            if n == 0 {
-                return Ok(None);
-            }
-            self.decoder.feed(&self.buffer[..n])?;
-        }
-    }
-}
-
-async fn send<T: Serialize>(writer: &mut (impl AsyncWrite + Unpin), message: &T) -> Result<()> {
+async fn send<T: Serialize>(
+    writer: &mut MessageWriter<impl AsyncWrite + Unpin>,
+    message: &T,
+) -> Result<()> {
     writer
-        .write_all(&encode(message)?)
+        .send(message)
         .await
         .context("cannot write to the client")
 }
