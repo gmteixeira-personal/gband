@@ -51,15 +51,14 @@ None.
 
 ### Expected Files
 - crates/protocol/src/
+- crates/protocol/tests/framing.rs
 - crates/protocol/tests/messages.rs
 - crates/server/src/
 - crates/server/tests/common/mod.rs
-- crates/server/tests/lifecycle.rs
 - crates/server/tests/sessions.rs
 - crates/client/src/
 - crates/client/tests/connect.rs
 - src/main.rs
-- tests/common/mod.rs
 - tests/subcommands.rs
 - tests/kill_server.rs
 - tests/sessions.rs
