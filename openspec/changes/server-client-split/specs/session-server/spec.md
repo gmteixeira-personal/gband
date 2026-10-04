@@ -126,3 +126,41 @@ When the pane's program exits, the server SHALL tell every attached client that 
 #### Scenario: Program exits with no client
 - **WHEN** `gband server` runs with `SHELL=/bin/true` and no client attaches
 - **THEN** the server exits with status 0 without waiting for a client
+
+### Requirement: Pid record
+While it holds the single-server guard, the server SHALL record its process id, in decimal followed by a newline, in the file `default.lock` in the runtime directory. The record SHALL be in place before the server accepts its first connection.
+
+#### Scenario: Pid readable while running
+- **WHEN** a server is running
+- **THEN** `default.lock` holds that server's process id
+
+### Requirement: Stop on SIGTERM
+When the server receives SIGTERM, it SHALL send SIGHUP to the pane's program. If the program is still running 2 seconds later, the server SHALL send it SIGKILL. When the program has exited, the server SHALL end the session as the "Server exits with its program" requirement defines.
+
+#### Scenario: Terminated with a client attached
+- **WHEN** a client is attached and the server receives SIGTERM
+- **THEN** the shell exits
+- **AND** the client prints `[exited]`
+- **AND** the server exits with status 0 and its socket file is removed
+
+#### Scenario: Program ignores SIGHUP
+- **WHEN** the pane runs `trap '' HUP; sleep 100` and the server receives SIGTERM
+- **THEN** the program is killed within 3 seconds and the server exits with status 0
+
+### Requirement: Kill-server subcommand
+`gband kill-server` SHALL stop the server for the socket path it resolves, using only the server's pid record and signals, so that it stops a server of any protocol version. When no server holds the single-server guard, it SHALL print one line to standard error naming the socket path and exit with status 1. Otherwise it SHALL send SIGTERM to the recorded process and wait up to 5 seconds for the guard to be released. It SHALL exit with status 0, printing nothing, when the guard is released. When the guard is still held after 5 seconds, it SHALL print one line to standard error naming the process id and exit with status 1. It SHALL NOT create the runtime directory.
+
+#### Scenario: Stop a running server
+- **WHEN** a server is running and the user runs `gband kill-server`
+- **THEN** the server and its shell are no longer running
+- **AND** `gband kill-server` exits with status 0 and prints nothing
+
+#### Scenario: No server running
+- **WHEN** no server is running and the user runs `gband kill-server`
+- **THEN** standard error names the socket path and says no server is running
+- **AND** the process exits with status 1
+- **AND** the runtime directory is not created
+
+#### Scenario: Next attach starts a fresh server
+- **WHEN** the user runs `gband kill-server` and then `gband attach`
+- **THEN** the client shows a new shell with a different process id

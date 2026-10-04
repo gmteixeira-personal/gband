@@ -46,13 +46,44 @@ When nothing accepts connections on the socket path, `gband attach` SHALL start 
 - **AND** no server is started
 
 ### Requirement: Version handshake
-The client SHALL complete the wire protocol's handshake before it changes the terminal. When the server speaks a different protocol version, the client SHALL print one line to standard error naming both versions and saying that the running server must be stopped first, and exit with status 1. The terminal SHALL be left as it was.
+The client SHALL complete the wire protocol's handshake, and receive the server's info, before it changes the terminal. When the server speaks a different protocol version, a debug build of the client SHALL replace the server as the "Server from a different build" requirement defines. A release build SHALL print one line to standard error naming both versions and saying that `gband kill-server` stops the running server, and exit with status 1. The terminal SHALL be left as it was. In this capability, a debug build is one compiled with debug assertions, as cargo's default `dev` profile does, and a release build is any other.
 
-#### Scenario: Incompatible server
-- **WHEN** a server speaking protocol version 2 is running and a client speaking version 1 attaches
-- **THEN** standard error names versions 1 and 2
+#### Scenario: Incompatible server, debug build
+- **WHEN** a server speaking protocol version 2 is running and a debug-build client speaking version 1 attaches
+- **THEN** the version 2 server and its shell are stopped
+- **AND** the client attaches to a new version 1 server
+
+#### Scenario: Incompatible server, release build
+- **WHEN** a server speaking protocol version 2 is running and a release-build client speaking version 1 attaches
+- **THEN** standard error names versions 1 and 2 and `gband kill-server`
 - **AND** the client exits with status 1
 - **AND** the terminal is not left in raw mode or the alternate screen
+
+### Requirement: Server from a different build
+The client SHALL compare the executable identity in the server's info with the identity of its own executable, as the wire protocol defines it. When they differ, it SHALL record a warning in the client log naming the server's process id.
+
+A debug build SHALL then replace the server before it changes the terminal. It SHALL send detach and close the connection, stop the server as `gband kill-server` does, start a new server from its own executable as the "Start a server when none is running" requirement defines, and attach to that one. A client SHALL replace a server at most once per invocation. When the server it reaches after replacing still differs, the client SHALL continue as a release build does. When the old server does not stop within 5 seconds, the client SHALL print one line to standard error naming its process id, and exit with status 1.
+
+A release build SHALL attach to the server unchanged and, after printing the line that "Leaving the client" defines, print to standard error: `gband: the server runs a different gband build; stop it with gband kill-server and attach again`.
+
+#### Scenario: Debug build after a rebuild
+- **WHEN** a server started from a debug build is running, the user runs `cargo build`, which replaces the executable, and runs `gband attach` from the new build
+- **THEN** the old server and its shell are stopped
+- **AND** the client attaches to a new server whose info carries the client's own executable identity
+
+#### Scenario: Debug build, same executable
+- **WHEN** a debug-build client attaches to a server started from the same unchanged executable
+- **THEN** the client attaches to that server and its shell keeps running
+
+#### Scenario: Release build after an upgrade
+- **WHEN** a server started from a release build is running and the user replaces the executable and runs `gband attach`
+- **THEN** the client attaches to the running server and its shell
+- **AND** after the user detaches, standard error holds `gband: the server runs a different gband build; stop it with gband kill-server and attach again` after `[detached]`
+
+#### Scenario: Server does not stop
+- **WHEN** a debug-build client must replace a server that is still running 5 seconds after being told to stop
+- **THEN** the client prints one line to standard error naming that server's process id
+- **AND** it exits with status 1 without changing the terminal
 
 ### Requirement: Present the pane
 After the handshake, the client SHALL take the terminal full screen in raw mode with bracketed paste enabled. It SHALL keep its own copy of the pane's screen, built from the server's snapshot and updated by every update the server sends. It SHALL draw that copy from the top-left corner of the terminal, cut to the terminal's size, and place the terminal's cursor where the pane's cursor is, hidden when the pane hides it.
@@ -100,7 +131,7 @@ Ctrl+A SHALL be the prefix key, and the client SHALL NOT send it to the server w
 - **THEN** nothing is sent to the pane
 
 ### Requirement: Leaving the client
-Whenever the client exits after taking the terminal, it SHALL first leave the alternate screen, disable raw mode and bracketed paste, and show the cursor. It SHALL then print one line and exit as follows:
+Whenever the client exits after taking the terminal, it SHALL first leave the alternate screen, disable raw mode and bracketed paste, and show the cursor. It SHALL then print one line to standard output, followed by the note for a server from a different build when one applies, and exit as follows:
 
 | cause | line printed | exit status |
 |---|---|---|

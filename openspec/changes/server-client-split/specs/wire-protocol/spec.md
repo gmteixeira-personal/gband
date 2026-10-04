@@ -26,7 +26,7 @@ The first frame a client sends SHALL be a hello that carries the client's protoc
 #### Scenario: Matching versions
 - **WHEN** a version 1 client sends its hello to a version 1 server
 - **THEN** the server accepts it
-- **AND** sends the pane snapshot as its next frame
+- **AND** sends server info as its next frame and the pane snapshot after that
 
 #### Scenario: Mismatched versions
 - **WHEN** a version 2 client sends its hello to a version 1 server
@@ -59,11 +59,23 @@ After the handshake, a server SHALL send only these messages:
 
 | message | content |
 |---|---|
+| info | the server's process id and the identity of the executable it runs from |
 | snapshot | the pane's columns and rows, and terminal output that, fed into an empty terminal grid of that size, reproduces the server's screen |
 | update | terminal output that, fed into the grid the client built from every earlier snapshot and update, reproduces the server's current screen |
 | exited | nothing; the session's program has exited |
 
+The server SHALL send info exactly once, as its first message after accepting the hello, before the first snapshot. An executable's identity SHALL be the device and inode of the file the process was started from, taken when the process starts, so that replacing the file on disk, as a rebuild does, gives a new identity.
+
 A client SHALL build its grid by replacing it with a new empty grid of the snapshot's size on every snapshot, then feeding the snapshot's output into it, and by feeding each update's output into its current grid.
+
+#### Scenario: Info before snapshot
+- **WHEN** a client is accepted
+- **THEN** the first message it receives is info, carrying the server's process id
+- **AND** the second is a snapshot
+
+#### Scenario: Rebuilt executable has a new identity
+- **WHEN** a server is started from `target/debug/gband` and `cargo build` then replaces that file with a new build
+- **THEN** the identity the server reports differs from the identity a client started from the new file computes for itself
 
 #### Scenario: Snapshot then updates
 - **WHEN** a client applies a snapshot and then every update it receives
