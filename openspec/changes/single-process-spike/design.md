@@ -79,16 +79,56 @@ None. Nothing has been released.
 
 The spike fills this section. Each row names the check, what happened, the evidence, such as a captured screen or a log line, and the follow-up change it needs, or `none`.
 
+`tmux` is not installed on the machine that ran the spike, so a small Python driver stood in for it: it ran the spike in a PTY at 100×30, typed into it, resized it, and read the screen back through `pyte`. The spike ran with `GBAND_LOG=debug`. Log lines below come from `client.2026-10-04.log`. The visual rows, such as cursor shape, undercurl and colours, read the spike's rendered output through `pyte`, and still want the operator's confirmation in their own terminal. The pane's shell was the user's fish 4, which bash hands off to.
+
+Result values: `works`, `degraded` (usable, with a visible loss) and `fails`.
+
 ### nvim
+
+nvim 0.12.5, with the user's own configuration.
 
 | check | result | evidence | follow-up |
 |---|---|---|---|
+| startup time and any wait for query replies | works | `--startuptime` reports the first screen update at 167 ms, and nothing waits. Eight queries go unanswered: `\e]11;?`, `\e[?0u`, `\e[>0q`, `\e[0c` and DECRQM `\e[?2026$p`, `\e[?2027$p`, `\e[?2031$p`, `\e[?2048$p`. nvim therefore guesses the background colour and turns off synchronized output | `terminal-query-replies` |
+| `:checkhealth` | degraded | No terminal error. `vim.health` reports `Terminal: ghostty 1.3.1-4.fc44` and `$TERM_PROGRAM="ghostty"`, because the pane inherits the outer terminal's identity. The `vim.provider` warnings and the error concern missing language providers, not the terminal | `pane-environment` |
+| colours and truecolor | works | `&termguicolors` is `1` with `$COLORTERM=truecolor`, and cells carry 24-bit colours such as `fg=957fb8 bg=1f1f28` for a keyword | none |
+| insert-mode cursor position and shape | degraded | `3Gwi` puts the cursor at row 2, column 10, matching the status line's `3:5` behind a 6-column gutter. The shape is lost: `unhandled CSI \e[6 q` on entering insert, then `\e[2 q` and `\e[4 q` in other modes, and `unhandled OSC \e]112`. The outer cursor stays a block | `cursor-shape` |
+| Ctrl+`i` against Tab | degraded | Both arrive as `\x09`: `crossterm` reports `\x09` as Tab, and the encoder writes `\x09` for Ctrl+`i`, as the spec states. In insert mode, Ctrl+V then Tab inserts a literal tab, so nvim cannot bind `<C-i>` apart from `<Tab>` | `kitty-keyboard` |
+| Shift and Ctrl arrows | works | In insert mode, Ctrl+V followed by each key inserts `<S-Up> <C-Up> <S-Left> <C-Right> <M-Down>` | none |
+| undercurl on a diagnostic | degraded | An error diagnostic on `std` renders as a straight underline (`u=True`) with no colour. nvim emits plain `\e[4m` for it. The one `\e[4:3m` nvim sent, at startup, vt100 dropped whole (`unhandled CSI \e[4:3m`). vt100 parses neither `4:N` nor the `58` underline colour | `terminal-state-upgrade` |
+| mouse | fails | A click sent as `\e[<0;30;10M` leaves the cursor where it was. The spike enables no mouse capture on the outer terminal and drops `Event::Mouse`. nvim also enables focus events (`unhandled CSI \e[?1004h`), which the spike never sends | `mouse-and-focus-forwarding` |
+| yank to the system clipboard | works | `"+yy` puts `use std::io::{Read, Write};` on the Wayland clipboard, read back with `wl-paste`. `:checkhealth` reports `Clipboard tool found: wl-copy`, so nvim never touches the terminal for this. OSC 52 would be needed only where no clipboard tool exists, such as over SSH | none |
+| a paste of 1000 lines | works | A bracketed paste of 1000 lines into an empty buffer gives `line('$')` of 1001, the first and last lines intact and no auto-indent | none |
+| a resize | works | Resizing to 70×20 and back to 100×30 redraws the status line to each width, with the cursor kept on line 1001 | none |
 
 ### Claude Code
 
+Claude Code v2.1.289, in its vim input mode, running in the scratchpad directory.
+
 | check | result | evidence | follow-up |
 |---|---|---|---|
+| startup and first render | works | The trust dialog draws about 0.34 s after `claude` is typed, and the banner and prompt follow. It queries `\e[?0u`, `\e[>0q`, `\e[0c` and `\e]11;?`, gets no reply, and does not wait. It also sets kitty keyboard flags (`\e[>5u`), modifyOtherKeys (`\e[>4;2m`) and synchronized output (`\e[?2026h`), all unhandled | `terminal-query-replies` |
+| typing and Enter | works | `Reply with only the word PONG` and Enter sends the prompt, and `● PONG` comes back | none |
+| Shift+Enter for a newline | fails | Under the legacy encoding a terminal sends Shift+Enter as `\r`, and the encoder writes `\r` for it too, so the prompt is sent instead of breaking the line. Ctrl+`j` (`\x0a`) does insert a newline | `kitty-keyboard` |
+| Escape to interrupt | works | During `Bootstrapping… (8s · thinking with xhigh effort)`, the first Escape leaves vim INSERT mode and the second cancels the request, putting the prompt back into the input. A lone `\x1b` is delivered without delay | none |
+| Ctrl+C | works | Ctrl+C clears a typed input, and two in a row exit to the shell | none |
+| arrow-key history | works | Up recalls the last submitted prompt. Further Up presses do not reach older prompts in this nested session, whose banner warns that transcript saving is off. The bytes are the same `\e[A` that worked the first time, so this is not an encoding problem | none |
+| a large paste | works | A bracketed paste of 1000 lines shows as `[Pasted text #1 +1000 lines]` | none |
+| colours | works | Truecolor reaches the screen, such as `fg=ffc107` on the warning line, and the logo and status line keep their colours | none |
+| long scrolling output | degraded | Printing 1 to 400 scrolls smoothly and the screen ends on `396` to `400`. The rest is gone: the spike's parser keeps no scrollback, and Claude Code prints its transcript into the normal screen, so it relies on the terminal for scrollback | `scrollback` |
+| a resize | works | At 70×20 the transcript and the input box reflow to the new width, and they reflow again at 100×30 | none |
+| the notification or bell when it waits | fails | About 60 s after a reply, Claude Code sends `unhandled OSC \e]777;notify;Claude Code;Claude is waiting for your input`. It chose OSC 777 because the inherited `TERM_PROGRAM` says ghostty. The spike shows nothing. A bell from the shell reaches vt100's callback (`bell` in the log), but nothing forwards it either | `notifications` |
+| exit | works | `/exit` and two Ctrl+C presses each return to the shell prompt. On the way out Claude Code pops its keyboard flags (`\e[<0u`) and turns off focus events (`\e[?1004l`) | none |
+
+The shell shows two more findings. fish 4 sends Primary Device Attributes (`\e[0c`), gets no reply, and blocks for 10 s at every start before printing `fish could not read response to Primary Device Attribute query after waiting for 10 seconds`. This is the slowest start in the spike, so `terminal-query-replies` should come first. The log also records `\e(B` hundreds of times per nvim redraw. That sequence selects the ASCII character set, which is already in use, so it is harmless, but it buries the useful lines.
 
 ### Follow-up changes
 
-Each follow-up change named above, with one line on its scope.
+- `terminal-query-replies`: answer DA1, DSR (`\e[5n`, `\e[6n`), XTVERSION, the kitty keyboard query, DECRQM for the modes gband supports, OSC 10 and 11 colour queries and XTGETTCAP from the pane's state, so fish starts without its 10 s wait and nvim and Claude Code detect features instead of guessing.
+- `pane-environment`: set `TERM_PROGRAM` and `TERM_PROGRAM_VERSION` to gband's own values in every pane, and remove outer-terminal identity variables, so programs stop sending sequences meant for the outer terminal.
+- `cursor-shape`: track DECSCUSR and OSC 12 and 112 per pane, and apply them to the outer terminal's real cursor for the focused pane.
+- `kitty-keyboard`: run the kitty keyboard protocol on the outer terminal and toward each pane according to the flags the program pushed, restoring Shift+Enter and Ctrl+`i` against Tab. The legacy encoder stays the fallback.
+- `mouse-and-focus-forwarding`: enable mouse capture on the outer terminal, encode mouse events for the pane under the pointer in the mode it requested (vt100 already tracks it), and send focus in and out to panes that enable mode 1004.
+- `terminal-state-upgrade`: decide between patching vt100 and moving to `alacritty_terminal`, for SGR `4:N` underline styles and the `58` and `59` underline colours, synchronized output (mode 2026) and OSC 8 hyperlinks. These are the gaps the spike hit that vt100 has no hook for.
+- `scrollback`: keep scrollback per pane and add a way to scroll it, so the start of long output in the normal screen can still be read.
+- `notifications`: turn BEL and OSC 9 and 777 notifications from a pane into a desktop notification through `notify-rust`, and mark the pane that raised it.
