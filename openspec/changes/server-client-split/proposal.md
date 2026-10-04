@@ -53,11 +53,13 @@ The spike showed that `portable-pty`, `vt100`, `tui-term`, `ratatui` and `crosst
 - Cargo.lock
 - src/main.rs
 - src/lib.rs
+- src/logging.rs
 - src/paths.rs
 - src/executable.rs
 - crates/core/src/input.rs
 - crates/protocol/src/
 - crates/protocol/tests/
+- crates/server/Cargo.toml
 - crates/server/src/
 - crates/server/tests/
 - crates/client/Cargo.toml
@@ -65,6 +67,7 @@ The spike showed that `portable-pty`, `vt100`, `tui-term`, `ratatui` and `crosst
 - crates/client/tests/
 - tests/subcommands.rs
 - tests/attach.rs
+- tests/common/mod.rs
 - tests/kill_server.rs
 - examples/spike.rs
 - openspec/changes/server-client-split/
