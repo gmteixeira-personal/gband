@@ -69,7 +69,7 @@ pub fn init(role: Role) -> Result<WorkerGuard> {
     Ok(guard)
 }
 
-fn log_directory() -> Result<PathBuf> {
+pub fn log_directory() -> Result<PathBuf> {
     let dirs = ProjectDirs::from("", "", "gband")
         .ok_or_else(|| anyhow!("cannot determine the home directory"))?;
     let base = dirs.state_dir().unwrap_or_else(|| dirs.data_local_dir());

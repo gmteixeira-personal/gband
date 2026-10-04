@@ -13,12 +13,27 @@ fn state_home(name: &str) -> PathBuf {
         fs::remove_dir_all(&path).unwrap();
     }
     fs::create_dir_all(&path).unwrap();
+    let runtime = runtime_home(&path);
+    if runtime.exists() {
+        fs::set_permissions(runtime.join("gband"), fs::Permissions::from_mode(0o700)).ok();
+        fs::remove_dir_all(&runtime).unwrap();
+    }
     path
+}
+
+fn runtime_home(state: &Path) -> PathBuf {
+    let name = state.file_name().unwrap().to_str().unwrap();
+    std::env::temp_dir().join(format!("gband-subcommands-{name}"))
 }
 
 fn gband(state: &Path, filter: Option<&str>, args: &[&str]) -> Output {
     let mut command = Command::new(env!("CARGO_BIN_EXE_gband"));
-    command.args(args).env("XDG_STATE_HOME", state);
+    command
+        .args(args)
+        .env("XDG_STATE_HOME", state)
+        .env("XDG_RUNTIME_DIR", runtime_home(state))
+        .env("SHELL", "/bin/true")
+        .env_remove("GBAND");
     match filter {
         Some(value) => command.env("GBAND_LOG", value),
         None => command.env_remove("GBAND_LOG"),
@@ -75,20 +90,69 @@ fn assert_silent_success(output: &Output) {
     assert!(output.stderr.is_empty(), "stderr: {:?}", output.stderr);
 }
 
+fn assert_one_line_failure(output: &Output) -> String {
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stdout.is_empty(), "stdout: {:?}", output.stdout);
+    let stderr = String::from_utf8(output.stderr.clone()).unwrap();
+    assert_eq!(stderr.lines().count(), 1, "stderr: {stderr:?}");
+    stderr
+}
+
 #[test]
-fn server_stub_logs_its_start() {
-    let state = state_home("server_stub");
+fn server_logs_its_start() {
+    let state = state_home("server_start");
     let output = gband(&state, None, &["server"]);
     assert_silent_success(&output);
     assert!(log_text(&state, "server").contains("server started"));
 }
 
 #[test]
-fn attach_stub_logs_its_start() {
-    let state = state_home("attach_stub");
+fn attach_without_a_terminal_is_refused() {
+    let state = state_home("attach_no_terminal");
     let output = gband(&state, None, &["attach"]);
-    assert_silent_success(&output);
+    let stderr = assert_one_line_failure(&output);
+    assert!(stderr.contains("needs a terminal"), "{stderr}");
     assert!(log_text(&state, "client").contains("client started"));
+    assert!(!runtime_home(&state).exists());
+}
+
+#[test]
+fn attach_inside_a_pane_is_refused() {
+    let state = state_home("attach_nested");
+    let output = Command::new(env!("CARGO_BIN_EXE_gband"))
+        .arg("attach")
+        .env("XDG_STATE_HOME", &state)
+        .env("XDG_RUNTIME_DIR", runtime_home(&state))
+        .env("GBAND", "/somewhere/default.sock")
+        .output()
+        .unwrap();
+    let stderr = assert_one_line_failure(&output);
+    assert!(stderr.contains("inside a gband pane"), "{stderr}");
+}
+
+#[test]
+fn kill_server_without_a_server_logs_to_the_client_series() {
+    let state = state_home("kill_no_server");
+    let output = gband(&state, None, &["kill-server"]);
+    let stderr = assert_one_line_failure(&output);
+    let socket = runtime_home(&state).join("gband").join("default.sock");
+    assert!(stderr.contains(socket.to_str().unwrap()), "{stderr}");
+    assert!(log_text(&state, "client").contains("client started"));
+    assert!(log_files(&state, "server").is_empty());
+    assert!(!runtime_home(&state).exists());
+}
+
+#[test]
+fn server_refuses_a_runtime_directory_open_to_others() {
+    let state = state_home("open_runtime_dir");
+    let runtime_dir = runtime_home(&state).join("gband");
+    fs::create_dir_all(&runtime_dir).unwrap();
+    fs::set_permissions(&runtime_dir, fs::Permissions::from_mode(0o777)).unwrap();
+    let output = gband(&state, None, &["server"]);
+    let stderr = assert_one_line_failure(&output);
+    assert!(stderr.contains(runtime_dir.to_str().unwrap()), "{stderr}");
+    assert!(stderr.contains("0777"), "{stderr}");
+    assert!(!runtime_dir.join("default.lock").exists());
 }
 
 #[test]
@@ -97,8 +161,14 @@ fn help_lists_subcommands() {
     let output = gband(&state, None, &["--help"]);
     assert_eq!(output.status.code(), Some(0));
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("server"));
-    assert!(stdout.contains("attach"));
+    let commands: Vec<&str> = stdout
+        .lines()
+        .skip_while(|line| *line != "Commands:")
+        .skip(1)
+        .take_while(|line| !line.is_empty())
+        .filter_map(|line| line.split_whitespace().next())
+        .collect();
+    assert_eq!(commands, ["server", "attach", "kill-server"]);
 }
 
 #[test]
@@ -163,7 +233,7 @@ fn log_file_is_named_by_role_and_date() {
 fn missing_directory_is_created() {
     let state = state_home("missing_directory");
     assert!(!log_dir(&state).exists());
-    assert_silent_success(&gband(&state, None, &["attach"]));
+    assert_one_line_failure(&gband(&state, None, &["attach"]));
     assert!(log_dir(&state).is_dir());
     assert_eq!(log_files(&state, "client").len(), 1);
 }

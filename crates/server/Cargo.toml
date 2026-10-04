@@ -13,5 +13,10 @@ tokio.workspace = true
 mlua.workspace = true
 rustix.workspace = true
 notify.workspace = true
+serde.workspace = true
+anyhow.workspace = true
 tracing.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+tracing-subscriber.workspace = true

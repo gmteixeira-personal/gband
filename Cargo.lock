@@ -894,17 +894,16 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
- "crossterm",
  "directories",
  "gband-client",
- "gband-core",
+ "gband-protocol",
  "gband-server",
  "portable-pty",
- "ratatui",
+ "rustix",
+ "tokio",
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
- "tui-term",
  "vt100",
 ]
 
@@ -912,12 +911,16 @@ dependencies = [
 name = "gband-client"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "crossterm",
  "gband-core",
  "gband-protocol",
+ "gband-server",
  "mlua",
  "notify-rust",
  "ratatui",
+ "rustix",
+ "serde",
  "thiserror 2.0.21",
  "tokio",
  "tracing",
@@ -948,15 +951,18 @@ dependencies = [
 name = "gband-server"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "gband-core",
  "gband-protocol",
  "mlua",
  "notify",
  "portable-pty",
  "rustix",
+ "serde",
  "thiserror 2.0.21",
  "tokio",
  "tracing",
+ "tracing-subscriber",
  "vt100",
 ]
 

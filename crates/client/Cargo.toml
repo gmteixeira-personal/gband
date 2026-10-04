@@ -12,7 +12,13 @@ crossterm.workspace = true
 tui-term.workspace = true
 vt100.workspace = true
 tokio.workspace = true
+rustix.workspace = true
+anyhow.workspace = true
+serde.workspace = true
 mlua.workspace = true
 notify-rust.workspace = true
 tracing.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+gband-server.workspace = true
