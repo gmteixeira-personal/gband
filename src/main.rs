@@ -8,7 +8,7 @@ use clap::{Args, CommandFactory, Parser, Subcommand};
 use gband::executable;
 use gband::logging::{self, Role};
 use gband::paths::{self, ServerName};
-use gband_client::{ClientConfig, Outcome};
+use gband_client::{ClientConfig, Outcome, UnixTransport};
 use gband_protocol::SessionName;
 use gband_server::{SUN_PATH_MAX, ServerConfig};
 
@@ -193,22 +193,26 @@ fn server(socket: PathBuf, session: SessionName, runtime_dir: &Path) -> Result<E
     Ok(ExitCode::SUCCESS)
 }
 
-fn client_config(
+fn client(
     socket: PathBuf,
     session: SessionName,
     selection: &Selection,
     attaching: bool,
-) -> Result<ClientConfig> {
-    Ok(ClientConfig {
+) -> Result<(ClientConfig, UnixTransport)> {
+    let transport = UnixTransport {
         socket,
-        session,
-        start_server: attaching,
         executable_path: std::env::current_exe().context("cannot locate the gband executable")?,
+        session: session.clone(),
+        start_server: attaching,
+        log_dir: logging::log_directory()?,
+    };
+    let config = ClientConfig {
+        session,
         identity: executable::identity().context("cannot identify the gband executable")?,
         replace_mismatched: attaching && cfg!(debug_assertions),
-        log_dir: logging::log_directory()?,
         kill_command: selection.kill_command(),
-    })
+    };
+    Ok((config, transport))
 }
 
 fn attach(socket: PathBuf, session: SessionName, selection: &Selection) -> Result<ExitCode> {
@@ -222,9 +226,9 @@ fn attach(socket: PathBuf, session: SessionName, selection: &Selection) -> Resul
     if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
         bail!("gband attach needs a terminal on standard input and standard output");
     }
-    let config = client_config(socket, session, selection, true)?;
+    let (config, transport) = client(socket, session, selection, true)?;
     let kill_command = config.kill_command.clone();
-    let report = gband_client::run(config)?;
+    let report = gband_client::run(config, transport)?;
     let (line, status) = match report.outcome {
         Outcome::Detached => ("[detached]", ExitCode::SUCCESS),
         Outcome::Exited => ("[exited]", ExitCode::SUCCESS),
@@ -241,9 +245,9 @@ fn attach(socket: PathBuf, session: SessionName, selection: &Selection) -> Resul
 }
 
 fn list_sessions(socket: PathBuf, selection: &Selection) -> Result<ExitCode> {
-    let config = client_config(socket, SessionName::default(), selection, false)?;
+    let (config, transport) = client(socket, SessionName::default(), selection, false)?;
     let mut listing = String::new();
-    for session in gband_client::list_sessions(&config)? {
+    for session in gband_client::list_sessions(&config, &transport)? {
         listing.push_str(&format!(
             "{}\t{}\t{}\n",
             session.name, session.panes, session.clients
@@ -254,8 +258,8 @@ fn list_sessions(socket: PathBuf, selection: &Selection) -> Result<ExitCode> {
 }
 
 fn kill_session(socket: PathBuf, session: SessionName, selection: &Selection) -> Result<ExitCode> {
-    let config = client_config(socket, session, selection, false)?;
-    gband_client::kill_session(&config)?;
+    let (config, transport) = client(socket, session, selection, false)?;
+    gband_client::kill_session(&config, &transport)?;
     Ok(ExitCode::SUCCESS)
 }
 

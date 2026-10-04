@@ -1,3 +1,4 @@
+use gband_core::action::SessionCommand;
 use gband_core::geometry::Size;
 use gband_core::layout::{Direction, Layout, PaneId, SessionAction};
 use gband_core::view::{Scene, View, ViewAction};
@@ -15,7 +16,7 @@ fn scene(layout: &Layout) -> Scene<'_> {
 fn open(layout: &mut Layout, workspace: usize, after: Option<PaneId>) -> PaneId {
     let pane = layout.allocate_pane();
     let id = layout.workspaces()[workspace].id;
-    assert!(layout.open(pane, id, after));
+    assert!(!layout.open(pane, id, after).is_empty());
     pane
 }
 
@@ -314,4 +315,80 @@ fn each_workspace_keeps_its_camera() {
     act(&mut view, &layout, &[ViewAction::WorkspaceUp]);
     assert_eq!(view.camera(), 40);
     assert_eq!(view.focused(), Some(last));
+}
+
+#[test]
+fn session_commands_resolve_to_the_focused_pane() {
+    let (layout, panes) = row_of_columns(3);
+    let mut view = View::new(scene(&layout));
+    act(
+        &mut view,
+        &layout,
+        &[ViewAction::FocusRight, ViewAction::FocusRight],
+    );
+    assert_eq!(view.focused(), Some(panes[2]));
+    let workspace = layout.workspaces()[0].id;
+    let cases = [
+        (
+            SessionCommand::CycleWidth,
+            SessionAction::CycleWidth(panes[2]),
+        ),
+        (
+            SessionCommand::ToggleFullWidth,
+            SessionAction::ToggleFullWidth(panes[2]),
+        ),
+        (
+            SessionCommand::ClosePane,
+            SessionAction::ClosePane(panes[2]),
+        ),
+        (
+            SessionCommand::ConsumeOrExpel(Direction::Left),
+            SessionAction::ConsumeOrExpel {
+                pane: panes[2],
+                direction: Direction::Left,
+            },
+        ),
+        (
+            SessionCommand::OpenPane,
+            SessionAction::OpenPane {
+                workspace,
+                after: Some(panes[2]),
+            },
+        ),
+    ];
+    for (command, expected) in cases {
+        assert_eq!(view.resolve(command), Some(expected), "{command:?}");
+    }
+}
+
+#[test]
+fn commands_on_a_pane_resolve_to_nothing_without_focus() {
+    let layout = Layout::new();
+    let view = View::new(scene(&layout));
+    assert_eq!(view.focused(), None);
+    for command in [
+        SessionCommand::ClosePane,
+        SessionCommand::ConsumeOrExpel(Direction::Left),
+        SessionCommand::ConsumeOrExpel(Direction::Right),
+        SessionCommand::CycleWidth,
+        SessionCommand::ToggleFullWidth,
+    ] {
+        assert_eq!(view.resolve(command), None, "{command:?}");
+    }
+}
+
+#[test]
+fn open_pane_on_the_empty_workspace_names_it_and_no_pane() {
+    let (layout, _) = row_of_columns(1);
+    let mut view = View::new(scene(&layout));
+    act(&mut view, &layout, &[ViewAction::WorkspaceDown]);
+    let empty = layout.workspaces()[1].id;
+    assert_eq!(view.workspace(), empty);
+    assert_eq!(
+        view.resolve(SessionCommand::OpenPane),
+        Some(SessionAction::OpenPane {
+            workspace: empty,
+            after: None,
+        })
+    );
 }

@@ -1,9 +1,12 @@
 use std::collections::HashMap;
 
-use crate::geometry::{Size, column_spans};
-use crate::layout::{Layout, Location, PaneId, Workspace, WorkspaceId};
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+use crate::action::SessionCommand;
+use crate::geometry::{Size, column_spans};
+use crate::layout::{Layout, Location, PaneId, SessionAction, Workspace, WorkspaceId};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ViewAction {
     FocusLeft,
     FocusRight,
@@ -66,6 +69,23 @@ impl View {
         self.workspaces
             .get(&self.workspace)
             .map_or(0, |state| state.camera)
+    }
+
+    pub fn resolve(&self, command: SessionCommand) -> Option<SessionAction> {
+        let focused = self.focused();
+        Some(match command {
+            SessionCommand::OpenPane => SessionAction::OpenPane {
+                workspace: self.workspace,
+                after: focused,
+            },
+            SessionCommand::ClosePane => SessionAction::ClosePane(focused?),
+            SessionCommand::ConsumeOrExpel(direction) => SessionAction::ConsumeOrExpel {
+                pane: focused?,
+                direction,
+            },
+            SessionCommand::CycleWidth => SessionAction::CycleWidth(focused?),
+            SessionCommand::ToggleFullWidth => SessionAction::ToggleFullWidth(focused?),
+        })
     }
 
     pub fn apply(&mut self, action: ViewAction, scene: Scene<'_>) {

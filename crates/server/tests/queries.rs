@@ -1,8 +1,6 @@
-mod common;
-
 use std::fs;
 
-use common::*;
+use gband_test_support::*;
 
 async fn program_reads(name: &str, output: &str, expected: &str) {
     let runtime_dir = runtime_dir(name);

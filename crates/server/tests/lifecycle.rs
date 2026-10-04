@@ -1,10 +1,8 @@
-mod common;
-
 use std::fs;
 use std::os::unix::net::UnixListener;
 use std::time::Duration;
 
-use common::*;
+use gband_test_support::*;
 use std::os::unix::fs::PermissionsExt;
 
 use gband_protocol::{ClientMessage, ServerMessage, lock_path, socket_path};
@@ -101,8 +99,11 @@ async fn output_without_a_client_is_drained() {
     wait_for_file(&marker).await;
     let mut client = server.attach(80, 24).await;
     client.wait_for_text("last-line").await;
-    let rows: Vec<String> = client.screen().rows(0, 80).collect();
-    assert!(rows.iter().any(|row| row == "last-line"), "{rows:?}");
+    let contents = client.screen().contents();
+    assert!(
+        contents.lines().any(|line| line == "last-line"),
+        "{contents}"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -149,7 +150,7 @@ async fn detaching_leaves_the_program_running() {
     let mut staying = server.attach(80, 24).await;
     leaving.type_line("echo $$ > pid").await;
     leaving.send(&ClientMessage::Detach).await;
-    assert!(closes(&mut leaving.stream).await);
+    assert!(leaving.peer.closes().await);
     tokio::time::sleep(Duration::from_millis(200)).await;
     staying.type_line("echo still-here").await;
     staying.wait_for_text("still-here\n").await;

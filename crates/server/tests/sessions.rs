@@ -1,14 +1,11 @@
-mod common;
-
 use std::path::Path;
 use std::time::Duration;
 
-use common::*;
+use gband_test_support::*;
 
 use gband_core::geometry::Size;
 use gband_core::input::{Key, KeyCode};
 use gband_protocol::{ClientMessage, ServerMessage, encode};
-use tokio::io::AsyncWriteExt;
 
 const QUIET: Duration = Duration::from_millis(500);
 
@@ -59,23 +56,20 @@ async fn attach_creates_a_missing_session_in_the_client_directory() {
 #[tokio::test(flavor = "multi_thread")]
 async fn key_before_a_request_closes_the_connection() {
     let server = TestServer::start("key-first", &["/bin/sh"]).await;
-    let (mut stream, _, _) = TestClient::accepted(&server.socket(), 80, 24).await;
-    write_frame(
-        &mut stream,
-        &ClientMessage::Key {
-            pane: gband_core::layout::PaneId(1),
-            key: Key::plain(KeyCode::Enter),
-        },
-    )
+    let (mut peer, _) = TestClient::accepted(&server.socket(), 80, 24).await;
+    peer.send(&ClientMessage::Key {
+        pane: gband_core::layout::PaneId(1),
+        key: Key::plain(KeyCode::Enter),
+    })
     .await;
-    assert!(closes(&mut stream).await);
+    assert!(peer.closes().await);
     assert_eq!(server.listed().await, [entry("default", 1, 0)]);
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn invalid_session_name_closes_the_connection() {
     let server = TestServer::start("bad-name", &["/bin/sh"]).await;
-    let (mut stream, _, _) = TestClient::accepted(&server.socket(), 80, 24).await;
+    let (mut peer, _) = TestClient::accepted(&server.socket(), 80, 24).await;
     let valid = encode(&ClientMessage::KillSession {
         session: session("abc"),
     })
@@ -84,8 +78,8 @@ async fn invalid_session_name_closes_the_connection() {
         .iter()
         .map(|&byte| if byte == b'b' { b'/' } else { byte })
         .collect();
-    stream.write_all(&invalid).await.unwrap();
-    assert!(closes(&mut stream).await);
+    peer.send_bytes(&invalid).await;
+    assert!(peer.closes().await);
     assert_eq!(server.listed().await, [entry("default", 1, 0)]);
 }
 

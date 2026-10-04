@@ -2,6 +2,8 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
+use crate::event::LayoutEvent;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct PaneId(pub u32);
 
@@ -226,9 +228,14 @@ impl Layout {
         }
     }
 
-    pub fn open(&mut self, pane: PaneId, workspace: WorkspaceId, after: Option<PaneId>) -> bool {
+    pub fn open(
+        &mut self,
+        pane: PaneId,
+        workspace: WorkspaceId,
+        after: Option<PaneId>,
+    ) -> Vec<LayoutEvent> {
         if !self.can_open(workspace, after) || self.contains(pane) {
-            return false;
+            return Vec::new();
         }
         let target = self
             .workspaces
@@ -240,13 +247,14 @@ impl Layout {
             None => 0,
         };
         target.columns.insert(index, Column::new(pane));
-        self.normalize();
-        true
+        let mut events = vec![LayoutEvent::PaneOpened { pane, workspace }];
+        events.extend(self.normalize());
+        events
     }
 
-    pub fn remove(&mut self, pane: PaneId) -> bool {
+    pub fn remove(&mut self, pane: PaneId) -> Vec<LayoutEvent> {
         let Some(location) = self.locate(pane) else {
-            return false;
+            return Vec::new();
         };
         let workspace = &mut self.workspaces[location.workspace];
         let column = &mut workspace.columns[location.column];
@@ -254,13 +262,17 @@ impl Layout {
         if column.panes.is_empty() {
             workspace.columns.remove(location.column);
         }
-        self.normalize();
-        true
+        let mut events = vec![LayoutEvent::PaneClosed {
+            pane,
+            workspace: workspace.id,
+        }];
+        events.extend(self.normalize());
+        events
     }
 
-    pub fn apply(&mut self, action: SessionAction) -> bool {
+    pub fn apply(&mut self, action: SessionAction) -> Vec<LayoutEvent> {
         match action {
-            SessionAction::OpenPane { .. } | SessionAction::ClosePane(_) => false,
+            SessionAction::OpenPane { .. } | SessionAction::ClosePane(_) => Vec::new(),
             SessionAction::ConsumeOrExpel { pane, direction } => {
                 self.consume_or_expel(pane, direction)
             }
@@ -271,58 +283,89 @@ impl Layout {
         }
     }
 
-    fn with_column(&mut self, pane: PaneId, change: impl FnOnce(&mut Column)) -> bool {
+    fn with_column(&mut self, pane: PaneId, change: impl FnOnce(&mut Column)) -> Vec<LayoutEvent> {
         let Some(location) = self.locate(pane) else {
-            return false;
+            return Vec::new();
         };
-        change(&mut self.workspaces[location.workspace].columns[location.column]);
-        true
+        let workspace = &mut self.workspaces[location.workspace];
+        let column = &mut workspace.columns[location.column];
+        let before = (column.width, column.full_width);
+        change(column);
+        if (column.width, column.full_width) == before {
+            return Vec::new();
+        }
+        vec![LayoutEvent::ColumnWidthChanged {
+            workspace: workspace.id,
+            column: location.column,
+            width: column.width,
+            full_width: column.full_width,
+        }]
     }
 
-    fn consume_or_expel(&mut self, pane: PaneId, direction: Direction) -> bool {
+    fn consume_or_expel(&mut self, pane: PaneId, direction: Direction) -> Vec<LayoutEvent> {
         let Some(location) = self.locate(pane) else {
-            return false;
+            return Vec::new();
         };
         let workspace = &mut self.workspaces[location.workspace];
         let columns = &mut workspace.columns;
-        if columns[location.column].panes.len() > 1 {
+        let (column, row) = if columns[location.column].panes.len() > 1 {
             columns[location.column].panes.remove(location.row);
             let index = match direction {
                 Direction::Left => location.column,
                 Direction::Right => location.column + 1,
             };
             columns.insert(index, Column::new(pane));
-            return true;
-        }
-        let target = match direction {
-            Direction::Left => location.column.checked_sub(1),
-            Direction::Right => Some(location.column + 1).filter(|&index| index < columns.len()),
-        };
-        let Some(target) = target else {
-            return false;
-        };
-        columns.remove(location.column);
-        let target = if target > location.column {
-            target - 1
+            (index, 0)
         } else {
-            target
+            let target = match direction {
+                Direction::Left => location.column.checked_sub(1),
+                Direction::Right => {
+                    Some(location.column + 1).filter(|&index| index < columns.len())
+                }
+            };
+            let Some(target) = target else {
+                return Vec::new();
+            };
+            columns.remove(location.column);
+            let target = if target > location.column {
+                target - 1
+            } else {
+                target
+            };
+            columns[target].panes.push(pane);
+            (target, columns[target].panes.len() - 1)
         };
-        columns[target].panes.push(pane);
-        true
+        vec![LayoutEvent::PaneMoved {
+            pane,
+            workspace: workspace.id,
+            column,
+            row,
+        }]
     }
 
-    fn normalize(&mut self) {
+    fn normalize(&mut self) -> Vec<LayoutEvent> {
         let last = self.workspaces.len().saturating_sub(1);
+        let mut events = Vec::new();
         let mut index = 0;
         self.workspaces.retain(|workspace| {
             let keep = index == last || !workspace.is_empty();
             index += 1;
+            if !keep {
+                events.push(LayoutEvent::WorkspaceRemoved {
+                    workspace: workspace.id,
+                });
+            }
             keep
         });
         if self.workspaces.last().is_none_or(|last| !last.is_empty()) {
             let id = WorkspaceId(self.next_workspace);
             self.next_workspace += 1;
+            events.push(LayoutEvent::WorkspaceAdded {
+                workspace: id,
+                index: self.workspaces.len(),
+            });
             self.workspaces.push(Workspace::new(id));
         }
+        events
     }
 }

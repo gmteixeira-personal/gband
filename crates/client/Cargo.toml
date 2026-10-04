@@ -7,11 +7,11 @@ rust-version.workspace = true
 [dependencies]
 gband-core.workspace = true
 gband-protocol.workspace = true
+gband-emulator.workspace = true
 ratatui.workspace = true
 crossterm.workspace = true
 tui-term.workspace = true
-vt100.workspace = true
-tokio.workspace = true
+tokio = { workspace = true, features = ["full"] }
 rustix.workspace = true
 anyhow.workspace = true
 serde.workspace = true
@@ -22,3 +22,5 @@ thiserror.workspace = true
 
 [dev-dependencies]
 gband-server.workspace = true
+gband-test-support.workspace = true
+insta.workspace = true

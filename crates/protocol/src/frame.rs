@@ -29,6 +29,19 @@ pub fn encode<T: Serialize>(message: &T) -> Result<Vec<u8>, FrameError> {
     Ok(frame)
 }
 
+pub fn decode<T: DeserializeOwned>(payload: &[u8]) -> Result<T, FrameError> {
+    match postcard::take_from_bytes(payload).map_err(FrameError::Decode)? {
+        (message, []) => Ok(message),
+        (_, rest) => Err(FrameError::TrailingBytes(rest.len())),
+    }
+}
+
+pub fn leading_version(payload: &[u8]) -> Option<u32> {
+    postcard::take_from_bytes::<u32>(payload)
+        .ok()
+        .map(|(version, _)| version)
+}
+
 #[derive(Debug, Default)]
 pub struct Decoder {
     partial: Vec<u8>,
@@ -66,14 +79,14 @@ impl Decoder {
         }
     }
 
+    pub fn next_payload(&mut self) -> Option<Vec<u8>> {
+        self.payloads.pop_front()
+    }
+
     pub fn next_message<T: DeserializeOwned>(&mut self) -> Result<Option<T>, FrameError> {
-        let Some(payload) = self.payloads.pop_front() else {
-            return Ok(None);
-        };
-        match postcard::take_from_bytes(&payload).map_err(FrameError::Decode)? {
-            (message, []) => Ok(Some(message)),
-            (_, rest) => Err(FrameError::TrailingBytes(rest.len())),
-        }
+        self.next_payload()
+            .map(|payload| decode(&payload))
+            .transpose()
     }
 
     fn take<'a>(&mut self, chunk: &'a [u8], target: usize) -> &'a [u8] {

@@ -3,41 +3,37 @@ mod connect;
 pub mod input;
 pub mod render;
 mod requests;
+mod transport;
 
 use std::collections::HashMap;
 use std::io::stdout;
-use std::path::PathBuf;
 use std::thread;
 
 use anyhow::{Context, Result};
 use crossterm::cursor::Show;
 use crossterm::event::{self, DisableBracketedPaste, EnableBracketedPaste, Event};
 use crossterm::execute;
+use gband_core::action::{Action, ClientAction};
 use gband_core::geometry::Size;
 use gband_core::input::Key;
-use gband_core::layout::{Layout, PaneId, SessionAction};
+use gband_core::layout::{Layout, PaneId};
 use gband_core::view::{Scene, View, ViewAction};
+use gband_emulator::{Emulator, Grid};
 use gband_protocol::{ClientMessage, ExecutableId, ServerMessage, SessionName};
 use ratatui::DefaultTerminal;
-use tokio::io::AsyncReadExt;
 use tokio::sync::mpsc;
 
-use crate::bindings::{Binding, Command, Leader, PREFIX, SessionCommand};
+use crate::bindings::{Command, Leader};
 pub use crate::connect::{Connection, connect};
 use crate::input::key_from_event;
-use crate::render::{Ribbon, render};
+use crate::render::{Ribbon, draw_frame};
 pub use crate::requests::{kill_session, list_sessions};
-
-const READ_BUFFER_LEN: usize = 64 * 1024;
+pub use crate::transport::{Link, Transport, UnixTransport};
 
 pub struct ClientConfig {
-    pub socket: PathBuf,
     pub session: SessionName,
-    pub start_server: bool,
-    pub executable_path: PathBuf,
     pub identity: ExecutableId,
     pub replace_mismatched: bool,
-    pub log_dir: PathBuf,
     pub kill_command: String,
 }
 
@@ -61,10 +57,10 @@ fn runtime() -> Result<tokio::runtime::Runtime> {
         .context("cannot start the async runtime")
 }
 
-pub fn run(config: ClientConfig) -> Result<Report> {
+pub fn run(config: ClientConfig, transport: impl Transport) -> Result<Report> {
     let cwd = std::env::current_dir().context("cannot read the current directory")?;
     runtime()?.block_on(async {
-        let mut connection = connect(&config).await?;
+        let mut connection = connect(&config, &transport).await?;
         connection
             .send(&ClientMessage::Attach {
                 session: config.session.clone(),
@@ -103,33 +99,33 @@ impl Drop for TerminalGuard {
     }
 }
 
-struct Display {
+pub struct Display {
     layout: Layout,
     area: Size,
     terminal: Size,
-    parsers: HashMap<PaneId, vt100::Parser>,
+    grids: HashMap<PaneId, Grid>,
     view: Option<View>,
 }
 
 impl Display {
-    fn new(terminal: Size) -> Self {
+    pub fn new(terminal: Size) -> Self {
         Self {
             layout: Layout::new(),
             area: terminal,
             terminal,
-            parsers: HashMap::new(),
+            grids: HashMap::new(),
             view: None,
         }
     }
 
-    fn focused(&self) -> Option<PaneId> {
+    pub fn focused(&self) -> Option<PaneId> {
         self.view.as_ref().and_then(View::focused)
     }
 
-    fn apply(&mut self, message: ServerMessage) -> Option<Outcome> {
+    pub fn apply(&mut self, message: ServerMessage) -> Option<Outcome> {
         match message {
             ServerMessage::Layout { cols, rows, layout } => {
-                self.parsers.retain(|&pane, _| layout.contains(pane));
+                self.grids.retain(|&pane, _| layout.contains(pane));
                 self.layout = layout;
                 self.area = Size::new(cols, rows);
                 self.sync();
@@ -140,12 +136,12 @@ impl Display {
                 rows,
                 contents,
             } => {
-                let mut parser = vt100::Parser::new(rows, cols, 0);
-                parser.process(&contents);
-                self.parsers.insert(pane, parser);
+                let mut grid = Grid::new(Size::new(cols, rows));
+                grid.process(&contents);
+                self.grids.insert(pane, grid);
             }
-            ServerMessage::Update { pane, contents } => match self.parsers.get_mut(&pane) {
-                Some(parser) => parser.process(&contents),
+            ServerMessage::Update { pane, contents } => match self.grids.get_mut(&pane) {
+                Some(grid) => grid.process(&contents),
                 None => tracing::warn!(pane = %pane, "ignoring an update for an unknown pane"),
             },
             ServerMessage::Focus(pane) => {
@@ -196,48 +192,38 @@ impl Display {
         }
     }
 
-    fn resolve(&self, command: SessionCommand) -> Option<SessionAction> {
-        let view = self.view.as_ref()?;
-        let focused = view.focused();
-        Some(match command {
-            SessionCommand::OpenPane => SessionAction::OpenPane {
-                workspace: view.workspace(),
-                after: focused,
-            },
-            SessionCommand::ClosePane => SessionAction::ClosePane(focused?),
-            SessionCommand::ConsumeOrExpel(direction) => SessionAction::ConsumeOrExpel {
-                pane: focused?,
-                direction,
-            },
-            SessionCommand::CycleWidth => SessionAction::CycleWidth(focused?),
-            SessionCommand::ToggleFullWidth => SessionAction::ToggleFullWidth(focused?),
-        })
-    }
-
     fn key_to_focused(&self, key: Key) -> Option<ClientMessage> {
         self.focused().map(|pane| ClientMessage::Key { pane, key })
     }
 }
 
-enum Step {
+pub enum Step {
     Send(ClientMessage),
     Detach,
     Nothing,
 }
 
-fn dispatch(display: &mut Display, leader: &mut Leader, key: Key) -> Step {
-    let message = match leader.handle(key) {
-        Command::Send(key) => display.key_to_focused(key),
-        Command::Discard => None,
-        Command::Run(Binding::Detach) => return Step::Detach,
-        Command::Run(Binding::SendPrefix) => display.key_to_focused(PREFIX),
-        Command::Run(Binding::View(action)) => {
+fn press(display: &mut Display, leader: &mut Leader, key: Key) -> Step {
+    match leader.handle(key) {
+        Command::Send(key) => dispatch(display, Action::Client(ClientAction::SendKey(key))),
+        Command::Run(action) => dispatch(display, action),
+        Command::Discard => Step::Nothing,
+    }
+}
+
+pub fn dispatch(display: &mut Display, action: Action) -> Step {
+    let message = match action {
+        Action::View(action) => {
             display.view_action(action);
             None
         }
-        Command::Run(Binding::Session(command)) => {
-            display.resolve(command).map(ClientMessage::Action)
-        }
+        Action::Session(command) => display
+            .view
+            .as_ref()
+            .and_then(|view| view.resolve(command))
+            .map(ClientMessage::Action),
+        Action::Client(ClientAction::Detach) => return Step::Detach,
+        Action::Client(ClientAction::SendKey(key)) => display.key_to_focused(key),
     };
     message.map_or(Step::Nothing, Step::Send)
 }
@@ -247,7 +233,6 @@ async fn attach(terminal: &mut DefaultTerminal, connection: &mut Connection) -> 
     let size = terminal.size()?;
     let mut display = Display::new(Size::new(size.width, size.height));
     let mut leader = Leader::default();
-    let mut buffer = vec![0; READ_BUFFER_LEN];
     loop {
         if let Some(outcome) = apply_messages(connection, &mut display)? {
             draw(terminal, &display)?;
@@ -255,14 +240,15 @@ async fn attach(terminal: &mut DefaultTerminal, connection: &mut Connection) -> 
         }
         draw(terminal, &display)?;
         tokio::select! {
-            read = connection.stream.read(&mut buffer) => match read {
-                Ok(0) | Err(_) => return Ok(Outcome::LostServer),
-                Ok(n) => connection.decoder.feed(&buffer[..n])?,
+            filled = connection.reader.fill() => match filled {
+                Ok(true) => {}
+                Ok(false) | Err(gband_protocol::IoError::Io(_)) => return Ok(Outcome::LostServer),
+                Err(error) => return Err(error.into()),
             },
             event = events.recv() => match event {
                 Some(Event::Key(key_event)) => {
                     let Some(key) = key_from_event(&key_event) else { continue };
-                    match dispatch(&mut display, &mut leader, key) {
+                    match press(&mut display, &mut leader, key) {
                         Step::Send(message) => connection.send(&message).await?,
                         Step::Detach => {
                             let _ = connection.send(&ClientMessage::Detach).await;
@@ -289,7 +275,7 @@ async fn attach(terminal: &mut DefaultTerminal, connection: &mut Connection) -> 
 }
 
 fn apply_messages(connection: &mut Connection, display: &mut Display) -> Result<Option<Outcome>> {
-    while let Some(message) = connection.decoder.next_message::<ServerMessage>()? {
+    while let Some(message) = connection.reader.try_recv::<ServerMessage>()? {
         if let Some(outcome) = display.apply(message) {
             return Ok(Some(outcome));
         }
@@ -318,11 +304,9 @@ fn draw(terminal: &mut DefaultTerminal, display: &Display) -> Result<()> {
             layout: &display.layout,
             area: display.area,
             view,
-            parsers: &display.parsers,
+            grids: &display.grids,
         };
-        if let Some(cursor) = render(&ribbon, frame.buffer_mut()) {
-            frame.set_cursor_position(cursor);
-        }
+        draw_frame(frame, &ribbon);
     })?;
     Ok(())
 }

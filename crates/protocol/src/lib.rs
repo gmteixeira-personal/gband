@@ -1,11 +1,13 @@
 mod frame;
+mod io;
 mod message;
 mod session;
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
-pub use frame::{Decoder, FrameError, HEADER_LEN, MAX_FRAME_LEN, encode};
+pub use frame::{Decoder, FrameError, HEADER_LEN, MAX_FRAME_LEN, decode, encode, leading_version};
+pub use io::{IoError, MessageReader, MessageWriter};
 pub use message::{
     ClientMessage, ExecutableId, Hello, HelloReply, PROTOCOL_VERSION, ServerMessage,
 };

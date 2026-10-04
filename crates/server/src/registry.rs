@@ -7,9 +7,10 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use anyhow::Result;
 use gband_core::geometry::Size;
 use gband_protocol::{SessionName, SessionSummary};
-use tokio::sync::{mpsc, oneshot, watch};
+use tokio::sync::{broadcast, mpsc, oneshot, watch};
 use tracing::Instrument;
 
+use crate::event::{Bus, Published};
 use crate::session::{self, Command, Session, SessionConfig, State};
 
 pub struct SessionHandle {
@@ -20,6 +21,7 @@ pub struct SessionHandle {
     pub changed: watch::Receiver<u64>,
     pub ended: watch::Receiver<bool>,
     pub clients: AtomicU32,
+    pub events: Bus,
 }
 
 impl SessionHandle {
@@ -59,6 +61,7 @@ pub struct Registry {
     program: Vec<OsString>,
     socket: PathBuf,
     requests: mpsc::UnboundedSender<Request>,
+    events: broadcast::Sender<Published>,
     next_id: u64,
 }
 
@@ -67,12 +70,14 @@ impl Registry {
         program: Vec<OsString>,
         socket: PathBuf,
         requests: mpsc::UnboundedSender<Request>,
+        events: broadcast::Sender<Published>,
     ) -> Self {
         Self {
             sessions: BTreeMap::new(),
             program,
             socket,
             requests,
+            events,
             next_id: 1,
         }
     }
@@ -99,6 +104,7 @@ impl Registry {
                     cwd,
                     socket: self.socket.clone(),
                     area,
+                    events: Bus::new(self.events.clone(), name.clone()),
                 },
                 exits_tx,
             )
@@ -113,6 +119,7 @@ impl Registry {
             changed: session.changed(),
             ended,
             clients: AtomicU32::new(0),
+            events: session.events(),
         });
         let requests = self.requests.clone();
         let ended_name = name.clone();

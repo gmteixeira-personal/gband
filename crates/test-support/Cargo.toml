@@ -1,0 +1,20 @@
+[package]
+name = "gband-test-support"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+gband-core.workspace = true
+gband-protocol.workspace = true
+gband-emulator.workspace = true
+gband-server.workspace = true
+gband-client.workspace = true
+anyhow.workspace = true
+ratatui.workspace = true
+serde.workspace = true
+tokio = { workspace = true, features = ["full"] }
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tui-term.workspace = true

@@ -32,13 +32,15 @@ fn killed_client_reattaches_to_the_same_screen_and_shell() {
     first.run("printf 'left here'");
     first.wait_for_text("left here");
     thread::sleep(Duration::from_millis(300));
-    let before = first.screen();
+    let (contents, cursor) = {
+        let before = first.screen();
+        (before.contents(), before.cursor())
+    };
     first.kill();
 
     let mut second = Attached::start(&env, 80, 24);
     second.wait_for("the same screen", |screen| {
-        screen.contents() == before.contents()
-            && screen.cursor_position() == before.cursor_position()
+        screen.contents() == contents && screen.cursor() == cursor
     });
     second.run("clear; echo pid=$$");
     second.wait_for("the shell pid", |screen| screen.contents().contains("pid="));

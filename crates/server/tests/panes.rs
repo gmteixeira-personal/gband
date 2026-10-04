@@ -1,13 +1,11 @@
-mod common;
-
 use std::fs;
 use std::time::Duration;
 
-use common::*;
 use gband_core::geometry::Size;
 use gband_core::input::{Key, KeyCode};
 use gband_core::layout::{PaneId, SessionAction};
 use gband_protocol::ClientMessage;
+use gband_test_support::*;
 use tokio::time::Instant;
 
 async fn stty_size(client: &mut TestClient, pane: PaneId, expected: &str) {
@@ -22,7 +20,7 @@ async fn stty_size(client: &mut TestClient, pane: PaneId, expected: &str) {
         .await;
 }
 
-fn pane_number(screen: &vt100::Screen) -> Option<u32> {
+fn pane_number(screen: &Grid) -> Option<u32> {
     screen
         .contents()
         .lines()
@@ -57,7 +55,7 @@ async fn opening_a_pane_reaches_every_client_and_focuses_the_requester() {
     let opened = requester.open_after(first).await;
     assert_eq!(requester.panes(), vec![first, opened]);
     other
-        .wait_until(|client| client.panes().len() == 2 && client.parsers.len() == 2)
+        .wait_until(|client| client.panes().len() == 2 && client.grids.len() == 2)
         .await;
     assert_eq!(other.panes(), vec![first, opened]);
     assert!(other.pump(Duration::from_millis(200)).await);
@@ -139,17 +137,19 @@ async fn latest_client_sets_the_area() {
 
     let mut second = server.attach(100, 30).await;
     assert_eq!(second.area, Size::new(100, 30));
-    assert_eq!(second.screen().size(), (28, 48));
+    assert_eq!(second.screen().size(), Size::new(48, 28));
     stty_size(&mut second, pane, "28 48").await;
 
     first
         .send(&ClientMessage::Resize { cols: 90, rows: 25 })
         .await;
-    first.wait_for(|screen| screen.size() == (23, 43)).await;
+    first
+        .wait_for(|screen| screen.size() == Size::new(43, 23))
+        .await;
     stty_size(&mut first, pane, "23 43").await;
 
     second.send(&ClientMessage::Detach).await;
-    assert!(closes(&mut second.stream).await);
+    assert!(second.peer.closes().await);
     tokio::time::sleep(Duration::from_millis(100)).await;
     stty_size(&mut first, pane, "23 43").await;
     assert_eq!(first.area, Size::new(90, 25));
@@ -171,13 +171,15 @@ async fn opening_a_pane_keeps_other_sizes_and_width_changes_resize() {
         .await;
     let second = client.open_after(first).await;
     client
-        .wait_for_pane(second, |screen| screen.size() == (28, 43))
+        .wait_for_pane(second, |screen| screen.size() == Size::new(43, 28))
         .await;
     stty_size(&mut client, first, "28 43").await;
     assert!(!record.exists());
 
     client.act(SessionAction::CycleWidth(first)).await;
-    client.wait_for(|screen| screen.size() == (28, 58)).await;
+    client
+        .wait_for(|screen| screen.size() == Size::new(58, 28))
+        .await;
     stty_size(&mut client, first, "28 58").await;
     wait_for_file(&record).await;
 }
@@ -192,7 +194,7 @@ async fn closing_a_shell_removes_its_pane() {
     client
         .wait_until(|client| client.panes() == vec![first])
         .await;
-    assert!(!client.parsers.contains_key(&second));
+    assert!(!client.grids.contains_key(&second));
     assert!(!server.handle.is_finished());
 }
 
@@ -253,7 +255,9 @@ async fn stacked_panes_share_the_height() {
             direction: gband_core::layout::Direction::Left,
         })
         .await;
-    client.wait_for(|screen| screen.size() == (11, 38)).await;
+    client
+        .wait_for(|screen| screen.size() == Size::new(38, 11))
+        .await;
     stty_size(&mut client, first, "11 38").await;
     stty_size(&mut client, second, "10 38").await;
 }

@@ -1,0 +1,39 @@
+---
+source: crates/client/tests/render.rs
+assertion_line: 131
+expression: "fixture.render(Size::new(40, 6))"
+---
+Buffer {
+    area: Rect { x: 0, y: 0, width: 40, height: 6 },
+    content: [
+        "┌──────────────────┐                    ",
+        "│                  │                    ",
+        "│                  │                    ",
+        "│                  │                    ",
+        "│                  │                    ",
+        "└──────────────────┘                    ",
+    ],
+    styles: [
+        x: 0, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 20, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 0, y: 1, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 1, y: 1, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 19, y: 1, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 20, y: 1, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 0, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 1, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 19, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 20, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 0, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 1, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 19, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 20, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 0, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 1, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 19, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 20, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 0, y: 5, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 20, y: 5, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+    ]
+}
+cursor: Some(Position { x: 1, y: 1 })
