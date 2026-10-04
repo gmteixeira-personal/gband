@@ -56,12 +56,16 @@ None.
 - crates/protocol/src/lib.rs
 - crates/server/src/lib.rs
 - crates/server/src/lock.rs
-- crates/server/tests/
+- crates/server/src/pane.rs
+- crates/server/src/session.rs
+- crates/server/tests/common/mod.rs
+- crates/server/tests/lifecycle.rs
 - crates/client/src/lib.rs
 - crates/client/src/connect.rs
 - crates/client/tests/connect.rs
 - tests/common/mod.rs
 - tests/subcommands.rs
 - tests/attach.rs
+- tests/kill_server.rs
 - tests/servers.rs
 - openspec/changes/server-selection/
