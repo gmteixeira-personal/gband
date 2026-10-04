@@ -1,10 +1,17 @@
-[package]
-name = "gband"
+[workspace]
+members = ["crates/*"]
+resolver = "3"
+
+[workspace.package]
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.89"
 
-[dependencies]
+[workspace.dependencies]
+gband-core = { path = "crates/core" }
+gband-protocol = { path = "crates/protocol" }
+gband-server = { path = "crates/server" }
+gband-client = { path = "crates/client" }
 anyhow = "1.0.104"
 clap = { version = "4.6.7", features = ["derive"] }
 crossterm = "0.29.0"
@@ -22,6 +29,22 @@ thiserror = "2.0.21"
 tokio = { version = "1.53.2", features = ["full"] }
 tracing = "0.1.44"
 tracing-appender = "0.2.5"
-tracing-subscriber = "0.3.23"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 tui-term = "0.3.4"
 vt100 = "0.16.2"
+
+[package]
+name = "gband"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+gband-server.workspace = true
+gband-client.workspace = true
+clap.workspace = true
+directories.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tracing-appender.workspace = true
+anyhow.workspace = true
