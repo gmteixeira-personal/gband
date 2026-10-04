@@ -10,6 +10,7 @@ use anyhow::{Context, Result};
 use gband_core::geometry::Size;
 use gband_core::input::{Key, Modes, encode_key, encode_paste};
 use gband_core::layout::PaneId;
+use gband_protocol::SessionName;
 use portable_pty::{
     ChildKiller, CommandBuilder, ExitStatus, MasterPty, PtySize, native_pty_system,
 };
@@ -61,6 +62,7 @@ pub struct SpawnRequest<'a> {
     pub program: &'a [OsString],
     pub cwd: &'a Path,
     pub socket: &'a Path,
+    pub session: &'a SessionName,
     pub size: Size,
 }
 
@@ -141,6 +143,7 @@ pub fn spawn(
         program,
         cwd,
         socket,
+        session,
         size,
     } = request;
     let pair = native_pty_system()
@@ -151,6 +154,7 @@ pub fn spawn(
     command.env("TERM", "xterm-256color");
     command.env("COLORTERM", "truecolor");
     command.env("GBAND", socket);
+    command.env("GBAND_SESSION", session.as_str());
     command.env("GBAND_PANE", id.to_string());
     command.cwd(cwd);
     let mut child = pair

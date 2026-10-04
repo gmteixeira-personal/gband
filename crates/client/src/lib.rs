@@ -2,6 +2,7 @@ pub mod bindings;
 mod connect;
 pub mod input;
 pub mod render;
+mod requests;
 
 use std::collections::HashMap;
 use std::io::stdout;
@@ -16,7 +17,7 @@ use gband_core::geometry::Size;
 use gband_core::input::Key;
 use gband_core::layout::{Layout, PaneId, SessionAction};
 use gband_core::view::{Scene, View, ViewAction};
-use gband_protocol::{ClientMessage, ExecutableId, ServerMessage};
+use gband_protocol::{ClientMessage, ExecutableId, ServerMessage, SessionName};
 use ratatui::DefaultTerminal;
 use tokio::io::AsyncReadExt;
 use tokio::sync::mpsc;
@@ -25,11 +26,14 @@ use crate::bindings::{Binding, Command, Leader, PREFIX, SessionCommand};
 pub use crate::connect::{Connection, connect};
 use crate::input::key_from_event;
 use crate::render::{Ribbon, render};
+pub use crate::requests::{kill_session, list_sessions};
 
 const READ_BUFFER_LEN: usize = 64 * 1024;
 
 pub struct ClientConfig {
     pub socket: PathBuf,
+    pub session: SessionName,
+    pub start_server: bool,
     pub executable_path: PathBuf,
     pub identity: ExecutableId,
     pub replace_mismatched: bool,
@@ -50,14 +54,24 @@ pub struct Report {
     pub stale_server: bool,
 }
 
-pub fn run(config: ClientConfig) -> Result<Report> {
-    let runtime = tokio::runtime::Builder::new_current_thread()
+fn runtime() -> Result<tokio::runtime::Runtime> {
+    tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
-        .context("cannot start the async runtime")?;
-    runtime.block_on(async {
+        .context("cannot start the async runtime")
+}
+
+pub fn run(config: ClientConfig) -> Result<Report> {
+    let cwd = std::env::current_dir().context("cannot read the current directory")?;
+    runtime()?.block_on(async {
         let mut connection = connect(&config).await?;
-        tracing::info!(pid = connection.pid, "attached");
+        connection
+            .send(&ClientMessage::Attach {
+                session: config.session.clone(),
+                cwd,
+            })
+            .await?;
+        tracing::info!(pid = connection.pid, session = %config.session, "attached");
         let stale_server = connection.stale_server;
         let outcome = {
             let _restore = TerminalGuard::enter()?;
@@ -139,6 +153,9 @@ impl Display {
             }
             ServerMessage::Exited => return Some(Outcome::Exited),
             ServerMessage::Info { .. } => tracing::warn!("ignoring a repeated server info"),
+            ServerMessage::Sessions(_) | ServerMessage::Killed | ServerMessage::NoSuchSession => {
+                tracing::warn!("ignoring an answer to a request this client did not send");
+            }
         }
         None
     }

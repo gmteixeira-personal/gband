@@ -1,8 +1,12 @@
 use gband_core::input::Key;
 use gband_core::layout::{Layout, PaneId, SessionAction};
+use std::path::PathBuf;
+
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u32 = 2;
+use crate::session::{SessionName, SessionSummary};
+
+pub const PROTOCOL_VERSION: u32 = 3;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Hello {
@@ -19,6 +23,9 @@ pub enum HelloReply {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ClientMessage {
+    Attach { session: SessionName, cwd: PathBuf },
+    ListSessions,
+    KillSession { session: SessionName },
     Key { pane: PaneId, key: Key },
     Paste { pane: PaneId, text: String },
     Resize { cols: u16, rows: u16 },
@@ -49,6 +56,9 @@ pub enum ServerMessage {
     },
     Focus(PaneId),
     Exited,
+    Sessions(Vec<SessionSummary>),
+    Killed,
+    NoSuchSession,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]

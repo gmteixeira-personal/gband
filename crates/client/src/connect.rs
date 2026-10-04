@@ -11,7 +11,7 @@ use std::time::Duration;
 use anyhow::{Context, Result, bail};
 use gband_protocol::{
     ClientMessage, Decoder, ExecutableId, Hello, HelloReply, PROTOCOL_VERSION, ServerMessage,
-    encode, lock_path,
+    SessionName, encode, lock_path,
 };
 use rustix::process::Uid;
 use serde::Serialize;
@@ -38,6 +38,10 @@ pub struct Connection {
 impl Connection {
     pub async fn send(&mut self, message: &ClientMessage) -> Result<()> {
         write_frame(&mut self.stream, message).await
+    }
+
+    pub async fn receive(&mut self) -> Result<ServerMessage> {
+        read_frame(&mut self.stream, &mut self.decoder).await
     }
 }
 
@@ -120,13 +124,16 @@ async fn connect_or_start(config: &ClientConfig) -> Result<UnixStream> {
     let socket = &config.socket;
     match UnixStream::connect(socket).await {
         Ok(stream) => return owned_by_user(stream, socket),
-        Err(error) if is_absent(&error) => {}
+        Err(error) if is_absent(&error) && config.start_server => {}
+        Err(error) if is_absent(&error) => {
+            bail!("no server is running on {}", socket.display())
+        }
         Err(error) => {
             return Err(error).with_context(|| format!("cannot connect to {}", socket.display()));
         }
     }
     tracing::info!("no server on {}, starting one", socket.display());
-    let mut child = start_server(&config.executable_path, socket)?;
+    let mut child = start_server(&config.executable_path, socket, &config.session)?;
     let deadline = Instant::now() + START_TIMEOUT;
     let not_started = || {
         format!(
@@ -194,12 +201,18 @@ fn is_absent(error: &io::Error) -> bool {
     )
 }
 
-fn start_server(executable: &Path, socket: &Path) -> Result<std::process::Child> {
+fn start_server(
+    executable: &Path,
+    socket: &Path,
+    session: &SessionName,
+) -> Result<std::process::Child> {
     let mut command = Command::new(executable);
     command
         .arg("-p")
         .arg(socket)
         .arg("server")
+        .arg("-s")
+        .arg(session.as_str())
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
@@ -250,7 +263,7 @@ async fn read_frame<T: DeserializeOwned>(
             .await
             .context("cannot read from the server")?;
         if n == 0 {
-            bail!("the server closed the connection during the handshake");
+            bail!("the server closed the connection");
         }
         decoder.feed(&buffer[..n])?;
     }

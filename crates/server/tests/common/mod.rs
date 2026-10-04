@@ -13,7 +13,7 @@ use gband_core::input::{Key, KeyCode};
 use gband_core::layout::{Layout, PaneId, SessionAction};
 use gband_protocol::{
     ClientMessage, Decoder, ExecutableId, Hello, HelloReply, PROTOCOL_VERSION, ServerMessage,
-    encode, socket_path,
+    SessionName, SessionSummary, encode, socket_path,
 };
 use gband_server::ServerConfig;
 use serde::Serialize;
@@ -39,9 +39,14 @@ pub fn runtime_dir(name: &str) -> PathBuf {
     path
 }
 
+pub fn session(name: &str) -> SessionName {
+    name.parse().unwrap()
+}
+
 pub fn config(runtime_dir: &Path, program: &[&str]) -> ServerConfig {
     ServerConfig {
         socket: socket_path(runtime_dir),
+        session: SessionName::default(),
         program: program.iter().map(OsString::from).collect(),
         cwd: runtime_dir.to_path_buf(),
         executable: IDENTITY,
@@ -93,8 +98,52 @@ impl TestServer {
         TestClient::attach(&self.socket(), cols, rows).await
     }
 
+    pub async fn attach_to(&self, name: &str, cwd: &Path, cols: u16, rows: u16) -> TestClient {
+        TestClient::attach_to(&self.socket(), session(name), cwd, cols, rows).await
+    }
+
+    pub async fn list(&self) -> Vec<SessionSummary> {
+        let (mut stream, mut decoder, _) = TestClient::accepted(&self.socket(), 0, 0).await;
+        write_frame(&mut stream, &ClientMessage::ListSessions).await;
+        let reply = read_frame(&mut stream, &mut decoder).await;
+        let Some(ServerMessage::Sessions(sessions)) = reply else {
+            panic!("expected sessions, got {reply:?}");
+        };
+        assert!(closes(&mut stream).await);
+        sessions
+    }
+
+    pub async fn listed(&self) -> Vec<(String, u32, u32)> {
+        self.list()
+            .await
+            .into_iter()
+            .map(|summary| (summary.name.to_string(), summary.panes, summary.clients))
+            .collect()
+    }
+
+    pub async fn kill(&self, name: &str) -> ServerMessage {
+        let (mut stream, mut decoder, _) = TestClient::accepted(&self.socket(), 0, 0).await;
+        write_frame(
+            &mut stream,
+            &ClientMessage::KillSession {
+                session: session(name),
+            },
+        )
+        .await;
+        let reply = timeout(TIMEOUT, read_frame(&mut stream, &mut decoder))
+            .await
+            .expect("no answer to the kill request")
+            .expect("connection closed before answering");
+        assert!(closes(&mut stream).await);
+        reply
+    }
+
     pub async fn screens(&self) -> HashMap<PaneId, vt100::Screen> {
-        let mut client = self.attach(0, 0).await;
+        self.screens_of("default").await
+    }
+
+    pub async fn screens_of(&self, name: &str) -> HashMap<PaneId, vt100::Screen> {
+        let mut client = self.attach_to(name, &self.runtime_dir, 0, 0).await;
         let screens = client
             .parsers
             .iter()
@@ -129,6 +178,14 @@ impl TestClient {
     }
 
     pub async fn attach(socket: &Path, cols: u16, rows: u16) -> Self {
+        Self::attach_to(socket, SessionName::default(), Path::new("/"), cols, rows).await
+    }
+
+    pub async fn accepted(
+        socket: &Path,
+        cols: u16,
+        rows: u16,
+    ) -> (UnixStream, Decoder, ServerMessage) {
         let mut stream = Self::connect(socket).await;
         write_frame(
             &mut stream,
@@ -148,6 +205,26 @@ impl TestClient {
             }
         );
         let info: ServerMessage = read_frame(&mut stream, &mut decoder).await.unwrap();
+        assert!(matches!(info, ServerMessage::Info { .. }), "{info:?}");
+        (stream, decoder, info)
+    }
+
+    pub async fn attach_to(
+        socket: &Path,
+        session: SessionName,
+        cwd: &Path,
+        cols: u16,
+        rows: u16,
+    ) -> Self {
+        let (mut stream, decoder, info) = Self::accepted(socket, cols, rows).await;
+        write_frame(
+            &mut stream,
+            &ClientMessage::Attach {
+                session,
+                cwd: cwd.to_path_buf(),
+            },
+        )
+        .await;
         let mut client = Self {
             stream,
             decoder,
@@ -271,7 +348,10 @@ impl TestClient {
                 self.focus.push(*pane);
             }
             ServerMessage::Exited => self.exited = true,
-            ServerMessage::Info { .. } => panic!("unexpected second info"),
+            ServerMessage::Info { .. }
+            | ServerMessage::Sessions(_)
+            | ServerMessage::Killed
+            | ServerMessage::NoSuchSession => panic!("unexpected {message:?} after attaching"),
         }
         Some(message)
     }

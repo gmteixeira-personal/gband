@@ -9,6 +9,7 @@ use gband::executable;
 use gband::logging::{self, Role};
 use gband::paths::{self, ServerName};
 use gband_client::{ClientConfig, Outcome};
+use gband_protocol::SessionName;
 use gband_server::{SUN_PATH_MAX, ServerConfig};
 
 #[derive(Parser)]
@@ -20,6 +21,14 @@ use gband_server::{SUN_PATH_MAX, ServerConfig};
 struct Cli {
     #[command(flatten)]
     selection: Selection,
+    #[arg(
+        short = 's',
+        long = "session",
+        value_name = "NAME",
+        global = true,
+        help = "Select the session named NAME [default: default]"
+    )]
+    session: Option<SessionName>,
     #[command(subcommand)]
     command: Command,
 }
@@ -74,9 +83,13 @@ impl Selection {
 enum Command {
     #[command(about = "Run the server that hosts the panes")]
     Server,
-    #[command(about = "Attach a client to the server, starting one if needed")]
+    #[command(about = "Attach a client to a session, starting a server if needed")]
     Attach,
-    #[command(about = "Stop the running server and its panes")]
+    #[command(about = "List the sessions of the running server")]
+    ListSessions,
+    #[command(about = "End a session and its panes")]
+    KillSession,
+    #[command(about = "Stop the running server and every session")]
     KillServer,
 }
 
@@ -84,7 +97,18 @@ impl Command {
     fn role(&self) -> Role {
         match self {
             Command::Server => Role::Server,
-            Command::Attach | Command::KillServer => Role::Client,
+            Command::Attach
+            | Command::ListSessions
+            | Command::KillSession
+            | Command::KillServer => Role::Client,
+        }
+    }
+
+    fn ignores_session(&self) -> Option<&'static str> {
+        match self {
+            Command::ListSessions => Some("list-sessions"),
+            Command::KillServer => Some("kill-server"),
+            Command::Server | Command::Attach | Command::KillSession => None,
         }
     }
 }
@@ -99,6 +123,19 @@ fn main() -> ExitCode {
             )
             .exit();
     }
+    if cli.session.is_some()
+        && let Some(subcommand) = cli.command.ignores_session()
+    {
+        Cli::command()
+            .error(
+                ErrorKind::ArgumentConflict,
+                format!(
+                    "the option '-s' does not apply to '{subcommand}', which selects no session"
+                ),
+            )
+            .exit();
+    }
+    let session = cli.session.unwrap_or_default();
     let role = cli.command.role();
 
     let _guard = match logging::init(role) {
@@ -122,8 +159,10 @@ fn main() -> ExitCode {
         .ok()
         .map(|socket| tracing::error_span!("gband", socket = %socket.display()).entered());
     let result = socket.and_then(|socket| match cli.command {
-        Command::Server => server(socket, &runtime_dir),
-        Command::Attach => attach(socket, &cli.selection),
+        Command::Server => server(socket, session, &runtime_dir),
+        Command::Attach => attach(socket, session, &cli.selection),
+        Command::ListSessions => list_sessions(socket, &cli.selection),
+        Command::KillSession => kill_session(socket, session, &cli.selection),
         Command::KillServer => kill_server(&socket),
     });
     result.unwrap_or_else(|error| {
@@ -133,7 +172,7 @@ fn main() -> ExitCode {
     })
 }
 
-fn server(socket: PathBuf, runtime_dir: &Path) -> Result<ExitCode> {
+fn server(socket: PathBuf, session: SessionName, runtime_dir: &Path) -> Result<ExitCode> {
     match socket.parent() {
         Some(parent) if parent == runtime_dir => paths::prepare(runtime_dir)?,
         Some(parent) if !parent.is_dir() => {
@@ -143,6 +182,7 @@ fn server(socket: PathBuf, runtime_dir: &Path) -> Result<ExitCode> {
     }
     let config = ServerConfig {
         socket,
+        session,
         program: vec![gband_server::user_shell()],
         cwd: std::env::current_dir().context("cannot read the current directory")?,
         executable: executable::identity().context("cannot identify the gband executable")?,
@@ -153,7 +193,25 @@ fn server(socket: PathBuf, runtime_dir: &Path) -> Result<ExitCode> {
     Ok(ExitCode::SUCCESS)
 }
 
-fn attach(socket: PathBuf, selection: &Selection) -> Result<ExitCode> {
+fn client_config(
+    socket: PathBuf,
+    session: SessionName,
+    selection: &Selection,
+    attaching: bool,
+) -> Result<ClientConfig> {
+    Ok(ClientConfig {
+        socket,
+        session,
+        start_server: attaching,
+        executable_path: std::env::current_exe().context("cannot locate the gband executable")?,
+        identity: executable::identity().context("cannot identify the gband executable")?,
+        replace_mismatched: attaching && cfg!(debug_assertions),
+        log_dir: logging::log_directory()?,
+        kill_command: selection.kill_command(),
+    })
+}
+
+fn attach(socket: PathBuf, session: SessionName, selection: &Selection) -> Result<ExitCode> {
     if std::env::var_os("GBAND").is_some_and(|pane| Path::new(&pane) == socket) {
         bail!(
             "already inside a gband pane of the server on {}; attaching here would feed the \
@@ -164,15 +222,8 @@ fn attach(socket: PathBuf, selection: &Selection) -> Result<ExitCode> {
     if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
         bail!("gband attach needs a terminal on standard input and standard output");
     }
-    let kill_command = selection.kill_command();
-    let config = ClientConfig {
-        socket,
-        executable_path: std::env::current_exe().context("cannot locate the gband executable")?,
-        identity: executable::identity().context("cannot identify the gband executable")?,
-        replace_mismatched: cfg!(debug_assertions),
-        log_dir: logging::log_directory()?,
-        kill_command: kill_command.clone(),
-    };
+    let config = client_config(socket, session, selection, true)?;
+    let kill_command = config.kill_command.clone();
     let report = gband_client::run(config)?;
     let (line, status) = match report.outcome {
         Outcome::Detached => ("[detached]", ExitCode::SUCCESS),
@@ -187,6 +238,25 @@ fn attach(socket: PathBuf, selection: &Selection) -> Result<ExitCode> {
         );
     }
     Ok(status)
+}
+
+fn list_sessions(socket: PathBuf, selection: &Selection) -> Result<ExitCode> {
+    let config = client_config(socket, SessionName::default(), selection, false)?;
+    let mut listing = String::new();
+    for session in gband_client::list_sessions(&config)? {
+        listing.push_str(&format!(
+            "{}\t{}\t{}\n",
+            session.name, session.panes, session.clients
+        ));
+    }
+    print!("{listing}");
+    Ok(ExitCode::SUCCESS)
+}
+
+fn kill_session(socket: PathBuf, session: SessionName, selection: &Selection) -> Result<ExitCode> {
+    let config = client_config(socket, session, selection, false)?;
+    gband_client::kill_session(&config)?;
+    Ok(ExitCode::SUCCESS)
 }
 
 fn kill_server(socket: &Path) -> Result<ExitCode> {
