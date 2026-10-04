@@ -2,8 +2,57 @@ use std::ffi::OsString;
 use std::fs::{self, DirBuilder};
 use std::os::unix::fs::{DirBuilderExt, MetadataExt};
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 
 use anyhow::{Context, Result, bail};
+use gband_protocol::socket_path;
+
+const SERVER_NAME_MAX: usize = 64;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ServerName(String);
+
+impl ServerName {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl FromStr for ServerName {
+    type Err = String;
+
+    fn from_str(name: &str) -> Result<Self, String> {
+        let valid = (1..=SERVER_NAME_MAX).contains(&name.len())
+            && name
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-');
+        if !valid {
+            return Err(format!(
+                "a server name is 1 to {SERVER_NAME_MAX} ASCII letters, digits, `_` or `-`"
+            ));
+        }
+        Ok(Self(name.to_owned()))
+    }
+}
+
+pub fn resolve_socket(
+    socket: Option<&Path>,
+    server: Option<&ServerName>,
+    gband: Option<OsString>,
+    runtime_dir: &Path,
+) -> Result<PathBuf> {
+    if let Some(socket) = socket {
+        return std::path::absolute(socket)
+            .with_context(|| format!("cannot resolve socket path {}", socket.display()));
+    }
+    if let Some(server) = server {
+        return Ok(runtime_dir.join(format!("{}.sock", server.as_str())));
+    }
+    match gband {
+        Some(path) if !path.is_empty() => Ok(PathBuf::from(path)),
+        _ => Ok(socket_path(runtime_dir)),
+    }
+}
 
 pub fn runtime_dir() -> PathBuf {
     resolve(
@@ -85,6 +134,75 @@ mod tests {
     #[test]
     fn unset_xdg_runtime_dir_falls_back_to_tmp() {
         assert_eq!(resolve(None, 1234), Path::new("/tmp/gband-1234"));
+    }
+
+    fn name(text: &str) -> ServerName {
+        text.parse().unwrap()
+    }
+
+    #[test]
+    fn valid_server_names_parse() {
+        for text in ["feature", "a_b-1", &"x".repeat(64)] {
+            assert_eq!(name(text).as_str(), text);
+        }
+    }
+
+    #[test]
+    fn invalid_server_names_are_refused() {
+        for text in ["", &"x".repeat(65), "a.b", "a/b", ".."] {
+            assert!(text.parse::<ServerName>().is_err(), "{text:?}");
+        }
+    }
+
+    #[test]
+    fn explicit_socket_wins_over_a_name() {
+        let socket = resolve_socket(
+            Some(Path::new("/tmp/s")),
+            Some(&name("a")),
+            Some("/run/pane.sock".into()),
+            Path::new("/run/gband"),
+        )
+        .unwrap();
+        assert_eq!(socket, Path::new("/tmp/s"));
+    }
+
+    #[test]
+    fn relative_socket_is_resolved_against_the_working_directory() {
+        let socket =
+            resolve_socket(Some(Path::new("target/s")), None, None, Path::new("/run")).unwrap();
+        assert_eq!(socket, std::env::current_dir().unwrap().join("target/s"));
+    }
+
+    #[test]
+    fn name_wins_over_the_pane_socket() {
+        let socket = resolve_socket(
+            None,
+            Some(&name("feature")),
+            Some("/run/pane.sock".into()),
+            Path::new("/run/gband"),
+        )
+        .unwrap();
+        assert_eq!(socket, Path::new("/run/gband/feature.sock"));
+    }
+
+    #[test]
+    fn pane_socket_wins_over_the_default() {
+        let socket = resolve_socket(
+            None,
+            None,
+            Some("/run/pane.sock".into()),
+            Path::new("/run/gband"),
+        )
+        .unwrap();
+        assert_eq!(socket, Path::new("/run/pane.sock"));
+    }
+
+    #[test]
+    fn empty_pane_socket_falls_back_to_the_default() {
+        for gband in [None, Some(OsString::new())] {
+            let socket = resolve_socket(None, None, gband, Path::new("/run/gband")).unwrap();
+            assert_eq!(socket, Path::new("/run/gband/default.sock"));
+        }
     }
 
     #[test]

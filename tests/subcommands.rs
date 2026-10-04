@@ -1,8 +1,12 @@
+mod common;
+
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::time::{SystemTime, UNIX_EPOCH};
+
+use common::scratch_root;
 
 fn state_home(name: &str) -> PathBuf {
     let path = Path::new(env!("CARGO_TARGET_TMPDIR"))
@@ -23,7 +27,7 @@ fn state_home(name: &str) -> PathBuf {
 
 fn runtime_home(state: &Path) -> PathBuf {
     let name = state.file_name().unwrap().to_str().unwrap();
-    std::env::temp_dir().join(format!("gband-subcommands-{name}"))
+    scratch_root("gband-subcommands", name)
 }
 
 fn gband(state: &Path, filter: Option<&str>, args: &[&str]) -> Output {
@@ -169,6 +173,64 @@ fn help_lists_subcommands() {
         .filter_map(|line| line.split_whitespace().next())
         .collect();
     assert_eq!(commands, ["server", "attach", "kill-server"]);
+}
+
+#[test]
+fn help_lists_the_server_selection_options() {
+    let state = state_home("help_selection");
+    let output = gband(&state, None, &["--help"]);
+    assert_eq!(output.status.code(), Some(0));
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("-S, --server <NAME>"), "{stdout}");
+    assert!(stdout.contains("-p, --socket <PATH>"), "{stdout}");
+}
+
+#[test]
+fn both_selection_options_are_rejected_with_usage() {
+    let state = state_home("both_options");
+    for args in [
+        ["-S", "a", "-p", "/tmp/b.sock", "attach"],
+        ["attach", "-S", "a", "-p", "/tmp/b.sock"],
+        ["-S", "a", "attach", "-p", "/tmp/b.sock"],
+    ] {
+        let output = gband(&state, None, &args);
+        assert_eq!(output.status.code(), Some(2), "{args:?}");
+        let stderr = String::from_utf8(output.stderr).unwrap();
+        assert!(stderr.contains("Usage"), "{args:?}: {stderr}");
+    }
+}
+
+#[test]
+fn invalid_server_name_is_rejected() {
+    let state = state_home("invalid_name");
+    let output = gband(&state, None, &["-S", "a.b", "attach"]);
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("'a.b'"), "{stderr}");
+    assert!(stderr.contains("server name"), "{stderr}");
+}
+
+#[test]
+fn socket_path_over_the_limit_is_refused() {
+    let state = state_home("long_socket");
+    let socket = format!("/tmp/{}", "x".repeat(115));
+    assert_eq!(socket.len(), 120);
+    let output = gband(&state, None, &["server", "-p", &socket]);
+    let stderr = assert_one_line_failure(&output);
+    assert!(stderr.contains(&socket), "{stderr}");
+    assert!(stderr.contains("107 bytes"), "{stderr}");
+    assert!(!Path::new(&format!("{socket}.lock")).exists());
+}
+
+#[test]
+fn missing_parent_of_an_explicit_socket_is_refused() {
+    let state = state_home("missing_parent");
+    let parent = runtime_home(&state).join("missing");
+    let socket = parent.join("s.sock");
+    let output = gband(&state, None, &["server", "-p", socket.to_str().unwrap()]);
+    let stderr = assert_one_line_failure(&output);
+    assert!(stderr.contains(parent.to_str().unwrap()), "{stderr}");
+    assert!(!parent.exists());
 }
 
 #[test]

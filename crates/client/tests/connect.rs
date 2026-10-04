@@ -30,11 +30,12 @@ fn runtime_dir(name: &str) -> PathBuf {
 
 fn client_config(runtime_dir: &Path, executable: &str, replace: bool) -> ClientConfig {
     ClientConfig {
-        runtime_dir: runtime_dir.to_path_buf(),
+        socket: socket_path(runtime_dir),
         executable_path: executable.into(),
         identity: CLIENT_IDENTITY,
         replace_mismatched: replace,
         log_dir: runtime_dir.join("log"),
+        kill_command: "gband kill-server".to_owned(),
     }
 }
 
@@ -59,7 +60,7 @@ async fn server_that_exits_at_once_fails_fast() {
 async fn mismatched_server_is_kept_when_replacing_is_off() {
     let runtime_dir = runtime_dir("stale");
     let server = tokio::spawn(gband_server::run(ServerConfig {
-        runtime_dir: runtime_dir.clone(),
+        socket: socket_path(&runtime_dir),
         program: vec![OsString::from("/bin/sh")],
         cwd: runtime_dir.clone(),
         executable: SERVER_IDENTITY,

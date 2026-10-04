@@ -2,6 +2,7 @@ mod common;
 
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
+use std::path::Path;
 use std::thread;
 use std::time::Duration;
 
@@ -133,11 +134,51 @@ fn killed_server_prints_lost_server() {
 #[test]
 fn attach_inside_a_pane_is_refused() {
     let env = TestEnv::new("nested");
-    let mut client = Attached::start_with(&env, GBAND, 80, 24, |command| {
-        command.env("GBAND", "/somewhere/default.sock");
+    let socket = env.socket();
+    let mut client = Attached::start_with(&env, GBAND, &["attach"], 80, 24, |command| {
+        command.env("GBAND", &socket);
     });
     assert_eq!(client.wait_exit(), 1);
     client.wait_for_text("inside a gband pane");
+    assert!(!socket.exists());
+}
+
+#[test]
+fn named_attach_inside_its_own_pane_is_refused() {
+    let env = TestEnv::new("nested-named");
+    let feature = env.socket_named("feature");
+    let args = ["-S", "feature", "attach"];
+    let mut client = Attached::start_with(&env, GBAND, &args, 80, 24, |command| {
+        command.env("GBAND", &feature);
+    });
+    assert_eq!(client.wait_exit(), 1);
+    client.wait_for_text("inside a gband pane");
+    assert!(!feature.exists());
+}
+
+#[test]
+fn named_attach_from_a_pane_of_another_server_attaches() {
+    let env = TestEnv::new("nested-other");
+    let default = env.socket();
+    let args = ["-S", "feature", "attach"];
+    let mut client = Attached::start_with(&env, GBAND, &args, 80, 24, |command| {
+        command.env("GBAND", &default);
+    });
+    client.wait_for_prompt();
+    client.shell_pid(&env);
+    assert!(env.socket_named("feature").exists());
+    assert!(!default.exists());
+}
+
+#[test]
+fn named_server_starts_on_demand() {
+    let env = TestEnv::new("named");
+    let args = ["-S", "feature", "attach"];
+    let mut client = Attached::start_with(&env, GBAND, &args, 160, 30, |_| {});
+    client.wait_for_prompt();
+    client.shell_pid(&env);
+    client.run("echo $GBAND");
+    client.wait_for_line(env.socket_named("feature").to_str().unwrap());
     assert!(!env.socket().exists());
 }
 
@@ -153,27 +194,92 @@ fn terminal_resize_reaches_the_program() {
     client.wait_for_line("33");
 }
 
-#[test]
-fn debug_client_replaces_a_server_from_another_build() {
-    let env = TestEnv::new("rebuild");
-    let copy = env.root.join("gband-copy");
-    fs::copy(GBAND, &copy).unwrap();
-    fs::set_permissions(&copy, fs::Permissions::from_mode(0o755)).unwrap();
+fn install(path: &Path) {
+    let staged = path.with_extension("staged");
+    fs::copy(GBAND, &staged).unwrap();
+    fs::set_permissions(&staged, fs::Permissions::from_mode(0o755)).unwrap();
+    fs::rename(&staged, path).unwrap();
+}
 
-    let mut old = Attached::start_with(&env, &copy, 80, 24, |_| {});
+fn detach(client: &mut Attached) {
+    client.send(b"\x01D");
+    assert_eq!(client.wait_exit(), 0);
+    client.wait_for_text("[detached]");
+}
+
+fn note_follows_detached(client: &Attached, note: &str) {
+    client.wait_for_text(note);
+    let contents = client.contents();
+    assert!(
+        contents.find("[detached]") < contents.find(note),
+        "{contents}"
+    );
+}
+
+#[test]
+fn debug_client_replaces_a_server_after_a_rebuild() {
+    let env = TestEnv::new("rebuild");
+    let build = env.root.join("gband-build");
+    install(&build);
+
+    let mut old = Attached::start_with(&env, &build, &["attach"], 80, 24, |_| {});
     old.wait_for_prompt();
     let old_shell = old.shell_pid(&env);
     let old_server = env.server_pid();
-    old.send(b"\x01D");
-    assert_eq!(old.wait_exit(), 0);
+    detach(&mut old);
 
-    let mut new = Attached::start(&env, 80, 24);
+    install(&build);
+    let mut new = Attached::start_with(&env, &build, &["attach"], 80, 24, |_| {});
     new.wait_for_prompt();
     let new_shell = new.shell_pid(&env);
     assert_ne!(new_shell, old_shell);
     assert_ne!(env.server_pid(), old_server);
     wait_until(|| !is_running(old_shell), "the old shell to stop");
     wait_until(|| !is_running(old_server), "the old server to stop");
+}
+
+#[test]
+fn debug_client_from_another_path_keeps_the_server() {
+    let env = TestEnv::new("other-path");
+    let mut first = Attached::start(&env, 120, 24);
+    first.wait_for_prompt();
+    let shell = first.shell_pid(&env);
+    let server = env.server_pid();
+    detach(&mut first);
+
+    let other = env.root.join("gband-other");
+    install(&other);
+    let mut second = Attached::start_with(&env, &other, &["attach"], 120, 24, |_| {});
+    second.wait_for_prompt();
+    assert_eq!(second.shell_pid(&env), shell);
+    detach(&mut second);
+    note_follows_detached(
+        &second,
+        "gband: the server runs a different gband build; stop it with gband kill-server and \
+         attach again",
+    );
+    assert_eq!(env.server_pid(), server);
+    assert!(is_running(shell));
+}
+
+#[test]
+fn note_names_the_selected_server() {
+    let env = TestEnv::new("note-named");
+    let other = env.root.join("gband-other");
+    install(&other);
+    let args = ["-S", "feature", "attach"];
+    let mut first = Attached::start_with(&env, &other, &args, 120, 24, |_| {});
+    first.wait_for_prompt();
+    first.shell_pid(&env);
+    detach(&mut first);
+
+    let mut second = Attached::start_with(&env, GBAND, &args, 120, 24, |_| {});
+    second.wait_for_prompt();
+    detach(&mut second);
+    note_follows_detached(
+        &second,
+        "stop it with gband -S feature kill-server and attach again",
+    );
 }
 
 fn pane_number(lines: &[String]) -> Option<u32> {

@@ -11,23 +11,26 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context as _, Result, bail};
-use gband_protocol::{ExecutableId, ServerMessage, socket_path};
+use gband_protocol::{ExecutableId, ServerMessage};
 use portable_pty::CommandBuilder;
+use rustix::fs::Mode;
 use tokio::net::UnixListener;
 use tokio::signal::unix::{SignalKind, signal};
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinSet;
+use tracing::Instrument;
 
 use crate::connection::Context;
 use crate::session::{Session, SessionConfig};
 
-pub use crate::lock::{LOCK_NAME, kill, lock_path};
+pub use crate::lock::kill;
 
-const SUN_PATH_MAX: usize = 107;
+pub const SUN_PATH_MAX: usize = 107;
+const PRIVATE_SOCKET_MASK: u32 = 0o177;
 const FAREWELL_TIMEOUT: Duration = Duration::from_secs(1);
 
 pub struct ServerConfig {
-    pub runtime_dir: PathBuf,
+    pub socket: PathBuf,
     pub program: Vec<OsString>,
     pub cwd: PathBuf,
     pub executable: ExecutableId,
@@ -38,14 +41,14 @@ pub fn user_shell() -> OsString {
 }
 
 pub async fn run(config: ServerConfig) -> Result<()> {
-    let socket = socket_path(&config.runtime_dir);
+    let socket = config.socket;
     if socket.as_os_str().len() > SUN_PATH_MAX {
         bail!(
             "socket path {} is longer than the {SUN_PATH_MAX} bytes a Unix socket allows",
             socket.display()
         );
     }
-    let _lock = lock::acquire(&config.runtime_dir)?;
+    let _lock = lock::acquire(&socket)?;
     let mut terminate = signal(SignalKind::terminate()).context("cannot handle SIGTERM")?;
     let (exits_tx, mut exits) = mpsc::unbounded_channel();
     let mut session = Session::start(
@@ -57,7 +60,7 @@ pub async fn run(config: ServerConfig) -> Result<()> {
         exits_tx,
     )?;
     let listener = bind(&socket)?;
-    tracing::info!(socket = %socket.display(), "listening");
+    tracing::info!("listening");
 
     let (commands_tx, mut commands) = mpsc::unbounded_channel();
     let (ended_tx, ended) = watch::channel(false);
@@ -76,7 +79,7 @@ pub async fn run(config: ServerConfig) -> Result<()> {
         tokio::select! {
             accepted = listener.accept() => match accepted {
                 Ok((stream, _)) => {
-                    clients.spawn(connection::serve(stream, Arc::clone(&context)));
+                    clients.spawn(connection::serve(stream, Arc::clone(&context)).in_current_span());
                 }
                 Err(error) => tracing::warn!("cannot accept a client: {error:#}"),
             },
@@ -116,5 +119,8 @@ fn bind(socket: &Path) -> Result<UnixListener> {
             return Err(error).with_context(|| format!("cannot remove {}", socket.display()));
         }
     }
-    UnixListener::bind(socket).with_context(|| format!("cannot listen on {}", socket.display()))
+    let previous = rustix::process::umask(Mode::from_raw_mode(PRIVATE_SOCKET_MASK));
+    let listener = UnixListener::bind(socket);
+    rustix::process::umask(previous);
+    listener.with_context(|| format!("cannot listen on {}", socket.display()))
 }

@@ -2,43 +2,22 @@ mod common;
 
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
-use std::process::Child;
 use std::time::{Duration, Instant};
 
 use common::*;
-
-fn shell_of(env: &TestEnv, server: &Child) -> i32 {
-    let server = server.id() as i32;
-    wait_until(|| !children(server).is_empty(), "the server's shell");
-    let shells = children(server);
-    assert_eq!(shells.len(), 1, "{shells:?}");
-    env.track_shell(shells[0]);
-    shells[0]
-}
-
-fn wait_exit(server: &mut Child) -> std::process::ExitStatus {
-    let deadline = Instant::now() + TIMEOUT;
-    loop {
-        if let Some(status) = server.try_wait().unwrap() {
-            return status;
-        }
-        assert!(Instant::now() < deadline, "the server did not exit");
-        std::thread::sleep(Duration::from_millis(20));
-    }
-}
 
 #[test]
 fn kill_server_stops_a_running_server() {
     let env = TestEnv::new("kill-running");
     let mut server = env.start_server("/bin/sh");
-    let shell = shell_of(&env, &server);
+    let shell = env.shell_of(&server);
 
     let output = env.command(GBAND, &["kill-server"]).output().unwrap();
     assert_eq!(output.status.code(), Some(0));
     assert!(output.stdout.is_empty(), "{:?}", output.stdout);
     assert!(output.stderr.is_empty(), "{:?}", output.stderr);
 
-    assert_eq!(wait_exit(&mut server).code(), Some(0));
+    assert_eq!(wait_process_exit(&mut server).code(), Some(0));
     assert!(!is_running(shell));
     assert!(!env.socket().exists());
     assert!(env.log_text("client").contains("client started"));
@@ -64,7 +43,7 @@ fn program_ignoring_sighup_is_killed() {
     fs::write(&pane, "#!/bin/sh\ntrap '' HUP\nsleep 100\n").unwrap();
     fs::set_permissions(&pane, fs::Permissions::from_mode(0o755)).unwrap();
     let mut server = env.start_server(pane.to_str().unwrap());
-    let shell = shell_of(&env, &server);
+    let shell = env.shell_of(&server);
     wait_until(|| !children(shell).is_empty(), "the pane's sleep");
     let sleep = children(shell)[0];
     env.track_shell(sleep);
@@ -72,7 +51,7 @@ fn program_ignoring_sighup_is_killed() {
     let started = Instant::now();
     let output = env.command(GBAND, &["kill-server"]).output().unwrap();
     assert_eq!(output.status.code(), Some(0), "{output:?}");
-    assert_eq!(wait_exit(&mut server).code(), Some(0));
+    assert_eq!(wait_process_exit(&mut server).code(), Some(0));
     assert!(started.elapsed() < Duration::from_secs(3));
     assert!(!is_running(shell));
     assert!(!is_running(sleep));

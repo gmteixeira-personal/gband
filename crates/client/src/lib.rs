@@ -29,11 +29,12 @@ use crate::render::{Ribbon, render};
 const READ_BUFFER_LEN: usize = 64 * 1024;
 
 pub struct ClientConfig {
-    pub runtime_dir: PathBuf,
+    pub socket: PathBuf,
     pub executable_path: PathBuf,
     pub identity: ExecutableId,
     pub replace_mismatched: bool,
     pub log_dir: PathBuf,
+    pub kill_command: String,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

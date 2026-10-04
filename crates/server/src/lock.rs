@@ -1,25 +1,19 @@
 use std::fs::{self, File, OpenOptions, TryLockError};
 use std::io::{ErrorKind, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::thread;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, anyhow, bail};
-use gband_protocol::socket_path;
+use gband_protocol::lock_path;
 use rustix::process::{Pid, Signal};
-
-pub const LOCK_NAME: &str = "default.lock";
 
 const POLL_INTERVAL: Duration = Duration::from_millis(25);
 const EMPTY_RECORD_GRACE: Duration = Duration::from_secs(1);
 const STOP_TIMEOUT: Duration = Duration::from_secs(5);
 
-pub fn lock_path(runtime_dir: &Path) -> PathBuf {
-    runtime_dir.join(LOCK_NAME)
-}
-
-pub fn acquire(runtime_dir: &Path) -> Result<File> {
-    let path = lock_path(runtime_dir);
+pub fn acquire(socket: &Path) -> Result<File> {
+    let path = lock_path(socket);
     let mut file = OpenOptions::new()
         .read(true)
         .write(true)
@@ -29,10 +23,9 @@ pub fn acquire(runtime_dir: &Path) -> Result<File> {
         .with_context(|| format!("cannot open {}", path.display()))?;
     match file.try_lock() {
         Ok(()) => {}
-        Err(TryLockError::WouldBlock) => bail!(
-            "a server is already running on {}",
-            socket_path(runtime_dir).display()
-        ),
+        Err(TryLockError::WouldBlock) => {
+            bail!("a server is already running on {}", socket.display())
+        }
         Err(TryLockError::Error(error)) => {
             return Err(error).with_context(|| format!("cannot lock {}", path.display()));
         }
@@ -43,14 +36,9 @@ pub fn acquire(runtime_dir: &Path) -> Result<File> {
     Ok(file)
 }
 
-pub fn kill(runtime_dir: &Path) -> Result<()> {
-    let not_running = || {
-        anyhow!(
-            "no server is running on {}",
-            socket_path(runtime_dir).display()
-        )
-    };
-    let path = lock_path(runtime_dir);
+pub fn kill(socket: &Path) -> Result<()> {
+    let not_running = || anyhow!("no server is running on {}", socket.display());
+    let path = lock_path(socket);
     let file = match File::open(&path) {
         Ok(file) => file,
         Err(error) if error.kind() == ErrorKind::NotFound => return Err(not_running()),
