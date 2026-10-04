@@ -15,23 +15,25 @@ use portable_pty::{
 };
 use tokio::sync::{mpsc, watch};
 
-use crate::callbacks::LoggingCallbacks;
+use crate::callbacks::PaneCallbacks;
 
 const DRAIN_TIMEOUT: Duration = Duration::from_millis(500);
 
 pub enum Input {
     Key(Key),
     Paste(String),
+    Reply(Vec<u8>),
 }
 
 pub struct Pane {
     terminal: Mutex<Terminal>,
     generation: AtomicU64,
     changed: Arc<watch::Sender<u64>>,
+    replies: mpsc::WeakUnboundedSender<Input>,
 }
 
 struct Terminal {
-    parser: vt100::Parser<LoggingCallbacks>,
+    parser: vt100::Parser<PaneCallbacks>,
     master: Box<dyn MasterPty + Send>,
 }
 
@@ -113,6 +115,12 @@ impl Pane {
             let mut terminal = self.terminal.lock().unwrap();
             terminal.parser.process(bytes);
             self.generation.fetch_add(1, Ordering::AcqRel);
+            let replies = std::mem::take(&mut terminal.parser.callbacks_mut().replies);
+            if !replies.is_empty()
+                && let Some(sender) = self.replies.upgrade()
+            {
+                let _ = sender.send(Input::Reply(replies));
+            }
         }
         self.notify();
     }
@@ -158,13 +166,20 @@ pub fn spawn(
         .try_clone_reader()
         .context("cannot read the PTY")?;
     let writer = pair.master.take_writer().context("cannot write the PTY")?;
+    let (input, receiver) = mpsc::unbounded_channel();
     let pane = Arc::new(Pane {
         terminal: Mutex::new(Terminal {
-            parser: vt100::Parser::new_with_callbacks(size.rows, size.cols, 0, LoggingCallbacks),
+            parser: vt100::Parser::new_with_callbacks(
+                size.rows,
+                size.cols,
+                0,
+                PaneCallbacks::default(),
+            ),
             master: pair.master,
         }),
         generation: AtomicU64::new(0),
         changed: Arc::clone(changed),
+        replies: input.downgrade(),
     });
 
     let (drained_tx, drained) = std_mpsc::channel::<()>();
@@ -185,7 +200,7 @@ pub fn spawn(
         let _ = exits.send(PaneExit { pane: id, status });
     });
 
-    let input = spawn_input(Arc::clone(&pane), writer);
+    spawn_input(Arc::clone(&pane), receiver, writer);
     Ok(Spawned {
         entry: PaneEntry { pane, input },
         killer,
@@ -204,14 +219,17 @@ fn read_output(mut reader: Box<dyn Read + Send>, pane: &Pane) {
     }
 }
 
-fn spawn_input(pane: Arc<Pane>, mut writer: Box<dyn Write + Send>) -> mpsc::UnboundedSender<Input> {
-    let (sender, mut receiver) = mpsc::unbounded_channel();
+fn spawn_input(
+    pane: Arc<Pane>,
+    mut receiver: mpsc::UnboundedReceiver<Input>,
+    mut writer: Box<dyn Write + Send>,
+) {
     thread::spawn(move || {
         while let Some(input) = receiver.blocking_recv() {
-            let modes = pane.modes();
             let bytes = match input {
-                Input::Key(key) => encode_key(key, modes),
-                Input::Paste(text) => encode_paste(&text, modes),
+                Input::Key(key) => encode_key(key, pane.modes()),
+                Input::Paste(text) => encode_paste(&text, pane.modes()),
+                Input::Reply(bytes) => bytes,
             };
             if let Err(error) = writer.write_all(&bytes).and_then(|()| writer.flush()) {
                 tracing::warn!("cannot write to the PTY: {error:#}");
@@ -219,7 +237,6 @@ fn spawn_input(pane: Arc<Pane>, mut writer: Box<dyn Write + Send>) -> mpsc::Unbo
             }
         }
     });
-    sender
 }
 
 fn pty_size(size: Size) -> PtySize {

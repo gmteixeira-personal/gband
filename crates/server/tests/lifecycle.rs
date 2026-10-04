@@ -45,7 +45,7 @@ async fn stale_socket_is_replaced() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn unspawnable_program_fails_before_the_socket_exists() {
-    let runtime_dir = runtime_dir("unspawnable");
+    let runtime_dir = runtime_dir("bad-prog");
     let error = gband_server::run(config(&runtime_dir, &["/nonexistent/gband-program"]))
         .await
         .unwrap_err();

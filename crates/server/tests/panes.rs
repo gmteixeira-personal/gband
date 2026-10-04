@@ -32,7 +32,7 @@ fn pane_number(screen: &vt100::Screen) -> Option<u32> {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn first_pane_is_sized_from_the_initial_area() {
-    let runtime_dir = runtime_dir("initial-size");
+    let runtime_dir = runtime_dir("init-size");
     let record = runtime_dir.join("size");
     let script = format!("stty size > {}; exec sleep 100", record.display());
     let _server = TestServer::start_in(runtime_dir, &["/bin/sh", "-c", &script]).await;
@@ -94,7 +94,7 @@ async fn keys_reach_only_their_pane() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn keys_for_a_missing_pane_are_dropped() {
-    let server = TestServer::start("missing-pane", &["/bin/sh"]).await;
+    let server = TestServer::start("no-pane", &["/bin/sh"]).await;
     let mut client = server.attach(80, 24).await;
     client
         .key_to(PaneId(99), Key::plain(KeyCode::Char('x')))
@@ -111,7 +111,7 @@ async fn keys_for_a_missing_pane_are_dropped() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn concurrent_opens_give_every_client_the_same_layout() {
-    let server = TestServer::start("concurrent", &["/bin/sh"]).await;
+    let server = TestServer::start("conc-open", &["/bin/sh"]).await;
     let mut first = server.attach(80, 24).await;
     let mut second = server.attach(80, 24).await;
     let pane = first.first();
