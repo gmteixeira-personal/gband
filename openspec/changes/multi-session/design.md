@@ -71,7 +71,7 @@ The hello's terminal size stays where it is. It seeds a new session's screen are
 
 ### `SessionName` lives in gband-protocol
 
-`SessionName` is a newtype over `String` with `FromStr` enforcing the 1 to 64 byte, `[A-Za-z0-9._-]` rule. Its `Deserialize` goes through the same check, so the server rejects an invalid name at decode time and closes the connection. The root package uses the same `FromStr` as clap's `value_parser` for `-s`. One rule then guards the command line and the wire. The character set keeps names safe to print in a tab-separated list and to embed in log fields.
+`SessionName` is a newtype over `String` with `FromStr` enforcing the 1 to 64 byte, `[A-Za-z0-9_-]` rule. Its `Deserialize` goes through the same check, so the server rejects an invalid name at decode time and closes the connection. The root package uses the same `FromStr` as clap's `value_parser` for `-s`. One rule then guards the command line and the wire. The character set keeps names safe to print in a tab-separated list and to embed in log fields.
 
 ### Command line
 

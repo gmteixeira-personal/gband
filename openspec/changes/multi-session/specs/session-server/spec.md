@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Named sessions
-A server SHALL host one or more sessions, each with a name that is unique within the server. A session name SHALL be 1 to 64 bytes long and hold only ASCII letters, digits, `.`, `_` and `-`. Each session SHALL own its own layout, panes, screen area and working directory. A client SHALL attach to exactly one session. The layout, snapshots and updates the server sends a client, and the keys, pastes, resizes and session actions it receives from that client, SHALL concern only the client's session. Every other requirement of this capability that speaks of the session SHALL apply to each session on its own.
+A server SHALL host one or more sessions, each with a name that is unique within the server. A session name SHALL be 1 to 64 bytes long and hold only ASCII letters, digits, `_` and `-`. Each session SHALL own its own layout, panes, screen area and working directory. A client SHALL attach to exactly one session. The layout, snapshots and updates the server sends a client, and the keys, pastes, resizes and session actions it receives from that client, SHALL concern only the client's session. Every other requirement of this capability that speaks of the session SHALL apply to each session on its own.
 
 #### Scenario: Two sessions are independent
 - **WHEN** a server hosts the sessions `work` and `play`, a client attached to `work` opens a pane, and a client is attached to `play`

@@ -1,6 +1,6 @@
 ## 1. Wire protocol version 3
 
-- [ ] 1.1 Add `SessionName` to `crates/protocol/src/` with `FromStr` enforcing 1 to 64 bytes of `[A-Za-z0-9._-]` and a `Deserialize` that applies the same check, and add `SessionSummary`. Verify with tests in `crates/protocol/tests/messages.rs` that `default`, `work.2` and a 64-byte name parse, and that an empty name, a 65-byte name, `a/b` and `a b` are refused both by `FromStr` and when decoding
+- [ ] 1.1 Add `SessionName` to `crates/protocol/src/` with `FromStr` enforcing 1 to 64 bytes of `[A-Za-z0-9_-]` and a `Deserialize` that applies the same check, and add `SessionSummary`. Verify with tests in `crates/protocol/tests/messages.rs` that `default`, `work-2` and a 64-byte name parse, and that an empty name, a 65-byte name, `work.2`, `a/b` and `a b` are refused both by `FromStr` and when decoding
 - [ ] 1.2 Set `PROTOCOL_VERSION = 3` and add `Attach`, `ListSessions` and `KillSession` to `ClientMessage`, and `Sessions`, `Killed` and `NoSuchSession` to `ServerMessage`. Verify with round-trip tests of every new message, including an attach naming `work` with `/tmp` and a sessions message of `default` (1, 0) and `work` (2, 1), and confirm the hello pinned-bytes test passes unchanged
 
 ## 2. Sessions in the server
