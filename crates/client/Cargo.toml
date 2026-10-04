@@ -1,0 +1,17 @@
+[package]
+name = "gband-client"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+gband-protocol.workspace = true
+ratatui.workspace = true
+crossterm.workspace = true
+tui-term.workspace = true
+vt100.workspace = true
+tokio.workspace = true
+mlua.workspace = true
+notify-rust.workspace = true
+tracing.workspace = true
+thiserror.workspace = true
