@@ -29,7 +29,9 @@ Configuration and automation are Lua scripts, so key bindings, layout behavior a
 
 ## Building
 
-Install a stable Rust toolchain, then run:
+Install a stable Rust toolchain, version 1.89 or newer, and a C compiler such as `gcc` or `clang`.
+The C compiler builds the Lua runtime that gband bundles, so no system Lua is needed.
+Then run:
 
 ```sh
 git clone git@github.com:gmteixeira-personal/gband.git
