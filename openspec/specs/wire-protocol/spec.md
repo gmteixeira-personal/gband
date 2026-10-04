@@ -23,16 +23,16 @@ Every message in either direction SHALL be sent as one frame. A frame is a 4-byt
 - **AND** it keeps serving its other clients
 
 ### Requirement: Handshake
-The first frame a client sends SHALL be a hello that carries the client's protocol version and its terminal size. The first frame the server sends SHALL answer it. When the versions are equal, the answer SHALL accept the client and carry the server's protocol version. Otherwise the answer SHALL reject the client, carry the server's protocol version, and the server SHALL then close the connection. The hello and its answer SHALL keep the same encoding in every later protocol version, so that two versions can always detect each other. This change defines protocol version 2.
+The first frame a client sends SHALL be a hello that carries the client's protocol version and its terminal size. The first frame the server sends SHALL answer it. When the versions are equal, the answer SHALL accept the client and carry the server's protocol version. Otherwise the answer SHALL reject the client, carry the server's protocol version, and the server SHALL then close the connection. The hello and its answer SHALL keep the same encoding in every later protocol version, so that two versions can always detect each other. The terminal size in the hello SHALL apply only when the client then asks to attach. This change defines protocol version 3.
 
 #### Scenario: Matching versions
-- **WHEN** a version 2 client sends its hello to a version 2 server
+- **WHEN** a version 3 client sends its hello to a version 3 server
 - **THEN** the server accepts it
-- **AND** sends server info as its next frame, then the layout, then a snapshot of each pane
+- **AND** sends server info as its next frame, then waits for the client's request
 
 #### Scenario: Mismatched versions
-- **WHEN** a version 1 client sends its hello to a version 2 server
-- **THEN** the server rejects it with version 2 and closes the connection
+- **WHEN** a version 2 client sends its hello to a version 3 server
+- **THEN** the server rejects it with version 3 and closes the connection
 - **AND** the server records the rejected version in its log and keeps running
 
 #### Scenario: First frame is not a hello
@@ -40,7 +40,7 @@ The first frame a client sends SHALL be a hello that carries the client's protoc
 - **THEN** the server closes the connection
 
 ### Requirement: Client messages
-After the handshake, a client SHALL send only these messages:
+After an attach request, a client SHALL send only these messages:
 
 | message | content |
 |---|---|
@@ -50,7 +50,7 @@ After the handshake, a client SHALL send only these messages:
 | action | one session action, as the session-server capability defines it, with the pane or workspace it names |
 | detach | nothing |
 
-The open pane action SHALL name a workspace and, optionally, the pane whose column the new column follows. Every other action SHALL name a pane, and consume or expel SHALL also name its direction. A client that detaches SHALL send detach, then close the connection.
+Pane and workspace identifiers SHALL name panes and workspaces of the client's session. The open pane action SHALL name a workspace and, optionally, the pane whose column the new column follows. Every other action SHALL name a pane, and consume or expel SHALL also name its direction. A client that detaches SHALL send detach, then close the connection.
 
 #### Scenario: Detach message
 - **WHEN** a client sends detach
@@ -71,14 +71,17 @@ After the handshake, a server SHALL send only these messages:
 | snapshot | a pane identifier, the pane's columns and rows, and terminal output that, fed into an empty terminal grid of that size, reproduces that pane's screen on the server |
 | update | a pane identifier, and terminal output that, fed into the grid the client built for that pane from every earlier snapshot and update of it, reproduces that pane's current screen on the server |
 | focus | a pane identifier: the pane the client asked to open, which the client focuses |
-| exited | nothing; the session has ended |
+| exited | nothing; the client's session has ended |
+| sessions | for each session, its name, pane count and attached-client count |
+| killed | nothing; the session a kill request named has ended |
+| no such session | nothing; the server hosts no session of the name a kill request named |
 
-The server SHALL send info exactly once, as its first message after accepting the hello, before the first layout. An executable's identity SHALL be the device and inode of the file the process was started from, taken when the process starts, so that replacing the file on disk, as a rebuild does, gives a new identity.
+The server SHALL send info exactly once, as its first message after accepting the hello, before any answer to a request. An executable's identity SHALL be the device and inode of the file the process was started from, taken when the process starts, so that replacing the file on disk, as a rebuild does, gives a new identity. The layout, snapshot, update, focus and exited messages SHALL concern only the session the client attached to.
 
 A client SHALL keep one grid per pane. It SHALL build a pane's grid by replacing it with a new empty grid of the snapshot's size on every snapshot of that pane, then feeding the snapshot's output into it, and by feeding each update's output for that pane into its current grid. It SHALL discard the grid of a pane that the latest layout does not hold.
 
 #### Scenario: Info before snapshot
-- **WHEN** a client is accepted
+- **WHEN** a client is accepted and sends an attach request
 - **THEN** the first message it receives is info, carrying the server's process id
 - **AND** the second is the layout, followed by a snapshot of each pane it holds
 
@@ -94,6 +97,37 @@ A client SHALL keep one grid per pane. It SHALL build a pane's grid by replacing
 - **WHEN** a layout of two workspaces, one holding a full-width column of width 1/3 with two panes, is framed and decoded
 - **THEN** the decoded layout equals the original
 
+#### Scenario: Sessions round trip
+- **WHEN** a sessions message holding `default` with 1 pane and 0 clients and `work` with 2 panes and 1 client is framed and decoded
+- **THEN** the decoded message equals the original
+
 #### Scenario: Session ends
-- **WHEN** the session's last pane leaves the layout
-- **THEN** each attached client receives exited as its last message
+- **WHEN** the last pane of a client's session leaves the layout
+- **THEN** that client receives exited as its last message
+
+### Requirement: Requests
+After the server's info, the first message a client sends SHALL be one request:
+
+| request | content | server's answer |
+|---|---|---|
+| attach | a session name, and the client's working directory | the layout, then a snapshot of each pane, of the session it attaches the client to |
+| list sessions | nothing | one sessions message, then it closes the connection |
+| kill session | a session name | killed once the session has ended, or no such session, then it closes the connection |
+
+A sessions message SHALL hold, for each session, its name, the number of panes in its layout and the number of clients attached to it. The server SHALL close the connection, and record the reason in its log, when the first message after info is not a request, or when a request names an invalid session name. After a list or kill request, the client SHALL send nothing more. After an attach request, the client SHALL send only the messages "Client messages" defines.
+
+#### Scenario: Attach request
+- **WHEN** a client sends an attach request naming `work`
+- **THEN** the server's next messages are the layout of `work` and a snapshot of each of its panes
+
+#### Scenario: List request
+- **WHEN** a client sends a list request to a server hosting `default` and `work`
+- **THEN** the server sends one sessions message naming `default` and `work`, and closes the connection
+
+#### Scenario: Key before a request
+- **WHEN** a client's first message after info is a key
+- **THEN** the server closes the connection
+
+#### Scenario: Request round trip
+- **WHEN** an attach request naming `work` with the working directory `/tmp` is framed and decoded
+- **THEN** the decoded request equals the original
