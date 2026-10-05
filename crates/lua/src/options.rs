@@ -20,7 +20,7 @@ pub struct Options {
 impl Default for Options {
     fn default() -> Self {
         Self {
-            prefix: Key::new(KeyCode::Char('a'), Modifiers::CTRL),
+            prefix: Key::new(KeyCode::Char(' '), Modifiers::CTRL),
             layout: LayoutOptions::default(),
             center_focused_column: CenterFocusedColumn::default(),
         }

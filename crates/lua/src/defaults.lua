@@ -1,5 +1,5 @@
 gband.set {
-  prefix = "ctrl+a",
+  prefix = "ctrl+space",
   default_column_width = 1/2,
   width_presets = { 1/3, 1/2, 2/3 },
   center_focused_column = "never",

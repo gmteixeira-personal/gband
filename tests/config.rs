@@ -38,14 +38,14 @@ fn two_panes_first_focused(env: &TestEnv) -> Attached {
     let mut client = Attached::start(env, 80, 24);
     client.wait_for_prompt();
     client.shell_pid(env);
-    client.send(b"\x01\r");
+    client.send(b"\x00\r");
     client.wait_for("two tiles with the second focused", |screen| {
         let tiles = tiles(screen);
         tiles.len() == 2 && tiles[1].focused
     });
     client.wait_for_prompt();
     client.shell_pid(env);
-    client.send(b"\x01h");
+    client.send(b"\x00h");
     client.wait_for("the first tile focused", |screen| tiles(screen)[0].focused);
     client
 }
@@ -137,7 +137,7 @@ fn read_only_configuration_directory() {
         },
         "the client log to record the failure",
     );
-    client.send(b"\x01\r");
+    client.send(b"\x00\r");
     client.wait_for("two tiles with the second focused", |screen| {
         let tiles = tiles(screen);
         tiles.len() == 2 && tiles[1].focused
@@ -152,8 +152,8 @@ fn user_file_replaces_the_defaults() {
     client.wait_for_prompt();
     client.shell_pid(&env);
     echo_keys(&mut client);
-    client.send(b"\x1bh\x01q\r");
-    client.wait_for_line("^Aq");
+    client.send(b"\x1bh\x00q\r");
+    client.wait_for_line("^@q");
 }
 
 #[test]
@@ -162,7 +162,7 @@ fn another_prefix_key_in_a_copy_of_the_defaults() {
     let mut client = Attached::start(&env, 80, 24);
     client.wait_for_prompt();
     client.shell_pid(&env);
-    client.send(b"\x01\r");
+    client.send(b"\x00\r");
     client.wait_for("two tiles with the second focused", |screen| {
         let tiles = tiles(screen);
         tiles.len() == 2 && tiles[1].focused
@@ -177,8 +177,8 @@ fn another_prefix_key_in_a_copy_of_the_defaults() {
     client.wait_for("one tile", |screen| tiles(screen).len() == 1);
     client.wait_for_prompt();
     echo_keys(&mut client);
-    client.send(b"\x01\r");
-    client.wait_for_line("^A");
+    client.send(b"\x00\r");
+    client.wait_for_line("^@");
 }
 
 #[test]
@@ -190,7 +190,7 @@ fn defaults_file_edited_while_running() {
     fs::write(env.defaults_lua(), "gband.set { prefix = 'ctrl+b' }\n").unwrap();
     thread::sleep(Duration::from_secs(1));
     assert_eq!(reloads(&env, "client"), 0);
-    client.send(b"\x01\r");
+    client.send(b"\x00\r");
     client.wait_for("two tiles with the second focused", |screen| {
         let tiles = tiles(screen);
         tiles.len() == 2 && tiles[1].focused
@@ -203,7 +203,7 @@ fn no_configuration_file() {
     let mut client = Attached::start(&env, 80, 24);
     client.wait_for_prompt();
     client.shell_pid(&env);
-    client.send(b"\x01\r");
+    client.send(b"\x00\r");
     client.wait_for("two tiles with the second focused", |screen| {
         let tiles = tiles(screen);
         tiles.len() == 2 && tiles[1].focused && tiles[1].left == 40
@@ -220,11 +220,35 @@ fn xdg_config_home_is_honoured() {
     );
     let mut client = Attached::start(&env, 80, 24);
     client.wait_for_prompt();
-    client.send(b"\x01r");
+    client.send(b"\x00r");
     client.wait_for("a column of width 1/4", |screen| {
         let tiles = tiles(screen);
         tiles.len() == 1 && tiles[0].right - tiles[0].left + 1 == 20
     });
+}
+
+#[test]
+fn default_prefix() {
+    let env = TestEnv::new("config-default-prefix");
+    env.write_config(
+        "gband.bind('prefix q', gband.action.close_pane)\ngband.bind('prefix enter', gband.action.open_pane)",
+    );
+    let mut client = Attached::start(&env, 80, 24);
+    client.wait_for_prompt();
+    client.shell_pid(&env);
+    client.send(b"\x00\r");
+    client.wait_for("two tiles with the second focused", |screen| {
+        let tiles = tiles(screen);
+        tiles.len() == 2 && tiles[1].focused
+    });
+    client.wait_for_prompt();
+    client.shell_pid(&env);
+    client.send(b"\x00q");
+    client.wait_for("one tile", |screen| tiles(screen).len() == 1);
+    client.wait_for_prompt();
+    echo_keys(&mut client);
+    client.send(b"\x01\r");
+    client.wait_for_line("^A");
 }
 
 #[test]
@@ -236,7 +260,7 @@ fn direct_binding_acts_without_the_prefix() {
     let mut client = Attached::start(&env, 80, 24);
     client.wait_for_prompt();
     client.shell_pid(&env);
-    client.send(b"\x01\r");
+    client.send(b"\x00\r");
     client.wait_for("the second tile focused", |screen| {
         let tiles = tiles(screen);
         tiles.len() == 2 && tiles[1].focused
@@ -313,7 +337,7 @@ fn broken_file_at_start_keeps_the_defaults() {
     client.wait_for_text("$");
     client.send(b"\x02\r");
     thread::sleep(Duration::from_millis(300));
-    client.send(b"\x01\r");
+    client.send(b"\x00\r");
     client.wait_for("two tiles with the second focused", |screen| {
         focused_top(screen) == Some(40) && tops(screen).len() == 2
     });
@@ -326,7 +350,7 @@ fn broken_edit_keeps_the_running_configuration() {
         "gband.bind('alt+h', gband.action.focus_column_left)",
     ));
     let mut client = two_panes_first_focused(&env);
-    client.send(b"\x01l");
+    client.send(b"\x00l");
     client.wait_for("the second tile focused", |screen| tiles(screen)[1].focused);
     let seen = reloads(&env, "client");
     env.write_config(&with_defaults(

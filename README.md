@@ -83,10 +83,12 @@ The options and their defaults:
 
 | option | value | default |
 |---|---|---|
-| `prefix` | one key | `"ctrl+a"` |
+| `prefix` | one key | `"ctrl+space"` |
 | `default_column_width` | the width of a new column, as a fraction of the screen | `1/2` |
 | `width_presets` | the widths that cycling the column width steps through | `{ 1/3, 1/2, 2/3 }` |
 | `center_focused_column` | `"never"`, `"always"` or `"on-overflow"` | `"never"` |
+
+To keep the old Ctrl+A prefix, or if your desktop takes Ctrl+Space for itself, put `gband.set { prefix = "ctrl+a" }` in `user/init.lua`.
 
 A key is a key name with optional `ctrl`, `alt` and `shift` modifiers joined by `+`, such as `alt+h`, `ctrl+PageUp` or `alt++`.
 A key name is one character, or `enter`, `tab`, `backtab`, `backspace`, `escape`, `space`, the arrow keys `up`, `down`, `left` and `right`, `home`, `end`, `insert`, `delete`, `pageup`, `pagedown`, or `f1` to `f12`.

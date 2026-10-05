@@ -55,7 +55,7 @@ fn detach_leaves_the_session_running() {
     first.shell_pid(&env);
     first.run("sleep 100");
     thread::sleep(Duration::from_millis(300));
-    first.send(b"\x01D");
+    first.send(b"\x00D");
     assert_eq!(first.wait_exit(), 0);
     first.wait_for_text("[detached]");
     assert!(!first.screen().alternate_screen());
@@ -90,8 +90,30 @@ fn hung_up_client_leaves_the_session_running() {
 }
 
 #[test]
-fn prefix_key_passes_ctrl_a_and_discards_unbound_keys() {
-    let env = TestEnv::new("prefix");
+fn prefix_key_twice_sends_one_ctrl_space() {
+    let env = TestEnv::new("prefix-literal");
+    let mut client = Attached::start(&env, 80, 24);
+    client.wait_for_prompt();
+    client.shell_pid(&env);
+    client.run("clear; cat -v");
+    thread::sleep(Duration::from_millis(300));
+    client.send(b"\x00");
+    thread::sleep(Duration::from_millis(200));
+    client.send(b"\x00");
+    thread::sleep(Duration::from_millis(200));
+    client.send(b"\r");
+    client.wait_for_line("^@");
+    assert!(
+        client
+            .focused_lines()
+            .iter()
+            .all(|line| !line.contains("^@^@"))
+    );
+}
+
+#[test]
+fn ctrl_a_reaches_the_pane_and_unbound_keys_are_discarded() {
+    let env = TestEnv::new("prefix-ctrl-a");
     let mut client = Attached::start(&env, 80, 24);
     client.wait_for_prompt();
     client.shell_pid(&env);
@@ -100,10 +122,8 @@ fn prefix_key_passes_ctrl_a_and_discards_unbound_keys() {
     client.wait_for_text("abc");
     client.send(b"\x01");
     thread::sleep(Duration::from_millis(200));
-    client.send(b"\x01");
-    thread::sleep(Duration::from_millis(200));
     client.send(b"echo ");
-    client.send(b"\x01x\r");
+    client.send(b"\x00x\r");
     client.wait_for_line("abc");
 }
 
@@ -203,7 +223,7 @@ fn leader_equals_grows_the_column() {
     let mut client = Attached::start(&env, 80, 24);
     client.wait_for_prompt();
     client.shell_pid(&env);
-    client.send(b"\x01=");
+    client.send(b"\x00=");
     client.wait_for("a tile 48 columns wide", |screen| {
         let tiles = tiles(screen);
         tiles.len() == 1 && tiles[0].left == 0 && tiles[0].right == 47
@@ -221,7 +241,7 @@ fn install(path: &Path) {
 }
 
 fn detach(client: &mut Attached) {
-    client.send(b"\x01D");
+    client.send(b"\x00D");
     assert_eq!(client.wait_exit(), 0);
     client.wait_for_text("[detached]");
 }
@@ -312,7 +332,7 @@ fn open_second_pane(env: &TestEnv) -> Attached {
     let mut client = Attached::start(env, 80, 24);
     client.wait_for_prompt();
     client.shell_pid(env);
-    client.send(b"\x01\r");
+    client.send(b"\x00\r");
     client.wait_for("two tiles with the second focused", |screen| {
         let tiles = tiles(screen);
         tiles.len() == 2 && tiles[1].focused && tiles[1].left == 40
@@ -328,7 +348,7 @@ fn lowercase_d_does_not_detach() {
     let mut client = Attached::start(&env, 80, 24);
     client.wait_for_prompt();
     client.shell_pid(&env);
-    client.send(b"\x01d");
+    client.send(b"\x00d");
     thread::sleep(Duration::from_millis(300));
     assert!(client.child.try_wait().unwrap().is_none());
     client.run("echo still-attached");
@@ -347,7 +367,7 @@ fn leader_enter_opens_a_focused_pane() {
     });
     let first = pane_number(&client.focused_lines()).unwrap();
 
-    client.send(b"\x01\r");
+    client.send(b"\x00\r");
     client.wait_for("two tiles with the second focused", |screen| {
         let tiles = tiles(screen);
         tiles.len() == 2 && tiles[1].focused && tiles[1].left == 40
@@ -365,7 +385,7 @@ fn leader_enter_opens_a_focused_pane() {
 fn leader_h_focuses_the_left_pane() {
     let env = TestEnv::new("focus-left");
     let mut client = open_second_pane(&env);
-    client.send(b"\x01h");
+    client.send(b"\x00h");
     client.wait_for("the first tile focused", |screen| tiles(screen)[0].focused);
     client.run("echo left");
     client.wait_for_line("left");
@@ -379,7 +399,7 @@ fn leader_q_closes_the_focused_pane() {
     let env = TestEnv::new("close");
     let mut client = open_second_pane(&env);
     let second = client.last_pid();
-    client.send(b"\x01q");
+    client.send(b"\x00q");
     client.wait_for("one tile left", |screen| {
         let tiles = tiles(screen);
         tiles.len() == 1 && tiles[0].focused && tiles[0].left == 0
@@ -398,9 +418,9 @@ fn leader_u_and_i_switch_workspaces() {
     client.run("echo first-workspace");
     client.wait_for_line("first-workspace");
 
-    client.send(b"\x01u");
+    client.send(b"\x00u");
     client.wait_for("an empty workspace", |screen| tiles(screen).is_empty());
-    client.send(b"\x01\r");
+    client.send(b"\x00\r");
     client.wait_for("a pane in the second workspace", |screen| {
         tiles(screen).len() == 1
     });
@@ -409,14 +429,14 @@ fn leader_u_and_i_switch_workspaces() {
     client.run("echo second-workspace");
     client.wait_for_line("second-workspace");
 
-    client.send(b"\x01i");
+    client.send(b"\x00i");
     client.wait_for_focused("the first workspace", |lines| {
         lines.iter().any(|line| line == "first-workspace")
     });
     client.run("echo back-on-first");
     client.wait_for_line("back-on-first");
 
-    client.send(b"\x01u");
+    client.send(b"\x00u");
     client.wait_for_focused("the second workspace", |lines| {
         lines.iter().any(|line| line == "second-workspace")
     });
@@ -455,7 +475,7 @@ fn animations_off_opens_a_pane_without_motion() {
     });
     client.wait_for_prompt();
     client.shell_pid(&env);
-    client.send(b"\x01\r");
+    client.send(b"\x00\r");
     client.wait_for("two tiles with the second focused", |screen| {
         let tiles = tiles(screen);
         tiles.len() == 2 && tiles[1].focused && tiles[1].left == 40
