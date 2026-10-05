@@ -2,11 +2,11 @@
 
 A gband plugin is a directory of Lua files.
 gband finds it on the runtimepath, reads its manifest, runs the file of its side, and lets your configuration set it up.
-Plugins can add actions, commands, options, key bindings, event handlers, status line components, windows, highlight groups and colorschemes in the client, and event handlers, shared pane state, events and commands in the server.
+Plugins can add actions, commands, options, key bindings, event handlers, status line components, plugin windows, highlight groups and colorschemes in the client, and event handlers, shared window state, events and commands in the server.
 
 The [sample plugin](../examples/plugins/hello) uses most of what the client API offers.
 The [status line sample](../examples/plugins/pane) adds a component, a highlight group and a colorscheme.
-The [agent status sample](../examples/plugins/agent-status) has both sides: its server half watches panes, and its client half notifies, counts and jumps.
+The [agent status sample](../examples/plugins/agent-status) has both sides: its server half watches windows, and its client half notifies, counts and jumps.
 [Testing a plugin](testing.md) describes `gband test`, which runs a plugin against a real client and server and checks what it draws.
 
 ## Two sides
@@ -17,10 +17,10 @@ Each process runs its own Lua state, loaded from the files of the machine it run
 
 The rule for where code goes:
 
-- What must keep working while no client is attached, or must be shared by every attached client, runs in the **server**: watching pane output, tracking which pane waits for input, counting, queueing a notification for later.
-- What concerns one user's screen, keyboard or machine runs in the **client**: key bindings, the status line, windows, colors, desktop notifications, the clipboard, opening a URL.
+- What must keep working while no client is attached, or must be shared by every attached client, runs in the **server**: watching window output, tracking which window waits for input, counting, queueing a notification for later.
+- What concerns one user's screen, keyboard or machine runs in the **client**: key bindings, the status line, plugin windows, colors, desktop notifications, the clipboard, opening a URL.
 
-The sides talk through plain data only: the server emits events and publishes pane state, and a client calls server commands and gets their results.
+The sides talk through plain data only: the server emits events and publishes window state, and a client calls server commands and gets their results.
 No code ever crosses the connection, as "Trust" below describes.
 
 `gband.side` is `"client"` in a client and `"server"` in the server, and `"test"` in a test file that [`gband test`](testing.md) runs.
@@ -106,7 +106,7 @@ Each file runs once per load.
 
 Saving any `.lua` file under `user/` reloads the configuration of each process that watches it: every client, and the server.
 Changes in the plugins directory do not.
-A server reload keeps every pane state, every queued event and every session; the old state's handlers and commands stop, and the new configuration's `ConfigReloaded` handlers run.
+A server reload keeps every window state, every queued event and every session; the old state's handlers and commands stop, and the new configuration's `ConfigReloaded` handlers run.
 
 ## The side guard
 
@@ -205,7 +205,7 @@ A `pcall` inside the plugin does not catch the stop for long: once the limit is 
 The limit counts Lua instructions only.
 It cannot stop a blocking call into C, such as `os.execute("sleep 100")` or `io.read()`.
 Keep such calls out of plugins.
-In the server, a handler that runs long delays the next events and commands; it never slows a pane, as "Server events" describes.
+In the server, a handler that runs long delays the next events and commands; it never slows a window, as "Server events" describes.
 
 ## `print`
 
@@ -318,23 +318,23 @@ The built-in events of the client:
 | event | payload | emitted when |
 |---|---|---|
 | `Attached` | `session` | once, after the client attaches |
-| `FocusChanged` | `pane`, `previous`: pane numbers, nil when no pane | the focused pane changes |
+| `FocusChanged` | `pane`, `previous`: window numbers, nil when no window | the focused window changes |
 | `BandChanged` | `band`, `previous`: band numbers | the viewed band changes |
-| `PaneOpened` | `pane`, `band` | a pane appears in the layout |
-| `PaneClosed` | `pane`, `band` | a pane leaves the layout |
-| `LayoutChanged` | empty | the bands, columns, panes, column widths or floating boxes change |
+| `PaneOpened` | `pane`, `band` | a window appears in the layout |
+| `PaneClosed` | `pane`, `band` | a window leaves the layout |
+| `LayoutChanged` | empty | the bands, columns, windows, column widths or floating boxes change |
 | `TerminalResized` | `cols`, `rows` | the client's terminal changes size |
 | `ConfigReloaded` | empty | a reload succeeded, to the new configuration's handlers |
 | `KeyTableChanged` | `table`, `previous` | the active key table changes |
 | `HighlightChanged` | `group` | a group's settings change after loading |
 | `ColorschemeChanged` | `name`, `previous` | a colorscheme loads after loading |
 | `ServerEvent` | `name`, `data`, `queued`, `time` | the server emits an event to this client |
-| `PaneStateChanged` | `pane`, `key`, `value`, `previous` | the server changes a pane's state |
+| `PaneStateChanged` | `pane`, `key`, `value`, `previous` | the server changes a window's state |
 
-`Attached` runs once the client has received the session's layout, its pane states and the server's requirements, before the client handles its first key.
+`Attached` runs once the client has received the session's layout, its window states and the server's requirements, before the client handles its first key.
 Attaching to a session emits no `PaneOpened`, `LayoutChanged`, `FocusChanged`, `BandChanged` or `PaneStateChanged` for what is already there.
 The server's events are in "Server events".
-A layout that opens or closes a pane emits `LayoutChanged` after its `PaneOpened` and `PaneClosed` events.
+A layout that opens or closes a window emits `LayoutChanged` after its `PaneOpened` and `PaneClosed` events.
 
 A handler can dispatch actions, call `gband.spawn` and `gband.keymap.enter`.
 The actions run after the handler returns, and the events they cause are emitted in turn.
@@ -343,7 +343,7 @@ After ten rounds of events caused by handlers, gband drops the next round and lo
 ```lua
 local group = gband.augroup("follow")
 gband.on("PaneOpened", function(event)
-  print("opened pane", event.pane, "in band", event.band)
+  print("opened window", event.pane, "in band", event.band)
 end, { group = group })
 ```
 
@@ -383,10 +383,10 @@ Bindings are made only while the configuration loads.
 - `cols` and `rows`: the size of the screen area.
 - `bands`: one table per band, in order, each with `id`, `columns` and `floating`.
 - `columns`: one table per column, left to right, each with `width` as a number, `full_width` and `panes`.
-- `panes`: one table per pane, top to bottom, each with `id` and either `rows`, a fixed height, or `weight`, an automatic height's weight. A plugin pane of a window this client opened also has `window`.
-- `floating`: one table per floating pane, in the band's floating order, each with `id`, `width` and `full_width` as a column has them, `rows`, the box's height, and `col` and `row`, the box's top-left cell as placed in the screen area. A plugin pane of a window this client opened also has `window`.
+- `panes`: one table per window, top to bottom, each with `id` and either `rows`, a fixed height, or `weight`, an automatic height's weight. A window that shows a tiled plugin window this client opened also has `window`.
+- `floating`: one table per floating window, in the band's floating order, each with `id`, `width` and `full_width` as a column has them, `rows`, the box's height, and `col` and `row`, the box's top-left cell as placed in the screen area. A window that shows a plugin window this client opened also has `window`.
 
-`gband.view()` returns `band`, the viewed band, `pane`, the focused pane or nil, `floating`, true while the band's floating layer has focus, `window`, the focused window or nil, `table`, the active key table, and `cols` and `rows`, the size of the ribbon.
+`gband.view()` returns `band`, the viewed band, `pane`, the focused window or nil, `floating`, true while the band's floating layer has focus, `window`, the focused plugin window or nil, `table`, the active key table, and `cols` and `rows`, the size of the ribbon.
 
 Both can be called from any code that runs after loading.
 They describe the state when they are called: an action the running callback dispatched takes effect only after it returns.
@@ -400,44 +400,44 @@ gband.keymap.set("prefix", "o", function()
       count = count + #column.panes
     end
   end
-  print(("band %d, pane %s, %d panes"):format(view.band, tostring(view.pane), count))
+  print(("band %d, window %s, %d windows"):format(view.band, tostring(view.pane), count))
 end, { desc = "describe the layout" })
 ```
 
 ## Action targets
 
-A built-in action that acts on the focused pane also takes a target, a table naming the pane: `close_pane`, `consume_or_expel_left`, `consume_or_expel_right`, `move_column_left`, `move_column_right`, `move_pane_down`, `move_pane_up`, `cycle_column_width`, `toggle_full_width`, `grow_column_width`, `shrink_column_width`, `grow_pane_height`, `shrink_pane_height` and `reset_pane_height`.
-`gband.action.close_pane({ pane = 3 })` closes pane 3, whichever pane is focused.
+A built-in action that acts on the focused window also takes a target, a table naming the window: `close_pane`, `consume_or_expel_left`, `consume_or_expel_right`, `move_column_left`, `move_column_right`, `move_pane_down`, `move_pane_up`, `cycle_column_width`, `toggle_full_width`, `grow_column_width`, `shrink_column_width`, `grow_pane_height`, `shrink_pane_height` and `reset_pane_height`.
+`gband.action.close_pane({ pane = 3 })` closes window 3, whichever window is focused.
 
 `open_pane` takes `band`, `after` or both: the new column follows `after`'s column, or is `band`'s first column when only `band` is given.
-`after` must be a tiled pane.
-`floating = true` opens the pane floating instead, in `band` or in the viewed band, centred at the default width and two height steps shorter than the screen; it cannot be given with `after`.
+`after` must be a tiled window.
+`floating = true` opens the window floating instead, in `band` or in the viewed band, centred at the default width and two height steps shorter than the screen; it cannot be given with `after`.
 
-`toggle_pane_floating` takes `pane` and an optional `after`, a tiled pane of the same band.
-A floating pane is tiled again as a new column after `after`, or, without it, after the tiled pane this client focused last in that band, or as the band's first column.
+`toggle_pane_floating` takes `pane` and an optional `after`, a tiled window of the same band.
+A floating window is tiled again as a new column after `after`, or, without it, after the tiled window this client focused last in that band, or as the band's first column.
 `after` is ignored when `pane` is tiled.
 `send_prefix` takes `pane` and sends the prefix key to it.
 `gband.spawn` takes `band` and `after` beside `cmd`.
 
-A target on a view action or on `detach`, a field the action does not take, or a pane or band not in the layout is an error at the line of the call.
+A target on a view action or on `detach`, a field the action does not take, or a window or band not in the layout is an error at the line of the call.
 
 ```lua
 gband.keymap.set("prefix", "N", function()
   local view = gband.view()
   gband.action.open_pane({ band = view.band })
-end, { desc = "open a pane as the band's first column" })
+end, { desc = "open a window as the band's first column" })
 ```
 
-## Panes and bands: `gband.pane`, `gband.band`
+## Windows and bands: `gband.pane`, `gband.band`
 
 These dispatch like actions, in the order they are called together with the callback's actions, and are errors outside a callback.
-A pane or band number not in the layout is an error at the line of the call.
+A window or band number not in the layout is an error at the line of the call.
 
-- `gband.pane.focus(pane)` views the pane's band and focuses it.
-- `gband.band.view(band)` views a band, focusing the pane last focused there.
-- `gband.pane.set_width(pane, width)` sets the width of the pane's column, or of its box when it floats, a number greater than 0 and at most 10000, and turns full width off.
+- `gband.pane.focus(pane)` views the window's band and focuses the window.
+- `gband.band.view(band)` views a band, focusing the window last focused there.
+- `gband.pane.set_width(pane, width)` sets the width of the window's column, or of its box when it floats, a number greater than 0 and at most 10000, and turns full width off.
 - `gband.pane.set_height(pane, { rows = n })` gives a fixed height; `gband.pane.set_height(pane, { weight = w })` gives an automatic height of weight `w`.
-- `gband.pane.set_position(pane, { col = c, row = r })` places a floating pane's box with its top-left cell at `c` and `r`, kept inside the screen area. A pane that is not floating is an error.
+- `gband.pane.set_position(pane, { col = c, row = r })` places a floating window's box with its top-left cell at `c` and `r`, kept inside the screen area. A window that is not floating is an error.
 - `gband.pane.send_keys(pane, keys)` sends a key name, or a list of them, as key presses.
 - `gband.pane.send_text(pane, text)` sends each character as a key press, a line feed or carriage return as Enter and a tab as Tab. Other control characters are an error.
 - `gband.pane.paste(pane, text)` sends `text` as a paste.
@@ -451,18 +451,18 @@ gband.keymap.set("prefix", "e", function()
   if first ~= view.pane then
     gband.pane.send_text(first, "make\n")
   end
-end, { desc = "run make in the first pane" })
+end, { desc = "run make in the first window" })
 ```
 
-## Windows: `gband.win`
+## Plugin windows: `gband.win`
 
-A window shows lines of styled text that Lua writes.
+A plugin window shows lines of styled text that Lua writes.
 It is one of two kinds:
 
-- a **float**, drawn by this client only, over the ribbon, at a position and size in cells. Floats change no layout, view or pane, and other clients never see them.
-- a **pane**, a plugin pane in the shared layout. It has no program. It is placed, resized, moved, focused and closed like any pane, and every client sees its contents. The server drops keys and pastes sent to it, and it closes when the client that opened it detaches, disconnects or reloads.
+- a **floating** plugin window, of kind `"float"`, drawn by this client only, over the ribbon, at a position and size in cells. Floating plugin windows change no layout, view or window, and other clients never see them.
+- a **tiled** plugin window, of kind `"pane"`, shown in a window of the shared layout that runs no program. It is placed, resized, moved, focused and closed like any window, and every client sees its contents. The server drops keys and pastes sent to it, and it closes when the client that opened it detaches, disconnects or reloads.
 
-`gband.win.open(opts)` opens a window and returns its number, which is never reused.
+`gband.win.open(opts)` opens a plugin window and returns its number, which is never reused.
 `info` and `list` can be called from any code that runs after loading; every other function only inside a callback.
 
 | option | kinds | value | default |
@@ -477,32 +477,32 @@ It is one of two kinds:
 | `width`, `height` | floating | integer of at least 1 | half the ribbon |
 | `border` | floating | boolean | `true` |
 | `title` | floating | string | none |
-| `band`, `after` | pane | as the `open_pane` target takes them | the viewed band and focused pane |
-| `column_width` | pane | a width | the server's `default_column_width` |
+| `band`, `after` | tiled | as the `open_pane` target takes them | the viewed band and focused window |
+| `column_width` | tiled | a width | the server's `default_column_width` |
 
 A line is a string or a list of spans; a span is a string or `{ text = ..., hl = "Group" }`.
 Spans without `hl` use `Window`, and a span's style is its group's resolved style over `Window`'s.
-Control characters are removed, and a line longer than the window is cut.
+Control characters are removed, and a line longer than the plugin window is cut.
 
 - `gband.win.set_lines(win, lines)` replaces the lines.
-- `gband.win.scroll(win, count)` moves the first shown line, and `gband.win.set_cursor(win, line)` the cursor line. With `cursorline`, the window scrolls just enough to keep the cursor line shown and draws it in `WindowCursorLine`.
-- `gband.win.focus(win)` focuses a float, or focuses a pane window's pane.
+- `gband.win.scroll(win, count)` moves the first shown line, and `gband.win.set_cursor(win, line)` the cursor line. With `cursorline`, the plugin window scrolls just enough to keep the cursor line shown and draws it in `WindowCursorLine`.
+- `gband.win.focus(win)` focuses a floating plugin window, or the window of a tiled plugin window.
 - `gband.win.set_config(win, config)` changes a floating plugin window's `row`, `col`, `width`, `height`, `border` or `title`.
-- `gband.win.close(win)` closes a window, and its pane for a pane window. Closing a window that is not open does nothing.
+- `gband.win.close(win)` closes a plugin window, and for a tiled one its window too. Closing a plugin window that is not open does nothing.
 - `gband.win.info(win)` returns `id`, `kind`, `focused`, `pane`, `top`, `cursor`, `line_count`, `cols` and `rows`, and for a floating plugin window `row`, `col`, `width` and `height`.
-- `gband.win.list()` returns the open windows' numbers in ascending order.
+- `gband.win.list()` returns the open plugin windows' numbers in ascending order.
 
-The focused window is the focused float, otherwise the window of the focused pane.
+The focused plugin window is the focused floating plugin window, otherwise the plugin window shown in the focused window.
 A newly opened floating plugin window with `focus` takes focus; moving focus or viewing another band leaves no floating plugin window focused.
-The exception is a focus change caused by the floating plugin window's own `keys` function: it stays focused until the next key press, whether the change happens at once or arrives later from the server, as an opened pane's focus does.
+The exception is a focus change caused by the floating plugin window's own `keys` function: it stays focused until the next key press, whether the change happens at once or arrives later from the server, as an opened window's focus does.
 So a list can run actions on Enter and stay open for the next choice.
-While a window is focused, every key the bindings leave unused goes to it and never to a pane, and pastes are discarded.
-A key in `keys` runs its function with the window's number.
+While a plugin window is focused, every key the bindings leave unused goes to it and never to a program, and pastes are discarded.
+A key in `keys` runs its function with the plugin window's number.
 Without an entry, Up or `k` and Down or `j` move the cursor line or scroll, PageUp and PageDown scroll a page, Home and End show the first or last line, and Escape closes a floating plugin window.
 
-`on_close` runs once with the window's number when the window closes, but not when a reload closes it.
-`on_resize` runs with the number and the new columns and rows when the window's content area changes size, including when a pane window's size first becomes known.
-A window closes when its plugin is marked failed.
+`on_close` runs once with the plugin window's number when the plugin window closes, but not when a reload closes it.
+`on_resize` runs with the number and the new columns and rows when the plugin window's content area changes size, including when a tiled plugin window's size first becomes known.
+A plugin window closes when its plugin is marked failed.
 
 ```lua
 gband.keymap.set("prefix", "?", function()
@@ -526,7 +526,7 @@ end, { desc = "list the prefix keys" })
 
 gband.keymap.set("prefix", "P", function()
   gband.win.open({ kind = "pane", column_width = 1/3, lines = { "notes", "", "- write the tests" } })
-end, { desc = "open a notes pane" })
+end, { desc = "open a notes window" })
 ```
 
 ## Status line: `gband.ui.statusline`
@@ -587,9 +587,9 @@ gband removes control characters from the text, so a component cannot write esca
 | `width` | the cells left for this component, given the other components' latest output, separators and gaps; a hint, at least 0 |
 | `table` | the active key table |
 | `band` | `{ number, index, count }`: the viewed band's number, its position from the top counting from 1, and the number of bands |
-| `column` | `{ index, count }`: the focused column's position counting from 1, and the band's column count; nil when the band is empty or a floating pane is focused |
-| `pane` | the focused pane's number, or nil |
-| `panes` | every pane of the layout, bands from the top, columns from the left and panes from the top, then within each band its floating panes, each `{ pane, band, state }`, `state` a copy of its pane state |
+| `column` | `{ index, count }`: the focused column's position counting from 1, and the band's column count; nil when the band is empty or a floating window is focused |
+| `pane` | the focused window's number, or nil |
+| `panes` | every window of the layout, bands from the top, columns from the left and windows from the top, then within each band its floating windows, each `{ pane, band, state }`, `state` a copy of its window state |
 
 `gband.ui.width(text)` returns the cells `text` takes: two for a wide character, zero for a zero-width one.
 `gband.ui.truncate(text, width)` returns `text` when it fits in `width` cells, and otherwise the longest prefix that fits in `width - 1` cells followed by `…`.
@@ -645,7 +645,7 @@ gband bundles five segment plugins:
 | `gband.statusline.band` | `band` | `band ` and the viewed band's index | `BandChanged`, `LayoutChanged` | left | 20 | 10 | `StatusLineSegment` |
 | `gband.statusline.mode` | `mode` | the active key table; hidden in `root` | `KeyTableChanged` | left | 30 | 20 | `StatusLineAccent` |
 | `gband.statusline.hints` | `hints` | the keys of the active key table and what each does, below | `KeyTableChanged`, and as a fill component | left | 0 | 30 | `KeyHintLabel` |
-| `gband.statusline.position` | `position` | the focused column and the column count, such as `3/7`; hidden in an empty band and while a floating pane is focused | `FocusChanged`, `BandChanged`, `LayoutChanged` | right | 10 | 10 | `StatusLineMuted` |
+| `gband.statusline.position` | `position` | the focused column and the column count, such as `3/7`; hidden in an empty band and while a floating window is focused | `FocusChanged`, `BandChanged`, `LayoutChanged` | right | 10 | 10 | `StatusLineMuted` |
 | `gband.statusline.clock` | `clock` | the local time, `os.date(opts.format)`, `"%H:%M"` by default | every `opts.interval` milliseconds, 1000 by default | right | 5 | 20 | `StatusLineMuted` |
 
 Each takes the options `align`, `priority` and `order`, and each but `hints` takes `hl`.
@@ -785,16 +785,16 @@ The status line defines these groups, as defaults:
 
 The hints segment adds `KeyHintKey`, `{ link = "StatusLineAccent" }`, and `KeyHintLabel`, `{ link = "StatusLineSegment" }`, when its module is first required.
 
-The window API defines these groups, as defaults:
+The plugin window API defines these groups, as defaults:
 
 | group | default | use |
 |---|---|---|
-| `Window` | `{}` | every window cell |
+| `Window` | `{}` | every plugin window cell |
 | `WindowBorder` | `{ fg = 8 }` | a floating plugin window's border |
 | `WindowTitle` | `{ bold = true }` | a floating plugin window's title, over `WindowBorder` |
 | `WindowCursorLine` | `{ reverse = true }` | the cursor line |
 
-A change of any group redraws every window.
+A change of any group redraws every plugin window.
 
 A span's style is its group's resolved style over `StatusLine`'s, field by field.
 
@@ -804,7 +804,7 @@ The client draws 24-bit colors when its own `COLORTERM` is `truecolor` or `24bit
 Otherwise it draws each `"#rrggbb"` color as the nearest of the palette indexes 16 to 255.
 Index and named colors are drawn as their palette index either way.
 Floating plugin windows follow these rules.
-A plugin pane's contents are sent to the server as 24-bit colors, and every client shows them as its terminal does, as it shows a program's colors.
+A tiled plugin window's contents are sent to the server as 24-bit colors, and every client shows them as its terminal does, as it shows a program's colors.
 
 ## Colorschemes: `gband.colorscheme`
 
@@ -835,7 +835,7 @@ gband.hl.set("PaneSegment", { fg = "#f6c177", bold = true })
 
 ## Plain data
 
-Everything that crosses between the sides is plain data: event data, pane state values, command arguments and command results.
+Everything that crosses between the sides is plain data: event data, window state values, command arguments and command results.
 A plain data value is nil, a boolean, an integer, a floating-point number, a string, or a table whose keys are strings or integers and whose values are plain data.
 
 - A string passes as its bytes, unchanged, so `"\0\255"` arrives as those two bytes.
@@ -867,23 +867,23 @@ One Lua state serves every session the server hosts; events name their session.
 |---|---|---|
 | `SessionCreated` | `session` | a session is created |
 | `SessionEnded` | `session` | a session is removed |
-| `PaneOpened` | `session`, `pane`, `band` | a pane enters a session's layout |
-| `PaneClosed` | `session`, `pane`, `band`: the band it left | a pane leaves a session's layout |
-| `PaneExited` | `session`, `pane`, `code`: the exit code, nil when a signal ended it, `signal`: the signal number, nil otherwise | a pane's program exits |
-| `PaneOutput` | `session`, `pane`, `data`: a string of the bytes read | the pane's program writes output |
-| `PaneInput` | `session`, `pane`, `client`: the client's number | a key or paste from a client is written to the pane |
+| `PaneOpened` | `session`, `pane`, `band` | a window enters a session's layout |
+| `PaneClosed` | `session`, `pane`, `band`: the band it left | a window leaves a session's layout |
+| `PaneExited` | `session`, `pane`, `code`: the exit code, nil when a signal ended it, `signal`: the signal number, nil otherwise | a window's program exits |
+| `PaneOutput` | `session`, `pane`, `data`: a string of the bytes read | the window's program writes output |
+| `PaneInput` | `session`, `pane`, `client`: the client's number | a key or paste from a client is written to the window |
 | `ClientAttached` | `session`, `client` | a client attaches to a session |
 | `ClientDetached` | `session`, `client` | a client detaches or disconnects |
 | `ConfigReloaded` | empty | a reload succeeded, to the new configuration's handlers |
 
-A session's events reach the handlers in the order the session applied the changes: a pane's `PaneExited` comes before its `PaneClosed`, and its last `PaneOutput` before both.
+A session's events reach the handlers in the order the session applied the changes: a window's `PaneExited` comes before its `PaneClosed`, and its last `PaneOutput` before both.
 `PaneInput` says that input happened, never what it was.
 
 `PaneOutput` delivers the raw bytes in chunks whose boundaries are arbitrary, so a prompt can be split between two calls.
-Keep a short tail per pane and match against it, as the agent status sample does.
-Joined in order, a pane's `data` equals what its program wrote, except when the handlers fall behind:
+Keep a short tail per window and match against it, as the agent status sample does.
+Joined in order, a window's `data` equals what its program wrote, except when the handlers fall behind:
 
-- No handler ever slows a pane, a screen or a session.
+- No handler ever slows a window, a screen or a session.
 - When more than 4 MiB of output waits for the handlers, the server drops further output until they catch up, and logs how many bytes it dropped.
 - When more than 1024 other events wait, the server drops the oldest and logs how many.
 - Without a `PaneOutput` handler, the server copies no output for Lua at all.
@@ -903,11 +903,11 @@ When no client the event targets is attached, the server queues it, up to 256 ev
 When a client attaches, it receives every queued event that targets its session or every session, in the order emitted and marked as queued, and those events leave the queue.
 So an event emitted while you are detached reaches you once, when you next attach.
 
-### Pane state: `gband.pane_state`
+### Window state: `gband.pane_state`
 
-Every pane has a state: a map from non-empty string keys to plain data values, empty when the pane opens.
+Every window has a state: a map from non-empty string keys to plain data values, empty when the window opens.
 
-In the server, `gband.pane_state(session, pane)` returns a table through which that state is read and written, or nil when the session holds no such pane:
+In the server, `gband.pane_state(session, pane)` returns a table through which that state is read and written, or nil when the session holds no such window:
 
 ```lua
 local state = gband.pane_state(ev.session, ev.pane)
@@ -922,8 +922,8 @@ state.agent = nil
 - Assigning a value equal to the current one changes nothing and sends nothing.
 - A key that is not a non-empty string, a value that is not plain data, or an assignment that would bring the state's encoded size over 64 KiB is an error at the line of the assignment, and leaves the state unchanged.
 
-The server sends every change to the clients of the pane's session, in the order made, and a full copy of the session's states to each client that attaches.
-A pane's state is removed when it leaves the layout.
+The server sends every change to the clients of the window's session, in the order made, and a full copy of the session's states to each client that attaches.
+A window's state is removed when it leaves the layout.
 States live in the server, outside the Lua state, so a reload keeps them.
 
 Keys are not namespaced, so plugins can read each other's keys.
@@ -937,7 +937,7 @@ Prefix a key you do not mean to share with your plugin's name.
 |---|---|
 | `ctx.session` | the calling client's session name, or nil |
 | `ctx.client` | the calling client's number, or nil |
-| `ctx.focus(pane)` | tells the calling client, and no other, to focus that pane of its session; does nothing without a calling client |
+| `ctx.focus(pane)` | tells the calling client, and no other, to focus that window of its session; does nothing without a calling client |
 
 The function's first return value is the command's result, sent back to the caller, and must be plain data.
 A result that is not plain data fails the call as if the function raised an error.
@@ -956,15 +956,15 @@ end)
 ### Session actions in the server
 
 The server's `gband.action` holds the session actions: `open_pane`, `close_pane`, `consume_or_expel_left`, `consume_or_expel_right`, `move_column_left`, `move_column_right`, `move_pane_down`, `move_pane_up`, `toggle_pane_floating`, `cycle_column_width`, `toggle_full_width`, `grow_column_width`, `shrink_column_width`, `grow_pane_height`, `shrink_pane_height` and `reset_pane_height`.
-Each takes one target table naming `session` and the `pane` it acts on:
+Each takes one target table naming `session` and, in `pane`, the window it acts on:
 
 ```lua
 gband.action.close_pane({ session = ev.session, pane = ev.pane })
 ```
 
-`open_pane` takes `session`, `band`, an optional `after` pane, an optional `program`, a command line string or a list of argument strings, and an optional `floating`.
-`floating = true` opens the pane floating in `band`, and cannot be given with `after`.
-`toggle_pane_floating` also takes an optional `after` pane: a floating pane is tiled after it, or as the band's first column without it, since the server knows no client's focus.
+`open_pane` takes `session`, `band`, an optional `after` window, an optional `program`, a command line string or a list of argument strings, and an optional `floating`.
+`floating = true` opens the window floating in `band`, and cannot be given with `after`.
+`toggle_pane_floating` also takes an optional `after` window: a floating window is tiled after it, or as the band's first column without it, since the server knows no client's focus.
 
 ```lua
 gband.action.open_pane({ session = "work", band = 1, after = 2, program = { "htop", "-d", "10" } })
@@ -972,7 +972,7 @@ gband.action.open_pane({ session = "work", band = 1, after = 2, program = { "hto
 
 A missing session, a wrong type or an unknown field is an error at the line of the call.
 The actions apply to their sessions after the callback returns, in the order called, and tell no client to focus anything.
-An action naming a session, pane or band that no longer exists changes nothing.
+An action naming a session, window or band that no longer exists changes nothing.
 They can be called only in a callback.
 
 ### Reading structure: `gband.sessions`, `gband.session`
@@ -982,9 +982,8 @@ They can be called only in a callback.
 
 - `bands` lists the bands from the top, each `{ band, columns, floating }`
 - each column is `{ width, full_width, panes }`, from the left
-- each pane is `{ pane }`, from the top
-- each floating pane is `{ pane, width, full_width, rows, col, row }`, in the band's floating order, with `col` and `row` the box's top-left cell as placed in the session's screen area
-
+- each window is `{ pane }`, from the top
+- each floating window is `{ pane, width, full_width, rows, col, row }`, in the band's floating order, with `col` and `row` the box's top-left cell as placed in the session's screen area
 - `clients` lists the numbers of the attached clients, ascending
 
 Each call returns new tables.
@@ -1003,15 +1002,15 @@ gband.on("ServerEvent", function(ev)
 end, { pattern = "agent.waiting" })
 ```
 
-### Pane state in the client
+### Window state in the client
 
-`gband.pane_state(pane)` returns a new table holding a copy of the pane's latest state, an empty table for a pane of the layout without state, and nil for a pane not in the layout.
+`gband.pane_state(pane)` returns a new table holding a copy of the window's latest state, an empty table for a window of the layout without state, and nil for a window not in the layout.
 Changing the returned table changes nothing else.
 
 Each change after attaching emits `PaneStateChanged` with `pane`, `key`, `value`, the new value or nil when removed, and `previous`.
 The states a client receives as it attaches emit nothing: they are already there in its `Attached` handlers.
 
-The status line's render context lists every pane with its state in `ctx.panes`, so a component can count across panes:
+The status line's render context lists every window with its state in `ctx.panes`, so a component can count across windows:
 
 ```lua
 gband.ui.statusline.add({

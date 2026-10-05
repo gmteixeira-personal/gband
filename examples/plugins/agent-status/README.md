@@ -1,9 +1,9 @@
 # agent-status
 
-A sample gband plugin with both sides. It notices when a coding agent in a pane stops to ask a question, and tells you wherever your client runs.
+A sample gband plugin with both sides. It notices when a coding agent in a window stops to ask a question, and tells you wherever your client runs.
 
-- `server.lua` runs in the server. It keeps the last 512 bytes each pane printed. When they hold a prompt such as `Do you want to proceed?`, it sets the pane's state key `agent` to `"waiting"` and emits the event `agent.waiting` to the clients of the session. A key or a paste into the pane clears the key. It registers the command `agent-status.next_waiting`, which focuses the next waiting pane in the calling client.
-- `client.lua` runs in each client. It raises a desktop notification on `agent.waiting`, adds a status line component that counts the waiting panes, and binds `prefix a` to the command.
+- `server.lua` runs in the server. It keeps the last 512 bytes each window printed. When they hold a prompt such as `Do you want to proceed?`, it sets the window's state key `agent` to `"waiting"` and emits the event `agent.waiting` to the clients of the session. A key or a paste into the window clears the key. It registers the command `agent-status.next_waiting`, which focuses the next waiting window in the calling client.
+- `client.lua` runs in each client. It raises a desktop notification on `agent.waiting`, adds a status line component that counts the waiting windows, and binds `prefix a` to the command.
 - `plugin.lua` is the manifest. Its `client = ">= 0.1"` asks every client that attaches to load `agent-status` 0.1 or later; a client without it reports an error naming the plugin.
 
 The server keeps the state and queues the event while no client is attached, so an agent that stops while you are detached notifies you when you attach again.
@@ -19,10 +19,10 @@ mkdir -p ~/.local/share/gband/plugins
 ln -s "$PWD/examples/plugins/agent-status" ~/.local/share/gband/plugins/agent-status
 ```
 
-Start a new server with `gband kill-server` and attach again, then run `printf 'Do you want to proceed?\n'` in a pane.
-The status line shows `agents waiting: 1`, your terminal shows a notification, and Ctrl+Space then `a` focuses that pane.
+Start a new server with `gband kill-server` and attach again, then run `printf 'Do you want to proceed?\n'` in a window.
+The status line shows `agents waiting: 1`, your terminal shows a notification, and Ctrl+Space then `a` focuses that window.
 
 ## Tests
 
-`tests/agent_status_spec.lua` prints a prompt in a pane, checks the waiting state, the segment and the notification, and jumps to the waiting pane.
+`tests/agent_status_spec.lua` prints a prompt in a window, checks the waiting state, the segment and the notification, and jumps to the waiting window.
 Run it with `gband test` in this directory; [the testing guide](../../../docs/testing.md) describes the API.
