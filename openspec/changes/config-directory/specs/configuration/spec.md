@@ -74,12 +74,12 @@ A key list of more than two keys, two keys whose first is not `prefix`, an inval
 - **WHEN** `user/init.lua` calls `gband.bind("alt+h", gband.action.focus_column_left)`
 - **THEN** Alt+H focuses the column to the left without the prefix
 
-#### Scenario: Rebind a key
-- **WHEN** `user/init.lua` binds `prefix q` to `gband.action.close_pane` and later binds `prefix q` to `gband.action.detach`
+#### Scenario: Override a default
+- **WHEN** `user/init.lua` is a copy of `defaults/init.lua` that then binds `prefix q` to `gband.action.detach`
 - **THEN** Ctrl+A then `q` detaches, and no binding closes the pane
 
-#### Scenario: Unbind a key
-- **WHEN** `user/init.lua` binds `prefix q` to `gband.action.close_pane` and later calls `gband.unbind("prefix q")`
+#### Scenario: Unbind a default
+- **WHEN** `user/init.lua` is a copy of `defaults/init.lua` that then calls `gband.unbind("prefix q")`
 - **THEN** Ctrl+A then `q` discards both keys
 
 #### Scenario: Prefix changed after binding
