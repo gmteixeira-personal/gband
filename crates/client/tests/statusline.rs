@@ -83,6 +83,7 @@ impl Client {
                 pane,
                 band,
                 self.panes.last().copied(),
+                None,
                 &LayoutOptions::default(),
             );
             self.panes.push(pane);

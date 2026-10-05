@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::session::{SessionName, SessionSummary};
 
-pub const PROTOCOL_VERSION: u32 = 4;
+pub const PROTOCOL_VERSION: u32 = 5;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Hello {
@@ -32,6 +32,7 @@ pub enum ClientMessage {
     Action(SessionAction),
     Detach,
     Shown(Vec<PaneId>),
+    Content { pane: PaneId, output: Vec<u8> },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -60,6 +61,10 @@ pub enum ServerMessage {
     Sessions(Vec<SessionSummary>),
     Killed,
     NoSuchSession,
+    Opened {
+        request: u32,
+        pane: Option<PaneId>,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]

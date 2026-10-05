@@ -114,11 +114,7 @@ async fn concurrent_opens_give_every_client_the_same_layout() {
     let mut second = server.attach(80, 24).await;
     let pane = first.first();
     let band = first.layout.bands()[0].id;
-    let open = SessionAction::OpenPane {
-        band,
-        after: Some(pane),
-        program: None,
-    };
+    let open = SessionAction::open(band, Some(pane), None);
     first.act(open.clone()).await;
     second.act(open).await;
     first.wait_until(|client| client.focus.len() == 1).await;

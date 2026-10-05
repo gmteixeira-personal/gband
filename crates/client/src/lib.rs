@@ -7,9 +7,11 @@ pub mod placement;
 pub mod render;
 mod requests;
 mod transport;
+pub mod windows;
 
 use std::collections::{BTreeMap, HashMap};
 use std::io::stdout;
+use std::sync::Arc;
 use std::thread;
 use std::time::Instant;
 
@@ -25,7 +27,7 @@ use gband_core::view::{CenterFocusedColumn, Scene, View, ViewAction};
 use gband_emulator::{Emulator, Grid};
 use gband_lua::{
     BandState, Binding, ColumnState, Config, ConfigError, Dispatch, Event, Options, Outcome as Ran,
-    Runtime, StatusLine, ViewState,
+    PaneInput, Runtime, StatusLine, ViewState, WindowRequest,
 };
 use gband_protocol::{ClientMessage, ExecutableId, ServerMessage, SessionName};
 use ratatui::layout::Rect;
@@ -43,6 +45,7 @@ use crate::placement::Placement;
 use crate::render::{Ribbon, StatusArea, draw_frame};
 pub use crate::requests::{kill_session, list_sessions};
 pub use crate::transport::{Link, Transport, UnixTransport};
+use crate::windows::{OpenRequest, Opened, Windows};
 
 pub struct ClientConfig {
     pub session: SessionName,
@@ -133,7 +136,7 @@ impl Drop for TerminalGuard {
 }
 
 pub struct Display {
-    layout: Layout,
+    layout: Arc<Layout>,
     area: Size,
     terminal: Size,
     placement: Placement,
@@ -148,13 +151,14 @@ pub struct Display {
     banner: Option<String>,
     colors: ColorSupport,
     line: Option<StatusLine>,
+    windows: Windows,
 }
 
 impl Display {
     pub fn new(terminal: Size, animations: Animations) -> Self {
         let (ribbon, status) = Placement::OFF.split(terminal);
         Self {
-            layout: Layout::new(),
+            layout: Arc::new(Layout::new()),
             area: terminal,
             terminal,
             placement: Placement::OFF,
@@ -169,7 +173,22 @@ impl Display {
             banner: None,
             colors: ColorSupport::default(),
             line: None,
+            windows: Windows::new(),
         }
+    }
+
+    pub fn windows(&self) -> &Windows {
+        &self.windows
+    }
+
+    pub fn focused_window(&self) -> Option<u32> {
+        self.windows
+            .focused_float()
+            .or_else(|| self.focused().and_then(|pane| self.windows.window_of(pane)))
+    }
+
+    pub fn grid_size(&self, pane: PaneId) -> Option<Size> {
+        self.grids.get(&pane).map(Grid::size)
     }
 
     pub fn configure(&mut self, options: &Options) {
@@ -255,6 +274,9 @@ impl Display {
             width: self.terminal.cols,
             drawn: self.status.is_some(),
             error: self.banner.clone(),
+            layout: Arc::clone(&self.layout),
+            area: self.area,
+            ribbon: self.reported_size(),
         }
     }
 
@@ -311,7 +333,7 @@ impl Display {
         match message {
             ServerMessage::Layout { cols, rows, layout } => {
                 self.grids.retain(|&pane, _| layout.contains(pane));
-                self.layout = layout;
+                self.layout = Arc::new(layout);
                 let area = Size::new(cols, rows);
                 if area != self.area {
                     self.presentation.snap();
@@ -335,6 +357,9 @@ impl Display {
             },
             ServerMessage::Focus(pane) => {
                 self.with_view(|view, scene| view.focus_pane(pane, scene))
+            }
+            ServerMessage::Opened { .. } => {
+                tracing::warn!("ignoring an opened reply outside the controls")
             }
             ServerMessage::Exited => return Some(Outcome::Exited),
             ServerMessage::Info { .. } => tracing::warn!("ignoring a repeated server info"),
@@ -377,6 +402,9 @@ impl Display {
             grids: &self.grids,
             drawn,
             region: self.ribbon,
+            floats: self.windows.floats(),
+            float_focused: self.windows.focused_float().is_some(),
+            colors: self.colors,
             banner: self.banner.as_deref(),
             status: self.status.map(|area| StatusArea {
                 area,
@@ -489,6 +517,7 @@ pub struct Controls {
 
 impl Controls {
     pub fn new(config: Config, display: &mut Display) -> Self {
+        config.runtime.set_window_counter(display.windows.counter());
         display.configure(&config.options);
         display.set_banner(config.errors.last().map(ToString::to_string));
         Self {
@@ -542,13 +571,18 @@ impl Controls {
         messages: impl IntoIterator<Item = ServerMessage>,
     ) -> Received {
         let mut outcome = None;
-        let steps = self.react(display, Vec::new(), |_, display, _| {
+        let steps = self.react(display, Vec::new(), |controls, display, steps| {
             for message in messages {
+                if let ServerMessage::Opened { request, pane } = message {
+                    controls.opened(display, request, pane, steps);
+                    continue;
+                }
                 outcome = display.apply(message);
                 if outcome.is_some() {
                     return;
                 }
             }
+            controls.track_panes(display, steps);
         });
         match outcome {
             Some(outcome) => Received {
@@ -572,22 +606,79 @@ impl Controls {
     }
 
     pub fn press(&mut self, display: &mut Display, key: Key) -> Vec<Step> {
-        self.react(
-            display,
-            Vec::new(),
-            |controls, display, steps| match controls.leader.handle(&controls.keymap, key) {
-                Command::Send(key) => steps.push(dispatch(
-                    display,
-                    Action::Client(ClientAction::SendKey(key)),
-                )),
+        self.react(display, Vec::new(), |controls, display, steps| {
+            let released = controls.runtime.release_windows();
+            controls.apply(display, released, steps);
+            match controls.leader.handle(&controls.keymap, key) {
+                Command::Send(key) => match display.focused_window() {
+                    Some(window) => {
+                        let outcome = controls.runtime.window_key(window, key);
+                        controls.apply(display, outcome, steps);
+                    }
+                    None => steps.push(dispatch(
+                        display,
+                        Action::Client(ClientAction::SendKey(key)),
+                    )),
+                },
                 Command::Run(Binding::Action(action)) => steps.push(dispatch(display, action)),
                 Command::Run(Binding::Callback(callback)) => {
                     let outcome = controls.runtime.call(callback);
                     controls.apply(display, outcome, steps);
                 }
                 Command::Discard => {}
-            },
-        )
+            }
+        })
+    }
+
+    pub fn paste(&mut self, display: &mut Display, text: String) -> Vec<Step> {
+        if display.focused_window().is_some() {
+            return Vec::new();
+        }
+        display
+            .focused()
+            .map(|pane| Step::Send(ClientMessage::Paste { pane, text }))
+            .into_iter()
+            .collect()
+    }
+
+    fn opened(
+        &mut self,
+        display: &mut Display,
+        request: u32,
+        pane: Option<PaneId>,
+        steps: &mut Vec<Step>,
+    ) {
+        match display.windows.opened(request, pane) {
+            Opened::Close(pane) => {
+                if let Some(pane) = pane {
+                    steps.push(Step::Send(ClientMessage::Action(SessionAction::ClosePane(
+                        pane,
+                    ))));
+                }
+            }
+            Opened::Window(window) => {
+                let outcome = self.runtime.window_opened(window, pane);
+                self.apply(display, outcome, steps);
+            }
+        }
+    }
+
+    fn track_panes(&mut self, display: &mut Display, steps: &mut Vec<Step>) {
+        for (pane, window) in display.windows.panes() {
+            if !display.layout.contains(pane) {
+                display.windows.forget(pane);
+                let outcome = self.runtime.pane_closed(window);
+                self.apply(display, outcome, steps);
+                continue;
+            }
+            let Some(size) = display.grid_size(pane) else {
+                continue;
+            };
+            if display.windows.resized(pane, size) {
+                let outcome = self.runtime.pane_resized(window, size);
+                self.apply(display, outcome, steps);
+            }
+        }
     }
 
     pub fn reload(
@@ -602,6 +693,12 @@ impl Controls {
                     tracing::warn!("configuration error: {error}");
                 }
                 let previous = self.leader.active().to_owned();
+                let closed: Vec<Step> = display
+                    .windows
+                    .close_all()
+                    .into_iter()
+                    .map(Step::Send)
+                    .collect();
                 let resized = display.set_placement(Placement::new(&config.options.statusline));
                 *self = Self::new(config, display);
                 let mut events = vec![Event::ConfigReloaded];
@@ -612,7 +709,8 @@ impl Controls {
                     });
                 }
                 self.refresh_pending = true;
-                let mut steps: Vec<Step> = resized.map(resize_step).into_iter().collect();
+                let mut steps = closed;
+                steps.extend(resized.map(resize_step));
                 steps.extend(self.react(display, events, |_, _, _| {}));
                 steps
             }
@@ -636,6 +734,7 @@ impl Controls {
         let mut before = display.observe();
         let mut table = self.leader.active().to_owned();
         let drawn = display.status_area().is_some();
+        self.push_state(display, &mut steps);
         change(self, display, &mut steps);
         for depth in 0.. {
             self.table_changed(&mut table, &mut events);
@@ -669,6 +768,8 @@ impl Controls {
         if let Some(line) = self.runtime.take_line() {
             display.set_status_line(line);
         }
+        let frames = self.runtime.take_frames();
+        steps.extend(display.windows.present(frames).into_iter().map(Step::Send));
         steps
     }
 
@@ -702,6 +803,14 @@ impl Controls {
                 Dispatch::Action(action) => steps.push(dispatch(display, action)),
                 Dispatch::Spawn(program) => steps.push(spawn(display, program)),
                 Dispatch::Enter(table) => self.leader.enter(table),
+                Dispatch::Session(action) => {
+                    steps.push(Step::Send(ClientMessage::Action(action)));
+                }
+                Dispatch::Input { pane, input } => steps.push(Step::Send(match input {
+                    PaneInput::Key(key) => ClientMessage::Key { pane, key },
+                    PaneInput::Paste(text) => ClientMessage::Paste { pane, text },
+                })),
+                Dispatch::Window(request) => steps.push(window_step(display, request)),
             }
         }
         for error in &outcome.errors {
@@ -720,19 +829,45 @@ fn resize_step(size: Size) -> Step {
     })
 }
 
+fn window_step(display: &mut Display, request: WindowRequest) -> Step {
+    match request {
+        WindowRequest::Open {
+            window,
+            target,
+            width,
+            focus,
+        } => {
+            let target = target.or_else(|| {
+                let view = display.view.as_ref()?;
+                Some((view.band(), view.focused()))
+            });
+            let Some((band, after)) = target else {
+                return Step::Nothing;
+            };
+            Step::Send(display.windows.open(OpenRequest {
+                window,
+                band,
+                after,
+                width,
+                focus,
+            }))
+        }
+        WindowRequest::Close { window } => display
+            .windows
+            .close(window)
+            .map_or(Step::Nothing, Step::Send),
+    }
+}
+
 fn spawn(display: &mut Display, program: Option<Program>) -> Step {
     let open = display
         .view
         .as_ref()
         .and_then(|view| view.resolve(SessionCommand::OpenPane));
     match open {
-        Some(SessionAction::OpenPane { band, after, .. }) => {
-            Step::Send(ClientMessage::Action(SessionAction::OpenPane {
-                band,
-                after,
-                program,
-            }))
-        }
+        Some(SessionAction::OpenPane { band, after, .. }) => Step::Send(ClientMessage::Action(
+            SessionAction::open(band, after, program),
+        )),
         _ => Step::Nothing,
     }
 }
@@ -845,8 +980,9 @@ async fn attach(
                     }
                 }
                 Some(TerminalEvent::Paste(text)) => {
-                    if let Some(pane) = display.focused() {
-                        connection.send(&ClientMessage::Paste { pane, text }).await?;
+                    let steps = controls.paste(&mut display, text);
+                    if let Some(outcome) = perform(connection, steps).await? {
+                        return Ok(outcome);
                     }
                 }
                 Some(TerminalEvent::Resize(cols, rows)) => {

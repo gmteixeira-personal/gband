@@ -144,6 +144,31 @@ When a pane's program exits, the pane SHALL leave its session's layout once its 
 - **WHEN** a client is attached to the server's only session, which holds one shell pane and one plugin pane, and the user runs `exit` in the shell
 - **THEN** the plugin pane leaves the layout, the client is told the session ended, and the server exits with status 0
 
+### Requirement: Authoritative screen
+The server SHALL keep each pane's screen state by feeding everything the pane's program writes to its PTY into a terminal grid of its own. A plugin pane has no program, and its screen SHALL be the one its owner's content messages write, as "Plugin panes" defines. The server SHALL keep reading every pane's PTY whether or not a client is attached, so no program ever blocks on output. Escape sequences a grid does not handle SHALL be recorded in the server log at `debug` level, naming the sequence.
+
+#### Scenario: Output while detached
+- **WHEN** no client is attached and a pane's program writes 1 MiB of output
+- **THEN** the program completes without blocking
+- **AND** the server's screen of that pane holds the last screenful of that output
+
+#### Scenario: Unhandled sequence logged
+- **WHEN** the server runs with `GBAND_LOG=debug` and a pane's program writes `\x1b[999z`
+- **THEN** the server log holds a `debug` event naming the unhandled CSI sequence
+
+### Requirement: Session outlives its clients
+The panes' programs SHALL keep running when a client detaches, disconnects or is killed. Detaching or losing any number of clients SHALL NOT signal or restart any program. It SHALL NOT resize any program, except where the plugin panes the client owned leave the layout, as "Plugin panes" defines, and the panes that remain take their tiles' new sizes.
+
+#### Scenario: Client killed
+- **WHEN** a client attached to the server is killed with SIGKILL
+- **THEN** every pane's shell keeps running with the same process id
+- **AND** a program one of them was running, such as `sleep 100`, keeps running
+
+#### Scenario: Owner of a stacked plugin pane detaches
+- **WHEN** a column holds a shell pane above a plugin pane, and the client that owns the plugin pane detaches
+- **THEN** the shell keeps running with the same process id
+- **AND** once the session settles, the shell's pane is resized to the whole column
+
 ## ADDED Requirements
 
 ### Requirement: Plugin panes

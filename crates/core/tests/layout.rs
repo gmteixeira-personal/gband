@@ -27,7 +27,7 @@ fn open(layout: &mut Layout, band: usize, after: Option<PaneId>) -> PaneId {
     let id = band_id(layout, band);
     assert!(
         !layout
-            .open(pane, id, after, &LayoutOptions::default())
+            .open(pane, id, after, None, &LayoutOptions::default())
             .is_empty()
     );
     pane
@@ -162,18 +162,24 @@ fn open_refuses_unknown_targets() {
     let pane = layout.allocate_pane();
     assert!(
         layout
-            .open(pane, BandId(99), None, &LayoutOptions::default())
+            .open(pane, BandId(99), None, None, &LayoutOptions::default())
             .is_empty()
     );
     let second = band_id(&layout, 1);
     assert!(
         layout
-            .open(pane, second, Some(first), &LayoutOptions::default())
+            .open(pane, second, Some(first), None, &LayoutOptions::default())
             .is_empty()
     );
     assert!(
         layout
-            .open(pane, second, Some(PaneId(99)), &LayoutOptions::default())
+            .open(
+                pane,
+                second,
+                Some(PaneId(99)),
+                None,
+                &LayoutOptions::default()
+            )
             .is_empty()
     );
     assert_eq!(columns(&layout, 0), vec![vec![first]]);
@@ -346,7 +352,7 @@ fn new_column_takes_the_configured_default_width() {
     let mut layout = Layout::new();
     let pane = layout.allocate_pane();
     let band = band_id(&layout, 0);
-    assert!(!layout.open(pane, band, None, &options).is_empty());
+    assert!(!layout.open(pane, band, None, None, &options).is_empty());
     assert_eq!(width_of(&layout, pane), (Proportion::ONE_THIRD, false));
 }
 
@@ -463,12 +469,12 @@ fn opening_a_pane_the_layout_already_holds_changes_nothing() {
     let (current, empty) = (band_id(&layout, 0), band_id(&layout, 1));
     assert!(
         layout
-            .open(first, current, None, &LayoutOptions::default())
+            .open(first, current, None, None, &LayoutOptions::default())
             .is_empty()
     );
     assert!(
         layout
-            .open(first, empty, None, &LayoutOptions::default())
+            .open(first, empty, None, None, &LayoutOptions::default())
             .is_empty()
     );
     assert_eq!(layout, before);
@@ -482,11 +488,7 @@ fn opening_and_closing_are_left_to_the_server() {
     assert!(
         layout
             .apply(
-                SessionAction::OpenPane {
-                    band,
-                    after: Some(first),
-                    program: None,
-                },
+                SessionAction::open(band, Some(first), None),
                 AREA,
                 &LayoutOptions::default()
             )
@@ -625,7 +627,7 @@ fn invariants_hold_through_mixed_operations() {
                     .or_else(|| layout.bands()[band % count].panes().next());
                 let pane = layout.allocate_pane();
                 assert!(!panes.contains(&pane), "{pane} was reused");
-                let events = layout.open(pane, target, named, &LayoutOptions::default());
+                let events = layout.open(pane, target, named, None, &LayoutOptions::default());
                 assert_eq!(events[0], LayoutEvent::PaneOpened { pane, band: target });
                 panes.push(pane);
             }
@@ -884,7 +886,7 @@ fn step_height(layout: &mut Layout, pane: PaneId, step: Resize, area: Size) -> V
     )
 }
 
-fn auto(num: u16, den: u16) -> PaneHeight {
+fn auto(num: u32, den: u32) -> PaneHeight {
     PaneHeight::Auto(Weight::new(num, den))
 }
 
@@ -1051,4 +1053,117 @@ fn weights_are_held_in_lowest_terms() {
     let weight = Weight::new(20, 14);
     assert_eq!((weight.num(), weight.den()), (10, 7));
     assert_eq!(Weight::ONE, Weight::new(5, 5));
+}
+
+fn set_width(layout: &mut Layout, pane: PaneId, width: Proportion) -> Vec<LayoutEvent> {
+    layout.apply(
+        SessionAction::SetWidth { pane, width },
+        AREA,
+        &LayoutOptions::default(),
+    )
+}
+
+fn set_height(layout: &mut Layout, pane: PaneId, height: PaneHeight) -> Vec<LayoutEvent> {
+    layout.apply(
+        SessionAction::SetHeight { pane, height },
+        AREA,
+        &LayoutOptions::default(),
+    )
+}
+
+#[test]
+fn set_width_turns_full_width_off() {
+    let (mut layout, first) = started();
+    layout.apply(
+        SessionAction::ToggleFullWidth(first),
+        AREA,
+        &LayoutOptions::default(),
+    );
+    assert!(!set_width(&mut layout, first, Proportion::new(7, 20)).is_empty());
+    assert_eq!(width_of(&layout, first), (Proportion::new(7, 20), false));
+}
+
+#[test]
+fn set_width_is_held_in_lowest_terms() {
+    let (mut layout, first) = started();
+    set_width(&mut layout, first, Proportion::new(4, 10));
+    assert_eq!(width_of(&layout, first), (Proportion::new(2, 5), false));
+}
+
+#[test]
+fn setting_the_same_width_changes_nothing() {
+    let (mut layout, first) = started();
+    layout.apply(
+        SessionAction::CycleWidth(first),
+        AREA,
+        &LayoutOptions::default(),
+    );
+    layout.apply(
+        SessionAction::CycleWidth(first),
+        AREA,
+        &LayoutOptions::default(),
+    );
+    assert_eq!(width_of(&layout, first), (Proportion::ONE_THIRD, false));
+    let before = layout.clone();
+    assert!(set_width(&mut layout, first, Proportion::ONE_THIRD).is_empty());
+    assert_eq!(layout, before);
+}
+
+#[test]
+fn width_named_on_open() {
+    let (mut layout, first) = started();
+    let pane = layout.allocate_pane();
+    let band = band_id(&layout, 0);
+    layout.open(
+        pane,
+        band,
+        Some(first),
+        Some(Proportion::new(1, 4)),
+        &LayoutOptions::default(),
+    );
+    assert_eq!(width_of(&layout, pane), (Proportion::new(1, 4), false));
+    assert_eq!(width_of(&layout, first), (Proportion::ONE_HALF, false));
+}
+
+#[test]
+fn fixed_rows_in_a_stack_of_two() {
+    let (mut layout, panes) = stacked(2);
+    assert!(!set_height(&mut layout, panes[0], PaneHeight::Fixed(8)).is_empty());
+    assert_eq!(
+        heights_of(&layout, panes[0]),
+        [PaneHeight::Fixed(8), auto(1, 1)]
+    );
+    assert_eq!(rows_of(&layout, panes[0], AREA), [8, 16]);
+}
+
+#[test]
+fn rows_are_kept_within_the_limits() {
+    let (mut layout, panes) = stacked(2);
+    set_height(&mut layout, panes[0], PaneHeight::Fixed(30));
+    assert_eq!(heights_of(&layout, panes[0])[0], PaneHeight::Fixed(21));
+    set_height(&mut layout, panes[0], PaneHeight::Fixed(1));
+    assert_eq!(heights_of(&layout, panes[0])[0], PaneHeight::Fixed(3));
+    let before = layout.clone();
+    assert!(set_height(&mut layout, panes[0], PaneHeight::Fixed(2)).is_empty());
+    assert_eq!(layout, before);
+}
+
+#[test]
+fn fixed_height_moves_to_another_pane() {
+    let (mut layout, panes) = stacked(2);
+    set_height(&mut layout, panes[0], PaneHeight::Fixed(14));
+    set_height(&mut layout, panes[1], PaneHeight::Fixed(6));
+    assert_eq!(
+        heights_of(&layout, panes[0]),
+        [auto(1, 1), PaneHeight::Fixed(6)]
+    );
+}
+
+#[test]
+fn set_a_weight_keeps_the_others() {
+    let (mut layout, panes) = stacked(2);
+    set_height(&mut layout, panes[0], PaneHeight::Fixed(14));
+    assert!(!set_height(&mut layout, panes[0], auto(2, 1)).is_empty());
+    assert_eq!(heights_of(&layout, panes[0]), [auto(2, 1), auto(1, 1)]);
+    assert!(set_height(&mut layout, panes[0], auto(4, 2)).is_empty());
 }

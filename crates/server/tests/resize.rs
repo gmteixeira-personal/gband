@@ -54,11 +54,11 @@ async fn ready(client: &mut TestClient, pane: PaneId) {
 async fn open(client: &mut TestClient, after: PaneId) -> PaneId {
     let seen = client.focus.len();
     client
-        .act(SessionAction::OpenPane {
-            band: client.layout.bands()[0].id,
-            after: Some(after),
-            program: None,
-        })
+        .act(SessionAction::open(
+            client.layout.bands()[0].id,
+            Some(after),
+            None,
+        ))
         .await;
     client.wait_until(|client| client.focus.len() > seen).await;
     let opened = client.focus[seen];

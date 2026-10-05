@@ -140,6 +140,7 @@ pub fn drawn(width: u16) -> ViewState {
         width,
         drawn: true,
         error: None,
+        ..ViewState::default()
     }
 }
 

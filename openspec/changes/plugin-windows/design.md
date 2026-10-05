@@ -73,9 +73,11 @@ New host primitives:
 | `host.forget_window(id)` | drop a window's stored frame |
 | `host.request(entry)` | queue `Dispatch::Window` to open or close a plugin pane |
 | `host.parse_key(name)` | a canonical key string, as matching against bindings compares keys |
-| `host.window_hooks(table)` | register the functions Rust calls: `opened`, `pane_resized`, `pane_closed`, `key`, `ribbon_resized`, `redraw` |
+| `host.window_hooks(table)` | register the functions Rust calls: `opened`, `pane_resized`, `pane_closed`, `key`, `release`, `ribbon_resized`, `focused`, `pane_window`, and `flush`, which draws the windows changed during a run |
 
 `host.after_event` becomes a list, so `win.lua` can clear the focused float on `FocusChanged` and `BandChanged`, and redraw on `HighlightChanged` and `ColorschemeChanged`, beside the status line.
+
+When the focused float runs one of its `keys` functions, `win.lua` holds that float's focus: `FocusChanged` and `BandChanged` leave it focused. `Controls::press` releases the hold through a `release` window hook before it handles each key. A focus change that a float's own key caused, at once or through the server's later focus message, keeps the float focused. A key pressed outside the float still moves focus away from it.
 
 - Alternative: the store in Rust with a Lua API. Rejected for the same reason the status line rejected it: highlight resolution and display widths already live in Lua, and a Rust store would need a second resolver.
 

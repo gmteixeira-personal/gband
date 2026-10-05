@@ -95,7 +95,8 @@ The client SHALL have at most one focused float. The **focused window** SHALL be
 - Opening a float with `focus` on SHALL make it the focused float.
 - `gband.win.focus(win)` on a float SHALL make it the focused float.
 - `gband.win.focus(win)` on a pane window SHALL leave no focused float, and dispatch focus of its plugin pane as `gband.pane.focus` does.
-- A change of the focused pane or of the viewed band SHALL leave no focused float.
+- A change of the focused pane or of the viewed band SHALL leave no focused float, except as the next rule allows.
+- After the focused float runs one of its `keys` functions, a change of the focused pane or of the viewed band SHALL leave that float focused until the user presses another key. This holds whether the change comes from the client at once or from the server later, as the focus of an opened pane does.
 - Closing the focused float SHALL leave no focused float.
 
 #### Scenario: Float takes focus
@@ -106,12 +107,17 @@ The client SHALL have at most one focused float. The **focused window** SHALL be
 - **WHEN** a float is focused and the user presses Ctrl+Space then `l`, with two columns open and the first focused
 - **THEN** the second column is focused, the float is still drawn, and no float is focused
 
+#### Scenario: Action from the float's own key
+- **WHEN** a focused float has `keys = { enter = function() gband.action.focus_column_right() end }`, two columns are open with the first focused, and the user presses Enter
+- **THEN** the second column is focused and the float is still the focused window
+- **AND** when the user then presses Ctrl+Space then `h`, the first column is focused and no float is focused
+
 ### Requirement: Keys in a focused window
 While a window is focused, every key that the key bindings would send to the focused pane SHALL go to the window instead, and SHALL NOT be sent to the server. Every paste SHALL be discarded. A key that matches an entry of the window's `keys`, as a key matches a binding, SHALL run that entry's function with the window's number, as a callback that belongs to the window's plugin. A key that matches no entry SHALL take its default, when it has one:
 
 | key | default |
 |---|---|
-| Up, Down | move the cursor line up or down one line with `cursorline` on, otherwise scroll by one line |
+| Up or `k`, Down or `j` | move the cursor line up or down one line with `cursorline` on, otherwise scroll by one line |
 | PageUp, PageDown | scroll by the content area's height, and move the cursor line by as many lines with `cursorline` on |
 | Home, End | show the first or last line, and make it the cursor line with `cursorline` on |
 | Escape | close the window when it is a float |
@@ -125,6 +131,10 @@ Any other key SHALL be discarded.
 #### Scenario: Default scroll
 - **WHEN** a focused float without `cursorline` shows lines 1 to 10 of 25 and the user presses Down
 - **THEN** it shows lines 2 to 11
+
+#### Scenario: j and k scroll like the arrow keys
+- **WHEN** a focused float without `cursorline` shows lines 1 to 10 of 25 and the user presses `j`, then `j`, then `k`
+- **THEN** it shows lines 2 to 11, then lines 3 to 12, then lines 2 to 11
 
 #### Scenario: Escape closes a float
 - **WHEN** a focused float binds no `escape` and the user presses Escape

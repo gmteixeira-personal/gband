@@ -1,6 +1,6 @@
 use gband_core::action::Action;
 use gband_core::input::Key;
-use gband_core::layout::Program;
+use gband_core::layout::{BandId, PaneContent, PaneId, Program, Proportion, SessionAction};
 use mlua::{Lua, Table, Value};
 
 use crate::callbacks::CallbackId;
@@ -23,10 +23,32 @@ pub enum Binding {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PaneInput {
+    Key(Key),
+    Paste(String),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum WindowRequest {
+    Open {
+        window: u32,
+        target: Option<(BandId, Option<PaneId>)>,
+        width: Option<Proportion>,
+        focus: bool,
+    },
+    Close {
+        window: u32,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Dispatch {
     Action(Action),
     Spawn(Option<Program>),
     Enter(String),
+    Session(SessionAction),
+    Input { pane: PaneId, input: PaneInput },
+    Window(WindowRequest),
 }
 
 #[derive(Default)]
@@ -164,18 +186,41 @@ fn spawn(lua: &Lua, request: Value) -> mlua::Result<()> {
     let Value::Table(request) = request else {
         return Err(ConfigError::raise(lua, "gband.spawn expects a table"));
     };
+    if !in_callback(lua) {
+        return Err(outside_callback(lua, "gband.spawn"));
+    }
     let mut program = None;
+    let (mut band, mut after) = (Value::Nil, Value::Nil);
     for pair in request.pairs::<Value, Value>() {
         let (name, value) = pair?;
-        if !matches!(&name, Value::String(name) if name == "cmd") {
-            return Err(ConfigError::raise(
-                lua,
-                "gband.spawn takes only the field `cmd`",
-            ));
+        match &name {
+            Value::String(name) if name == "cmd" => program = command(lua, value)?,
+            Value::String(name) if name == "band" => band = value,
+            Value::String(name) if name == "after" => after = value,
+            _ => {
+                return Err(ConfigError::raise(
+                    lua,
+                    format!(
+                        "gband.spawn takes only the fields `cmd`, `band` and `after`, found `{}`",
+                        crate::control::field_name(&name)
+                    ),
+                ));
+            }
         }
-        program = command(lua, value)?;
     }
-    queue(lua, Dispatch::Spawn(program), "gband.spawn")
+    let entry = match crate::control::open_target(lua, &band, &after)
+        .map_err(|message| ConfigError::raise(lua, message))?
+    {
+        None => Dispatch::Spawn(program),
+        Some((band, after)) => Dispatch::Session(SessionAction::OpenPane {
+            band,
+            after,
+            width: None,
+            focus: true,
+            content: PaneContent::Program(program),
+        }),
+    };
+    queue(lua, entry, "gband.spawn")
 }
 
 fn command(lua: &Lua, value: Value) -> mlua::Result<Option<Program>> {

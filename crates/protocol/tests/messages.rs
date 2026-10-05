@@ -4,7 +4,8 @@ use std::path::PathBuf;
 use gband_core::geometry::Size;
 use gband_core::input::{Key, KeyCode, Modifiers};
 use gband_core::layout::{
-    Direction, Layout, LayoutOptions, PaneHeight, PaneId, Program, SessionAction, Step, Weight,
+    Direction, Layout, LayoutOptions, PaneContent, PaneHeight, PaneId, Program, Proportion,
+    SessionAction, Step, Weight,
 };
 use gband_protocol::{
     ClientMessage, Decoder, ExecutableId, Hello, HelloReply, PROTOCOL_VERSION, ServerMessage,
@@ -27,8 +28,8 @@ fn session(name: &str) -> SessionName {
 }
 
 #[test]
-fn protocol_version_is_four() {
-    assert_eq!(PROTOCOL_VERSION, 4);
+fn protocol_version_is_five() {
+    assert_eq!(PROTOCOL_VERSION, 5);
 }
 
 #[test]
@@ -149,6 +150,10 @@ fn client_messages_round_trip() {
     round_trip(ClientMessage::Detach);
     round_trip(ClientMessage::Shown(vec![PaneId(1), PaneId(4)]));
     round_trip(ClientMessage::Shown(Vec::new()));
+    round_trip(ClientMessage::Content {
+        pane: PaneId(4),
+        output: b"\x1b[1;1Hhello".to_vec(),
+    });
 }
 
 #[test]
@@ -156,30 +161,22 @@ fn session_actions_round_trip() {
     let layout = Layout::new();
     let band = layout.bands()[0].id;
     for action in [
-        SessionAction::OpenPane {
+        SessionAction::open(band, None, None),
+        SessionAction::open(band, Some(PaneId(4)), None),
+        SessionAction::open(
             band,
-            after: None,
-            program: None,
-        },
-        SessionAction::OpenPane {
-            band,
-            after: Some(PaneId(4)),
-            program: None,
-        },
-        SessionAction::OpenPane {
-            band,
-            after: Some(PaneId(2)),
-            program: Some(Program::Argv(vec![
+            Some(PaneId(2)),
+            Some(Program::Argv(vec![
                 "htop".to_owned(),
                 "-d".to_owned(),
                 "10".to_owned(),
             ])),
-        },
-        SessionAction::OpenPane {
+        ),
+        SessionAction::open(
             band,
-            after: None,
-            program: Some(Program::CommandLine("echo $GBAND_PANE".to_owned())),
-        },
+            None,
+            Some(Program::CommandLine("echo $GBAND_PANE".to_owned())),
+        ),
         SessionAction::ClosePane(PaneId(5)),
         SessionAction::ConsumeOrExpel {
             pane: PaneId(3),
@@ -204,6 +201,25 @@ fn session_actions_round_trip() {
             step: Step::Shrink,
         },
         SessionAction::ResetHeight(PaneId(9)),
+        SessionAction::OpenPane {
+            band,
+            after: Some(PaneId(2)),
+            width: Some(Proportion::new(1, 4)),
+            focus: false,
+            content: PaneContent::Plugin { request: 7 },
+        },
+        SessionAction::SetWidth {
+            pane: PaneId(1),
+            width: Proportion::new(2, 5),
+        },
+        SessionAction::SetHeight {
+            pane: PaneId(2),
+            height: PaneHeight::Auto(Weight::new(3, 2)),
+        },
+        SessionAction::SetHeight {
+            pane: PaneId(2),
+            height: PaneHeight::Fixed(8),
+        },
     ] {
         round_trip(ClientMessage::Action(action));
     }
@@ -216,8 +232,8 @@ fn layout_round_trips() {
     let second = layout.allocate_pane();
     let third = layout.allocate_pane();
     let w1 = layout.bands()[0].id;
-    layout.open(first, w1, None, &LayoutOptions::default());
-    layout.open(second, w1, Some(first), &LayoutOptions::default());
+    layout.open(first, w1, None, None, &LayoutOptions::default());
+    layout.open(second, w1, Some(first), None, &LayoutOptions::default());
     layout.apply(
         SessionAction::ConsumeOrExpel {
             pane: second,
@@ -242,7 +258,7 @@ fn layout_round_trips() {
         &LayoutOptions::default(),
     );
     let w2 = layout.bands()[1].id;
-    layout.open(third, w2, None, &LayoutOptions::default());
+    layout.open(third, w2, None, None, &LayoutOptions::default());
     assert_eq!(layout.bands().len(), 3);
     round_trip(ServerMessage::Layout {
         cols: 120,
@@ -256,9 +272,15 @@ fn heights_in_the_layout_round_trip() {
     let mut layout = Layout::new();
     let band = layout.bands()[0].id;
     let panes: Vec<PaneId> = (0..3).map(|_| layout.allocate_pane()).collect();
-    layout.open(panes[0], band, None, &LayoutOptions::default());
+    layout.open(panes[0], band, None, None, &LayoutOptions::default());
     for pair in panes.windows(2) {
-        layout.open(pair[1], band, Some(pair[0]), &LayoutOptions::default());
+        layout.open(
+            pair[1],
+            band,
+            Some(pair[0]),
+            None,
+            &LayoutOptions::default(),
+        );
         layout.apply(
             SessionAction::ConsumeOrExpel {
                 pane: pair[1],
@@ -312,6 +334,14 @@ fn server_messages_round_trip() {
     });
     round_trip(ServerMessage::Focus(PaneId(3)));
     round_trip(ServerMessage::Exited);
+    round_trip(ServerMessage::Opened {
+        request: 7,
+        pane: Some(PaneId(9)),
+    });
+    round_trip(ServerMessage::Opened {
+        request: 8,
+        pane: None,
+    });
 }
 
 #[test]

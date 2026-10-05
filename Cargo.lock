@@ -951,6 +951,7 @@ dependencies = [
  "gband-server",
  "gband-test-support",
  "insta",
+ "mlua",
  "notify-rust",
  "ratatui",
  "rustix",
@@ -960,6 +961,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "tui-term",
+ "vt100",
 ]
 
 [[package]]

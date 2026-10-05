@@ -10,7 +10,7 @@ const AREA: Size = Size::new(80, 24);
 fn open(layout: &mut Layout, band: usize, after: Option<PaneId>) -> (PaneId, Vec<LayoutEvent>) {
     let pane = layout.allocate_pane();
     let id = layout.bands()[band].id;
-    let events = layout.open(pane, id, after, &LayoutOptions::default());
+    let events = layout.open(pane, id, after, None, &LayoutOptions::default());
     (pane, events)
 }
 

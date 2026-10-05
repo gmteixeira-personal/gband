@@ -72,6 +72,11 @@ impl Proportion {
         Self::new((num / divisor) as u32, (den / divisor) as u32)
     }
 
+    pub fn lowest(self) -> Self {
+        let divisor = gcd(u64::from(self.num), u64::from(self.den)).max(1) as u32;
+        Self::new(self.num / divisor, self.den / divisor)
+    }
+
     fn exceeds(self, other: Self) -> bool {
         u64::from(self.num) * u64::from(other.den) > u64::from(other.num) * u64::from(self.den)
     }
@@ -79,26 +84,26 @@ impl Proportion {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Weight {
-    num: u16,
-    den: u16,
+    num: u32,
+    den: u32,
 }
 
 impl Weight {
     pub const ONE: Self = Self { num: 1, den: 1 };
 
-    pub fn new(num: u16, den: u16) -> Self {
-        let divisor = gcd(u64::from(num), u64::from(den)) as u16;
+    pub fn new(num: u32, den: u32) -> Self {
+        let divisor = gcd(u64::from(num), u64::from(den)).max(1) as u32;
         Self {
             num: num / divisor,
             den: den / divisor,
         }
     }
 
-    pub fn num(self) -> u16 {
+    pub fn num(self) -> u32 {
         self.num
     }
 
-    pub fn den(self) -> u16 {
+    pub fn den(self) -> u32 {
         self.den
     }
 }
@@ -210,22 +215,41 @@ impl Column {
         self.width = current.step(step);
     }
 
+    pub fn set_width(&mut self, width: Proportion) {
+        self.full_width = false;
+        self.width = width.lowest();
+    }
+
     fn step_height(&mut self, row: usize, step: Step, area: Size) {
         let rows = pane_heights(self, area.rows);
-        if matches!(self.heights[row], PaneHeight::Auto(_)) {
-            let mut sorted = rows.clone();
-            sorted.sort_unstable();
-            let median = sorted[sorted.len() / 2].max(1);
-            for (height, &tile) in self.heights.iter_mut().zip(&rows) {
-                *height = PaneHeight::Auto(Weight::new(tile.max(1), median));
-            }
-        }
-        let ceiling = fixed_height_limit(self.panes.len(), area.rows);
         let step_rows = ((u32::from(area.rows) + 5) / 10).max(1) as u16;
         let target = match step {
             Step::Grow => rows[row].saturating_add(step_rows),
             Step::Shrink => rows[row].saturating_sub(step_rows),
         };
+        self.fix_height(row, target, &rows, area);
+    }
+
+    pub fn set_height(&mut self, row: usize, height: PaneHeight, area: Size) {
+        match height {
+            PaneHeight::Fixed(target) => {
+                let rows = pane_heights(self, area.rows);
+                self.fix_height(row, target, &rows, area);
+            }
+            PaneHeight::Auto(weight) => self.heights[row] = PaneHeight::Auto(weight),
+        }
+    }
+
+    fn fix_height(&mut self, row: usize, target: u16, rows: &[u16], area: Size) {
+        if matches!(self.heights[row], PaneHeight::Auto(_)) {
+            let mut sorted = rows.to_vec();
+            sorted.sort_unstable();
+            let median = sorted[sorted.len() / 2].max(1);
+            for (height, &tile) in self.heights.iter_mut().zip(rows) {
+                *height = PaneHeight::Auto(Weight::new(u32::from(tile.max(1)), u32::from(median)));
+            }
+        }
+        let ceiling = fixed_height_limit(self.panes.len(), area.rows);
         self.heights[row] = PaneHeight::Fixed(target.min(ceiling).max(MIN_TILE_HEIGHT));
     }
 }
@@ -276,11 +300,19 @@ pub enum Direction {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PaneContent {
+    Program(Option<Program>),
+    Plugin { request: u32 },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SessionAction {
     OpenPane {
         band: BandId,
         after: Option<PaneId>,
-        program: Option<Program>,
+        width: Option<Proportion>,
+        focus: bool,
+        content: PaneContent,
     },
     ClosePane(PaneId),
     ConsumeOrExpel {
@@ -298,6 +330,26 @@ pub enum SessionAction {
         step: Step,
     },
     ResetHeight(PaneId),
+    SetWidth {
+        pane: PaneId,
+        width: Proportion,
+    },
+    SetHeight {
+        pane: PaneId,
+        height: PaneHeight,
+    },
+}
+
+impl SessionAction {
+    pub fn open(band: BandId, after: Option<PaneId>, program: Option<Program>) -> Self {
+        Self::OpenPane {
+            band,
+            after,
+            width: None,
+            focus: true,
+            content: PaneContent::Program(program),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -382,6 +434,7 @@ impl Layout {
         pane: PaneId,
         band: BandId,
         after: Option<PaneId>,
+        width: Option<Proportion>,
         options: &LayoutOptions,
     ) -> Vec<LayoutEvent> {
         if !self.can_open(band, after) || self.contains(pane) {
@@ -396,9 +449,13 @@ impl Layout {
             Some((column, _)) => column + 1,
             None => 0,
         };
-        target
-            .columns
-            .insert(index, Column::new(pane, options.default_width));
+        target.columns.insert(
+            index,
+            Column::new(
+                pane,
+                width.map_or(options.default_width, Proportion::lowest),
+            ),
+        );
         let mut events = vec![LayoutEvent::PaneOpened { pane, band }];
         events.extend(self.normalize());
         events
@@ -448,6 +505,12 @@ impl Layout {
             SessionAction::ResetHeight(pane) => self.with_heights(pane, |column, row| {
                 column.heights[row] = PaneHeight::DEFAULT;
             }),
+            SessionAction::SetWidth { pane, width } => {
+                self.with_column(pane, |column| column.set_width(width))
+            }
+            SessionAction::SetHeight { pane, height } => {
+                self.with_heights(pane, |column, row| column.set_height(row, height, area))
+            }
         }
     }
 

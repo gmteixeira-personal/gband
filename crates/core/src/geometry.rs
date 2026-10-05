@@ -6,7 +6,7 @@ pub const MIN_COLUMN_WIDTH: u16 = 3;
 pub const MIN_TILE_HEIGHT: u16 = 3;
 pub const BORDER: u16 = 1;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Size {
     pub cols: u16,
     pub rows: u16,

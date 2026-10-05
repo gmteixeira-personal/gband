@@ -37,7 +37,7 @@ pub struct Pane {
 
 struct Terminal {
     grid: Grid,
-    master: Box<dyn MasterPty + Send>,
+    master: Option<Box<dyn MasterPty + Send>>,
 }
 
 pub struct Seen {
@@ -78,6 +78,33 @@ pub struct SpawnRequest<'a> {
 }
 
 impl Pane {
+    pub fn blank(size: Size, changed: &Arc<watch::Sender<u64>>) -> PaneEntry {
+        let (input, mut discarded) = mpsc::unbounded_channel();
+        tokio::spawn(async move { while discarded.recv().await.is_some() {} });
+        let pane = Arc::new(Pane {
+            terminal: Mutex::new(Terminal {
+                grid: Grid::new(size),
+                master: None,
+            }),
+            generation: AtomicU64::new(0),
+            changed: Arc::clone(changed),
+            write_back: input.downgrade(),
+        });
+        PaneEntry { pane, input }
+    }
+
+    pub fn replace(&self, output: &[u8]) {
+        {
+            let mut terminal = self.terminal.lock().unwrap();
+            let mut grid = Grid::new(terminal.grid.size());
+            grid.process(output);
+            grid.take_write_back();
+            terminal.grid = grid;
+            self.generation.fetch_add(1, Ordering::AcqRel);
+        }
+        self.notify();
+    }
+
     pub fn catch_up(&self, seen: Option<&Seen>) -> (u64, Seen, Contents) {
         let terminal = self.terminal.lock().unwrap();
         let grid = &terminal.grid;
@@ -102,7 +129,12 @@ impl Pane {
     }
 
     pub fn foreground_group(&self) -> Option<i32> {
-        self.terminal.lock().unwrap().master.process_group_leader()
+        self.terminal
+            .lock()
+            .unwrap()
+            .master
+            .as_ref()?
+            .process_group_leader()
     }
 
     pub fn resize(&self, size: Size) {
@@ -115,7 +147,9 @@ impl Pane {
             if terminal.grid.size() == size {
                 return;
             }
-            if let Err(error) = terminal.master.resize(pty_size(size)) {
+            if let Some(master) = &terminal.master
+                && let Err(error) = master.resize(pty_size(size))
+            {
                 tracing::warn!("cannot resize the PTY to {cols}x{rows}: {error:#}");
                 return;
             }
@@ -188,7 +222,7 @@ pub fn spawn(
     let pane = Arc::new(Pane {
         terminal: Mutex::new(Terminal {
             grid: Grid::new(size),
-            master: pair.master,
+            master: Some(pair.master),
         }),
         generation: AtomicU64::new(0),
         changed: Arc::clone(changed),
@@ -271,4 +305,59 @@ fn display_argv(program: &[OsString]) -> String {
         .map(|arg| arg.to_string_lossy())
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn blank(size: Size) -> PaneEntry {
+        Pane::blank(size, &Arc::new(watch::Sender::new(0)))
+    }
+
+    fn feed(grid: &mut Grid, contents: Contents) {
+        match contents {
+            Contents::Snapshot(size, bytes) => {
+                *grid = Grid::new(size);
+                grid.process(&bytes);
+            }
+            Contents::Update(bytes) => grid.process(&bytes),
+        }
+    }
+
+    #[tokio::test]
+    async fn replaced_screen_reaches_a_client_as_an_update() {
+        let entry = blank(Size::new(20, 5));
+        let mut client = Grid::new(Size::new(20, 5));
+        entry.pane.replace(b"one");
+        let (_, seen, contents) = entry.pane.catch_up(None);
+        feed(&mut client, contents);
+        entry.pane.replace(b"\x1b[2;1Htwo");
+        let (_, _, contents) = entry.pane.catch_up(Some(&seen));
+        assert!(matches!(contents, Contents::Update(_)));
+        feed(&mut client, contents);
+        let rows: Vec<String> = client.contents().lines().map(str::to_owned).collect();
+        assert_eq!(rows, ["", "two"]);
+    }
+
+    #[tokio::test]
+    async fn resize_keeps_the_cells_that_fit() {
+        let entry = blank(Size::new(20, 5));
+        entry.pane.replace(b"hello\r\nworld");
+        let before = entry.pane.generation();
+        entry.pane.resize(Size::new(3, 1));
+        assert!(entry.pane.generation() > before);
+        let (_, _, contents) = entry.pane.catch_up(None);
+        let mut client = Grid::new(Size::new(1, 1));
+        feed(&mut client, contents);
+        assert_eq!(client.size(), Size::new(3, 1));
+        assert_eq!(client.contents(), "hel");
+    }
+
+    #[tokio::test]
+    async fn input_to_a_blank_pane_is_discarded() {
+        let entry = blank(Size::new(20, 5));
+        assert!(entry.input.send(Input::Paste("x".into())).is_ok());
+        assert!(entry.pane.foreground_group().is_none());
+    }
 }

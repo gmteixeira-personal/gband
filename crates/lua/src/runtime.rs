@@ -3,7 +3,13 @@ use std::ffi::OsString;
 use std::fs;
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::AtomicU32;
 use std::time::Instant;
+
+use gband_core::geometry::Size;
+use gband_core::input::Key;
+use gband_core::layout::PaneId;
 
 use mlua::{Function, IntoLuaMulti, Lua, MultiValue, Table, Value};
 
@@ -12,9 +18,11 @@ use crate::callbacks::{self, CallbackId, Callbacks, Ran};
 use crate::error::{ConfigError, caller};
 use crate::events::{self, Event};
 use crate::guard::{self, Failure};
+use crate::keys::key_name;
 use crate::owner::{self, Owners};
 use crate::ui::{self, StatusLine, ViewState};
-use crate::{Config, Locations, actions, bundled, commands, keymap, options, user_dir};
+use crate::windows::{self, Frame};
+use crate::{Config, Locations, actions, bundled, commands, control, keymap, options, user_dir};
 
 pub const API_VERSION: i64 = 1;
 const SIDE: &str = "client";
@@ -44,7 +52,9 @@ pub(crate) fn install(lua: &Lua, locations: Option<&Locations>, budget: u64) -> 
     events::install(lua, &gband)?;
     keymap::install(lua, &gband)?;
     options::install(lua, &gband)?;
+    control::install(lua, &gband)?;
     let host = ui::install(lua, &gband)?;
+    windows::install(lua, &host)?;
     gband.set("side", SIDE)?;
     gband.set("api_version", API_VERSION)?;
     gband.set(
@@ -370,6 +380,40 @@ impl Runtime {
         self.within_callback(|lua| ui::fire_timers(lua, now).map(|()| false))
     }
 
+    pub fn window_key(&self, window: u32, key: Key) -> Outcome {
+        self.within_callback(|lua| {
+            windows::call::<()>(lua, "key", (window, key_name(key))).map(|()| false)
+        })
+    }
+
+    pub fn window_opened(&self, window: u32, pane: Option<PaneId>) -> Outcome {
+        self.within_callback(|lua| {
+            windows::call::<()>(lua, "opened", (window, pane.map(|pane| pane.0))).map(|()| false)
+        })
+    }
+
+    pub fn pane_resized(&self, window: u32, size: Size) -> Outcome {
+        self.within_callback(|lua| {
+            windows::call::<()>(lua, "pane_resized", (window, size.cols, size.rows)).map(|()| false)
+        })
+    }
+
+    pub fn pane_closed(&self, window: u32) -> Outcome {
+        self.within_callback(|lua| windows::call::<()>(lua, "pane_closed", window).map(|()| false))
+    }
+
+    pub fn release_windows(&self) -> Outcome {
+        self.within_callback(|lua| windows::call::<()>(lua, "release", ()).map(|()| false))
+    }
+
+    pub fn take_frames(&self) -> Vec<(u32, Option<Frame>)> {
+        windows::take(&self.lua)
+    }
+
+    pub fn set_window_counter(&self, counter: Arc<AtomicU32>) {
+        windows::set_counter(&self.lua, counter);
+    }
+
     pub fn active_table(&self) -> String {
         keymap::active(&self.lua)
     }
@@ -383,7 +427,7 @@ impl Runtime {
         lua.app_data_mut::<Queue>()
             .expect("the queue is installed with the runtime")
             .0 = Some(Vec::new());
-        let result = run(lua);
+        let result = run(lua).and_then(|disabled| windows::flush(lua).map(|()| disabled));
         let dispatched = lua
             .app_data_mut::<Queue>()
             .and_then(|mut queue| queue.0.take())

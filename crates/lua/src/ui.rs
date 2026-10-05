@@ -1,6 +1,10 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
+
+use gband_core::geometry::Size;
+use gband_core::layout::Layout;
 
 use mlua::{Function, Lua, MultiValue, RegistryKey, Table, Value};
 use unicode_width::UnicodeWidthChar;
@@ -33,6 +37,9 @@ pub struct ViewState {
     pub width: u16,
     pub drawn: bool,
     pub error: Option<String>,
+    pub layout: Arc<Layout>,
+    pub area: Size,
+    pub ribbon: Size,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -74,7 +81,7 @@ struct Presented(Option<StatusLine>);
 
 #[derive(Default)]
 struct Hooks {
-    after_event: Option<RegistryKey>,
+    after_event: Vec<RegistryKey>,
     on_state: Option<RegistryKey>,
 }
 
@@ -212,7 +219,8 @@ fn host(lua: &Lua) -> mlua::Result<Table> {
     host.set(
         "after_event",
         lua.create_function(|lua, function: Function| {
-            hooks(lua).after_event = Some(lua.create_registry_value(function)?);
+            let key = lua.create_registry_value(function)?;
+            hooks(lua).after_event.push(key);
             Ok(())
         })?,
     )?;
@@ -304,11 +312,22 @@ fn emit(lua: &Lua, (name, payload): (String, Table)) -> mlua::Result<()> {
 }
 
 pub(crate) fn after_event(lua: &Lua, name: Option<&str>) -> mlua::Result<()> {
-    let hook = match &hooks(lua).after_event {
-        Some(key) => lua.registry_value::<Function>(key)?,
-        None => return Ok(()),
-    };
-    hook.call::<()>(name)
+    let hooks: Vec<Function> = hooks(lua)
+        .after_event
+        .iter()
+        .map(|key| lua.registry_value::<Function>(key))
+        .collect::<mlua::Result<_>>()?;
+    for hook in hooks {
+        hook.call::<()>(name)?;
+    }
+    Ok(())
+}
+
+pub(crate) fn current_state(lua: &Lua) -> ViewState {
+    lua.app_data_ref::<State>()
+        .expect("the state is installed with the runtime")
+        .0
+        .clone()
 }
 
 fn state(lua: &Lua, (): ()) -> mlua::Result<Table> {
@@ -334,6 +353,10 @@ fn state(lua: &Lua, (): ()) -> mlua::Result<Table> {
     table.set("width", state.width)?;
     table.set("drawn", state.drawn)?;
     table.set("error", state.error)?;
+    let ribbon = lua.create_table()?;
+    ribbon.set("cols", state.ribbon.cols)?;
+    ribbon.set("rows", state.ribbon.rows)?;
+    table.set("ribbon", ribbon)?;
     Ok(table)
 }
 
@@ -343,9 +366,14 @@ pub(crate) fn set_state(lua: &Lua, state: ViewState) -> mlua::Result<()> {
             .app_data_mut::<State>()
             .expect("the state is installed with the runtime");
         let changed = stored.0.error != state.error || stored.0.drawn != state.drawn;
+        let resized = stored.0.ribbon != state.ribbon;
         stored.0 = state;
-        changed
+        (changed, resized)
     };
+    let (changed, resized) = changed;
+    if resized {
+        crate::windows::ribbon_resized(lua)?;
+    }
     if !changed {
         return Ok(());
     }
@@ -375,7 +403,7 @@ fn color(value: Value) -> mlua::Result<Option<Color>> {
     })
 }
 
-fn style(table: &Table) -> mlua::Result<Style> {
+pub(crate) fn style(table: &Table) -> mlua::Result<Style> {
     let flag = |name: &str| -> mlua::Result<bool> {
         Ok(table.get::<Option<bool>>(name)?.unwrap_or(false))
     };
@@ -541,7 +569,9 @@ mod tests {
             .load("return function(name) log[#log + 1] = 'after ' .. tostring(name) end")
             .eval::<Function>()
             .unwrap();
-        hooks(lua).after_event = Some(lua.create_registry_value(hook).unwrap());
+        hooks(lua)
+            .after_event
+            .push(lua.create_registry_value(hook).unwrap());
         let outcome = config.runtime.emit(&Event::FocusChanged {
             pane: Some(PaneId(1)),
             previous: None,
@@ -549,6 +579,35 @@ mod tests {
         assert!(outcome.errors.is_empty(), "{:?}", outcome.errors);
         let log: Vec<String> = lua.globals().get("log").unwrap();
         assert_eq!(log, ["handler", "after FocusChanged"]);
+    }
+
+    #[test]
+    fn every_after_event_hook_runs_and_the_status_line_still_renders() {
+        let config = config("log = {}");
+        let lua = config.runtime.lua();
+        assert!(hooks(lua).after_event.len() >= 2);
+        let hook = lua
+            .load("return function(name) log[#log + 1] = name end")
+            .eval::<Function>()
+            .unwrap();
+        hooks(lua)
+            .after_event
+            .push(lua.create_registry_value(hook).unwrap());
+        let state = ViewState {
+            width: 40,
+            drawn: true,
+            ..ViewState::default()
+        };
+        assert!(config.runtime.set_state(state).errors.is_empty());
+        config.runtime.take_line();
+        let outcome = config.runtime.emit(&Event::FocusChanged {
+            pane: Some(PaneId(1)),
+            previous: None,
+        });
+        assert!(outcome.errors.is_empty(), "{:?}", outcome.errors);
+        assert!(config.runtime.take_line().is_some());
+        let log: Vec<String> = lua.globals().get("log").unwrap();
+        assert_eq!(log, ["FocusChanged"]);
     }
 
     #[test]
