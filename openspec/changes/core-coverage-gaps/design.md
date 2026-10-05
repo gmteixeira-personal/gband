@@ -1,6 +1,6 @@
 ## Context
 
-See proposal.md for the motivation. `gband-core` has no inline test modules. All 79 of its tests are integration tests in `crates/core/tests/`, and they use only the crate's public API. Nothing in the repository measures coverage, and there is no CI.
+See proposal.md for the motivation. `gband-core` has no inline test modules. All 70 of its tests are integration tests in `crates/core/tests/`, and they use only the crate's public API. Nothing in the repository measures coverage, and there is no CI.
 
 ## Goals / Non-Goals
 

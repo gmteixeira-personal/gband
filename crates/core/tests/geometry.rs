@@ -1,5 +1,5 @@
-use gband_core::geometry::{Size, Tile, column_spans, tiles};
-use gband_core::layout::{Direction, Layout, PaneId, SessionAction};
+use gband_core::geometry::{Size, Span, Tile, column_spans, column_width, tiles};
+use gband_core::layout::{Column, Direction, Layout, PaneId, Proportion, SessionAction};
 
 fn single() -> (Layout, PaneId) {
     let mut layout = Layout::new();
@@ -91,6 +91,54 @@ fn terminal_size_is_at_least_one_cell() {
     let (layout, _) = single();
     let tiles = first_tiles(&layout, Size::new(2, 1));
     assert_eq!(tiles[0].terminal_size(), Size::new(1, 1));
+}
+
+#[test]
+fn column_width_follows_the_proportion_and_the_minimum() {
+    let mut column = Column::new(PaneId(1));
+    let area = Size::new(90, 24);
+    assert_eq!(column_width(&column, area), 45);
+    column.width = Proportion::ONE_THIRD;
+    assert_eq!(column_width(&column, area), 30);
+    column.full_width = true;
+    assert_eq!(column_width(&column, area), 90);
+    assert_eq!(column_width(&column, Size::new(2, 24)), 3);
+    column.full_width = false;
+    assert_eq!(column_width(&column, Size::new(5, 24)), 3);
+}
+
+#[test]
+fn panes_beyond_the_area_rows_get_no_height() {
+    let (mut layout, first) = single();
+    let second = open_after(&mut layout, first);
+    let third = open_after(&mut layout, second);
+    for pane in [second, third] {
+        layout.apply(SessionAction::ConsumeOrExpel {
+            pane,
+            direction: Direction::Left,
+        });
+    }
+    let tiles = first_tiles(&layout, Size::new(80, 2));
+    let rows: Vec<_> = tiles
+        .iter()
+        .map(|tile| (tile.pane, tile.y, tile.height))
+        .collect();
+    assert_eq!(rows, vec![(first, 0, 1), (second, 1, 1), (third, 2, 0)]);
+    assert_eq!(tiles[2].terminal_size(), Size::new(38, 1));
+}
+
+#[test]
+fn tile_span_is_its_column_span() {
+    let (mut layout, first) = single();
+    let second = open_after(&mut layout, first);
+    let area = Size::new(80, 24);
+    let tiles = first_tiles(&layout, area);
+    assert_eq!(tiles[1].pane, second);
+    assert_eq!(tiles[1].span(), Span { x: 40, width: 40 });
+    assert_eq!(
+        tiles[1].span(),
+        column_spans(&layout.workspaces()[0], area)[1]
+    );
 }
 
 #[test]

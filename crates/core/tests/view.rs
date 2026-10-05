@@ -214,6 +214,20 @@ fn viewed_workspace_removed_moves_to_the_one_in_its_place() {
 }
 
 #[test]
+fn view_action_after_the_viewed_workspace_is_removed_only_moves_the_view() {
+    let mut layout = Layout::new();
+    let first = open(&mut layout, 0, None);
+    let other = open(&mut layout, 1, None);
+    open(&mut layout, 1, Some(other));
+    let w2 = layout.workspaces()[1].id;
+    let mut view = View::new(scene(&layout));
+    layout.remove(first);
+    act(&mut view, &layout, &[ViewAction::FocusRight]);
+    assert_eq!(view.workspace(), w2);
+    assert_eq!(view.focused(), Some(other));
+}
+
+#[test]
 fn last_workspace_removed_moves_to_the_new_last() {
     let mut layout = Layout::new();
     open(&mut layout, 0, None);
@@ -244,6 +258,51 @@ fn focus_pane_switches_to_its_workspace() {
     view.focus_pane(pane, scene(&layout));
     assert_eq!(view.workspace(), layout.workspaces()[1].id);
     assert_eq!(view.focused(), Some(pane));
+}
+
+#[test]
+fn focus_pane_ignores_a_pane_the_layout_does_not_hold() {
+    let (layout, panes) = row_of_columns(2);
+    let mut view = View::new(scene(&layout));
+    act(&mut view, &layout, &[ViewAction::FocusRight]);
+    view.focus_pane(PaneId(99), scene(&layout));
+    assert_eq!(view.workspace(), layout.workspaces()[0].id);
+    assert_eq!(view.focused(), Some(panes[1]));
+}
+
+#[test]
+fn focus_moves_on_an_empty_workspace_change_nothing() {
+    let layout = Layout::new();
+    let mut view = View::new(scene(&layout));
+    act(
+        &mut view,
+        &layout,
+        &[
+            ViewAction::FocusLeft,
+            ViewAction::FocusRight,
+            ViewAction::FocusUp,
+            ViewAction::FocusDown,
+        ],
+    );
+    assert_eq!(view.workspace(), layout.workspaces()[0].id);
+    assert_eq!(view.focused(), None);
+}
+
+#[test]
+fn focus_move_after_an_unsynced_close_lands_where_a_sync_would() {
+    for action in [
+        ViewAction::FocusLeft,
+        ViewAction::FocusRight,
+        ViewAction::FocusUp,
+        ViewAction::FocusDown,
+    ] {
+        let (mut layout, panes) = row_of_columns(3);
+        let mut view = View::new(scene(&layout));
+        act(&mut view, &layout, &[ViewAction::FocusRight]);
+        layout.remove(panes[1]);
+        act(&mut view, &layout, &[action]);
+        assert_eq!(view.focused(), Some(panes[2]), "{action:?}");
+    }
 }
 
 #[test]
