@@ -45,6 +45,8 @@ lua-config evaluates a `defaults.lua` hidden inside the binary and then layers `
 
 ### Expected Files
 - crates/lua/
+- crates/client/src/bindings.rs
+- crates/client/tests/actions.rs
 - src/main.rs
 - tests/common/mod.rs
 - tests/config.rs
