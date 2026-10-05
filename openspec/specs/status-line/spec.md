@@ -108,9 +108,9 @@ The context SHALL be a new table for each call, holding:
 | `width` | `total_width` less the cells that the other shown components take, by their latest output, with the separators and region gaps "Layout" puts between components; at least 0 |
 | `table` | the name of the active key table |
 | `band` | `{ number, index, count }`: the viewed band's number, its position from the top, counting from 1, and the number of bands |
-| `column` | `{ index, count }`: the focused pane's column position in the viewed band, counting from 1, and the number of columns in that band; nil when the viewed band is empty |
+| `column` | `{ index, count }`: the focused pane's column position in the viewed band, counting from 1, and the number of columns in that band; nil when the viewed band is empty or a floating pane is focused |
 | `pane` | the focused pane's number, or nil when no pane is focused |
-| `panes` | a list of every pane in the client's layout, bands from the top, columns from the left and panes from the top, each `{ pane, band, state }`: its number, its band's number, and a copy of its state as the plugin-bridge capability defines |
+| `panes` | a list of every pane in the client's layout, bands from the top, and within each band its columns from the left and their panes from the top, then the band's floating panes in its floating list order, each `{ pane, band, state }`: its number, its band's number, and a copy of its state as the plugin-bridge capability defines |
 
 #### Scenario: Context values
 - **WHEN** the client's terminal is 100 columns wide, the viewed band is the second of three bands and holds five columns, the third column holds focused pane 7, the `prefix` table is active, and a component renders
@@ -123,6 +123,11 @@ The context SHALL be a new table for each call, holding:
 #### Scenario: Waiting agents counted
 - **WHEN** panes 1, 2 and 3 are open, the server has set `agent` to `"waiting"` in the states of panes 1 and 3, and a component with `redraw_on = { "PaneStateChanged" }` counts the entries of `ctx.panes` whose `state.agent` is `"waiting"`
 - **THEN** it counts 2
+
+#### Scenario: Floating focus has no column
+- **WHEN** the client focuses a floating pane of a band that also holds columns, and a component renders
+- **THEN** `ctx.column` is nil
+- **AND** `ctx.panes` lists the floating pane after the panes of that band's columns
 
 ### Requirement: Render triggers
 While the status line is drawn, the client SHALL call an enabled component's `render`:
@@ -262,7 +267,7 @@ gband SHALL bundle these plugin modules, each set up with `gband.plugin` and eac
 |---|---|---|---|---|---|---|---|
 | `gband.statusline.band` | `band` | `band ` and the viewed band's index | `BandChanged`, `LayoutChanged` | left | 20 | 10 | `StatusLineSegment` |
 | `gband.statusline.mode` | `mode` | the active key table's name; hidden while `root` is active | `KeyTableChanged` | left | 30 | 20 | `StatusLineAccent` |
-| `gband.statusline.position` | `position` | the focused column's index, `/`, and the band's column count; hidden while the viewed band is empty | `FocusChanged`, `BandChanged`, `LayoutChanged` | right | 10 | 10 | `StatusLineMuted` |
+| `gband.statusline.position` | `position` | the focused column's index, `/`, and the band's column count; hidden while the viewed band is empty or a floating pane is focused | `FocusChanged`, `BandChanged`, `LayoutChanged` | right | 10 | 10 | `StatusLineMuted` |
 | `gband.statusline.clock` | `clock` | the local time, formatted by `os.date` with `opts.format`, `"%H:%M"` by default | every `opts.interval` milliseconds, 1000 by default | right | 5 | 20 | `StatusLineMuted` |
 
 Each SHALL take the options `align`, `priority`, `order` and `hl`, which replace the defaults in the table. An option of the wrong type or value SHALL make its `setup` raise an error. The default configuration SHALL set up `band`, `mode` and `position`, and SHALL NOT set up `clock`.
@@ -278,3 +283,7 @@ Each SHALL take the options `align`, `priority`, `order` and `hl`, which replace
 #### Scenario: User file without segments
 - **WHEN** `user/init.lua` sets up no segment plugin and adds no component
 - **THEN** the status line is drawn in `StatusLine` with no text
+
+#### Scenario: Position hidden on floating focus
+- **WHEN** the default configuration is in use and the client focuses a floating pane
+- **THEN** the status line shows no position segment

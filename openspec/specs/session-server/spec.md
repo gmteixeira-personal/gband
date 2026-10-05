@@ -267,18 +267,24 @@ The server SHALL own the session's layout, as the layout capability defines it, 
 
 | action | effect |
 |---|---|
-| open pane | start a pane program, as "Pane program" defines, or open a plugin pane, as "Plugin panes" defines, and place the pane as the layout capability's "Open a pane" defines, with the column width the action names |
+| open pane | start a pane program, as "Pane program" defines, or open a plugin pane, as "Plugin panes" defines, and place the pane as the layout capability's "Open a pane" defines, with the column width the action names, tiled or floating as the action names |
 | close pane | close the named pane, as "Close a pane" defines |
 | consume or expel | as the layout capability defines, left or right |
-| cycle width | cycle the width of the named pane's column |
-| toggle full width | toggle full width of the named pane's column |
-| grow width | grow the width of the named pane's column |
-| shrink width | shrink the width of the named pane's column |
+| move column | move the named pane's column, or its floating box, left or right, as the layout capability defines |
+| move pane | move the named pane, or its floating box, down or up, as the layout capability defines |
+| toggle floating | float the named tiled pane, or tile the named floating pane after the tiled pane the action names, as the floating-panes capability defines |
+| set position | place the named floating pane at the column and row the action names, as the floating-panes capability defines |
+| cycle width | cycle the width of the named pane's column or floating box |
+| toggle full width | toggle full width of the named pane's column or floating box |
+| grow width | grow the width of the named pane's column or floating box |
+| shrink width | shrink the width of the named pane's column or floating box |
 | grow height | grow the height of the named pane |
 | shrink height | shrink the height of the named pane |
 | reset height | reset the height of the named pane |
-| set width | set the width of the named pane's column to the width the action names |
+| set width | set the width of the named pane's column or floating box to the width the action names |
 | set height | set the height of the named pane to the rows or the weight the action names |
+
+Set position naming a tiled pane SHALL leave the layout unchanged.
 
 After placing an opened pane whose action asks for focus, the server SHALL send the client that asked for it, after the layout that holds the pane, a message telling it to focus that pane. A pane opened by the server's Lua SHALL NOT change any client's focus. When the program of a new pane cannot be started, the server SHALL record the reason in its log and leave the layout unchanged.
 
@@ -315,6 +321,19 @@ After placing an opened pane whose action asks for focus, the server SHALL send 
 #### Scenario: Action from the server's Lua
 - **WHEN** a server handler of `PaneOpened` calls `gband.action.grow_column_width` for the new pane
 - **THEN** every attached client receives a layout in which that pane's column is wider than the default width
+
+#### Scenario: Float a pane for every client
+- **WHEN** two clients are attached and the first asks to toggle floating on tiled pane 2
+- **THEN** both clients receive a layout in which pane 2 is in its band's floating list
+
+#### Scenario: Open a floating pane with focus
+- **WHEN** a client asks to open a floating pane that asks for focus
+- **THEN** every client receives a layout whose band's floating list ends with the new pane
+- **AND** only that client is told to focus it
+
+#### Scenario: Set position on a tiled pane
+- **WHEN** a client asks to set the position of tiled pane 1
+- **THEN** the layout is unchanged
 
 ### Requirement: Close a pane
 When a client asks to close a plugin pane, the pane SHALL leave the layout at once. When a client asks to close any other pane, the server SHALL send SIGHUP to that pane's program. If the program is still running 2 seconds later, the server SHALL send SIGKILL to the pane's foreground process group and to its program. The pane SHALL leave the layout when its program exits, as "Session ends with its last pane" defines.
@@ -493,6 +512,8 @@ The server SHALL send every change of the screen area or the layout to the attac
 
 A pane SHALL be shown when at least one client attached to its session reports it among its shown panes, as the wire-protocol capability defines. A client that detaches or disconnects SHALL show no pane. A pane SHALL be unshown until a client reports it.
 
+A pane's terminal size SHALL be its tile's, as the layout capability gives it, when the pane is tiled, and its box's, as the floating-panes capability gives it, when the pane floats.
+
 The server SHALL resize PTYs only when the session has settled: 100 ms have passed since the last change of the screen area, the layout or the set of shown panes. It SHALL then resize every shown pane whose PTY size differs from its terminal size, once, to that terminal size. A pane that is not shown SHALL keep its PTY size, whatever the screen area and the layout give it. A new pane's PTY SHALL start at its terminal size.
 
 #### Scenario: Burst of terminal resizes
@@ -522,6 +543,10 @@ The server SHALL resize PTYs only when the session has settled: 100 ms have pass
 - **WHEN** no client is attached, a column holds P1 and P2, and P2's program exits
 - **THEN** P1's PTY keeps its size
 - **AND** when a client attaches and shows P1, P1's PTY becomes the size of its tile, which now spans the column's height
+
+#### Scenario: Floating pane takes its box size
+- **WHEN** the screen area is 80×24, a shown floating pane has width 1/3 and `rows` 12, and its height is grown
+- **THEN** once the session settles, its PTY becomes 24 columns by 12 rows
 
 ### Requirement: Plugin panes
 An open pane action MAY name plugin content and a request number instead of a program. The server SHALL then place a **plugin pane**: a pane with no program and no PTY, owned by the client that asked for it. Its screen SHALL start blank, at the terminal size the layout gives it. The server SHALL send the owning client, after the layout that holds the pane and before any focus message for it, an opened message naming the request number and the pane. When the server ignores the action, it SHALL send the owning client an opened message naming the request number and no pane.

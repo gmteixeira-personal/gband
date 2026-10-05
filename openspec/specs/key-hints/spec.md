@@ -108,6 +108,12 @@ A binding to a function SHALL be labelled by its `desc`, and SHALL be left out w
 | `close_pane` | `close` |
 | `consume_or_expel_left` | `stack left` |
 | `consume_or_expel_right` | `stack right` |
+| `move_column_left` | `move left` |
+| `move_column_right` | `move right` |
+| `move_pane_down` | `move down` |
+| `move_pane_up` | `move up` |
+| `toggle_pane_floating` | `float` |
+| `switch_focus_floating_tiled` | `layer` |
 | `cycle_column_width` | `width` |
 | `toggle_full_width` | `full` |
 | `grow_column_width` | `wider` |
@@ -145,6 +151,10 @@ A binding to a function SHALL be labelled by its `desc`, and SHALL be left out w
 #### Scenario: Function without a description
 - **WHEN** `user/init.lua` binds `prefix x` to a Lua function with no description
 - **THEN** the prefix table's hints hold no hint for `x`
+
+#### Scenario: Floating keys
+- **WHEN** the default bindings are in use, the segment is wide enough for every hint, and the user presses Ctrl+Space
+- **THEN** the hints include `v float`, `V layer`, `C-h move left` and `C-left move left`
 
 ### Requirement: Fit to the available width
 The segment SHALL show the longest leading run of its hints that fits in its context's `width`. When hints are left out, the run SHALL be followed by a space and `…` in `KeyHintLabel`, and the run with them SHALL fit in `width`. When no hint fits, the segment SHALL be hidden. Widths SHALL be display widths, as `gband.ui.width` measures them.

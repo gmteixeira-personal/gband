@@ -13,12 +13,16 @@ Every change to the layout SHALL produce the events that describe it, in the ord
 | pane opened | the pane, and the band it was placed in |
 | pane closed | the pane, and the band it left |
 | pane moved | the pane, and the band, column and row it now occupies |
+| column moved | the band, the column's old position, and its new position |
 | column width changed | the band, the column, its new width and its full-width flag |
 | pane heights changed | the band, the column, and the height of each of its panes, top to bottom: automatic with its weight, or fixed with its rows |
+| pane floated | the pane, the band, and its box record: column, row, width, full-width flag and rows |
+| pane tiled | the pane, the band, the column it now occupies, and that column's width and full-width flag |
+| floating box changed | the pane, the band, and its new box record |
 | band added | the band and its position |
 | band removed | the band |
 
-A pane opened or moved into a column SHALL take an automatic height of weight 1 there, and the last pane left in a column with an automatic height SHALL take weight 1, as the layout capability defines, without a pane heights changed event.
+A pane opened or moved into a column SHALL take an automatic height of weight 1 there, and the last pane left in a column with an automatic height SHALL take weight 1, as the layout capability defines, without a pane heights changed event. A pane that floats or opens floating SHALL produce no pane heights changed event for the column it left. Moving a pane within its column SHALL produce one pane moved event for each of the two panes that swapped, in order from the pane named by the action, and no pane heights changed event. A pane that opens floating SHALL produce pane opened and then pane floated.
 
 #### Scenario: Open in the empty band
 - **WHEN** a pane opens in the last, empty band
@@ -43,6 +47,30 @@ A pane opened or moved into a column SHALL take an automatic height of weight 1 
 #### Scenario: Grow a column's width
 - **WHEN** a column of width 1/2 is grown
 - **THEN** the events are one column width changed naming the width 3/5 and full width off
+
+#### Scenario: Move a column
+- **WHEN** a band holds columns A, B and C, and A is moved right
+- **THEN** the events are one column moved naming that band, position 0 and position 1
+
+#### Scenario: Swap two panes
+- **WHEN** a column at position 2 holds P1 above P2, and P1 is moved down
+- **THEN** the events are pane moved for P1 naming column 2 and row 1, then pane moved for P2 naming column 2 and row 0
+
+#### Scenario: Float a pane
+- **WHEN** the screen area is 80×24, the default column width is 1/2, and P2, alone in a column, is floated
+- **THEN** the events are one pane floated naming P2, its band, column 20, row 2, width 1/2, full width off and 20 rows
+
+#### Scenario: Move a floating pane
+- **WHEN** the area is 80×24 and a floating pane whose box starts at column 20 is moved right
+- **THEN** the events are one floating box changed naming its new column 28
+
+#### Scenario: Tile a pane
+- **WHEN** a floating pane of width 1/3 is tiled as the band's second column
+- **THEN** the events are one pane tiled naming column 1, width 1/3 and full width off
+
+#### Scenario: Open floating in the empty band
+- **WHEN** a floating pane opens in the last, empty band
+- **THEN** the events are pane opened, pane floated, then band added
 
 ### Requirement: Session event bus
 The server SHALL publish every layout event, every pane exit with its exit status, and every client attaching and detaching, as session events. It SHALL publish them on one bus, in the order the session applied the changes. Every subscriber SHALL receive the events in that order. A subscriber that falls behind SHALL be told how many events it missed, and SHALL NOT slow the session or other subscribers. The server SHALL record every session event in its log at debug level.
