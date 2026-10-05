@@ -116,7 +116,7 @@ async fn lagging_subscriber_is_told_and_blocks_nothing() {
     }
     client.act(SessionAction::ToggleFullWidth(pane)).await;
     client
-        .wait_until(|client| client.layout.workspaces()[0].columns[0].full_width)
+        .wait_until(|client| client.layout.bands()[0].columns[0].full_width)
         .await;
 
     match events.recv().await {

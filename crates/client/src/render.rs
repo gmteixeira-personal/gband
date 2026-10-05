@@ -11,7 +11,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::{Block, Clear, Widget};
 use tui_term::widget::{Cursor, PseudoTerminal, Screen};
 
-use crate::animation::{Band, Drawn, DrawnTile};
+use crate::animation::{Drawn, DrawnBand, DrawnTile};
 
 pub const FOCUSED_BORDER: Style = Style::new().add_modifier(Modifier::BOLD);
 pub const UNFOCUSED_BORDER: Style = Style::new().add_modifier(Modifier::DIM);
@@ -52,20 +52,20 @@ pub fn render(ribbon: &Ribbon<'_>, buffer: &mut Buffer) -> Option<Position> {
     let target = buffer.area;
     let focused = ribbon.view.focused();
     let mut cursor = None;
-    for band in &ribbon.drawn.bands {
-        let Some(workspace) = ribbon.layout.workspace(band.workspace) else {
+    for drawn in &ribbon.drawn.bands {
+        let Some(band) = ribbon.layout.band(drawn.band) else {
             continue;
         };
-        let mut placed: Vec<(PaneId, DrawnTile)> = tiles(workspace, ribbon.area)
+        let mut placed: Vec<(PaneId, DrawnTile)> = tiles(band, ribbon.area)
             .iter()
             .map(|tile| {
-                let drawn = ribbon.drawn.tiles.get(&tile.pane).copied();
-                (tile.pane, drawn.unwrap_or_else(|| DrawnTile::from(tile)))
+                let moving = ribbon.drawn.tiles.get(&tile.pane).copied();
+                (tile.pane, moving.unwrap_or_else(|| DrawnTile::from(tile)))
             })
             .collect();
         placed.sort_by_key(|&(pane, _)| focused == Some(pane));
         for (pane, tile) in placed {
-            let Some(placement) = Placement::new(&tile, band, target) else {
+            let Some(placement) = Placement::new(&tile, drawn, target) else {
                 continue;
             };
             let is_focused = focused == Some(pane);
@@ -106,7 +106,7 @@ struct Placement {
 }
 
 impl Placement {
-    fn new(tile: &DrawnTile, band: &Band, target: Rect) -> Option<Self> {
+    fn new(tile: &DrawnTile, band: &DrawnBand, target: Rect) -> Option<Self> {
         let height = i64::from(target.height);
         let left = tile.x - band.camera;
         let top = band.top + tile.y;

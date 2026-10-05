@@ -6,7 +6,7 @@ context: |
   Layout model: panes sit in columns on a strip that scrolls sideways without limit.
   A new pane adds a column, and existing panes keep their size.
   The view scrolls to follow focus. A column can stack several panes vertically.
-  Each workspace has its own strip, and workspaces stack vertically.
+  Each band has its own strip, and bands stack vertically.
   When a behavior is unspecified, follow niri's behavior unless a spec says otherwise.
   Tech stack: Rust (stable toolchain, built with cargo).
   Scripting: an embedded Lua runtime handles configuration and automation,

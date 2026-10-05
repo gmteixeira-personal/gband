@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::action::SessionCommand;
 use crate::geometry::{Size, Span, column_spans, tiles};
-use crate::layout::{Layout, Location, PaneId, SessionAction, Workspace, WorkspaceId};
+use crate::layout::{Band, BandId, Layout, Location, PaneId, SessionAction};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ViewAction {
@@ -12,8 +12,8 @@ pub enum ViewAction {
     FocusRight,
     FocusDown,
     FocusUp,
-    WorkspaceDown,
-    WorkspaceUp,
+    BandDown,
+    BandUp,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -26,7 +26,7 @@ pub enum CenterFocusedColumn {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-struct WorkspaceView {
+struct BandView {
     focus: Option<PaneId>,
     camera: i64,
 }
@@ -40,8 +40,8 @@ pub struct Scene<'a> {
 
 #[derive(Clone, Debug)]
 pub struct View {
-    workspace: WorkspaceId,
-    workspaces: HashMap<WorkspaceId, WorkspaceView>,
+    band: BandId,
+    bands: HashMap<BandId, BandView>,
     position: Location,
     recency: HashMap<PaneId, u64>,
     tick: u64,
@@ -54,10 +54,10 @@ impl View {
     }
 
     pub fn with_policy(scene: Scene<'_>, policy: CenterFocusedColumn) -> Self {
-        let first = &scene.layout.workspaces()[0];
+        let first = &scene.layout.bands()[0];
         let mut view = Self {
-            workspace: first.id,
-            workspaces: HashMap::new(),
+            band: first.id,
+            bands: HashMap::new(),
             position: Location::default(),
             recency: HashMap::new(),
             tick: 0,
@@ -74,27 +74,23 @@ impl View {
         self.policy = policy;
     }
 
-    pub fn workspace(&self) -> WorkspaceId {
-        self.workspace
+    pub fn band(&self) -> BandId {
+        self.band
     }
 
     pub fn focused(&self) -> Option<PaneId> {
-        self.workspaces
-            .get(&self.workspace)
-            .and_then(|state| state.focus)
+        self.bands.get(&self.band).and_then(|state| state.focus)
     }
 
     pub fn camera(&self) -> i64 {
-        self.workspaces
-            .get(&self.workspace)
-            .map_or(0, |state| state.camera)
+        self.bands.get(&self.band).map_or(0, |state| state.camera)
     }
 
     pub fn resolve(&self, command: SessionCommand) -> Option<SessionAction> {
         let focused = self.focused();
         Some(match command {
             SessionCommand::OpenPane => SessionAction::OpenPane {
-                workspace: self.workspace,
+                band: self.band,
                 after: focused,
                 program: None,
             },
@@ -118,12 +114,12 @@ impl View {
     }
 
     pub fn shown(&self, scene: Scene<'_>) -> Vec<PaneId> {
-        let Some(workspace) = scene.layout.workspace(self.workspace) else {
+        let Some(band) = scene.layout.band(self.band) else {
             return Vec::new();
         };
         let left = self.camera();
         let right = left + i64::from(scene.viewport.cols);
-        tiles(workspace, scene.area)
+        tiles(band, scene.area)
             .into_iter()
             .filter(|tile| {
                 tile.width > 0
@@ -138,32 +134,32 @@ impl View {
 
     pub fn apply(&mut self, action: ViewAction, scene: Scene<'_>) {
         let previous = self.focused();
-        let Some(index) = scene.layout.workspace_index(self.workspace) else {
+        let Some(index) = scene.layout.band_index(self.band) else {
             self.sync(scene);
             return;
         };
-        let workspaces = scene.layout.workspaces();
-        let workspace = &workspaces[index];
+        let bands = scene.layout.bands();
+        let band = &bands[index];
         match action {
             ViewAction::FocusLeft | ViewAction::FocusRight => {
-                if let Some(pane) = self.neighbour_column(workspace, action) {
+                if let Some(pane) = self.neighbour_column(band, action) {
                     self.set_focus(pane);
                 }
             }
             ViewAction::FocusDown | ViewAction::FocusUp => {
-                if let Some(pane) = self.neighbour_row(workspace, action) {
+                if let Some(pane) = self.neighbour_row(band, action) {
                     self.set_focus(pane);
                 }
             }
-            ViewAction::WorkspaceDown | ViewAction::WorkspaceUp => {
+            ViewAction::BandDown | ViewAction::BandUp => {
                 let target = match action {
-                    ViewAction::WorkspaceDown => index + 1,
+                    ViewAction::BandDown => index + 1,
                     _ => match index.checked_sub(1) {
                         Some(target) => target,
                         None => return,
                     },
                 };
-                let Some(target) = workspaces.get(target) else {
+                let Some(target) = bands.get(target) else {
                     return;
                 };
                 self.enter(target);
@@ -177,7 +173,7 @@ impl View {
             return;
         };
         let previous = self.focused();
-        self.workspace = scene.layout.workspaces()[location.workspace].id;
+        self.band = scene.layout.bands()[location.band].id;
         self.set_focus(pane);
         self.settle(scene, previous);
     }
@@ -188,27 +184,26 @@ impl View {
 
     fn settle(&mut self, scene: Scene<'_>, previous: Option<PaneId>) {
         let layout = scene.layout;
-        self.workspaces
-            .retain(|&id, _| layout.workspace_index(id).is_some());
+        self.bands.retain(|&id, _| layout.band_index(id).is_some());
         self.recency.retain(|&pane, _| layout.contains(pane));
 
-        let index = match layout.workspace_index(self.workspace) {
+        let index = match layout.band_index(self.band) {
             Some(index) => index,
             None => {
-                let index = self.position.workspace.min(layout.workspaces().len() - 1);
-                self.enter(&layout.workspaces()[index]);
+                let index = self.position.band.min(layout.bands().len() - 1);
+                self.enter(&layout.bands()[index]);
                 index
             }
         };
-        let workspace = &layout.workspaces()[index];
-        let focus = self.workspaces.entry(workspace.id).or_default().focus;
+        let band = &layout.bands()[index];
+        let focus = self.bands.entry(band.id).or_default().focus;
         match focus {
-            Some(pane) if workspace.locate(pane).is_some() => {}
-            Some(_) => match self.clamped(workspace) {
+            Some(pane) if band.locate(pane).is_some() => {}
+            Some(_) => match self.clamped(band) {
                 Some(pane) => self.set_focus(pane),
                 None => self.clear_focus(),
             },
-            None => match workspace.first_pane() {
+            None => match band.first_pane() {
                 Some(pane) => self.set_focus(pane),
                 None => self.clear_focus(),
             },
@@ -216,40 +211,40 @@ impl View {
         self.position = match self.focused().and_then(|pane| layout.locate(pane)) {
             Some(location) => location,
             None => Location {
-                workspace: index,
+                band: index,
                 column: 0,
                 row: 0,
             },
         };
-        self.follow(workspace, scene, previous);
+        self.follow(band, scene, previous);
     }
 
-    fn enter(&mut self, workspace: &Workspace) {
-        self.workspace = workspace.id;
-        let state = self.workspaces.entry(workspace.id).or_default();
-        let remembered = state.focus.filter(|&pane| workspace.locate(pane).is_some());
-        state.focus = remembered.or_else(|| workspace.first_pane());
+    fn enter(&mut self, band: &Band) {
+        self.band = band.id;
+        let state = self.bands.entry(band.id).or_default();
+        let remembered = state.focus.filter(|&pane| band.locate(pane).is_some());
+        state.focus = remembered.or_else(|| band.first_pane());
         if let Some(pane) = state.focus {
             self.touch(pane);
         }
     }
 
-    fn clamped(&self, workspace: &Workspace) -> Option<PaneId> {
-        let column = workspace
+    fn clamped(&self, band: &Band) -> Option<PaneId> {
+        let column = band
             .columns
             .get(self.position.column)
-            .or(workspace.columns.last())?;
+            .or(band.columns.last())?;
         let row = self.position.row.min(column.panes.len() - 1);
         Some(column.panes[row])
     }
 
-    fn neighbour_column(&self, workspace: &Workspace, action: ViewAction) -> Option<PaneId> {
-        let (column, _) = workspace.locate(self.focused()?)?;
+    fn neighbour_column(&self, band: &Band, action: ViewAction) -> Option<PaneId> {
+        let (column, _) = band.locate(self.focused()?)?;
         let target = match action {
             ViewAction::FocusLeft => column.checked_sub(1)?,
             _ => column + 1,
         };
-        let panes = &workspace.columns.get(target)?.panes;
+        let panes = &band.columns.get(target)?.panes;
         let recent = panes
             .iter()
             .filter_map(|pane| self.recency.get(pane).map(|&tick| (tick, *pane)))
@@ -258,22 +253,22 @@ impl View {
         Some(recent.unwrap_or(panes[0]))
     }
 
-    fn neighbour_row(&self, workspace: &Workspace, action: ViewAction) -> Option<PaneId> {
-        let (column, row) = workspace.locate(self.focused()?)?;
+    fn neighbour_row(&self, band: &Band, action: ViewAction) -> Option<PaneId> {
+        let (column, row) = band.locate(self.focused()?)?;
         let target = match action {
             ViewAction::FocusUp => row.checked_sub(1)?,
             _ => row + 1,
         };
-        workspace.columns[column].panes.get(target).copied()
+        band.columns[column].panes.get(target).copied()
     }
 
     fn set_focus(&mut self, pane: PaneId) {
-        self.workspaces.entry(self.workspace).or_default().focus = Some(pane);
+        self.bands.entry(self.band).or_default().focus = Some(pane);
         self.touch(pane);
     }
 
     fn clear_focus(&mut self) {
-        self.workspaces.entry(self.workspace).or_default().focus = None;
+        self.bands.entry(self.band).or_default().focus = None;
     }
 
     fn touch(&mut self, pane: PaneId) {
@@ -281,19 +276,19 @@ impl View {
         self.recency.insert(pane, self.tick);
     }
 
-    fn follow(&mut self, workspace: &Workspace, scene: Scene<'_>, previous: Option<PaneId>) {
-        let Some((column, _)) = self.focused().and_then(|pane| workspace.locate(pane)) else {
+    fn follow(&mut self, band: &Band, scene: Scene<'_>, previous: Option<PaneId>) {
+        let Some((column, _)) = self.focused().and_then(|pane| band.locate(pane)) else {
             return;
         };
-        let spans = column_spans(workspace, scene.area);
+        let spans = column_spans(band, scene.area);
         let span = spans[column];
         let viewport = i64::from(scene.viewport.cols);
-        let state = self.workspaces.entry(workspace.id).or_default();
+        let state = self.bands.entry(band.id).or_default();
         let centre = match self.policy {
             CenterFocusedColumn::Never => false,
             CenterFocusedColumn::Always => true,
             CenterFocusedColumn::OnOverflow => previous
-                .and_then(|pane| workspace.locate(pane))
+                .and_then(|pane| band.locate(pane))
                 .filter(|&(from, _)| from != column)
                 .is_some_and(|(from, _)| {
                     let beside = if from < column {

@@ -35,7 +35,7 @@ A session action from a binding SHALL name no pane. Before sending it, the clien
 - **WHEN** a view on the empty workspace resolves close pane
 - **THEN** there is nothing to send
 
-#### Scenario: Open pane on the empty workspace
+#### Scenario: Open pane on the empty band
 - **WHEN** a view on the empty workspace resolves open pane
 - **THEN** the result is open pane naming that workspace and no pane to open after
 

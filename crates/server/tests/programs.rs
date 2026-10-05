@@ -74,10 +74,10 @@ async fn output_longer_than_one_screen() {
 
 async fn open_running(client: &mut TestClient, program: Program) -> PaneId {
     let first = client.first();
-    let workspace = client.layout.workspaces()[0].id;
+    let band = client.layout.bands()[0].id;
     client
         .act(SessionAction::OpenPane {
-            workspace,
+            band,
             after: Some(first),
             program: Some(program),
         })
@@ -117,10 +117,10 @@ async fn program_that_cannot_start_leaves_the_layout() {
     let server = TestServer::start("prog-missing", &["/bin/sh"]).await;
     let mut client = server.attach(80, 24).await;
     let before = client.layout.clone();
-    let workspace = before.workspaces()[0].id;
+    let band = before.bands()[0].id;
     client
         .act(SessionAction::OpenPane {
-            workspace,
+            band,
             after: Some(client.first()),
             program: Some(Program::Argv(vec!["/nonexistent".to_owned()])),
         })

@@ -199,7 +199,7 @@ The terminal's cursor SHALL sit where the focused pane's cursor is. It SHALL be 
 - **THEN** this client draws the top 30 rows of the 60-column tile
 - **AND** the tile's bottom border is not drawn
 
-#### Scenario: Empty workspace
+#### Scenario: Empty band
 - **WHEN** the client views an empty workspace
 - **THEN** the screen is blank and the cursor is hidden
 
@@ -288,7 +288,7 @@ A binding to an action SHALL dispatch it. A binding to a Lua function SHALL run 
 - **WHEN** two panes are open with the second focused and the user presses Ctrl+Space then `q`
 - **THEN** the second tile disappears and the first pane is focused
 
-#### Scenario: Another workspace
+#### Scenario: Another band
 - **WHEN** the user presses Ctrl+Space then `u`, then Ctrl+Space then Enter, then Ctrl+Space then `i`
 - **THEN** the client shows the first workspace with its original pane focused
 - **AND** the second workspace holds the new pane

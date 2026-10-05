@@ -2,7 +2,7 @@
 
 ## Goals
 - Terminal multiplexer (like tmux / zellij / herdr), written in Rust, scripted in Lua.
-- niri-style layout: workspaces, each an infinitely scrolling horizontal ribbon of columns.
+- niri-style layout: bands, each an infinitely scrolling horizontal ribbon of columns.
 - Sessions stay alive when clients detach or the terminal crashes.
 - Native agent awareness (Claude Code, Codex, etc.) with notifications.
 - Highly configurable.
@@ -21,7 +21,7 @@
 - Pane host: spawns programs in PTYs (portable-pty), one vt100 grid per pane.
   Sets RMUX_PANE / RMUX_SOCKET env vars. Detects foreground process via tcgetpgrp + /proc/<pid>/cmdline.
   Panics caught per pane.
-- Core (pure logic, no I/O): workspaces, ribbon of columns, column widths, focus,
+- Core (pure logic, no I/O): bands, ribbon of columns, column widths, focus,
   per-pane agent state machine. Changes happen via actions; every change emits events.
 - Behavior Lua: keybindings for session actions, rules, agent adapters, spawn defaults.
   Runs on its own thread, talks to core via messages.
@@ -33,7 +33,7 @@
 - Keeps its own vt100 grid per pane, fed by diffs from the server.
 - Composes and renders locally with ratatui + tui-term: camera, animations, chrome.
 - Resolves keybindings locally:
-  - View actions (camera scroll, viewed workspace, on-screen focus) run instantly in the client.
+  - View actions (camera scroll, viewed band, on-screen focus) run instantly in the client.
   - Session actions (new/close pane, resize columns) go to the server.
   - Program keystrokes go to the server, into the PTY.
 - Presentation Lua: theme, column headers, status bar, badges, view keybindings.
@@ -57,7 +57,7 @@
 - Heartbeats, auto-reconnect with resync, visible "disconnected" state.
 
 ## Layout model (niri)
-- Session → workspaces (vertical) → infinite strip of columns → panes stacked in a column.
+- Session → bands (vertical) → infinite strip of columns → panes stacked in a column.
 - Column widths as proportions (1/3, 1/2, 2/3) or fixed cells.
 - Offscreen panes keep their size (no SIGWINCH thrash).
 - Camera per client; center-on-focus or "just visible" policy, configurable.
@@ -76,14 +76,14 @@ Signal sources, most → least reliable:
   Notifications fire on transitions; higher-reliability sources override lower ones.
 - Adapters defined in Lua so new agents need no recompile.
 - UI: column badges, edge indicators for offscreen columns ("2 waiting ←"),
-  per-workspace counts, "jump to next waiting agent" binding.
+  per-band counts, "jump to next waiting agent" binding.
 - Suppress notifications for the focused pane of an active client.
 
 ## Configurability
 - Rust core small; defaults.lua built on the same public API users get.
 - Everything is an action (keys, mouse, CLI, Lua, command palette).
 - Key tables / modes + which-key popup.
-- niri-style rules: match process / cwd / title / agent → width, workspace, notify, adapter.
+- niri-style rules: match process / cwd / title / agent → width, band, notify, adapter.
 - UI as Lua render functions, called on events and cached.
 - Notification pipeline: event selection → filtering → delivery, all configurable.
 - External scripting: `yourmux msg <action>` + JSON event stream (for waybar, scripts).
@@ -119,7 +119,7 @@ Signal sources, most → least reliable:
 - Check tui-term's pinned vt100/ratatui versions match.
 - Keep the vt100 dependency behind a small internal trait.
 
-## Workspace layout
+## Crate layout
 - core: layout, ribbon, agent states (heavily unit tested, no I/O)
 - protocol: messages, versioning
 - server: pane host, services, behavior Lua host
@@ -130,7 +130,7 @@ Signal sources, most → least reliable:
 ## Build order
 1. Single pane end to end over a local socket: server, PTY, vt100, client, attach/detach.
 2. Multiple panes in one column.
-3. Ribbon + camera, then workspaces.
+3. Ribbon + camera, then bands.
 4. Lua (behavior + presentation), rules, keymaps.
 5. Agent detection + notifications.
 6. SSH proxy transport, reconnect/resync.

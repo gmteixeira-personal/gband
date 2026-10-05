@@ -17,11 +17,8 @@ pub const ACTIONS: [(&str, Action); 19] = [
     ("focus_column_right", Action::View(ViewAction::FocusRight)),
     ("focus_pane_down", Action::View(ViewAction::FocusDown)),
     ("focus_pane_up", Action::View(ViewAction::FocusUp)),
-    (
-        "focus_workspace_down",
-        Action::View(ViewAction::WorkspaceDown),
-    ),
-    ("focus_workspace_up", Action::View(ViewAction::WorkspaceUp)),
+    ("focus_band_down", Action::View(ViewAction::BandDown)),
+    ("focus_band_up", Action::View(ViewAction::BandUp)),
     ("open_pane", Action::Session(SessionCommand::OpenPane)),
     ("close_pane", Action::Session(SessionCommand::ClosePane)),
     (

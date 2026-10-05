@@ -391,10 +391,10 @@ impl TestClient {
     }
 
     pub async fn open_after(&mut self, after: PaneId) -> PaneId {
-        let workspace = self.layout.workspaces()[self.layout.locate(after).unwrap().workspace].id;
+        let band = self.layout.bands()[self.layout.locate(after).unwrap().band].id;
         let seen = self.focus.len();
         self.act(SessionAction::OpenPane {
-            workspace,
+            band,
             after: Some(after),
             program: None,
         })

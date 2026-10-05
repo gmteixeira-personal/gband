@@ -150,8 +150,8 @@ mod tests {
             ('l', Action::View(ViewAction::FocusRight)),
             ('j', Action::View(ViewAction::FocusDown)),
             ('k', Action::View(ViewAction::FocusUp)),
-            ('u', Action::View(ViewAction::WorkspaceDown)),
-            ('i', Action::View(ViewAction::WorkspaceUp)),
+            ('u', Action::View(ViewAction::BandDown)),
+            ('i', Action::View(ViewAction::BandUp)),
             ('q', Action::Session(SessionCommand::ClosePane)),
             (
                 '[',

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::time::Instant;
 
-use gband_client::animation::{Animations, Band, Drawn, Presentation, Targets};
+use gband_client::animation::{Animations, Drawn, DrawnBand, Presentation, Targets};
 use gband_client::render::{Ribbon, draw_frame};
 use gband_core::geometry::{Size, tiles};
 use gband_core::layout::{Direction, Layout, LayoutOptions, PaneId, SessionAction, Step};
@@ -22,16 +22,11 @@ struct Fixture {
 impl Fixture {
     fn new(area: Size, columns: usize, viewport_cols: u16) -> (Self, Vec<PaneId>) {
         let mut layout = Layout::new();
-        let workspace = layout.workspaces()[0].id;
+        let band = layout.bands()[0].id;
         let mut panes = Vec::new();
         for _ in 0..columns {
             let pane = layout.allocate_pane();
-            layout.open(
-                pane,
-                workspace,
-                panes.last().copied(),
-                &LayoutOptions::default(),
-            );
+            layout.open(pane, band, panes.last().copied(), &LayoutOptions::default());
             panes.push(pane);
         }
         let view = View::new(Scene {
@@ -52,8 +47,8 @@ impl Fixture {
 
     fn reset_grids(&mut self) {
         self.grids.clear();
-        for workspace in self.layout.workspaces() {
-            for tile in tiles(workspace, self.area) {
+        for band in self.layout.bands() {
+            for tile in tiles(band, self.area) {
                 self.grids
                     .insert(tile.pane, Grid::new(tile.terminal_size()));
             }
@@ -144,9 +139,9 @@ fn tile_larger_than_the_terminal_is_cut() {
 }
 
 #[test]
-fn empty_workspace_is_blank_without_a_cursor() {
+fn empty_band_is_blank_without_a_cursor() {
     let (mut fixture, _) = Fixture::new(Size::new(80, 24), 1, 80);
-    fixture.act(ViewAction::WorkspaceDown, 80);
+    fixture.act(ViewAction::BandDown, 80);
     assert_eq!(fixture.view.focused(), None);
     assert_snapshot!(fixture.render(Size::new(80, 24)));
 }
@@ -216,10 +211,7 @@ fn column_wider_than_the_terminal_shows_its_left_border() {
             80,
         );
     }
-    assert_eq!(
-        tiles(&fixture.layout.workspaces()[0], fixture.area)[0].width,
-        88
-    );
+    assert_eq!(tiles(&fixture.layout.bands()[0], fixture.area)[0].width, 88);
     assert_eq!(fixture.view.camera(), 0);
     fixture.write(panes[0], "0123456789".repeat(9).as_bytes());
     assert_snapshot!(fixture.render(Size::new(80, 24)));
@@ -281,9 +273,9 @@ fn mid_scroll_frame() {
 }
 
 #[test]
-fn workspace_switch_mid_slide() {
+fn band_switch_mid_slide() {
     let (mut fixture, panes) = Fixture::new(Size::new(60, 12), 1, 60);
-    let below = fixture.layout.workspaces()[1].id;
+    let below = fixture.layout.bands()[1].id;
     let pane = fixture.layout.allocate_pane();
     fixture
         .layout
@@ -291,17 +283,17 @@ fn workspace_switch_mid_slide() {
     fixture.reset_grids();
     fixture.write(panes[0], b"upper");
     fixture.write(pane, b"lower");
-    fixture.act(ViewAction::WorkspaceDown, 60);
-    let above = fixture.layout.workspaces()[0].id;
+    fixture.act(ViewAction::BandDown, 60);
+    let above = fixture.layout.bands()[0].id;
     let mut drawn = fixture.at_rest(Size::new(60, 12));
     drawn.bands = vec![
-        Band {
-            workspace: above,
+        DrawnBand {
+            band: above,
             top: -5,
             camera: 0,
         },
-        Band {
-            workspace: below,
+        DrawnBand {
+            band: below,
             top: 7,
             camera: 0,
         },

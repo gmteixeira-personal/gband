@@ -7,7 +7,7 @@ use gband_core::action::{Action, SessionCommand};
 use gband_core::geometry::Size;
 use gband_core::input::Key;
 use gband_core::layout::{
-    Direction, Layout, LayoutOptions, PaneId, Program, SessionAction, WorkspaceId,
+    BandId, Direction, Layout, LayoutOptions, PaneId, Program, SessionAction,
 };
 use gband_core::view::ViewAction;
 use gband_lua::keys::parse_key;
@@ -110,7 +110,7 @@ async fn shown_panes_follow_the_view_and_are_not_repeated() {
         })
         .await;
     client
-        .wait_until(|client| client.layout.workspaces()[0].columns.len() == 3)
+        .wait_until(|client| client.layout.bands()[0].columns.len() == 3)
         .await;
     let mut display = Display::new(Size::new(80, 24), Animations::On);
     assert_eq!(display.report_shown(), None);
@@ -166,16 +166,11 @@ impl Drop for Scratch {
 
 fn three_columns() -> (Display, Vec<PaneId>) {
     let mut layout = Layout::new();
-    let workspace = layout.workspaces()[0].id;
+    let band = layout.bands()[0].id;
     let mut panes = Vec::new();
     for _ in 0..3 {
         let pane = layout.allocate_pane();
-        layout.open(
-            pane,
-            workspace,
-            panes.last().copied(),
-            &LayoutOptions::default(),
-        );
+        layout.open(pane, band, panes.last().copied(), &LayoutOptions::default());
         panes.push(pane);
     }
     let mut display = Display::new(Size::new(80, 24), Animations::Off);
@@ -220,7 +215,7 @@ fn spawn_a_command_line_sends_open_pane_with_the_program() {
     assert_eq!(
         controls.press(&mut display, key("alt+n")),
         [Step::Send(ClientMessage::Action(SessionAction::OpenPane {
-            workspace: WorkspaceId(1),
+            band: BandId(1),
             after: Some(panes[0]),
             program: Some(Program::CommandLine("fish".to_owned())),
         }))]

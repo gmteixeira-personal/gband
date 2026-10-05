@@ -337,13 +337,13 @@ fn spawn(display: &mut Display, program: Option<Program>) -> Step {
         .as_ref()
         .and_then(|view| view.resolve(SessionCommand::OpenPane));
     match open {
-        Some(SessionAction::OpenPane {
-            workspace, after, ..
-        }) => Step::Send(ClientMessage::Action(SessionAction::OpenPane {
-            workspace,
-            after,
-            program,
-        })),
+        Some(SessionAction::OpenPane { band, after, .. }) => {
+            Step::Send(ClientMessage::Action(SessionAction::OpenPane {
+                band,
+                after,
+                program,
+            }))
+        }
         _ => Step::Nothing,
     }
 }

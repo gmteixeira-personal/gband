@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use anyhow::{Result, bail};
 use gband_core::geometry::{Size, tiles};
-use gband_core::layout::{Layout, LayoutOptions, PaneId, Program, SessionAction, WorkspaceId};
+use gband_core::layout::{BandId, Layout, LayoutOptions, PaneId, Program, SessionAction};
 use gband_protocol::SessionName;
 use portable_pty::{ChildKiller, ExitStatus};
 use rustix::process::{Pid, Signal};
@@ -92,8 +92,8 @@ impl Session {
             shown: HashMap::new(),
             settle_at: None,
         };
-        let workspace = session.layout.workspaces()[0].id;
-        session.open(workspace, None, None)?;
+        let band = session.layout.bands()[0].id;
+        session.open(band, None, None)?;
         session.publish();
         Ok(session)
     }
@@ -153,8 +153,8 @@ impl Session {
     fn settle(&mut self) {
         self.settle_at = None;
         let shown: HashSet<PaneId> = self.shown.values().flatten().copied().collect();
-        for workspace in self.layout.workspaces() {
-            for tile in tiles(workspace, self.area) {
+        for band in self.layout.bands() {
+            for tile in tiles(band, self.area) {
                 if !shown.contains(&tile.pane) {
                     continue;
                 }
@@ -190,10 +190,10 @@ impl Session {
     fn act(&mut self, action: SessionAction, focus: Option<mpsc::UnboundedSender<PaneId>>) {
         match action {
             SessionAction::OpenPane {
-                workspace,
+                band,
                 after,
                 program,
-            } => match self.open(workspace, after, program.as_ref()) {
+            } => match self.open(band, after, program.as_ref()) {
                 Ok(Some(pane)) => {
                     self.publish();
                     if let Some(focus) = focus {
@@ -217,11 +217,11 @@ impl Session {
 
     fn open(
         &mut self,
-        workspace: WorkspaceId,
+        band: BandId,
         after: Option<PaneId>,
         program: Option<&Program>,
     ) -> Result<Option<PaneId>> {
-        if !self.layout.can_open(workspace, after) {
+        if !self.layout.can_open(band, after) {
             return Ok(None);
         }
         let argv = match program {
@@ -234,7 +234,7 @@ impl Session {
         };
         let id = self.layout.allocate_pane();
         let options = self.config.options.borrow().clone();
-        let events = self.layout.open(id, workspace, after, &options);
+        let events = self.layout.open(id, band, after, &options);
         self.config.events.layout(events);
         let size = self.terminal_size(id).expect("an opened pane has a tile");
         let request = SpawnRequest {
@@ -281,8 +281,8 @@ impl Session {
     }
 
     fn terminal_size(&self, pane: PaneId) -> Option<Size> {
-        self.layout.workspaces().iter().find_map(|workspace| {
-            tiles(workspace, self.area)
+        self.layout.bands().iter().find_map(|band| {
+            tiles(band, self.area)
                 .into_iter()
                 .find(|tile| tile.pane == pane)
                 .map(|tile| tile.terminal_size())

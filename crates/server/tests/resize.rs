@@ -55,7 +55,7 @@ async fn open(client: &mut TestClient, after: PaneId) -> PaneId {
     let seen = client.focus.len();
     client
         .act(SessionAction::OpenPane {
-            workspace: client.layout.workspaces()[0].id,
+            band: client.layout.bands()[0].id,
             after: Some(after),
             program: None,
         })
@@ -133,7 +133,7 @@ async fn held_resize_key_gives_a_layout_per_action_and_one_sigwinch() {
         loop {
             let message = client.receive().await.expect("connection closed");
             if let ServerMessage::Layout { layout, .. } = message {
-                assert_eq!(layout.workspaces()[0].columns[0].width, width);
+                assert_eq!(layout.bands()[0].columns[0].width, width);
                 break;
             }
         }

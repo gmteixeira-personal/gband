@@ -4,27 +4,27 @@ use gband_core::event::LayoutEvent;
 use gband_core::geometry::{Size, pane_heights};
 use gband_core::layout::Step::{Grow, Shrink};
 use gband_core::layout::{
-    Column, Direction, Layout, LayoutOptions, Location, PaneHeight, PaneId, Proportion,
-    SessionAction, Weight, WorkspaceId,
+    BandId, Column, Direction, Layout, LayoutOptions, Location, PaneHeight, PaneId, Proportion,
+    SessionAction, Weight,
 };
 
 const AREA: Size = Size::new(80, 24);
 
-fn columns(layout: &Layout, workspace: usize) -> Vec<Vec<PaneId>> {
-    layout.workspaces()[workspace]
+fn columns(layout: &Layout, band: usize) -> Vec<Vec<PaneId>> {
+    layout.bands()[band]
         .columns
         .iter()
         .map(|column| column.panes.clone())
         .collect()
 }
 
-fn workspace_id(layout: &Layout, index: usize) -> WorkspaceId {
-    layout.workspaces()[index].id
+fn band_id(layout: &Layout, index: usize) -> BandId {
+    layout.bands()[index].id
 }
 
-fn open(layout: &mut Layout, workspace: usize, after: Option<PaneId>) -> PaneId {
+fn open(layout: &mut Layout, band: usize, after: Option<PaneId>) -> PaneId {
     let pane = layout.allocate_pane();
-    let id = workspace_id(layout, workspace);
+    let id = band_id(layout, band);
     assert!(
         !layout
             .open(pane, id, after, &LayoutOptions::default())
@@ -51,26 +51,20 @@ fn row_of_columns(count: usize) -> (Layout, Vec<PaneId>) {
 
 fn width_of(layout: &Layout, pane: PaneId) -> (Proportion, bool) {
     let location = layout.locate(pane).unwrap();
-    let column = &layout.workspaces()[location.workspace].columns[location.column];
+    let column = &layout.bands()[location.band].columns[location.column];
     (column.width, column.full_width)
 }
 
 fn assert_invariants(layout: &Layout) {
-    let workspaces = layout.workspaces();
-    assert!(!workspaces.is_empty());
-    let (last, rest) = workspaces.split_last().unwrap();
-    assert!(last.is_empty(), "the last workspace must be empty");
-    assert!(rest.iter().all(|workspace| !workspace.is_empty()));
-    for workspace in workspaces {
+    let bands = layout.bands();
+    assert!(!bands.is_empty());
+    let (last, rest) = bands.split_last().unwrap();
+    assert!(last.is_empty(), "the last band must be empty");
+    assert!(rest.iter().all(|band| !band.is_empty()));
+    for band in bands {
+        assert!(band.columns.iter().all(|column| !column.panes.is_empty()));
         assert!(
-            workspace
-                .columns
-                .iter()
-                .all(|column| !column.panes.is_empty())
-        );
-        assert!(
-            workspace
-                .columns
+            band.columns
                 .iter()
                 .all(|column| column.panes.len() == column.heights.len()),
             "a column's heights differ in length from its panes"
@@ -92,25 +86,25 @@ fn shift(layout: &mut Layout, pane: PaneId, direction: Direction) -> Vec<LayoutE
 }
 
 #[test]
-fn new_layout_holds_one_empty_workspace() {
+fn new_layout_holds_one_empty_band() {
     let layout = Layout::new();
-    assert_eq!(layout.workspaces().len(), 1);
+    assert_eq!(layout.bands().len(), 1);
     assert!(layout.is_empty());
 }
 
 #[test]
-fn initial_layout_has_the_first_pane_and_an_empty_workspace() {
+fn initial_layout_has_the_first_pane_and_an_empty_band() {
     let (layout, first) = started();
-    assert_eq!(layout.workspaces().len(), 2);
+    assert_eq!(layout.bands().len(), 2);
     assert_eq!(columns(&layout, 0), vec![vec![first]]);
-    assert!(layout.workspaces()[1].is_empty());
+    assert!(layout.bands()[1].is_empty());
     assert_eq!(width_of(&layout, first), (Proportion::ONE_HALF, false));
 }
 
 #[test]
 fn identifiers_are_not_reused() {
     let (mut layout, panes) = row_of_columns(2);
-    let first_workspace = workspace_id(&layout, 0);
+    let first_band = band_id(&layout, 0);
     assert!(!layout.remove(panes[1]).is_empty());
     let next = open(&mut layout, 0, Some(panes[0]));
     assert_ne!(next, panes[1]);
@@ -118,7 +112,7 @@ fn identifiers_are_not_reused() {
     assert!(!layout.remove(panes[0]).is_empty());
     assert!(!layout.remove(next).is_empty());
     open(&mut layout, 0, None);
-    assert_ne!(workspace_id(&layout, 0), first_workspace);
+    assert_ne!(band_id(&layout, 0), first_band);
 }
 
 #[test]
@@ -149,17 +143,17 @@ fn opens_as_the_first_column_without_a_named_pane() {
 }
 
 #[test]
-fn opening_in_the_empty_workspace_adds_another() {
+fn opening_in_the_empty_band_adds_another() {
     let (mut layout, first) = started();
-    let w1 = workspace_id(&layout, 0);
-    let w2 = workspace_id(&layout, 1);
+    let w1 = band_id(&layout, 0);
+    let w2 = band_id(&layout, 1);
     let new = open(&mut layout, 1, None);
-    assert_eq!(layout.workspaces().len(), 3);
-    assert_eq!(workspace_id(&layout, 0), w1);
-    assert_eq!(workspace_id(&layout, 1), w2);
+    assert_eq!(layout.bands().len(), 3);
+    assert_eq!(band_id(&layout, 0), w1);
+    assert_eq!(band_id(&layout, 1), w2);
     assert_eq!(columns(&layout, 0), vec![vec![first]]);
     assert_eq!(columns(&layout, 1), vec![vec![new]]);
-    assert!(layout.workspaces()[2].is_empty());
+    assert!(layout.bands()[2].is_empty());
 }
 
 #[test]
@@ -168,10 +162,10 @@ fn open_refuses_unknown_targets() {
     let pane = layout.allocate_pane();
     assert!(
         layout
-            .open(pane, WorkspaceId(99), None, &LayoutOptions::default())
+            .open(pane, BandId(99), None, &LayoutOptions::default())
             .is_empty()
     );
-    let second = workspace_id(&layout, 1);
+    let second = band_id(&layout, 1);
     assert!(
         layout
             .open(pane, second, Some(first), &LayoutOptions::default())
@@ -210,23 +204,23 @@ fn pane_leaves_a_stack_and_the_column_keeps_its_width() {
 }
 
 #[test]
-fn emptied_middle_workspace_is_removed() {
+fn emptied_middle_band_is_removed() {
     let (mut layout, first) = started();
-    let w2 = workspace_id(&layout, 1);
+    let w2 = band_id(&layout, 1);
     let other = open(&mut layout, 1, None);
-    let w3 = workspace_id(&layout, 2);
+    let w3 = band_id(&layout, 2);
     assert!(!layout.remove(first).is_empty());
-    assert_eq!(layout.workspaces().len(), 2);
-    assert_eq!(workspace_id(&layout, 0), w2);
-    assert_eq!(workspace_id(&layout, 1), w3);
+    assert_eq!(layout.bands().len(), 2);
+    assert_eq!(band_id(&layout, 0), w2);
+    assert_eq!(band_id(&layout, 1), w3);
     assert_eq!(columns(&layout, 0), vec![vec![other]]);
 }
 
 #[test]
-fn removing_the_last_pane_leaves_one_empty_workspace() {
+fn removing_the_last_pane_leaves_one_empty_band() {
     let (mut layout, first) = started();
     assert!(!layout.remove(first).is_empty());
-    assert_eq!(layout.workspaces().len(), 1);
+    assert_eq!(layout.bands().len(), 1);
     assert!(layout.is_empty());
     assert!(layout.remove(first).is_empty());
 }
@@ -351,8 +345,8 @@ fn new_column_takes_the_configured_default_width() {
     };
     let mut layout = Layout::new();
     let pane = layout.allocate_pane();
-    let workspace = workspace_id(&layout, 0);
-    assert!(!layout.open(pane, workspace, None, &options).is_empty());
+    let band = band_id(&layout, 0);
+    assert!(!layout.open(pane, band, None, &options).is_empty());
     assert_eq!(width_of(&layout, pane), (Proportion::ONE_THIRD, false));
 }
 
@@ -466,7 +460,7 @@ fn actions_on_a_missing_pane_change_nothing() {
 fn opening_a_pane_the_layout_already_holds_changes_nothing() {
     let (mut layout, first) = started();
     let before = layout.clone();
-    let (current, empty) = (workspace_id(&layout, 0), workspace_id(&layout, 1));
+    let (current, empty) = (band_id(&layout, 0), band_id(&layout, 1));
     assert!(
         layout
             .open(first, current, None, &LayoutOptions::default())
@@ -484,12 +478,12 @@ fn opening_a_pane_the_layout_already_holds_changes_nothing() {
 fn opening_and_closing_are_left_to_the_server() {
     let (mut layout, first) = started();
     let before = layout.clone();
-    let workspace = workspace_id(&layout, 0);
+    let band = band_id(&layout, 0);
     assert!(
         layout
             .apply(
                 SessionAction::OpenPane {
-                    workspace,
+                    band,
                     after: Some(first),
                     program: None,
                 },
@@ -529,26 +523,23 @@ fn first_pane_is_the_top_of_the_leftmost_column() {
         columns(&layout, 0),
         vec![vec![leftmost, panes[0]], vec![panes[1]]]
     );
-    assert_eq!(layout.workspaces()[0].first_pane(), Some(leftmost));
-    assert_eq!(layout.workspaces()[1].first_pane(), None);
+    assert_eq!(layout.bands()[0].first_pane(), Some(leftmost));
+    assert_eq!(layout.bands()[1].first_pane(), None);
 }
 
 #[test]
-fn workspace_index_follows_removals() {
+fn band_index_follows_removals() {
     let (mut layout, first) = started();
     let other = open(&mut layout, 1, None);
-    let ids = [0, 1, 2].map(|index| workspace_id(&layout, index));
-    assert_eq!(
-        ids.map(|id| layout.workspace_index(id)),
-        [0, 1, 2].map(Some)
-    );
+    let ids = [0, 1, 2].map(|index| band_id(&layout, index));
+    assert_eq!(ids.map(|id| layout.band_index(id)), [0, 1, 2].map(Some));
     layout.remove(first);
     assert_eq!(
-        ids.map(|id| layout.workspace_index(id)),
+        ids.map(|id| layout.band_index(id)),
         [None, Some(0), Some(1)]
     );
     assert_eq!(columns(&layout, 0), vec![vec![other]]);
-    assert_eq!(layout.workspace_index(WorkspaceId(99)), None);
+    assert_eq!(layout.band_index(BandId(99)), None);
 }
 
 fn stack_of_three() -> (Layout, [PaneId; 3]) {
@@ -574,7 +565,7 @@ fn expelling_the_middle_of_a_stack_keeps_the_others_stacked_in_order() {
 #[test]
 fn identifiers_display_as_their_number() {
     assert_eq!(PaneId(7).to_string(), "7");
-    assert_eq!(WorkspaceId(12).to_string(), "12");
+    assert_eq!(BandId(12).to_string(), "12");
 }
 
 #[test]
@@ -584,7 +575,7 @@ fn default_layout_is_a_new_layout() {
 
 #[derive(Clone, Copy)]
 enum Step {
-    Open { workspace: usize, after: usize },
+    Open { band: usize, after: usize },
     Remove(usize),
     Shift(usize, Direction),
     Cycle(usize),
@@ -596,47 +587,26 @@ fn invariants_hold_through_mixed_operations() {
     use Direction::{Left, Right};
     use Step::*;
     let steps = [
-        Open {
-            workspace: 0,
-            after: 0,
-        },
-        Open {
-            workspace: 0,
-            after: 1,
-        },
+        Open { band: 0, after: 0 },
+        Open { band: 0, after: 1 },
         Shift(2, Left),
-        Open {
-            workspace: 1,
-            after: 0,
-        },
-        Open {
-            workspace: 1,
-            after: 3,
-        },
+        Open { band: 1, after: 0 },
+        Open { band: 1, after: 3 },
         Shift(1, Right),
         Cycle(4),
         Full(3),
         Shift(3, Left),
-        Open {
-            workspace: 2,
-            after: 9,
-        },
+        Open { band: 2, after: 9 },
         Remove(0),
         Shift(4, Right),
         Remove(2),
         Shift(5, Left),
         Shift(5, Left),
         Remove(3),
-        Open {
-            workspace: 0,
-            after: 4,
-        },
+        Open { band: 0, after: 4 },
         Remove(1),
         Remove(4),
-        Open {
-            workspace: 1,
-            after: 5,
-        },
+        Open { band: 1, after: 5 },
         Remove(5),
         Remove(6),
     ];
@@ -646,23 +616,17 @@ fn invariants_hold_through_mixed_operations() {
     for step in steps {
         let pick = |index: usize, panes: &[PaneId]| panes[index % panes.len()];
         match step {
-            Open { workspace, after } => {
-                let count = layout.workspaces().len();
-                let target = layout.workspaces()[workspace % count].id;
-                let named = layout.workspaces()[workspace % count]
+            Open { band, after } => {
+                let count = layout.bands().len();
+                let target = layout.bands()[band % count].id;
+                let named = layout.bands()[band % count]
                     .panes()
                     .nth(after % 4)
-                    .or_else(|| layout.workspaces()[workspace % count].panes().next());
+                    .or_else(|| layout.bands()[band % count].panes().next());
                 let pane = layout.allocate_pane();
                 assert!(!panes.contains(&pane), "{pane} was reused");
                 let events = layout.open(pane, target, named, &LayoutOptions::default());
-                assert_eq!(
-                    events[0],
-                    LayoutEvent::PaneOpened {
-                        pane,
-                        workspace: target
-                    }
-                );
+                assert_eq!(events[0], LayoutEvent::PaneOpened { pane, band: target });
                 panes.push(pane);
             }
             Remove(index) => {
@@ -723,7 +687,7 @@ fn identifier_survives_moves() {
     let (mut layout, panes) = row_of_columns(2);
     let (first, second) = (panes[0], panes[1]);
     let at = |column, row| Location {
-        workspace: 0,
+        band: 0,
         column,
         row,
     };
@@ -901,7 +865,7 @@ fn stacked(count: usize) -> (Layout, Vec<PaneId>) {
 
 fn column_of(layout: &Layout, pane: PaneId) -> &Column {
     let location = layout.locate(pane).unwrap();
-    &layout.workspaces()[location.workspace].columns[location.column]
+    &layout.bands()[location.band].columns[location.column]
 }
 
 fn heights_of(layout: &Layout, pane: PaneId) -> Vec<PaneHeight> {

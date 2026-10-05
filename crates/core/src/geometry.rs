@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::layout::{Column, PaneHeight, PaneId, Weight, Workspace, gcd};
+use crate::layout::{Band, Column, PaneHeight, PaneId, Weight, gcd};
 
 pub const MIN_COLUMN_WIDTH: u16 = 3;
 pub const MIN_TILE_HEIGHT: u16 = 3;
@@ -66,10 +66,9 @@ pub fn column_width(column: &Column, area: Size) -> u16 {
     width.max(MIN_COLUMN_WIDTH)
 }
 
-pub fn column_spans(workspace: &Workspace, area: Size) -> Vec<Span> {
+pub fn column_spans(band: &Band, area: Size) -> Vec<Span> {
     let mut x = 0;
-    workspace
-        .columns
+    band.columns
         .iter()
         .map(|column| {
             let span = Span {
@@ -169,11 +168,10 @@ pub fn pane_heights(column: &Column, rows: u16) -> Vec<u16> {
     heights
 }
 
-pub fn tiles(workspace: &Workspace, area: Size) -> Vec<Tile> {
-    workspace
-        .columns
+pub fn tiles(band: &Band, area: Size) -> Vec<Tile> {
+    band.columns
         .iter()
-        .zip(column_spans(workspace, area))
+        .zip(column_spans(band, area))
         .enumerate()
         .flat_map(|(column_index, (column, span))| {
             let mut y = 0;

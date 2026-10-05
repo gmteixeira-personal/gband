@@ -1,41 +1,34 @@
 use gband_core::event::LayoutEvent;
 use gband_core::geometry::Size;
 use gband_core::layout::{
-    Direction, Layout, LayoutOptions, PaneHeight, PaneId, Proportion, SessionAction, Step, Weight,
-    WorkspaceId,
+    BandId, Direction, Layout, LayoutOptions, PaneHeight, PaneId, Proportion, SessionAction, Step,
+    Weight,
 };
 
 const AREA: Size = Size::new(80, 24);
 
-fn open(
-    layout: &mut Layout,
-    workspace: usize,
-    after: Option<PaneId>,
-) -> (PaneId, Vec<LayoutEvent>) {
+fn open(layout: &mut Layout, band: usize, after: Option<PaneId>) -> (PaneId, Vec<LayoutEvent>) {
     let pane = layout.allocate_pane();
-    let id = layout.workspaces()[workspace].id;
+    let id = layout.bands()[band].id;
     let events = layout.open(pane, id, after, &LayoutOptions::default());
     (pane, events)
 }
 
-fn workspace(layout: &Layout, index: usize) -> WorkspaceId {
-    layout.workspaces()[index].id
+fn band(layout: &Layout, index: usize) -> BandId {
+    layout.bands()[index].id
 }
 
 #[test]
-fn open_in_the_empty_workspace_adds_one_below() {
+fn open_in_the_empty_band_adds_one_below() {
     let mut layout = Layout::new();
-    let empty = workspace(&layout, 0);
+    let empty = band(&layout, 0);
     let (pane, events) = open(&mut layout, 0, None);
     assert_eq!(
         events,
         [
-            LayoutEvent::PaneOpened {
-                pane,
-                workspace: empty,
-            },
-            LayoutEvent::WorkspaceAdded {
-                workspace: workspace(&layout, 1),
+            LayoutEvent::PaneOpened { pane, band: empty },
+            LayoutEvent::BandAdded {
+                band: band(&layout, 1),
                 index: 1,
             },
         ]
@@ -43,7 +36,7 @@ fn open_in_the_empty_workspace_adds_one_below() {
 }
 
 #[test]
-fn open_beside_a_pane_adds_no_workspace() {
+fn open_beside_a_pane_adds_no_band() {
     let mut layout = Layout::new();
     let (first, _) = open(&mut layout, 0, None);
     let (second, events) = open(&mut layout, 0, Some(first));
@@ -51,42 +44,39 @@ fn open_beside_a_pane_adds_no_workspace() {
         events,
         [LayoutEvent::PaneOpened {
             pane: second,
-            workspace: workspace(&layout, 0),
+            band: band(&layout, 0),
         }]
     );
 }
 
 #[test]
-fn last_pane_of_a_middle_workspace_closing_removes_it() {
+fn last_pane_of_a_middle_band_closing_removes_it() {
     let mut layout = Layout::new();
     let (top, _) = open(&mut layout, 0, None);
     open(&mut layout, 1, None);
-    let middle = workspace(&layout, 0);
+    let middle = band(&layout, 0);
     assert_eq!(
         layout.remove(top),
         [
             LayoutEvent::PaneClosed {
                 pane: top,
-                workspace: middle,
+                band: middle,
             },
-            LayoutEvent::WorkspaceRemoved { workspace: middle },
+            LayoutEvent::BandRemoved { band: middle },
         ]
     );
 }
 
 #[test]
-fn closing_the_only_pane_removes_its_workspace() {
+fn closing_the_only_pane_removes_its_band() {
     let mut layout = Layout::new();
     let (pane, _) = open(&mut layout, 0, None);
-    let filled = workspace(&layout, 0);
+    let filled = band(&layout, 0);
     assert_eq!(
         layout.remove(pane),
         [
-            LayoutEvent::PaneClosed {
-                pane,
-                workspace: filled,
-            },
-            LayoutEvent::WorkspaceRemoved { workspace: filled },
+            LayoutEvent::PaneClosed { pane, band: filled },
+            LayoutEvent::BandRemoved { band: filled },
         ]
     );
 }
@@ -108,7 +98,7 @@ fn consume_into_the_left_neighbour_moves_one_pane() {
         events,
         [LayoutEvent::PaneMoved {
             pane: second,
-            workspace: workspace(&layout, 0),
+            band: band(&layout, 0),
             column: 0,
             row: 1,
         }]
@@ -140,7 +130,7 @@ fn expel_to_the_right_moves_one_pane() {
         events,
         [LayoutEvent::PaneMoved {
             pane: second,
-            workspace: workspace(&layout, 0),
+            band: band(&layout, 0),
             column: 1,
             row: 0,
         }]
@@ -172,10 +162,10 @@ fn cycling_and_toggling_widths_report_the_column() {
     let mut layout = Layout::new();
     let (first, _) = open(&mut layout, 0, None);
     let (second, _) = open(&mut layout, 0, Some(first));
-    let ws = workspace(&layout, 0);
+    let ws = band(&layout, 0);
     let changed = |width, full_width| {
         vec![LayoutEvent::ColumnWidthChanged {
-            workspace: ws,
+            band: ws,
             column: 1,
             width,
             full_width,
@@ -252,7 +242,7 @@ fn growing_a_column_width_reports_it_once() {
     assert_eq!(
         layout.apply(grow, AREA, &LayoutOptions::default()),
         [LayoutEvent::ColumnWidthChanged {
-            workspace: workspace(&layout, 0),
+            band: band(&layout, 0),
             column: 0,
             width: Proportion::new(3, 5),
             full_width: false,
@@ -301,7 +291,7 @@ fn growing_a_pane_height_reports_the_column() {
             &LayoutOptions::default()
         ),
         [LayoutEvent::PaneHeightsChanged {
-            workspace: workspace(&layout, 0),
+            band: band(&layout, 0),
             column: 1,
             heights: vec![PaneHeight::Fixed(14), PaneHeight::Auto(Weight::ONE)],
         }]

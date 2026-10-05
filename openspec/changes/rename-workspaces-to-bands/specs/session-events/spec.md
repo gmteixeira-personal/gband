@@ -15,11 +15,11 @@ Every change to the layout SHALL produce the events that describe it, in the ord
 
 A pane opened or moved into a column SHALL take an automatic height of weight 1 there, and the last pane left in a column with an automatic height SHALL take weight 1, as the layout capability defines, without a pane heights changed event.
 
-#### Scenario: Open in the empty workspace
+#### Scenario: Open in the empty band
 - **WHEN** a pane opens in the last, empty band
 - **THEN** the events are pane opened for that band, then band added for the new empty band below it
 
-#### Scenario: Last pane of a middle workspace closes
+#### Scenario: Last pane of a middle band closes
 - **WHEN** the only pane of a band that is not the last one closes
 - **THEN** the events are pane closed, then band removed
 
