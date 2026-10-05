@@ -49,7 +49,9 @@ Out of scope: a separate status line row for hints, hints for key sequences long
 - crates/lua/src/defaults.lua
 - crates/lua/tests/statusline.rs
 - crates/lua/tests/key_hints.rs
-- crates/client/tests/
+- crates/lua/tests/config.rs
+- crates/client/tests/statusline.rs
+- crates/client/tests/snapshots/
 - tests/statusline.rs
 - docs/plugins.md
 - README.md
