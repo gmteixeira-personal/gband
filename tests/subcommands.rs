@@ -238,21 +238,55 @@ fn session_option_on_a_subcommand_without_sessions_is_rejected() {
 
 #[test]
 fn session_requests_without_a_server_fail_and_create_nothing() {
-    let state = state_home("requests_no_server");
-    let socket = runtime_home(&state).join("gband").join("default.sock");
-    for args in [
-        &["list-sessions"][..],
-        &["kill-session"],
-        &["-s", "work", "kill-session"],
+    for (name, args) in [
+        ("requests_no_server_list", &["list-sessions"][..]),
+        ("requests_no_server_kill", &["kill-session"]),
+        (
+            "requests_no_server_kill_named",
+            &["-s", "work", "kill-session"],
+        ),
     ] {
+        let state = state_home(name);
+        let socket = runtime_home(&state).join("gband").join("default.sock");
         let output = gband(&state, None, args);
         let stderr = assert_one_line_failure(&output);
-        assert!(stderr.contains("no server is running"), "{stderr}");
-        assert!(stderr.contains(socket.to_str().unwrap()), "{stderr}");
+        assert!(
+            stderr.contains("no server is running"),
+            "{args:?}: {stderr}"
+        );
+        assert!(
+            stderr.contains(socket.to_str().unwrap()),
+            "{args:?}: {stderr}"
+        );
+        assert!(
+            log_text(&state, "client").contains("client started"),
+            "{args:?}"
+        );
+        assert!(log_files(&state, "server").is_empty(), "{args:?}");
+        assert!(!runtime_home(&state).exists(), "{args:?}");
     }
-    assert!(log_text(&state, "client").contains("client started"));
-    assert!(log_files(&state, "server").is_empty());
-    assert!(!runtime_home(&state).exists());
+}
+
+#[test]
+fn session_request_events_name_their_server() {
+    for (name, subcommand) in [
+        ("request_socket_list", "list-sessions"),
+        ("request_socket_kill", "kill-session"),
+    ] {
+        let state = state_home(name);
+        let socket = runtime_home(&state).join("gband").join("a.sock");
+        assert_one_line_failure(&gband(&state, None, &["-S", "a", subcommand]));
+        let text = log_text(&state, "client");
+        let events: Vec<&str> = text
+            .lines()
+            .filter(|line| !line.contains("client started"))
+            .collect();
+        assert!(!events.is_empty(), "{subcommand}: {text}");
+        let field = format!("socket={}", socket.display());
+        for event in events {
+            assert!(event.contains(&field), "{subcommand}: {event}");
+        }
+    }
 }
 
 #[test]
