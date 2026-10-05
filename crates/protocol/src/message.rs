@@ -5,8 +5,9 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use crate::session::{SessionName, SessionSummary};
+use crate::value::Value;
 
-pub const PROTOCOL_VERSION: u32 = 5;
+pub const PROTOCOL_VERSION: u32 = 6;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Hello {
@@ -23,16 +24,38 @@ pub enum HelloReply {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ClientMessage {
-    Attach { session: SessionName, cwd: PathBuf },
+    Attach {
+        session: SessionName,
+        cwd: PathBuf,
+    },
     ListSessions,
-    KillSession { session: SessionName },
-    Key { pane: PaneId, key: Key },
-    Paste { pane: PaneId, text: String },
-    Resize { cols: u16, rows: u16 },
+    KillSession {
+        session: SessionName,
+    },
+    Key {
+        pane: PaneId,
+        key: Key,
+    },
+    Paste {
+        pane: PaneId,
+        text: String,
+    },
+    Resize {
+        cols: u16,
+        rows: u16,
+    },
     Action(SessionAction),
     Detach,
     Shown(Vec<PaneId>),
-    Content { pane: PaneId, output: Vec<u8> },
+    Content {
+        pane: PaneId,
+        output: Vec<u8>,
+    },
+    Command {
+        call: u64,
+        name: String,
+        args: Value,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -65,6 +88,29 @@ pub enum ServerMessage {
         request: u32,
         pane: Option<PaneId>,
     },
+    Event {
+        name: String,
+        data: Value,
+        queued: bool,
+        time: u64,
+    },
+    PaneState {
+        pane: PaneId,
+        key: String,
+        value: Option<Value>,
+    },
+    Result {
+        call: u64,
+        result: Result<Value, String>,
+    },
+    Requirements(Vec<Requirement>),
+    ServerError(String),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Requirement {
+    pub plugin: String,
+    pub requirement: String,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]

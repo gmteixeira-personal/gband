@@ -1,5 +1,6 @@
 mod actions;
 mod api;
+mod bridge;
 mod bundled;
 mod callbacks;
 mod commands;
@@ -13,7 +14,11 @@ pub mod keys;
 mod options;
 mod owner;
 mod runtime;
+pub mod server;
+mod sides;
 pub mod ui;
+mod value;
+pub mod version;
 mod watch;
 pub mod windows;
 
@@ -25,6 +30,7 @@ pub use mlua::Lua;
 
 pub use crate::actions::{ACTIONS, BuiltinAction};
 pub use crate::api::{Binding, Chord, Dispatch, PaneInput, WindowRequest};
+pub use crate::bridge::{base64, notification};
 pub use crate::callbacks::CallbackId;
 pub use crate::directory::{
     Locations, config_dir, config_dir_from, defaults_file, plugins_dir, plugins_dir_from, prepare,
@@ -32,13 +38,60 @@ pub use crate::directory::{
 };
 pub use crate::error::ConfigError;
 pub use crate::events::Event;
-pub use crate::options::{OptValue, Options, StatusLineOptions, StatusLinePosition};
+pub use crate::options::{NotifyStyle, OptValue, Options, StatusLineOptions, StatusLinePosition};
 pub use crate::runtime::{API_VERSION, Outcome, Runtime};
-pub use crate::ui::{BandState, Color, ColumnState, Span, StatusLine, Style, ViewState};
+pub use crate::ui::{
+    BandState, Color, ColumnState, PaneStates, Span, StatusLine, Style, ViewState,
+};
+pub use crate::version::{Requirement, Version};
 pub use crate::watch::{Watcher, watch};
 
 pub const DEFAULTS: &str = include_str!("defaults.lua");
+pub const DEFAULTS_SERVER: &str = include_str!("defaults_server.lua");
 pub const BUDGET: u64 = 100_000_000;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Side {
+    Client,
+    Server,
+}
+
+impl Side {
+    pub fn name(self) -> &'static str {
+        match self {
+            Side::Client => "client",
+            Side::Server => "server",
+        }
+    }
+
+    pub fn other(self) -> Side {
+        match self {
+            Side::Client => Side::Server,
+            Side::Server => Side::Client,
+        }
+    }
+
+    pub fn init_name(self) -> &'static str {
+        match self {
+            Side::Client => "init.lua",
+            Side::Server => "server.lua",
+        }
+    }
+
+    pub fn file_name(self) -> &'static str {
+        match self {
+            Side::Client => "client.lua",
+            Side::Server => "server.lua",
+        }
+    }
+
+    pub fn defaults(self) -> &'static str {
+        match self {
+            Side::Client => DEFAULTS,
+            Side::Server => DEFAULTS_SERVER,
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct LoadOptions {
@@ -53,18 +106,34 @@ impl Default for LoadOptions {
 
 pub type KeyTables = BTreeMap<String, Vec<(Chord, Binding)>>;
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PluginManifest {
+    pub name: String,
+    pub version: Option<String>,
+    pub client: Option<String>,
+    pub failed: bool,
+}
+
 pub struct Config {
+    pub side: Side,
     pub options: Options,
     pub keymap: KeyTables,
     pub runtime: Runtime,
     pub errors: Vec<ConfigError>,
+    pub plugins: Vec<PluginManifest>,
 }
 
-pub fn load(locations: &Locations, options: &LoadOptions) -> Result<Config, ConfigError> {
-    let path = user_file(&locations.config);
+pub fn load(
+    locations: &Locations,
+    side: Side,
+    options: &LoadOptions,
+) -> Result<Config, ConfigError> {
+    let path = user_file(&locations.config, side);
     match std::fs::read(&path) {
-        Ok(source) => evaluate(Some(locations), options, &path, &source),
-        Err(error) if error.kind() == ErrorKind::NotFound => load_defaults(locations, options),
+        Ok(source) => evaluate(Some(locations), side, options, &path, &source),
+        Err(error) if error.kind() == ErrorKind::NotFound => {
+            load_defaults(locations, side, options)
+        }
         Err(error) => Err(ConfigError::new(format!(
             "cannot read {}: {error}",
             path.display()
@@ -72,33 +141,40 @@ pub fn load(locations: &Locations, options: &LoadOptions) -> Result<Config, Conf
     }
 }
 
-pub fn load_defaults(locations: &Locations, options: &LoadOptions) -> Result<Config, ConfigError> {
+pub fn load_defaults(
+    locations: &Locations,
+    side: Side,
+    options: &LoadOptions,
+) -> Result<Config, ConfigError> {
     evaluate(
         Some(locations),
+        side,
         options,
-        &defaults_file(&locations.config),
-        DEFAULTS.as_bytes(),
+        &defaults_file(&locations.config, side),
+        side.defaults().as_bytes(),
     )
 }
 
-pub fn defaults() -> Config {
+pub fn defaults(side: Side) -> Config {
     evaluate(
         None,
+        side,
         &LoadOptions::default(),
-        Path::new("defaults/init.lua"),
-        DEFAULTS.as_bytes(),
+        &Path::new("defaults").join(side.init_name()),
+        side.defaults().as_bytes(),
     )
     .expect("the default configuration loads")
 }
 
 fn evaluate(
     locations: Option<&Locations>,
+    side: Side,
     options: &LoadOptions,
     path: &Path,
     source: &[u8],
 ) -> Result<Config, ConfigError> {
     let lua = Lua::new();
-    runtime::install(&lua, locations, options.budget)
+    runtime::install(&lua, side, locations, options.budget)
         .map_err(|error| ConfigError::from_lua(&error, &[]))?;
     runtime::run_init(&lua, path, source)?;
     let user = locations.map(|locations| user_dir(&locations.config));
@@ -112,8 +188,14 @@ mod tests {
 
     #[test]
     fn errors_in_the_default_text_name_the_defaults_file() {
-        let path = defaults_file(Path::new("/home/u/.config/gband"));
-        let Err(error) = evaluate(None, &LoadOptions::default(), &path, b"\nerror('boom')") else {
+        let path = defaults_file(Path::new("/home/u/.config/gband"), Side::Client);
+        let Err(error) = evaluate(
+            None,
+            Side::Client,
+            &LoadOptions::default(),
+            &path,
+            b"\nerror('boom')",
+        ) else {
             panic!("the text loaded");
         };
         assert_eq!(error.location, Some((path, 2)));

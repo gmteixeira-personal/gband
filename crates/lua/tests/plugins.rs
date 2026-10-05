@@ -44,7 +44,8 @@ fn missing_plugins_directory_leaves_the_user_directory() {
         config: scratch.dir(),
         plugins: None,
     };
-    let config = gband_lua::load(&locations, &LoadOptions::default()).unwrap();
+    let config =
+        gband_lua::load(&locations, gband_lua::Side::Client, &LoadOptions::default()).unwrap();
     let count: usize = eval(&config, "return #gband.runtimepath");
     assert_eq!(count, 1);
 }
@@ -96,33 +97,165 @@ fn error_inside_a_module_names_its_path_and_line() {
 }
 
 #[test]
+fn server_side() {
+    let scratch = Scratch::new("server-side");
+    scratch.server("side, version = gband.side, gband.api_version");
+    let config = scratch.loaded_server();
+    assert_eq!(global::<String>(&config, "side"), "server");
+    assert_eq!(global::<i64>(&config, "version"), 1);
+}
+
+#[test]
 fn load_order() {
     let scratch = Scratch::new("order");
     scratch.write("order = { 'init' }");
-    scratch.user_file("plugin/b.lua", "table.insert(order, 'b')");
-    scratch.user_file("plugin/a.lua", "table.insert(order, 'a')");
-    scratch.user_file("plugin/client/c.lua", "table.insert(order, 'c')");
-    scratch.user_file("plugin/notes.txt", "table.insert(order, 'txt')");
-    scratch.plugin_file("hello", "plugin/d.lua", "table.insert(order, 'd')");
+    scratch.client_plugin("beta", "table.insert(order, 'beta')");
+    scratch.client_plugin("alpha", "table.insert(order, 'alpha')");
     let config = scratch.loaded();
     let order: Vec<String> = global(&config, "order");
-    assert_eq!(order, ["init", "a", "b", "c", "d"]);
+    assert_eq!(order, ["init", "alpha", "beta"]);
+}
+
+#[test]
+fn valid_manifest() {
+    let scratch = Scratch::new("manifest");
+    scratch.plugin(
+        "agent-status",
+        "return { name = 'agent-status', version = '0.1.0', client = '>= 0.1' }",
+    );
+    let config = scratch.loaded();
+    assert!(config.errors.is_empty(), "{:?}", config.errors);
+    let listed: Vec<String> = eval(
+        &config,
+        "local out = {}
+         for _, p in ipairs(gband.plugins()) do
+           out[#out + 1] = table.concat({ p.name, p.version, p.client, tostring(p.failed) }, '|')
+         end
+         return out",
+    );
+    assert_eq!(listed, ["agent-status|0.1.0|>= 0.1|false"]);
+    assert_eq!(
+        config.plugins,
+        [gband_lua::PluginManifest {
+            name: "agent-status".to_owned(),
+            version: Some("0.1.0".to_owned()),
+            client: Some(">= 0.1".to_owned()),
+            failed: false,
+        }]
+    );
+}
+
+#[test]
+fn name_mismatch() {
+    let scratch = Scratch::new("mismatch");
+    scratch.plugin("agent-status", "return { name = 'agents', version = '1' }");
+    scratch.plugin_file("agent-status", "client.lua", "sourced = true");
+    let config = scratch.loaded();
+    let error = plugin_error(&config.errors, "agent-status");
+    assert!(error.message.contains("`agents`"), "{error}");
+    assert!(global::<Option<bool>>(&config, "sourced").is_none());
+    let failed: bool = eval(&config, "return gband.plugins()[1].failed");
+    assert!(failed);
+}
+
+#[test]
+fn invalid_manifests() {
+    for (manifest, mentions) in [
+        ("return 3", "must return a table"),
+        ("return { name = 'hello' }", "`version`"),
+        (
+            "return { name = 'hello', version = 'one' }",
+            "not a version",
+        ),
+        (
+            "return { name = 'hello', version = '1', client = '~1' }",
+            "does not start",
+        ),
+    ] {
+        let scratch = Scratch::new("invalid-manifest");
+        scratch.plugin("hello", manifest);
+        scratch.plugin_file("hello", "client.lua", "sourced = true");
+        let config = scratch.loaded();
+        let error = plugin_error(&config.errors, "hello");
+        assert!(error.message.contains(mentions), "{manifest}: {error}");
+        assert!(global::<Option<bool>>(&config, "sourced").is_none());
+    }
+}
+
+#[test]
+fn manifest_cannot_reach_gband() {
+    let scratch = Scratch::new("manifest-env");
+    let manifest = scratch.plugin(
+        "hello",
+        "gband.keymap.set('root', 'alt+x', function() end)\nreturn { name = 'hello', version = '1' }",
+    );
+    let config = scratch.loaded();
+    let error = plugin_error(&config.errors, "hello");
+    assert_eq!(error.location, Some((manifest, 1)), "{error}");
+    assert!(!config.keymap.contains_key("root"));
+}
+
+#[test]
+fn side_file_without_a_manifest() {
+    let scratch = Scratch::new("orphan");
+    scratch.plugin_file("hello", "client.lua", "sourced = true");
+    let config = scratch.loaded();
+    let error = plugin_error(&config.errors, "hello");
+    assert!(error.message.contains("plugin.lua"), "{error}");
+    assert!(global::<Option<bool>>(&config, "sourced").is_none());
+}
+
+#[test]
+fn one_file_per_side() {
+    let scratch = Scratch::new("per-side");
+    scratch.plugin("hello", &manifest("hello"));
+    scratch.plugin_file("hello", "server.lua", "server_sourced = true");
+    let client = scratch.plugin_file("hello", "client.lua", "error('client')");
+    let server = scratch.loaded_server();
+    assert!(server.errors.is_empty(), "{:?}", server.errors);
+    assert!(global::<bool>(&server, "server_sourced"));
+    let config = scratch.loaded();
+    assert!(global::<Option<bool>>(&config, "server_sourced").is_none());
+    assert_eq!(
+        plugin_error(&config.errors, "hello").location,
+        Some((client, 1))
+    );
+}
+
+#[test]
+fn client_only_plugin() {
+    let scratch = Scratch::new("client-only");
+    scratch.client_plugin("hello", "error('client')");
+    let server = scratch.loaded_server();
+    assert!(server.errors.is_empty(), "{:?}", server.errors);
+}
+
+#[test]
+fn legacy_plugin_files_are_ignored() {
+    let scratch = Scratch::new("legacy");
+    scratch.plugin_file("hello", "plugin/keys.lua", "error('keys')");
+    scratch.plugin_file("hello", "plugin/client/k.lua", "error('k')");
+    scratch.user_file("plugin/u.lua", "error('user')");
+    scratch.user_file("client.lua", "error('user client')");
+    assert!(scratch.loaded().errors.is_empty());
+    assert!(scratch.loaded_server().errors.is_empty());
 }
 
 #[test]
 fn server_plugin_files_are_ignored() {
     let scratch = Scratch::new("server-files");
+    scratch.plugin("hello", &manifest("hello"));
     scratch.plugin_file("hello", "plugin/server/s.lua", "error('server')");
-    scratch.plugin_file("hello", "plugin/other/o.lua", "error('other')");
-    let config = scratch.loaded();
-    assert!(config.errors.is_empty(), "{:?}", config.errors);
+    assert!(scratch.loaded().errors.is_empty());
+    assert!(scratch.loaded_server().errors.is_empty());
 }
 
 #[test]
 fn init_file_adds_an_entry() {
     let scratch = Scratch::new("added-entry");
     let extra = scratch.0.join("opt").join("hello");
-    write(&extra.join("plugin").join("hello.lua"), "sourced = true");
+    write(&extra.join("plugin.lua"), &manifest("hello"));
+    write(&extra.join("client.lua"), "sourced = true");
     scratch.write(&format!(
         "table.insert(gband.runtimepath, '{}')",
         extra.display()
@@ -134,9 +267,8 @@ fn init_file_adds_an_entry() {
 #[test]
 fn default_configuration_with_a_plugin() {
     let scratch = Scratch::new("defaults-plugin");
-    scratch.plugin_file(
+    scratch.client_plugin(
         "keys",
-        "plugin/keys.lua",
         "gband.keymap.set('root', 'alt+g', gband.action.focus_column_left)",
     );
     let config = scratch.loaded();
@@ -153,15 +285,104 @@ fn default_configuration_with_a_plugin() {
 #[test]
 fn error_in_a_plugin_file() {
     let scratch = Scratch::new("plugin-file-error");
-    let a = scratch.plugin_file("hello", "plugin/a.lua", "\nerror('boom')");
-    scratch.plugin_file("hello", "plugin/b.lua", "b_sourced = true");
-    scratch.plugin_file("other", "plugin/c.lua", "c_sourced = true");
+    let file = scratch.client_plugin(
+        "hello",
+        "gband.bind('alt+b', function() pressed = true end)\nerror('boom')",
+    );
+    scratch.client_plugin("other", "other_sourced = true");
     let config = scratch.loaded();
-    assert!(global::<Option<bool>>(&config, "b_sourced").is_none());
-    assert!(global::<bool>(&config, "c_sourced"));
+    assert!(global::<bool>(&config, "other_sourced"));
     let error = plugin_error(&config.errors, "hello");
-    assert_error_at(error, &a, 2, "boom");
-    assert_eq!(error.to_string(), format!("hello: {}:2: boom", a.display()));
+    assert_error_at(error, &file, 2, "boom");
+    assert_eq!(
+        error.to_string(),
+        format!("hello: {}:2: boom", file.display())
+    );
+    let failed: bool = eval(&config, "return gband.plugins()[1].failed");
+    assert!(failed);
+    let Some((_, Binding::Callback(callback))) = config.keymap["root"].first() else {
+        panic!("alt+b is bound");
+    };
+    assert!(config.runtime.call(*callback).disabled);
+    assert!(global::<Option<bool>>(&config, "pressed").is_none());
+}
+
+#[test]
+fn client_api_in_the_server() {
+    let scratch = Scratch::new("client-api");
+    scratch.plugin("hello", &manifest("hello"));
+    let file = scratch.plugin_file(
+        "hello",
+        "server.lua",
+        "local a = 1\nlocal b = 2\nlocal k = gband.keymap",
+    );
+    let config = scratch.loaded_server();
+    let error = plugin_error(&config.errors, "hello");
+    assert_error_at(error, &file, 3, "`gband.keymap`");
+    assert!(error.message.contains("client"), "{error}");
+}
+
+#[test]
+fn server_api_in_the_client() {
+    let scratch = Scratch::new("server-api");
+    let file = scratch.write("local a = 1\ngband.sessions()");
+    let error = scratch.load().err().unwrap();
+    assert_error_at(&error, &file, 2, "`gband.sessions`");
+    assert!(error.message.contains("server"), "{error}");
+}
+
+#[test]
+fn view_action_in_the_server() {
+    let scratch = Scratch::new("view-action");
+    let file = scratch.server("local a = gband.action.focus_column_left");
+    let error = scratch.load_server().err().unwrap();
+    assert_error_at(&error, &file, 1, "focus_column_left");
+    assert!(error.message.contains("client"), "{error}");
+    let scratch = Scratch::new("session-action");
+    scratch.server("kind = type(gband.action.close_pane)\nmissing = gband.action.absent == nil");
+    let config = scratch.loaded_server();
+    assert_eq!(global::<String>(&config, "kind"), "userdata");
+    assert!(global::<bool>(&config, "missing"));
+}
+
+#[test]
+fn every_field_belongs_to_one_side() {
+    let scratch = Scratch::new("fields");
+    let shared = [
+        "on",
+        "augroup",
+        "emit",
+        "cmd",
+        "opt",
+        "set",
+        "plugin",
+        "plugins",
+        "runtimepath",
+        "side",
+        "api_version",
+        "pane_state",
+        "action",
+    ];
+    let list = |names: &[&str]| {
+        names
+            .iter()
+            .map(|name| format!("'{name}'"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    let check = format!(
+        "missing = {{}}
+         for _, name in ipairs({{ {} }}) do
+           if rawget(gband, name) == nil then missing[#missing + 1] = name end
+         end",
+        list(&shared)
+    );
+    scratch.write(&check);
+    scratch.server(&check);
+    let missing: Vec<String> = global(&scratch.loaded(), "missing");
+    assert!(missing.is_empty(), "client lacks {missing:?}");
+    let missing: Vec<String> = global(&scratch.loaded_server(), "missing");
+    assert!(missing.is_empty(), "server lacks {missing:?}");
 }
 
 const HELLO: &str = "return {
@@ -256,7 +477,7 @@ fn setup_error_disables_the_plugin() {
 end }",
     );
     scratch.write(
-        "result = gband.plugin('broken')\ngband.bind('alt+h', gband.action.focus_column_left)\ngband.opt.default_column_width = 1/3",
+        "result = gband.plugin('broken')\ngband.bind('alt+h', gband.action.focus_column_left)\ngband.opt.statusline_height = 3",
     );
     let config = scratch.loaded();
     assert!(!global::<bool>(&config, "result"));
@@ -266,7 +487,7 @@ end }",
         6,
         "setup failed",
     );
-    assert_eq!(config.options.layout.default_width.den, 3);
+    assert_eq!(config.options.statusline.height, 3);
     let root = &config.keymap["root"];
     assert_eq!(root.len(), 2);
     let Binding::Callback(go) = root[0].1 else {
@@ -305,9 +526,7 @@ fn plugin_error_keeps_the_rest() {
 #[test]
 fn plugin_action_is_namespaced() {
     let scratch = Scratch::new("namespaced");
-    scratch.plugin_file(
-        "hello",
-        "plugin/hello.lua",
+    scratch.client_plugin("hello",
         "gband.action.register('greet', function() end)\ngband.cmd.register('hello.say', function() end)",
     );
     let config = scratch.loaded();
@@ -323,9 +542,8 @@ fn plugin_action_is_namespaced() {
 #[test]
 fn foreign_namespace() {
     let scratch = Scratch::new("foreign");
-    let file = scratch.plugin_file(
+    let file = scratch.client_plugin(
         "hello",
-        "plugin/hello.lua",
         "\n\n\ngband.action.register('other.greet', function() end)",
     );
     let config = scratch.loaded();
@@ -340,9 +558,8 @@ fn foreign_namespace() {
 #[test]
 fn registered_action_called_from_another_callback() {
     let scratch = Scratch::new("nested-action");
-    scratch.plugin_file(
+    scratch.client_plugin(
         "hello",
-        "plugin/hello.lua",
         "gband.action.register('greet', function()
   log[#log + 1] = 'greet'
   gband.action.focus_column_left()
@@ -375,9 +592,8 @@ end)",
 #[test]
 fn error_in_a_registered_action_lets_the_caller_continue() {
     let scratch = Scratch::new("nested-error");
-    let file = scratch.plugin_file(
+    let file = scratch.client_plugin(
         "hello",
-        "plugin/hello.lua",
         "gband.action.register('greet', function()\n  error('greet failed')\nend)",
     );
     scratch.write(
@@ -407,7 +623,7 @@ fn infinite_loop_in_setup() {
         "lua/spin/init.lua",
         "return { setup = function() while true do end end }",
     );
-    scratch.plugin_file("spin", "plugin/spin.lua", "require('spin').setup()");
+    scratch.client_plugin("spin", "require('spin').setup()");
     scratch.write("gband.bind('alt+h', gband.action.focus_column_left)");
     let config = scratch.load_with_budget(100_000).unwrap();
     let error = plugin_error(&config.errors, "spin");
@@ -418,16 +634,14 @@ fn infinite_loop_in_setup() {
 #[test]
 fn infinite_loop_in_a_callback_disables_its_plugin() {
     let scratch = Scratch::new("callback-loop");
-    scratch.plugin_file(
+    scratch.client_plugin(
         "spin",
-        "plugin/spin.lua",
         "gband.action.register('go', function() while true do end end)
 gband.cmd.register('cmd', function() end)
 gband.bind('alt+s', gband.action['spin.go'])",
     );
-    scratch.plugin_file(
+    scratch.client_plugin(
         "zz",
-        "plugin/keys.lua",
         "gband.bind('alt+h', function() ran = gband.cmd.run('spin.cmd') end)",
     );
     let config = scratch.load_with_budget(100_000).unwrap();

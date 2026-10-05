@@ -1,5 +1,6 @@
 mod common;
 
+use std::cell::Cell;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
@@ -221,9 +222,8 @@ fn no_configuration_file() {
 #[test]
 fn xdg_config_home_is_honoured() {
     let env = TestEnv::new("config-xdg");
-    env.write_config(
-        "gband.set { width_presets = { 1/4, 1/2 } }\ngband.bind('prefix r', gband.action.cycle_column_width)",
-    );
+    env.write_server_config("gband.set { width_presets = { 1/4, 1/2 } }");
+    env.write_config("gband.bind('prefix r', gband.action.cycle_column_width)");
     let mut client = Attached::start(&env, 80, 24);
     client.wait_for_prompt();
     client.send(b"\x00r");
@@ -326,10 +326,6 @@ fn syntax_error_is_shown_on_the_bottom_row() {
         || env.log_text("client").contains(&expected),
         "the client log to record the error",
     );
-    wait_until(
-        || env.log_text("server").contains(&expected),
-        "the server log to record the error",
-    );
 }
 
 #[test]
@@ -423,11 +419,7 @@ fn file_removed_restores_the_defaults() {
 #[test]
 fn plugin_sets_a_width_option() {
     let env = TestEnv::new("config-plugin-width");
-    env.write_plugin_file(
-        "widths",
-        "plugin/widths.lua",
-        "gband.opt.default_column_width = 1/3\n",
-    );
+    env.write_server_plugin("widths", "gband.opt.default_column_width = 1/3\n");
     let mut client = Attached::start(&env, 80, 24);
     client.wait_for_prompt();
     client.shell_pid(&env);
@@ -442,9 +434,8 @@ fn plugin_sets_a_width_option() {
 #[test]
 fn default_configuration_with_a_plugin() {
     let env = TestEnv::new("config-default-plugin");
-    env.write_plugin_file(
+    env.write_client_plugin(
         "keys",
-        "plugin/keys.lua",
         "gband.keymap.set('root', 'alt+g', gband.action.focus_column_left)\n",
     );
     let mut client = Attached::start(&env, 80, 24);
@@ -479,10 +470,117 @@ fn infinite_loop_in_setup() {
     client.wait_for("two tiles with the second focused", |screen| {
         tops(screen).len() == 2 && focused_top(screen) == Some(60)
     });
-    for role in ["client", "server"] {
-        wait_until(
-            || env.log_text(role).contains("instruction limit exceeded"),
-            "the log to record the stopped plugin",
-        );
-    }
+    wait_until(
+        || {
+            env.log_text("client")
+                .contains("instruction limit exceeded")
+        },
+        "the log to record the stopped plugin",
+    );
+}
+
+fn open_second_pane(client: &mut Attached, env: &TestEnv) -> (u16, u16, u16) {
+    client.wait_for_prompt();
+    client.shell_pid(env);
+    client.send(b"\x00\r");
+    let columns = Cell::new((0, 0, 0));
+    client.wait_for("two tiles with the second focused", |screen| {
+        let tiles = tiles(screen);
+        let found = tiles.len() == 2 && tiles[1].focused;
+        if found {
+            columns.set((
+                tiles[0].right - tiles[0].left + 1,
+                tiles[1].left,
+                tiles[1].right - tiles[1].left + 1,
+            ));
+        }
+        found
+    });
+    columns.get()
+}
+
+#[test]
+fn width_set_for_the_server() {
+    let env = TestEnv::new("config-server-width");
+    env.write_server_config("gband.opt.default_column_width = 1/3");
+    let mut client = Attached::start(&env, 80, 24);
+    let (_, left, _) = open_second_pane(&mut client, &env);
+    assert_eq!(left, 26);
+}
+
+#[test]
+fn no_server_configuration_file() {
+    let env = TestEnv::new("config-no-server-file");
+    let mut client = Attached::start(&env, 80, 24);
+    let (first, left, _) = open_second_pane(&mut client, &env);
+    assert_eq!((first, left), (40, 40));
+    assert!(!env.log_text("server").contains("configuration error"));
+    assert!(env.server_lua().parent().unwrap().is_dir());
+    assert_eq!(
+        fs::read_to_string(env.config_dir().join("defaults").join("server.lua")).unwrap(),
+        gband_lua::DEFAULTS_SERVER
+    );
+}
+
+#[test]
+fn broken_server_file_at_start() {
+    let env = TestEnv::new("config-broken-server");
+    env.write_server_config("gband.opt.default_column_width = 1/3\nerror('broken')\n");
+    let mut client = Attached::start(&env, 120, 24);
+    let expected = format!("server: {}:2: broken", env.server_lua().display());
+    client.wait_for("the server error banner", |screen| {
+        bottom_row(screen).starts_with(&expected)
+    });
+    client.wait_for_text("$");
+    client.send(b"\x00\r");
+    client.wait_for("a second column of width 1/2", |screen| {
+        tops(screen).len() == 2 && focused_top(screen) == Some(60)
+    });
+}
+
+#[test]
+fn server_error_in_the_client() {
+    let env = TestEnv::new("config-server-syntax");
+    env.write_server_config("gband.set {}\nlocal = 1\n");
+    let client = Attached::start(&env, 120, 24);
+    let expected = format!("server: {}:2:", env.server_lua().display());
+    client.wait_for("the server error banner", |screen| {
+        bottom_row(screen).starts_with(&expected)
+    });
+    wait_until(
+        || {
+            env.log_text("server")
+                .contains(&format!("{}:2:", env.server_lua().display()))
+        },
+        "the server log to record the error",
+    );
+}
+
+#[test]
+fn client_file_not_evaluated() {
+    let env = TestEnv::new("config-client-not-in-server");
+    env.write_config("error('client only')\n");
+    let client = Attached::start(&env, 120, 24);
+    client.wait_for("the client error banner", |screen| {
+        bottom_row(screen).contains("init.lua:1: client only")
+    });
+    wait_until(
+        || env.log_text("server").contains("listening"),
+        "the server to start",
+    );
+    assert!(!env.log_text("server").contains("client only"));
+}
+
+#[test]
+fn new_default_width() {
+    let env = TestEnv::new("config-new-width");
+    let mut client = Attached::start(&env, 80, 24);
+    client.wait_for_prompt();
+    client.shell_pid(&env);
+    let seen = reloads(&env, "server");
+    env.write_server_config("gband.opt.default_column_width = 1/3");
+    wait_for_reload(&env, "server", seen);
+    let (first, left, second) = open_second_pane(&mut client, &env);
+    assert_eq!((first, left), (40, 40));
+    assert!((26..=27).contains(&second), "{second}");
 }

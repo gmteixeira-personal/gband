@@ -6,8 +6,8 @@ use std::path::{Path, PathBuf};
 use gband_core::input::Key;
 use gband_lua::keys::parse_key;
 use gband_lua::{
-    BandState, Binding, Chord, Config, ConfigError, LoadOptions, Locations, Outcome, StatusLine,
-    ViewState,
+    BandState, Binding, Chord, Config, ConfigError, LoadOptions, Locations, Outcome, Side,
+    StatusLine, ViewState,
 };
 use mlua::FromLua;
 
@@ -48,6 +48,19 @@ impl Scratch {
         self.user_file("init.lua", source)
     }
 
+    pub fn server(&self, source: &str) -> PathBuf {
+        self.user_file("server.lua", source)
+    }
+
+    pub fn plugin(&self, name: &str, manifest: &str) -> PathBuf {
+        self.plugin_file(name, "plugin.lua", manifest)
+    }
+
+    pub fn client_plugin(&self, name: &str, source: &str) -> PathBuf {
+        self.plugin(name, &manifest(name));
+        self.plugin_file(name, "client.lua", source)
+    }
+
     pub fn user_file(&self, relative: &str, source: &str) -> PathBuf {
         write(&self.user().join(relative), source)
     }
@@ -57,15 +70,23 @@ impl Scratch {
     }
 
     pub fn load(&self) -> Result<Config, ConfigError> {
-        gband_lua::load(&self.locations(), &LoadOptions::default())
+        gband_lua::load(&self.locations(), Side::Client, &LoadOptions::default())
+    }
+
+    pub fn load_server(&self) -> Result<Config, ConfigError> {
+        gband_lua::load(&self.locations(), Side::Server, &LoadOptions::default())
     }
 
     pub fn load_with_budget(&self, budget: u64) -> Result<Config, ConfigError> {
-        gband_lua::load(&self.locations(), &LoadOptions { budget })
+        gband_lua::load(&self.locations(), Side::Client, &LoadOptions { budget })
     }
 
     pub fn loaded(&self) -> Config {
         self.load().unwrap_or_else(|error| panic!("{error}"))
+    }
+
+    pub fn loaded_server(&self) -> Config {
+        self.load_server().unwrap_or_else(|error| panic!("{error}"))
     }
 }
 
@@ -79,6 +100,10 @@ pub fn write(path: &Path, source: &str) -> PathBuf {
     fs::create_dir_all(path.parent().unwrap()).unwrap();
     fs::write(path, source).unwrap();
     path.to_path_buf()
+}
+
+pub fn manifest(name: &str) -> String {
+    format!("return {{ name = '{name}', version = '0.1.0' }}")
 }
 
 pub fn key(name: &str) -> Key {

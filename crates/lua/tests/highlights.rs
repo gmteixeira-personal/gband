@@ -123,9 +123,8 @@ fn invalid_set_leaves_the_group_unchanged() {
 #[test]
 fn default_under_an_explicit_setting() {
     let scratch = Scratch::new("default-under");
-    scratch.plugin_file(
+    scratch.client_plugin(
         "hello",
-        "plugin/hello.lua",
         "gband.hl.default('HelloSegment', { fg = 4, bold = true })",
     );
     scratch.write("gband.hl.set('HelloSegment', { fg = 2 })");

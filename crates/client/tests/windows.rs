@@ -26,7 +26,7 @@ impl Scratch {
     }
 
     fn load(&self, source: &str) -> Config {
-        let path = gband_lua::user_file(&self.0);
+        let path = gband_lua::user_file(&self.0, gband_lua::Side::Client);
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(
             &path,
@@ -37,7 +37,7 @@ impl Scratch {
             config: self.0.clone(),
             plugins: None,
         };
-        gband_lua::load(&locations, &LoadOptions::default()).unwrap()
+        gband_lua::load(&locations, gband_lua::Side::Client, &LoadOptions::default()).unwrap()
     }
 }
 

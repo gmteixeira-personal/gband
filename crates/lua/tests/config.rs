@@ -35,6 +35,26 @@ fn failure(name: &str, source: &str) -> (PathBuf, ConfigError) {
     }
 }
 
+fn server_evaluate(name: &str, source: &str) -> (PathBuf, Result<Config, ConfigError>) {
+    let scratch = Scratch::new(name);
+    let path = scratch.server(source);
+    let result = scratch.load_server();
+    (path, result)
+}
+
+fn server_loaded(name: &str, source: &str) -> Config {
+    let (_, result) = server_evaluate(name, source);
+    result.unwrap_or_else(|error| panic!("{error}"))
+}
+
+fn server_failure(name: &str, source: &str) -> (PathBuf, ConfigError) {
+    let (path, result) = server_evaluate(name, source);
+    match result {
+        Ok(_) => panic!("{name} loaded"),
+        Err(error) => (path, error),
+    }
+}
+
 fn assert_failure_at(error: &ConfigError, path: &std::path::Path, line: u32, mentions: &str) {
     assert_error_at(error, path, line, mentions);
     assert!(
@@ -96,7 +116,7 @@ fn binding_count(config: &Config) -> usize {
 fn no_configuration_file_gives_the_defaults() {
     let scratch = Scratch::new("missing");
     let config = scratch.loaded();
-    let defaults = gband_lua::defaults();
+    let defaults = gband_lua::defaults(gband_lua::Side::Client);
     assert_eq!(config.options, defaults.options);
     assert_eq!(actions(&config), actions(&defaults));
     assert!(config.errors.is_empty());
@@ -123,10 +143,10 @@ fn user_file_replaces_the_defaults() {
 fn copied_defaults_load_unchanged() {
     let scratch = Scratch::new("copied");
     prepare(&scratch.dir()).unwrap();
-    let copy = fs::read_to_string(defaults_file(&scratch.dir())).unwrap();
+    let copy = fs::read_to_string(defaults_file(&scratch.dir(), gband_lua::Side::Client)).unwrap();
     scratch.write(&copy);
     let config = scratch.loaded();
-    let defaults = gband_lua::defaults();
+    let defaults = gband_lua::defaults(gband_lua::Side::Client);
     assert_eq!(config.options, defaults.options);
     assert_eq!(actions(&config), actions(&defaults));
     assert!(config.errors.is_empty(), "{:?}", config.errors);
@@ -135,14 +155,17 @@ fn copied_defaults_load_unchanged() {
 
 #[test]
 fn defaults_reproduce_the_built_in_behaviour() {
-    let config = gband_lua::defaults();
+    let config = gband_lua::defaults(gband_lua::Side::Client);
     assert_eq!(
         config.options.prefix,
         Key::new(KeyCode::Char(' '), Modifiers::CTRL)
     );
-    assert_eq!(config.options.layout.default_width, Proportion::ONE_HALF);
+    let server = gband_lua::defaults(gband_lua::Side::Server);
+    assert!(server.errors.is_empty(), "{:?}", server.errors);
+    assert_eq!(server.options, Options::default());
+    assert_eq!(server.options.layout.default_width, Proportion::ONE_HALF);
     assert_eq!(
-        config.options.layout.presets,
+        server.options.layout.presets,
         [
             Proportion::ONE_THIRD,
             Proportion::ONE_HALF,
@@ -220,7 +243,7 @@ fn component_ids(config: &Config) -> Vec<String> {
 
 #[test]
 fn every_default_binding_is_described() {
-    let config = gband_lua::defaults();
+    let config = gband_lua::defaults(gband_lua::Side::Client);
     let undescribed: Vec<String> = eval(
         &config,
         "local descs = {}
@@ -240,7 +263,7 @@ fn every_default_binding_is_described() {
 
 #[test]
 fn every_action_is_named() {
-    let config = gband_lua::defaults();
+    let config = gband_lua::defaults(gband_lua::Side::Client);
     let mut names: Vec<String> = eval(
         &config,
         "local names = {} for _, action in ipairs(gband.action.list()) do names[#names + 1] = action.name end return names",
@@ -277,7 +300,7 @@ fn every_action_is_named() {
 
 #[test]
 fn built_in_descriptions() {
-    let config = gband_lua::defaults();
+    let config = gband_lua::defaults(gband_lua::Side::Client);
     let desc: String = eval(
         &config,
         "for _, action in ipairs(gband.action.list()) do if action.name == 'cycle_column_width' then return action.desc end end",
@@ -299,7 +322,7 @@ fn name_and_action_agree() {
 
 #[test]
 fn partial_update() {
-    let config = loaded("partial", "gband.set { default_column_width = 1/3 }");
+    let config = server_loaded("partial", "gband.set { default_column_width = 1/3 }");
     assert_eq!(config.options.layout.default_width, Proportion::ONE_THIRD);
     assert_eq!(
         config.options.layout.presets,
@@ -309,7 +332,7 @@ fn partial_update() {
 
 #[test]
 fn later_call_wins() {
-    let config = loaded(
+    let config = server_loaded(
         "later",
         "gband.set { default_column_width = 1/3 }\ngband.set { default_column_width = 2/3 }",
     );
@@ -318,7 +341,7 @@ fn later_call_wins() {
 
 #[test]
 fn presets_are_sorted() {
-    let config = loaded("sorted", "gband.set { width_presets = { 2/3, 1/4, 2/3 } }");
+    let config = server_loaded("sorted", "gband.set { width_presets = { 2/3, 1/4, 2/3 } }");
     assert_eq!(
         config.options.layout.presets,
         [Proportion::new(1, 4), Proportion::TWO_THIRDS]
@@ -327,7 +350,7 @@ fn presets_are_sorted() {
 
 #[test]
 fn decimal_width() {
-    let config = loaded("decimal", "gband.set { default_column_width = 0.35 }");
+    let config = server_loaded("decimal", "gband.set { default_column_width = 0.35 }");
     assert_eq!(config.options.layout.default_width, Proportion::new(7, 20));
 }
 
@@ -339,8 +362,26 @@ fn unknown_option() {
 
 #[test]
 fn wrong_type() {
-    let (path, error) = failure("type", "\ngband.set { width_presets = \"1/2\" }");
+    let (path, error) = server_failure("type", "\ngband.set { width_presets = \"1/2\" }");
     assert_failure_at(&error, &path, 2, "width_presets");
+    assert!(error.message.contains("invalid value"), "{error}");
+}
+
+#[test]
+fn server_option_in_the_client_file() {
+    let (path, error) = failure(
+        "server-option",
+        "\ngband.set { default_column_width = 1/3 }",
+    );
+    assert_failure_at(&error, &path, 2, "default_column_width");
+    assert!(error.message.contains("server"), "{error}");
+}
+
+#[test]
+fn client_option_in_the_server_file() {
+    let (path, error) = server_failure("client-option", "gband.set { prefix = 'ctrl+b' }");
+    assert_failure_at(&error, &path, 1, "prefix");
+    assert!(error.message.contains("client"), "{error}");
 }
 
 #[test]
@@ -354,7 +395,7 @@ fn unknown_camera_policy() {
 
 #[test]
 fn out_of_range_width() {
-    let (path, error) = failure("range", "gband.set { default_column_width = 0 }");
+    let (path, error) = server_failure("range", "gband.set { default_column_width = 0 }");
     assert_failure_at(&error, &path, 1, "default_column_width");
 }
 
@@ -436,7 +477,7 @@ fn unbind_a_default() {
     assert!(binding(&config, prefixed("q")).is_none());
     assert_eq!(
         binding_count(&config),
-        binding_count(&gband_lua::defaults()) - 1
+        binding_count(&gband_lua::defaults(gband_lua::Side::Client)) - 1
     );
 }
 

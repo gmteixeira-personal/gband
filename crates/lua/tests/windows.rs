@@ -397,9 +397,7 @@ fn escape_closes_a_float() {
 #[test]
 fn failing_key_function_is_a_plugin_error() {
     let scratch = Scratch::new("win-failing-key");
-    scratch.plugin_file(
-        "demo",
-        "plugin/demo.lua",
+    scratch.client_plugin("demo",
         "gband.bind('alt+p', function() win = gband.win.open({ keys = { x = function() error('broken') end } }) end)",
     );
     let client = Client::loaded(scratch);
@@ -770,9 +768,7 @@ fn highlight_change_redraws() {
 #[test]
 fn failed_plugin_closes_its_windows() {
     let scratch = Scratch::new("win-failed");
-    scratch.plugin_file(
-        "spin",
-        "plugin/spin.lua",
+    scratch.client_plugin("spin",
         "gband.bind('alt+o', function() win = gband.win.open({ kind = 'pane', on_close = function() closed = true end }) end)\n\
          gband.bind('alt+s', function() while true do end end)",
     );

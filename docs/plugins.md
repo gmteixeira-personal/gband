@@ -1,54 +1,128 @@
 # Writing a gband plugin
 
 A gband plugin is a directory of Lua files.
-gband finds it on the runtimepath, runs its startup files, and lets your configuration set it up.
-Plugins run in the client.
-They can add actions, commands, options, key bindings, event handlers, status line components, windows, highlight groups and colorschemes.
-They can read the layout and act on any pane or band.
+gband finds it on the runtimepath, reads its manifest, runs the file of its side, and lets your configuration set it up.
+Plugins can add actions, commands, options, key bindings, event handlers, status line components, windows, highlight groups and colorschemes in the client, and event handlers, shared pane state, events and commands in the server.
 
-The [sample plugin](../examples/plugins/hello) uses most of what this guide describes.
+The [sample plugin](../examples/plugins/hello) uses most of what the client API offers.
 The [status line sample](../examples/plugins/pane) adds a component, a highlight group and a colorscheme.
+The [agent status sample](../examples/plugins/agent-status) has both sides: its server half watches panes, and its client half notifies, counts and jumps.
+
+## Two sides
+
+The client and the server are separate processes.
+The server may run on another machine than the client, or on the same one; a plugin behaves the same either way.
+Each process runs its own Lua state, loaded from the files of the machine it runs on, and the two never share Lua values.
+
+The rule for where code goes:
+
+- What must keep working while no client is attached, or must be shared by every attached client, runs in the **server**: watching pane output, tracking which pane waits for input, counting, queueing a notification for later.
+- What concerns one user's screen, keyboard or machine runs in the **client**: key bindings, the status line, windows, colors, desktop notifications, the clipboard, opening a URL.
+
+The sides talk through plain data only: the server emits events and publishes pane state, and a client calls server commands and gets their results.
+No code ever crosses the connection, as "Trust" below describes.
+
+`gband.side` is `"client"` in a client and `"server"` in the server.
+`gband.api_version` is `1` on both.
 
 ## Where gband looks
 
 `gband.runtimepath` is a Lua list of directories.
+Each process builds it from its own environment.
 When the configuration starts to load, it holds:
 
 1. the `user` directory of the configuration directory, `~/.config/gband/user/`
 2. every directory directly under the plugins directory, in byte order of their names
 
 The plugins directory is `$XDG_DATA_HOME/gband/plugins/`, or `~/.local/share/gband/plugins/` when `XDG_DATA_HOME` is unset or not absolute.
-To install a plugin, copy or link its directory there.
+To install a plugin, copy or link its directory there, on the server's machine for its server half and on each client's machine for its client half.
 A missing plugins directory, or a runtimepath entry that does not exist, is not an error.
 
-Each runtimepath entry can hold:
+A plugin directory holds:
 
 | path | use |
 |---|---|
-| `lua/<name>.lua`, `lua/<name>/init.lua` | modules that `require("<name>")` finds |
-| `plugin/*.lua` | files gband runs at startup |
-| `plugin/client/*.lua` | files gband runs at startup, after `plugin/*.lua` |
-| `plugin/server/` | reserved for a future server runtime; gband never runs these files |
-| `colors/<name>.lua` | colorschemes that `gband.colorscheme("<name>")` finds |
+| `plugin.lua` | the manifest; a directory without one is not a plugin |
+| `server.lua` | the server half, run by the server only |
+| `client.lua` | the client half, run by each client only |
+| `lua/<name>.lua`, `lua/<name>/init.lua` | modules that `require("<name>")` finds, on either side |
+| `colors/<name>.lua` | colorschemes that `gband.colorscheme("<name>")` finds, in the client |
+
+A plugin may hold only one of `server.lua` and `client.lua`; the other side then runs nothing of it.
+A directory without a manifest still contributes its modules and colorschemes, so a plugin set up with `gband.plugin` needs no manifest.
+A directory that holds `server.lua` or `client.lua` but no `plugin.lua` is a plugin error, and neither file runs.
+No file under a `plugin/` directory is ever run: plugins written for the earlier `plugin/*.lua` layout move that code to `client.lua`.
 
 `require("a.b")` looks in each runtimepath entry in order, for `lua/a/b.lua` and then `lua/a/b/init.lua`.
-When no entry holds the module, it looks among the modules bundled with gband, such as `gband.statusline.band`, and only then in Lua's own search path.
+In the client, when no entry holds the module, it looks among the modules bundled with gband, such as `gband.statusline.band`, and only then in Lua's own search path.
 The first file found wins, so a module in `user/lua/` overrides a plugin's module of the same name, and `user/lua/gband/statusline/band.lua` overrides the bundled one.
 Errors in a bundled module name its path under `gband/`, such as `gband/statusline/band.lua:12:`.
 
+## The manifest
+
+`plugin.lua` returns a table:
+
+```lua
+return {
+  name = "agent-status",
+  version = "0.1.0",
+  client = ">= 0.1",
+}
+```
+
+- `name`, required, must equal the directory's name.
+- `version`, required, is one to three non-negative integers separated by full stops. Missing parts read as 0, so `0.1` equals `0.1.0`.
+- `client`, optional, is a requirement on the version of the plugin of the same name in each client, as "Requirements" below describes. Only the server reads it.
+
+gband runs the manifest as code of the plugin, with the instruction limit, in an environment holding no globals: it can compute, but it cannot reach `gband`, `require` or any other global.
+A manifest that raises an error, returns anything else, or names another plugin is a plugin error that marks the plugin failed, and its side file does not run.
+
+`gband.plugins()` returns one table per plugin whose manifest the load ran, in runtimepath order, each holding `name`, `version`, `client` and `failed`, the last `true` when the plugin is failed.
+The tables are copies.
+
 ## Load order
 
-Each load runs in a new Lua state:
+Each load runs in a new Lua state.
+In a client:
 
 1. gband sets `gband.side` to `"client"` and `gband.api_version` to `1`.
-2. gband installs the rest of the `gband` API, including the status line and its built-in highlight groups, and loads the `default` colorscheme.
-3. gband runs the init file: `user/init.lua` when it exists, the default configuration otherwise.
-4. For each runtimepath entry in order, gband runs `plugin/*.lua` in byte order of the file names, then `plugin/client/*.lua` in the same order.
+2. gband installs the client's `gband` API, including the status line and its built-in highlight groups, and loads the `default` colorscheme.
+3. gband runs the init file: `user/init.lua` when it exists, the default client configuration otherwise.
+4. gband runs every manifest, in runtimepath order.
+5. For each plugin whose manifest is valid, in runtimepath order, gband runs its `client.lua`.
 
-The init file can change `gband.runtimepath`, and step 4 uses the list as it stands.
+In the server:
+
+1. gband sets `gband.side` to `"server"` and `gband.api_version` to `1`.
+2. gband installs the server's `gband` API.
+3. gband runs the init file: `user/server.lua` when it exists, the default server configuration otherwise.
+4. gband runs every manifest, in runtimepath order.
+5. For each plugin whose manifest is valid, in runtimepath order, gband runs its `server.lua`.
+
+The `user` directory is never a plugin: its init files are `user/init.lua` and `user/server.lua`.
+The init file can change `gband.runtimepath`, and steps 4 and 5 use the list as it stands.
 Each file runs once per load.
-Saving any `.lua` file under `user/` reloads the configuration.
+
+Saving any `.lua` file under `user/` reloads the configuration of each process that watches it: every client, and the server.
 Changes in the plugins directory do not.
+A server reload keeps every pane state, every queued event and every session; the old state's handlers and commands stop, and the new configuration's `ConfigReloaded` handlers run.
+
+## The side guard
+
+Each side's `gband` table holds only that side's API.
+Reading a field that only the other side provides raises an error naming the field and the side, at the line of the read, so a misplaced script fails as it loads:
+
+```
+user/server.lua:3: `gband.keymap` is a client API; this is the server
+```
+
+| only the client | only the server |
+|---|---|
+| `bind`, `unbind`, `spawn`, `keymap`, `ui`, `hl`, `colorscheme`, `layout`, `view`, `pane`, `band`, `win`, `rpc`, `notify`, `bell`, `clipboard`, `open` | `sessions`, `session` |
+
+Every other field exists on both sides: `on`, `augroup`, `emit`, `cmd`, `opt`, `set`, `plugin`, `plugins`, `runtimepath`, `side`, `api_version`, `pane_state` and `action`.
+`emit`, `pane_state`, `action` and the events differ between the sides, as their sections describe.
+In the server, `gband.action` holds the session actions only; reading a view or client action, such as `gband.action.focus_column_left`, is the same kind of error.
 
 ## Plugin modules and `gband.plugin`
 
@@ -79,17 +153,17 @@ Setting a plugin up twice in one load is a plugin error, and `setup` does not ru
 gband.plugin("hello", { greeting = "hi" })
 ```
 
-A plugin without options can do its work in a `plugin/*.lua` file instead.
+A plugin without options can do its work in its `client.lua` or `server.lua` instead.
 
 ## Ownership and names
 
 Code belongs to a plugin:
 
-- a file sourced from a plugin directory belongs to the plugin named by that directory
+- a manifest and a side file belong to the plugin named by their directory
 - code that `gband.plugin` runs belongs to the plugin it sets up
 - a callback belongs to the plugin that registered it, and so does the code it runs
 
-The init file, the default configuration and the files under `user/` belong to no plugin.
+The init files, the default configurations and the files under `user/` belong to no plugin.
 
 Names that a plugin registers for actions and commands, and declares for options, are namespaced as `<plugin>.<name>`.
 The plugin `hello` registering `greet` creates `hello.greet`.
@@ -99,48 +173,48 @@ Names registered by code that belongs to no plugin are used as given.
 
 ## Errors
 
-gband runs every plugin file, every `setup` and every callback protected.
-An error there is a plugin error: gband records it in the log and shows the latest as `<plugin>: <file>:<line>: <message>`.
+gband runs every manifest, every side file, every `setup` and every callback protected.
+An error there is a plugin error: gband records it in the process's log and shows the latest as `<plugin>: <file>:<line>: <message>`.
 While the status line is drawn, the error shows as its first item.
 While it is not, the error shows on the bottom row of the ribbon.
+
+The server sends each error of its own Lua to every attached client, and the latest one to each client that attaches, until its configuration next loads without errors.
+A client shows them preceded by `server: `, such as `server: agent-status: /srv/.../server.lua:5: boom`.
 
 A plugin error while the configuration loads does not fail the load.
 It marks the plugin failed for the rest of that load:
 
-- its remaining plugin files are not sourced
+- its side file is not run, or stops where the error happened
 - its callbacks are disabled, including those registered before the error: their keys do nothing, its handlers do not run, its commands return `false`, and its actions do nothing
 - the options it declared keep their values
 
 An error in a callback after loading is reported, and the callback stays enabled.
 Actions it dispatched before the error still happen.
 
-Errors in the init file's own code still fail the load, and gband keeps the configuration it last loaded.
+Errors in the init file's own code still fail the load, and the process keeps the configuration it last loaded, or, at start, its side's default configuration with the plugins' side files.
 
 ### The instruction limit
 
 Each run of Lua code that gband starts stops with an error after 100,000,000 Lua VM instructions.
-A run is the init file, one plugin file, one `setup`, one call of a callback, one colorscheme file, or one call of a status line component's `render`.
+A run is the init file, one manifest, one side file, one `setup`, one call of a callback, one colorscheme file, or one call of a status line component's `render`.
 A plugin stopped this way is marked failed, also when the run is a callback after loading.
 A `pcall` inside the plugin does not catch the stop for long: once the limit is reached, every instruction raises it again until the run ends.
 
 The limit counts Lua instructions only.
 It cannot stop a blocking call into C, such as `os.execute("sleep 100")` or `io.read()`.
 Keep such calls out of plugins.
+In the server, a handler that runs long delays the next events and commands; it never slows a pane, as "Server events" describes.
 
 ## `print`
 
 `print` writes its arguments, converted with `tostring` and separated by tabs, to the process log at the info level, naming the plugin when the calling code belongs to one.
 It never writes to the terminal, so it cannot corrupt the client's screen.
-The client log is in `$XDG_STATE_HOME/gband/log/`, or `~/.local/state/gband/log/`.
+The logs are in `$XDG_STATE_HOME/gband/log/`, or `~/.local/state/gband/log/`, one file per client and one for the server.
 
 ## Register only at top level
 
-The server evaluates the same configuration to read the column width options, plugins included, so a plugin's top-level code and its `setup` run in the server too.
-`gband.side` is `"client"` there as well.
-No callback ever runs in the server: it never presses keys, emits events or runs commands.
-
-Keep top-level code and `setup` to declarations and registrations.
-Do the work in callbacks.
+Keep top-level code and `setup` to declarations and registrations, and do the work in callbacks.
+Registrations, options and bindings are made only while the configuration loads, and the actions, events and calls that change something are made only in callbacks.
 
 ## Actions: `gband.action`
 
@@ -151,7 +225,8 @@ Calling an action value inside a callback dispatches it, with the same effect as
 Dispatching it runs `fn` with no arguments, at once, before the caller continues.
 Registering a name already taken, a built-in action's name, or the names `register` and `list` is an error.
 
-`gband.action.list()` returns `{ name = ..., desc = ... }` for every built-in and registered action, in byte order of names.
+`gband.action.list()` returns `{ name = ..., desc = ... }` for every built-in and registered action of the side, in byte order of names.
+The server's built-in actions are the session actions, which take a target naming the session, as "Session actions in the server" describes.
 
 ```lua
 gband.action.register("twice", function()
@@ -171,18 +246,26 @@ No palette or command line runs them yet; `gband.cmd.list()` exists so one can.
 - `gband.cmd.list()` returns `{ name = ..., desc = ..., args = { ... } }` for every command, in byte order of names. The tables are copies.
 
 Called inside a callback, a command's function can dispatch actions.
+A server command's function also receives a context, and a client calls it with `gband.rpc`, as "Server commands" describes.
 
 ## Options: `gband.opt`
 
 `gband.opt.<name>` reads and sets an option.
-The built-in options are `prefix`, `default_column_width`, `width_presets`, `center_focused_column`, `statusline_position`, `statusline_height` and `statusline_separator`.
+Each built-in option belongs to one side, and each process knows only its own side's options:
+
+| side | options |
+|---|---|
+| client | `prefix`, `center_focused_column`, `statusline_position`, `statusline_height`, `statusline_separator`, `notify_style` |
+| server | `default_column_width`, `width_presets` |
 
 ```lua
+-- user/server.lua
 gband.opt.default_column_width = 1/3
 local presets = gband.opt.width_presets
 ```
 
 An invalid value is reported at the line of the assignment, does not fail the load, and resets the option to its default.
+Setting an option of the other side is reported naming the side that owns it, and reading one returns nil.
 
 `gband.opt.declare(name, spec)` declares a plugin option and returns its full name:
 
@@ -203,7 +286,7 @@ A value assigned before its option is declared waits for the declaration.
 The user can set `gband.opt["hello.greeting"] = "hi"` in `user/init.lua`, and the plugin declares `greeting` later in the load.
 An assignment still undeclared when loading finishes is reported, and does not fail the load.
 
-`gband.opt.list()` returns `{ name, type, default, value, desc }` for every option, built-in and declared, in byte order of names.
+`gband.opt.list()` returns `{ name, type, default, value, desc }` for every option of the side, built-in and declared, in byte order of names.
 
 Options are set and declared only while the configuration loads.
 `gband.set { ... }` still works, and raises an error on an invalid value.
@@ -211,10 +294,11 @@ Options are set and declared only while the configuration loads.
 ## Events: `gband.on`, `gband.augroup`, `gband.emit`
 
 `gband.on(event, fn, opts)` runs `fn` with a payload table each time `event` happens.
+`event` is a built-in event of the process's side, or `User` in a client.
 
 - `opts.group` puts the handler in a group, given by its id or its name.
 - `opts.once = true` removes the handler before its first run.
-- `opts.pattern`, for `User` events only, runs the handler only for `User` events of that name.
+- `opts.pattern`, for `User` and `ServerEvent` events only, runs the handler only for events of that name.
 
 Handlers run in the order they were registered, and each gets its own copy of the payload.
 
@@ -222,10 +306,11 @@ Handlers run in the order they were registered, and each gets its own copy of th
 It first removes every handler in the group, unless `opts.clear` is `false`.
 Defining a group at the top of a file keeps a reload from adding the same handlers twice.
 
-`gband.emit(name, data)` emits a `User` event with the payload `{ name = name, data = data }`, and runs its handlers before it returns.
+In a client, `gband.emit(name, data)` emits a `User` event with the payload `{ name = name, data = data }`, and runs its handlers before it returns.
+In the server, `gband.emit` sends an event to clients instead, as "Emitting events" describes.
 It can be called only inside a callback.
 
-The built-in events, emitted by the client:
+The built-in events of the client:
 
 | event | payload | emitted when |
 |---|---|---|
@@ -240,8 +325,12 @@ The built-in events, emitted by the client:
 | `KeyTableChanged` | `table`, `previous` | the active key table changes |
 | `HighlightChanged` | `group` | a group's settings change after loading |
 | `ColorschemeChanged` | `name`, `previous` | a colorscheme loads after loading |
+| `ServerEvent` | `name`, `data`, `queued`, `time` | the server emits an event to this client |
+| `PaneStateChanged` | `pane`, `key`, `value`, `previous` | the server changes a pane's state |
 
-Attaching to a session emits no `PaneOpened`, `LayoutChanged`, `FocusChanged` or `BandChanged` for what is already there.
+`Attached` runs once the client has received the session's layout, its pane states and the server's requirements, before the client handles its first key.
+Attaching to a session emits no `PaneOpened`, `LayoutChanged`, `FocusChanged`, `BandChanged` or `PaneStateChanged` for what is already there.
+The server's events are in "Server events".
 A layout that opens or closes a pane emits `LayoutChanged` after its `PaneOpened` and `PaneClosed` events.
 
 A handler can dispatch actions, call `gband.spawn` and `gband.keymap.enter`.
@@ -378,7 +467,7 @@ It is one of two kinds:
 | `border` | float | boolean | `true` |
 | `title` | float | string | none |
 | `band`, `after` | pane | as the `open_pane` target takes them | the viewed band and focused pane |
-| `column_width` | pane | a width | `default_column_width` |
+| `column_width` | pane | a width | the server's `default_column_width` |
 
 A line is a string or a list of spans; a span is a string or `{ text = ..., hl = "Group" }`.
 Spans without `hl` use `Window`, and a span's style is its group's resolved style over `Window`'s.
@@ -489,6 +578,7 @@ gband removes control characters from the text, so a component cannot write esca
 | `band` | `{ number, index, count }`: the viewed band's number, its position from the top counting from 1, and the number of bands |
 | `column` | `{ index, count }`: the focused column's position counting from 1, and the band's column count; nil when the band is empty |
 | `pane` | the focused pane's number, or nil |
+| `panes` | every pane of the layout, bands from the top, columns from the left and panes from the top, each `{ pane, band, state }`, `state` a copy of its pane state |
 
 `gband.ui.width(text)` returns the cells `text` takes: two for a wide character, zero for a zero-width one.
 `gband.ui.truncate(text, width)` returns `text` when it fits in `width` cells, and otherwise the longest prefix that fits in `width - 1` cells followed by `…`.
@@ -531,7 +621,7 @@ A loop in one component stops only that call: the other components and the code 
 When `render` raises an error, returns something else than the forms above, or hits the instruction limit, gband reports a plugin error and disables the component until the next load.
 Hitting the limit also marks the plugin failed, which hides all its components.
 
-The status line's error item shows the latest configuration or plugin error, first in the left region, in `StatusLineError`.
+The status line's error item shows the latest configuration or plugin error, the server's included, first in the left region, in `StatusLineError`.
 It is dropped last and cut like any last component.
 It stays until the configuration next loads without errors.
 
@@ -728,10 +818,244 @@ gband.hl.set("StatusLineAccent", { fg = "#c4a7e7", bold = true })
 gband.hl.set("PaneSegment", { fg = "#f6c177", bold = true })
 ```
 
+## Plain data
+
+Everything that crosses between the sides is plain data: event data, pane state values, command arguments and command results.
+A plain data value is nil, a boolean, an integer, a float, a string, or a table whose keys are strings or integers and whose values are plain data.
+
+- A string passes as its bytes, unchanged, so `"\0\255"` arrives as those two bytes.
+- Integer keys and string keys stay apart: `{ [1] = "a", ["1"] = "b" }` arrives with both keys.
+- A table's metatable is ignored, and its raw contents are used.
+- A table must not hold itself, directly or through other tables, and tables nest at most 32 deep.
+- One value encodes to at most 1 MiB.
+- Functions, userdata and threads are not plain data.
+
+Every API that takes plain data checks it before sending anything.
+A value that is not plain data is an error at the line of the call, naming the path to the offending value:
+
+```
+server.lua:7: `data.cb.run` is a function, which is not plain data
+```
+
+Every plain data value a side receives is a new table or value, unconnected to any other.
+
+## The server API
+
+The server's Lua runs on a thread of its own, fed by the sessions.
+One Lua state serves every session the server hosts; events name their session.
+
+### Server events
+
+`gband.on`, `gband.augroup` and their options work in the server as they do in a client, with these events and no `User` event:
+
+| event | payload | emitted when |
+|---|---|---|
+| `SessionCreated` | `session` | a session is created |
+| `SessionEnded` | `session` | a session is removed |
+| `PaneOpened` | `session`, `pane`, `band` | a pane enters a session's layout |
+| `PaneClosed` | `session`, `pane`, `band`: the band it left | a pane leaves a session's layout |
+| `PaneExited` | `session`, `pane`, `code`: the exit code, nil when a signal ended it, `signal`: the signal number, nil otherwise | a pane's program exits |
+| `PaneOutput` | `session`, `pane`, `data`: a string of the bytes read | the pane's program writes output |
+| `PaneInput` | `session`, `pane`, `client`: the client's number | a key or paste from a client is written to the pane |
+| `ClientAttached` | `session`, `client` | a client attaches to a session |
+| `ClientDetached` | `session`, `client` | a client detaches or disconnects |
+| `ConfigReloaded` | empty | a reload succeeded, to the new configuration's handlers |
+
+A session's events reach the handlers in the order the session applied the changes: a pane's `PaneExited` comes before its `PaneClosed`, and its last `PaneOutput` before both.
+`PaneInput` says that input happened, never what it was.
+
+`PaneOutput` delivers the raw bytes in chunks whose boundaries are arbitrary, so a prompt can be split between two calls.
+Keep a short tail per pane and match against it, as the agent status sample does.
+Joined in order, a pane's `data` equals what its program wrote, except when the handlers fall behind:
+
+- No handler ever slows a pane, a screen or a session.
+- When more than 4 MiB of output waits for the handlers, the server drops further output until they catch up, and logs how many bytes it dropped.
+- When more than 1024 other events wait, the server drops the oldest and logs how many.
+- Without a `PaneOutput` handler, the server copies no output for Lua at all.
+
+Naming an event of the other side, such as `gband.on("PaneOutput", fn)` in a client, is an error naming the event and its side.
+
+### Emitting events: `gband.emit`
+
+In the server, `gband.emit(name, data, opts)` sends an event to clients instead of running `User` handlers.
+
+- `name` is a non-empty string, and `data` is plain data.
+- `opts.session`, optional, names the only session whose clients receive the event; without it every attached client of every session does.
+- Each event carries the time it was emitted, in milliseconds since the Unix epoch.
+- `gband.emit` can be called only in a callback.
+
+When no client the event targets is attached, the server queues it, up to 256 events, dropping the oldest and logging each drop.
+When a client attaches, it receives every queued event that targets its session or every session, in the order emitted and marked as queued, and those events leave the queue.
+So an event emitted while you are detached reaches you once, when you next attach.
+
+### Pane state: `gband.pane_state`
+
+Every pane has a state: a map from non-empty string keys to plain data values, empty when the pane opens.
+
+In the server, `gband.pane_state(session, pane)` returns a table through which that state is read and written, or nil when the session holds no such pane:
+
+```lua
+local state = gband.pane_state(ev.session, ev.pane)
+state.agent = "waiting"
+print(state.agent)
+for key, value in pairs(state) do print(key, value) end
+state.agent = nil
+```
+
+- Reading a key returns a copy of its value.
+- Assigning a plain data value sets the key, and assigning nil removes it.
+- Assigning a value equal to the current one changes nothing and sends nothing.
+- A key that is not a non-empty string, a value that is not plain data, or an assignment that would bring the state's encoded size over 64 KiB is an error at the line of the assignment, and leaves the state unchanged.
+
+The server sends every change to the clients of the pane's session, in the order made, and a full copy of the session's states to each client that attaches.
+A pane's state is removed when it leaves the layout.
+States live in the server, outside the Lua state, so a reload keeps them.
+
+Keys are not namespaced, so plugins can read each other's keys.
+Prefix a key you do not mean to share with your plugin's name.
+
+### Server commands
+
+`gband.cmd.register`, `gband.cmd.run` and `gband.cmd.list` work in the server as in a client, but a server command's function is called with two arguments: the arguments table, and a context.
+
+| field | value |
+|---|---|
+| `ctx.session` | the calling client's session name, or nil |
+| `ctx.client` | the calling client's number, or nil |
+| `ctx.focus(pane)` | tells the calling client, and no other, to focus that pane of its session; does nothing without a calling client |
+
+The function's first return value is the command's result, sent back to the caller, and must be plain data.
+A result that is not plain data fails the call as if the function raised an error.
+`gband.cmd.run` in the server calls a command with no calling client.
+
+```lua
+gband.cmd.register("next_waiting", function(args, ctx)
+  local pane = find_waiting(ctx.session, args.after)
+  if pane then
+    ctx.focus(pane)
+  end
+  return pane
+end)
+```
+
+### Session actions in the server
+
+The server's `gband.action` holds the session actions: `open_pane`, `close_pane`, `consume_or_expel_left`, `consume_or_expel_right`, `cycle_column_width`, `toggle_full_width`, `grow_column_width`, `shrink_column_width`, `grow_pane_height`, `shrink_pane_height` and `reset_pane_height`.
+Each takes one target table naming `session` and the `pane` it acts on:
+
+```lua
+gband.action.close_pane({ session = ev.session, pane = ev.pane })
+```
+
+`open_pane` takes `session`, `band`, an optional `after` pane, and an optional `program`: a command line string or a list of argument strings.
+
+```lua
+gband.action.open_pane({ session = "work", band = 1, after = 2, program = { "htop", "-d", "10" } })
+```
+
+A missing session, a wrong type or an unknown field is an error at the line of the call.
+The actions apply to their sessions after the callback returns, in the order called, and tell no client to focus anything.
+An action naming a session, pane or band that no longer exists changes nothing.
+They can be called only in a callback.
+
+### Reading structure: `gband.sessions`, `gband.session`
+
+`gband.sessions()` returns the session names in ascending byte order.
+`gband.session(name)` returns `{ name, bands, clients }`, or nil for an unknown session:
+
+- `bands` lists the bands from the top, each `{ band, columns }`
+- each column is `{ width, full_width, panes }`, from the left
+- each pane is `{ pane }`, from the top
+- `clients` lists the numbers of the attached clients, ascending
+
+Each call returns new tables.
+Focus and the view are client state: the server knows neither.
+
+## The client side of the bridge
+
+### Server events: `ServerEvent`
+
+A client delivers each event the server sends as the built-in event `ServerEvent`, with the payload `{ name, data, queued, time }`: the name and data given to `gband.emit`, whether the event waited in the server's queue, and its emission time in milliseconds since the Unix epoch.
+`opts.pattern` runs a handler only for events of that name:
+
+```lua
+gband.on("ServerEvent", function(ev)
+  gband.notify("Agent waiting: " .. ev.data.title)
+end, { pattern = "agent.waiting" })
+```
+
+### Pane state in the client
+
+`gband.pane_state(pane)` returns a new table holding a copy of the pane's latest state, an empty table for a pane of the layout without state, and nil for a pane not in the layout.
+Changing the returned table changes nothing else.
+
+Each change after attaching emits `PaneStateChanged` with `pane`, `key`, `value`, the new value or nil when removed, and `previous`.
+The states a client receives as it attaches emit nothing: they are already there in its `Attached` handlers.
+
+The status line's render context lists every pane with its state in `ctx.panes`, so a component can count across panes:
+
+```lua
+gband.ui.statusline.add({
+  id = "waiting",
+  redraw_on = { "PaneStateChanged" },
+  render = function(ctx)
+    local waiting = 0
+    for _, entry in ipairs(ctx.panes) do
+      if entry.state.agent == "waiting" then waiting = waiting + 1 end
+    end
+    return waiting > 0 and ("waiting " .. waiting) or nil
+  end,
+})
+```
+
+### Calling server commands: `gband.rpc`
+
+`gband.rpc(name, args, callback)` asks the server to run the server command `name`, its full name, with `args`, a plain data table or nil.
+It returns at once, before the command runs.
+When the command returns, the client calls `callback(true, result)`.
+When the name is unknown, the command is disabled, or it raises an error or returns something that is not plain data, the client calls `callback(false, message)`.
+The callback is optional, runs as a callback of the plugin that called `gband.rpc`, and never runs when the connection closes first.
+The server runs each client's commands in the order it calls them.
+`gband.rpc` can be called only in a callback.
+
+```lua
+gband.keymap.set("prefix", "a", function()
+  gband.rpc("agent-status.next_waiting", { after = gband.view().pane }, function(ok, result)
+    if not ok then print(result) end
+  end)
+end, { desc = "focus the next waiting agent" })
+```
+
+## Local actions
+
+These act on the machine and terminal the client runs on, and can be called only in a callback.
+
+- `gband.notify(text, opts)` asks the terminal for a desktop notification of `text`, with `opts.title`, optional. The client option `notify_style` chooses how: `"osc9"`, the default, writes `ESC ] 9 ; text BEL` and leaves the title out; `"osc777"` writes `ESC ] 777 ; notify ; title ; text BEL`, with the title `gband` when none is given; `"bell"` rings the bell; `"none"` does nothing. Control characters, and `;` in the title, are removed, and each is cut to 1024 bytes.
+- `gband.bell()` rings the terminal's bell.
+- `gband.clipboard(text)` sets the terminal's clipboard to `text`, at most 1 MiB, through `ESC ] 52`.
+- `gband.open(target)` opens a URL or a path with the machine's opener, `xdg-open`, or `open` on macOS, with `target` as its only argument and without a shell. It returns `true` when the opener started, and `false` when it could not, logging the reason. It does not wait for the opener.
+
+The client writes these sequences between frames, never inside one.
+Whether a notification appears depends on the terminal: many show OSC 9 or OSC 777, and some need a setting for OSC 52.
+
+## Requirements
+
+A server plugin with a client half can say which client half it needs, in its manifest's `client` field.
+A requirement is one or more comparisons separated by commas, each `>=`, `>`, `<=`, `<` or `=` followed by a version, such as `">= 0.2, < 1"`.
+
+After a client attaches, the server sends it the name and requirement of each plugin whose manifest holds `client` and whose `server.lua` did not fail.
+The client compares them with its own manifests, and reports a configuration error for each plugin it does not have, or whose version does not meet the requirement, naming the plugin, the requirement and the version it holds.
+The session works as it does without the check.
+
+## Trust
+
+The server never sends code.
+A client runs only the Lua files of its own machine, and treats every value from a server as data: an event whose data is the string `os.exit(1)` is just that string.
+Attaching to a server, including a remote one, cannot run code in the client.
+
 ## Still to come
 
 Later changes will add their own extension points, each with its own API:
 
-- a server-side runtime, which will source `plugin/server/`
 - a command palette, which will read `gband.cmd.list()` and `gband.action.list()`
-- notifications
+- an SSH transport, so a client can attach to a server on another machine; plugins written to this guide need no change for it

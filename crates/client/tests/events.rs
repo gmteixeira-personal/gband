@@ -30,13 +30,25 @@ impl Scratch {
         }
     }
 
-    fn plugin_file(&self, plugin: &str, relative: &str, source: &str) -> PathBuf {
-        write(&self.0.join("plugins").join(plugin).join(relative), source)
+    fn client_plugin(&self, plugin: &str, source: &str) -> PathBuf {
+        let directory = self.0.join("plugins").join(plugin);
+        write(
+            &directory.join("plugin.lua"),
+            &format!("return {{ name = '{plugin}', version = '0.1.0' }}"),
+        );
+        write(&directory.join("client.lua"), source)
     }
 
     fn load_with_budget(&self, source: &str, budget: u64) -> Result<Config, ConfigError> {
-        write(&gband_lua::user_file(&self.0.join("config")), source);
-        gband_lua::load(&self.locations(), &LoadOptions { budget })
+        write(
+            &gband_lua::user_file(&self.0.join("config"), gband_lua::Side::Client),
+            source,
+        );
+        gband_lua::load(
+            &self.locations(),
+            gband_lua::Side::Client,
+            &LoadOptions { budget },
+        )
     }
 
     fn load(&self, source: &str) -> Result<Config, ConfigError> {
@@ -498,7 +510,7 @@ fn attached_handler_runs_once() {
 #[test]
 fn plugin_error_on_the_banner() {
     let scratch = Scratch::new("plugin-banner");
-    let file = scratch.plugin_file("hello", "plugin/hello.lua", "\n\nerror('boom')");
+    let file = scratch.client_plugin("hello", "\n\nerror('boom')");
     let config = scratch.load("").unwrap();
     let client = Client::new(config);
     assert_eq!(
@@ -510,7 +522,7 @@ fn plugin_error_on_the_banner() {
 #[test]
 fn good_reload_clears_the_banner() {
     let scratch = Scratch::new("banner-cleared");
-    scratch.plugin_file("hello", "plugin/hello.lua", "error('boom')");
+    scratch.client_plugin("hello", "error('boom')");
     let mut client = Client::new(scratch.load("").unwrap());
     assert!(client.display.banner().is_some());
     fs::remove_dir_all(scratch.0.join("plugins")).unwrap();
@@ -522,9 +534,7 @@ fn good_reload_clears_the_banner() {
 #[test]
 fn infinite_loop_in_a_callback() {
     let scratch = Scratch::new("callback-loop");
-    scratch.plugin_file(
-        "spin",
-        "plugin/spin.lua",
+    scratch.client_plugin("spin",
         "gband.action.register('go', function() while true do end end)\ngband.bind('alt+s', gband.action['spin.go'])",
     );
     let config = scratch

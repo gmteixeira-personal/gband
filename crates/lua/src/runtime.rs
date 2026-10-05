@@ -10,6 +10,7 @@ use std::time::Instant;
 use gband_core::geometry::Size;
 use gband_core::input::Key;
 use gband_core::layout::PaneId;
+use gband_protocol::Value as Data;
 
 use mlua::{Function, IntoLuaMulti, Lua, MultiValue, Table, Value};
 
@@ -20,12 +21,21 @@ use crate::events::{self, Event};
 use crate::guard::{self, Failure};
 use crate::keys::key_name;
 use crate::owner::{self, Owners};
+use crate::server::{self, Caller, Host};
 use crate::ui::{self, StatusLine, ViewState};
+use crate::version::{Requirement, Version};
 use crate::windows::{self, Frame};
-use crate::{Config, Locations, actions, bundled, commands, control, keymap, options, user_dir};
+use crate::{
+    Config, Locations, PluginManifest, Side, actions, bridge, bundled, commands, control, keymap,
+    options, sides, user_dir,
+};
 
 pub const API_VERSION: i64 = 1;
-const SIDE: &str = "client";
+
+pub(crate) fn side(lua: &Lua) -> Side {
+    *lua.app_data_ref::<Side>()
+        .expect("the side is installed with the runtime")
+}
 
 pub(crate) struct Phase {
     pub loading: bool,
@@ -39,23 +49,29 @@ pub(crate) fn is_loading(lua: &Lua) -> bool {
 #[derive(Default)]
 struct SetUp(BTreeSet<String>);
 
-pub(crate) fn install(lua: &Lua, locations: Option<&Locations>, budget: u64) -> mlua::Result<()> {
+#[derive(Default)]
+pub(crate) struct Manifests(Vec<PluginManifest>);
+
+pub(crate) fn install(
+    lua: &Lua,
+    side: Side,
+    locations: Option<&Locations>,
+    budget: u64,
+) -> mlua::Result<()> {
+    lua.set_app_data(side);
     lua.set_app_data(Phase { loading: true });
     lua.set_app_data(Owners::default());
     lua.set_app_data(Callbacks::default());
     lua.set_app_data(SetUp::default());
+    lua.set_app_data(Manifests::default());
     guard::install(lua, budget)?;
     let gband = lua.create_table()?;
-    api::install(lua, &gband)?;
-    actions::install(lua, &gband)?;
+    api::install(lua, &gband, side)?;
+    actions::install(lua, &gband, side)?;
     commands::install(lua, &gband)?;
-    events::install(lua, &gband)?;
-    keymap::install(lua, &gband)?;
+    events::install(lua, &gband, side)?;
     options::install(lua, &gband)?;
-    control::install(lua, &gband)?;
-    let host = ui::install(lua, &gband)?;
-    windows::install(lua, &host)?;
-    gband.set("side", SIDE)?;
+    gband.set("side", side.name())?;
     gband.set("api_version", API_VERSION)?;
     gband.set(
         "runtimepath",
@@ -66,18 +82,36 @@ pub(crate) fn install(lua: &Lua, locations: Option<&Locations>, budget: u64) -> 
         )?,
     )?;
     gband.set("plugin", lua.create_function(plugin)?)?;
+    gband.set("plugins", lua.create_function(plugins)?)?;
+    let host = match side {
+        Side::Client => {
+            keymap::install(lua, &gband)?;
+            control::install(lua, &gband)?;
+            bridge::install(lua, &gband)?;
+            let host = ui::install(lua, &gband)?;
+            windows::install(lua, &host)?;
+            Some(host)
+        }
+        Side::Server => {
+            server::install(lua, &gband)?;
+            None
+        }
+    };
     lua.globals().set("gband", gband.clone())?;
     lua.globals().set("print", lua.create_function(print)?)?;
     let searchers: Table = lua.globals().get::<Table>("package")?.get("searchers")?;
     let insert: Function = lua.globals().get::<Table>("table")?.get("insert")?;
     insert.call::<()>((searchers, 2, lua.create_function(search)?))?;
     bundled::install_searcher(lua, 3)?;
-    for (path, source) in bundled::API {
-        bundled::chunk(lua, path, source)?.call::<()>(host.clone())?;
+    if let Some(host) = host {
+        for (path, source) in bundled::API {
+            bundled::chunk(lua, path, source)?.call::<()>(host.clone())?;
+        }
+        gband
+            .get::<Function>("colorscheme")?
+            .call::<()>(DEFAULT_COLORSCHEME)?;
     }
-    gband
-        .get::<Function>("colorscheme")?
-        .call::<()>(DEFAULT_COLORSCHEME)
+    sides::guard(lua, &gband, side)
 }
 
 const DEFAULT_COLORSCHEME: &str = "default";
@@ -158,52 +192,190 @@ pub(crate) fn run_init(lua: &Lua, path: &Path, source: &[u8]) -> Result<(), Conf
     }
 }
 
-fn plugin_files(entry: &Path) -> Vec<PathBuf> {
-    let listed = |dir: PathBuf| {
-        let mut files: Vec<PathBuf> = fs::read_dir(dir)
-            .into_iter()
-            .flatten()
-            .filter_map(Result::ok)
-            .map(|file| file.path())
-            .filter(|path| path.is_file() && path.as_os_str().as_bytes().ends_with(b".lua"))
-            .collect();
-        files.sort_by(|a, b| a.as_os_str().as_bytes().cmp(b.as_os_str().as_bytes()));
-        files
+const MANIFEST: &str = "plugin.lua";
+
+fn plugin_error(lua: &Lua, plugin: &str, location: Option<(PathBuf, u32)>, message: String) {
+    guard::report(
+        lua,
+        Failure {
+            error: ConfigError {
+                plugin: Some(plugin.to_owned()),
+                location,
+                message,
+            },
+            limit: false,
+        },
+    );
+}
+
+fn manifest(lua: &Lua, name: &str, path: &Path) -> mlua::Result<PluginManifest> {
+    let mut record = PluginManifest {
+        name: name.to_owned(),
+        version: None,
+        client: None,
+        failed: false,
     };
-    let plugin = entry.join("plugin");
-    let mut files = listed(plugin.clone());
-    files.extend(listed(plugin.join("client")));
-    files
+    let ran = guard::run(lua, Some(name.to_owned()), || {
+        let source = fs::read(path).map_err(|error| {
+            mlua::Error::runtime(format!("cannot read {}: {error}", path.display()))
+        })?;
+        guard::add_source(lua, path.to_path_buf());
+        lua.load(source)
+            .set_name(format!("@{}", path.display()))
+            .set_environment(lua.create_table()?)
+            .call::<Value>(())
+    })?;
+    let returned = match ran {
+        Ok(returned) => returned,
+        Err(failure) => {
+            guard::report(lua, failure);
+            return Ok(record);
+        }
+    };
+    let location = Some((path.to_path_buf(), 1));
+    let invalid = |message: String, record: PluginManifest| {
+        plugin_error(lua, name, location.clone(), message);
+        Ok(record)
+    };
+    let Value::Table(table) = returned else {
+        return invalid(
+            format!("the manifest of `{name}` must return a table holding `name` and `version`"),
+            record,
+        );
+    };
+    let text = |field: &str| -> mlua::Result<Result<Option<String>, String>> {
+        Ok(match table.raw_get::<Value>(field)? {
+            Value::Nil => Ok(None),
+            Value::String(text) => Ok(Some(text.to_str()?.to_owned())),
+            other => Err(format!(
+                "the `{field}` of the manifest of `{name}` must be a string, found {}",
+                other.type_name()
+            )),
+        })
+    };
+    let declared = match text("name")? {
+        Ok(Some(declared)) => declared,
+        Ok(None) => {
+            return invalid(
+                format!("the manifest of `{name}` must hold a `name`"),
+                record,
+            );
+        }
+        Err(message) => return invalid(message, record),
+    };
+    if declared != name {
+        return invalid(
+            format!(
+                "the manifest of `{name}` names the plugin `{declared}`; it must name `{name}`"
+            ),
+            record,
+        );
+    }
+    match text("version")? {
+        Ok(Some(version)) => record.version = Some(version),
+        Ok(None) => {
+            return invalid(
+                format!("the manifest of `{name}` must hold a `version`"),
+                record,
+            );
+        }
+        Err(message) => return invalid(message, record),
+    }
+    if let Some(Err(reason)) = record.version.as_deref().map(str::parse::<Version>) {
+        return invalid(format!("the manifest of `{name}`: {reason}"), record);
+    }
+    match text("client")? {
+        Ok(client) => record.client = client,
+        Err(message) => return invalid(message, record),
+    }
+    if let Some(Err(reason)) = record.client.as_deref().map(str::parse::<Requirement>) {
+        return invalid(format!("the manifest of `{name}`: {reason}"), record);
+    }
+    Ok(record)
 }
 
 pub(crate) fn source_plugins(lua: &Lua, user: Option<&Path>) -> Result<(), ConfigError> {
-    let entries = current_runtimepath(lua)
-        .map_err(|error| ConfigError::from_lua(&error, &guard::sources(lua)))?;
-    let mut sourced = HashSet::new();
+    let fail = |error: mlua::Error| ConfigError::from_lua(&error, &guard::sources(lua));
+    let entries = current_runtimepath(lua).map_err(fail)?;
+    let side = side(lua);
+    let mut seen = HashSet::new();
+    let mut plugins = Vec::new();
     for entry in entries {
-        let owner = if Some(entry.as_path()) == user {
-            None
-        } else {
-            entry
-                .file_name()
-                .map(|name| name.to_string_lossy().into_owned())
+        if Some(entry.as_path()) == user || !seen.insert(entry.clone()) {
+            continue;
+        }
+        let Some(name) = entry
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+        else {
+            continue;
         };
-        for file in plugin_files(&entry) {
-            if owner::is_failed(lua, owner.as_deref()) {
-                break;
+        let path = entry.join(MANIFEST);
+        if !path.is_file() {
+            let orphans: Vec<&str> = [Side::Client, Side::Server]
+                .into_iter()
+                .map(Side::file_name)
+                .filter(|file| entry.join(file).is_file())
+                .collect();
+            if !orphans.is_empty() {
+                plugin_error(
+                    lua,
+                    &name,
+                    None,
+                    format!(
+                        "{} holds {} but no {MANIFEST} manifest, so the plugin `{name}` is not loaded",
+                        entry.display(),
+                        orphans.join(" and ")
+                    ),
+                );
             }
-            if !sourced.insert(file.clone()) {
-                continue;
-            }
-            let ran = guard::run(lua, owner.clone(), || load_file(lua, &file)?.call::<()>(()));
-            match ran {
-                Ok(Ok(())) => {}
-                Ok(Err(failure)) => guard::report(lua, failure),
-                Err(error) => return Err(ConfigError::from_lua(&error, &guard::sources(lua))),
-            }
+            continue;
+        }
+        let manifest = manifest(lua, &name, &path).map_err(fail)?;
+        lua.app_data_mut::<Manifests>()
+            .expect("manifests are installed with the runtime")
+            .0
+            .push(manifest);
+        plugins.push((entry, name));
+    }
+    for (entry, name) in plugins {
+        let file = entry.join(side.file_name());
+        if owner::is_failed(lua, Some(&name)) || !file.is_file() {
+            continue;
+        }
+        let ran = guard::run(lua, Some(name), || load_file(lua, &file)?.call::<()>(()));
+        match ran {
+            Ok(Ok(())) => {}
+            Ok(Err(failure)) => guard::report(lua, failure),
+            Err(error) => return Err(fail(error)),
         }
     }
     Ok(())
+}
+
+fn manifests(lua: &Lua) -> Vec<PluginManifest> {
+    lua.app_data_ref::<Manifests>()
+        .expect("manifests are installed with the runtime")
+        .0
+        .iter()
+        .map(|manifest| PluginManifest {
+            failed: owner::is_failed(lua, Some(&manifest.name)),
+            ..manifest.clone()
+        })
+        .collect()
+}
+
+fn plugins(lua: &Lua, (): ()) -> mlua::Result<Table> {
+    let list = lua.create_table()?;
+    for manifest in manifests(lua) {
+        let entry = lua.create_table()?;
+        entry.set("name", manifest.name)?;
+        entry.set("version", manifest.version)?;
+        entry.set("client", manifest.client)?;
+        entry.set("failed", manifest.failed)?;
+        list.push(entry)?;
+    }
+    Ok(list)
 }
 
 fn plugin(lua: &Lua, (name, opts): (Value, Value)) -> mlua::Result<bool> {
@@ -316,14 +488,21 @@ fn print(lua: &Lua, values: MultiValue) -> mlua::Result<()> {
 pub(crate) fn finish(lua: Lua) -> Result<Config, ConfigError> {
     options::finish(&lua);
     let options = options::current(&lua);
-    let keymap = keymap::finish(&lua, options.prefix)?;
+    let side = side(&lua);
+    let keymap = match side {
+        Side::Client => keymap::finish(&lua, options.prefix)?,
+        Side::Server => Default::default(),
+    };
     lua.set_app_data(Phase { loading: false });
     let errors = guard::drain(&lua);
+    let plugins = manifests(&lua);
     Ok(Config {
+        side,
         options,
         keymap,
         runtime: Runtime { lua },
         errors,
+        plugins,
     })
 }
 
@@ -414,6 +593,39 @@ impl Runtime {
         windows::set_counter(&self.lua, counter);
     }
 
+    pub fn handles(&self, event: &str) -> bool {
+        events::handles(&self.lua, event)
+    }
+
+    pub fn emit_server(&self, event: &server::Event) -> Outcome {
+        self.within_callback(|lua| {
+            events::emit_server(lua, event)?;
+            Ok(false)
+        })
+    }
+
+    pub fn set_host(&self, host: Arc<dyn Host>) {
+        server::set_host(&self.lua, host);
+    }
+
+    pub fn command(
+        &self,
+        name: &str,
+        args: Data,
+        caller: Option<Caller>,
+    ) -> (Result<Data, String>, Outcome) {
+        let mut answer = Err(format!("the command `{name}` did not run"));
+        let outcome = self.within_callback(|lua| {
+            answer = commands::invoke(lua, name, &args, caller)?;
+            Ok(false)
+        });
+        (answer, outcome)
+    }
+
+    pub fn answer(&self, call: u64, result: Result<Data, String>) -> Outcome {
+        self.within_callback(|lua| bridge::answer(lua, call, result).map(|()| false))
+    }
+
     pub fn active_table(&self) -> String {
         keymap::active(&self.lua)
     }
@@ -427,7 +639,10 @@ impl Runtime {
         lua.app_data_mut::<Queue>()
             .expect("the queue is installed with the runtime")
             .0 = Some(Vec::new());
-        let result = run(lua).and_then(|disabled| windows::flush(lua).map(|()| disabled));
+        let result = run(lua).and_then(|disabled| match side(lua) {
+            Side::Client => windows::flush(lua).map(|()| disabled),
+            Side::Server => Ok(disabled),
+        });
         let dispatched = lua
             .app_data_mut::<Queue>()
             .and_then(|mut queue| queue.0.take())
@@ -461,7 +676,7 @@ mod tests {
 
     fn installed() -> Lua {
         let lua = Lua::new();
-        install(&lua, None, crate::BUDGET).unwrap();
+        install(&lua, Side::Client, None, crate::BUDGET).unwrap();
         lua
     }
 

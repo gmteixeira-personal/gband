@@ -68,16 +68,17 @@ pub(crate) fn target(lua: &Lua, value: &Value) -> mlua::Result<Option<Target>> {
             action: None,
         }),
         Value::UserData(data) => match data.borrow::<LuaAction>() {
-            Ok(action) => Some(match &*action {
-                LuaAction::Builtin { name, action } => Target {
+            Ok(action) => match &*action {
+                LuaAction::Builtin { name, action } => Some(Target {
                     binding: Binding::Action(*action),
                     action: Some((*name).to_owned()),
-                },
-                LuaAction::Registered { name, callback } => Target {
+                }),
+                LuaAction::Registered { name, callback } => Some(Target {
                     binding: Binding::Callback(*callback),
                     action: Some(name.clone()),
-                },
-            }),
+                }),
+                LuaAction::Targeted { .. } => None,
+            },
             Err(_) => None,
         },
         _ => None,

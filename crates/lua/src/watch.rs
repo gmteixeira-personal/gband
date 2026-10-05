@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher as _};
 
-use crate::{Config, ConfigError, LoadOptions, Locations, load, user_dir};
+use crate::{Config, ConfigError, LoadOptions, Locations, Side, load, user_dir};
 
 const DEBOUNCE: Duration = Duration::from_millis(100);
 
@@ -20,7 +20,7 @@ enum Watching {
     Parent,
 }
 
-pub fn watch<F>(locations: Locations, options: LoadOptions, deliver: F) -> Watcher
+pub fn watch<F>(locations: Locations, side: Side, options: LoadOptions, deliver: F) -> Watcher
 where
     F: FnMut(Result<Config, ConfigError>) + Send + 'static,
 {
@@ -58,7 +58,16 @@ where
         .name("gband-config".to_owned())
         .spawn(move || {
             reload(
-                locations, options, directory, watching, events, weak, deliver,
+                Target {
+                    locations,
+                    side,
+                    options,
+                    directory,
+                },
+                watching,
+                events,
+                weak,
+                deliver,
             )
         });
     if let Err(error) = spawned {
@@ -70,10 +79,15 @@ where
     }
 }
 
-fn reload<F>(
+struct Target {
     locations: Locations,
+    side: Side,
     options: LoadOptions,
     directory: PathBuf,
+}
+
+fn reload<F>(
+    target: Target,
     mut watching: Watching,
     events: mpsc::Receiver<notify::Result<Event>>,
     watcher: Weak<Mutex<RecommendedWatcher>>,
@@ -81,6 +95,12 @@ fn reload<F>(
 ) where
     F: FnMut(Result<Config, ConfigError>),
 {
+    let Target {
+        locations,
+        side,
+        options,
+        directory,
+    } = target;
     while let Ok(event) = events.recv() {
         let relevant = match watching {
             Watching::Directory => touches_lua(&event, &directory),
@@ -108,7 +128,7 @@ fn reload<F>(
                 Err(RecvTimeoutError::Disconnected) => return,
             }
         }
-        deliver(load(&locations, &options));
+        deliver(load(&locations, side, &options));
     }
 }
 
@@ -170,9 +190,14 @@ mod tests {
             config: dir.to_path_buf(),
             plugins: None,
         };
-        let watcher = watch(locations, LoadOptions::default(), move |result| {
-            let _ = tx.send(result);
-        });
+        let watcher = watch(
+            locations,
+            Side::Client,
+            LoadOptions::default(),
+            move |result| {
+                let _ = tx.send(result);
+            },
+        );
         (watcher, rx)
     }
 
@@ -195,9 +220,9 @@ mod tests {
         let scratch = Scratch::new("watch");
         let dir = scratch.dir();
         crate::prepare(&dir).unwrap();
-        let path = user_file(&dir);
+        let path = user_file(&dir, Side::Client);
         let (_watcher, rx) = watched(&dir);
-        let defaults = prefix_of(&crate::defaults());
+        let defaults = prefix_of(&crate::defaults(Side::Client));
 
         fs::write(&path, "gband.set { prefix = 'ctrl+b' }").unwrap();
         let written = next(&rx);
@@ -220,11 +245,13 @@ mod tests {
         let scratch = Scratch::new("user-plugin");
         let dir = scratch.dir();
         crate::prepare(&dir).unwrap();
-        let plugin = dir.join("user").join("plugin");
-        fs::create_dir_all(&plugin).unwrap();
+        let modules = dir.join("user").join("lua");
+        fs::create_dir_all(&modules).unwrap();
+        fs::write(modules.join("keys.lua"), "").unwrap();
+        fs::write(user_file(&dir, Side::Client), "require('keys')").unwrap();
         let (_watcher, rx) = watched(&dir);
         fs::write(
-            plugin.join("keys.lua"),
+            modules.join("keys.lua"),
             "gband.bind('alt+k', gband.action.focus_pane_up)",
         )
         .unwrap();
@@ -236,7 +263,7 @@ mod tests {
         };
         assert_eq!(config.keymap["root"].len(), 1);
         settle(&rx);
-        fs::write(plugin.join("notes.txt"), "notes").unwrap();
+        fs::write(modules.join("notes.txt"), "notes").unwrap();
         assert!(rx.recv_timeout(Duration::from_secs(1)).is_err());
     }
 
@@ -246,7 +273,11 @@ mod tests {
         let dir = scratch.dir();
         crate::prepare(&dir).unwrap();
         let (_watcher, rx) = watched(&dir);
-        fs::write(defaults_file(&dir), "gband.set { prefix = 'ctrl+b' }").unwrap();
+        fs::write(
+            defaults_file(&dir, Side::Client),
+            "gband.set { prefix = 'ctrl+b' }",
+        )
+        .unwrap();
         assert!(rx.recv_timeout(Duration::from_secs(1)).is_err());
     }
 
@@ -255,7 +286,7 @@ mod tests {
         let scratch = Scratch::new("parent");
         let dir = scratch.dir();
         fs::create_dir_all(&dir).unwrap();
-        let path = user_file(&dir);
+        let path = user_file(&dir, Side::Client);
         let (_watcher, rx) = watched(&dir);
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         let _ = rx.recv_timeout(Duration::from_millis(300));

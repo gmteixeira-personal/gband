@@ -7,10 +7,20 @@ pub const CAPACITY: usize = 1024;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SessionEvent {
+    Created,
+    Ended,
     Layout(LayoutEvent),
-    PaneExited { pane: PaneId, status: String },
-    ClientAttached { client: u64 },
-    ClientDetached { client: u64 },
+    PaneExited {
+        pane: PaneId,
+        code: Option<u32>,
+        signal: Option<i32>,
+    },
+    ClientAttached {
+        client: u64,
+    },
+    ClientDetached {
+        client: u64,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

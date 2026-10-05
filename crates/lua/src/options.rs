@@ -9,6 +9,7 @@ use mlua::{IntoLua, Lua, LuaSerdeExt, Table, Value};
 use serde::de::{self, Deserializer, Visitor};
 use serde::{Deserialize, Serialize};
 
+use crate::Side;
 use crate::api::require_loading;
 use crate::error::{ConfigError, caller};
 use crate::guard;
@@ -25,6 +26,16 @@ pub enum StatusLinePosition {
     Bottom,
     Top,
     Off,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum NotifyStyle {
+    #[default]
+    Osc9,
+    Osc777,
+    Bell,
+    None,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -50,6 +61,7 @@ pub struct Options {
     pub layout: LayoutOptions,
     pub center_focused_column: CenterFocusedColumn,
     pub statusline: StatusLineOptions,
+    pub notify_style: NotifyStyle,
 }
 
 impl Default for Options {
@@ -59,6 +71,7 @@ impl Default for Options {
             layout: LayoutOptions::default(),
             center_focused_column: CenterFocusedColumn::default(),
             statusline: StatusLineOptions::default(),
+            notify_style: NotifyStyle::default(),
         }
     }
 }
@@ -92,6 +105,9 @@ impl Options {
         if let Some(separator) = patch.statusline_separator {
             self.statusline.separator = separator;
         }
+        if let Some(style) = patch.notify_style {
+            self.notify_style = style;
+        }
     }
 }
 
@@ -106,6 +122,7 @@ impl Options {
             "statusline_position" => self.statusline.position = defaults.statusline.position,
             "statusline_height" => self.statusline.height = defaults.statusline.height,
             "statusline_separator" => self.statusline.separator = defaults.statusline.separator,
+            "notify_style" => self.notify_style = defaults.notify_style,
             _ => {}
         }
     }
@@ -122,22 +139,58 @@ impl Options {
             "statusline_position" => lua.to_value(&self.statusline.position),
             "statusline_height" => self.statusline.height.into_lua(lua),
             "statusline_separator" => self.statusline.separator.as_str().into_lua(lua),
+            "notify_style" => lua.to_value(&self.notify_style),
             _ => Ok(Value::Nil),
         }
     }
 }
 
-pub const NAMES: [&str; 7] = [
+const CLIENT_NAMES: [&str; 6] = [
     "prefix",
-    "default_column_width",
-    "width_presets",
     "center_focused_column",
     "statusline_position",
     "statusline_height",
     "statusline_separator",
+    "notify_style",
 ];
 
-const BUILTIN: [(&str, &str, &str); 7] = [
+const SERVER_NAMES: [&str; 2] = ["default_column_width", "width_presets"];
+
+pub fn names(side: Side) -> &'static [&'static str] {
+    match side {
+        Side::Client => &CLIENT_NAMES,
+        Side::Server => &SERVER_NAMES,
+    }
+}
+
+fn is_builtin(name: &str) -> bool {
+    CLIENT_NAMES.contains(&name) || SERVER_NAMES.contains(&name)
+}
+
+fn own(lua: &Lua, name: &str) -> bool {
+    names(crate::runtime::side(lua)).contains(&name)
+}
+
+fn foreign(lua: &Lua, name: &str) -> Option<String> {
+    let side = crate::runtime::side(lua);
+    names(side.other()).contains(&name).then(|| {
+        let other = side.other();
+        format!(
+            "the option `{name}` belongs to the {}; set it in user/{}",
+            other.name(),
+            other.init_name()
+        )
+    })
+}
+
+pub(crate) fn check_name(lua: &Lua, name: &str) -> Result<(), String> {
+    if own(lua, name) {
+        return Ok(());
+    }
+    Err(foreign(lua, name).unwrap_or_else(|| format!("unknown option `{name}`")))
+}
+
+const BUILTIN: [(&str, &str, &str); 8] = [
     ("prefix", "string", "the key that starts a key sequence"),
     (
         "default_column_width",
@@ -148,6 +201,11 @@ const BUILTIN: [(&str, &str, &str); 7] = [
         "width_presets",
         "list",
         "the widths that cycling a column's width steps through",
+    ),
+    (
+        "notify_style",
+        "string",
+        "how gband.notify reaches the terminal: osc9, osc777, bell or none",
     ),
     (
         "center_focused_column",
@@ -363,10 +421,13 @@ pub(crate) fn install(lua: &Lua, gband: &Table) -> mlua::Result<()> {
                     "list" => return Ok(Value::Function(list.clone())),
                     _ => {}
                 }
-                let store = store(lua);
-                if NAMES.contains(&name.as_str()) {
-                    return store.options.get(lua, &name);
+                if is_builtin(&name) {
+                    if !own(lua, &name) {
+                        return Ok(Value::Nil);
+                    }
+                    return store(lua).options.get(lua, &name);
                 }
+                let store = store(lua);
                 match store.declared.get(&name) {
                     Some(declared) => declared.value.clone().into_lua(lua),
                     None => Ok(Value::Nil),
@@ -393,7 +454,11 @@ fn assign(lua: &Lua, (_, name, value): (Value, Value, Value)) -> mlua::Result<()
     require_loading(lua, "setting an option")?;
     let location = caller(lua);
     let owner = owner::current(lua);
-    if NAMES.contains(&name.as_str()) {
+    if let Some(message) = foreign(lua, &name) {
+        report(lua, location, owner, message);
+        return Ok(());
+    }
+    if own(lua, &name) {
         match patch(lua, &name, value) {
             Ok(patch) => merge(lua, patch),
             Err(reason) => {
@@ -505,7 +570,7 @@ fn declare(lua: &Lua, (name, spec): (Value, Value)) -> mlua::Result<String> {
         )
     })?;
     declared.value = declared.default.clone();
-    if NAMES.contains(&full.as_str()) || store(lua).declared.contains_key(&full) {
+    if is_builtin(&full) || store(lua).declared.contains_key(&full) {
         return Err(ConfigError::raise(
             lua,
             format!("the option `{full}` is already declared"),
@@ -539,6 +604,9 @@ fn list(lua: &Lua, (): ()) -> mlua::Result<Table> {
     let store = store(lua);
     let mut entries: Vec<(String, Table)> = Vec::new();
     for (name, kind, desc) in BUILTIN {
+        if !own(lua, name) {
+            continue;
+        }
         let entry = lua.create_table()?;
         entry.set("name", name)?;
         entry.set("type", kind)?;
@@ -585,6 +653,7 @@ pub struct OptionsPatch {
     statusline_position: Option<StatusLinePosition>,
     statusline_height: Option<Height>,
     statusline_separator: Option<String>,
+    notify_style: Option<NotifyStyle>,
 }
 
 #[derive(Debug)]
@@ -801,7 +870,7 @@ mod tests {
     #[test]
     fn every_option_is_read() {
         let options = patched(
-            "{ prefix = 'ctrl+b', default_column_width = 0.35, width_presets = { 1/2 }, center_focused_column = 'on-overflow', statusline_position = 'top', statusline_height = 2, statusline_separator = ' | ' }",
+            "{ prefix = 'ctrl+b', default_column_width = 0.35, width_presets = { 1/2 }, center_focused_column = 'on-overflow', statusline_position = 'top', statusline_height = 2, statusline_separator = ' | ', notify_style = 'osc777' }",
         )
         .unwrap();
         assert_eq!(
@@ -818,6 +887,7 @@ mod tests {
                     height: 2,
                     separator: " | ".to_owned(),
                 },
+                notify_style: NotifyStyle::Osc777,
             }
         );
     }
@@ -837,6 +907,7 @@ mod tests {
             "{ statusline_height = 9 }",
             "{ statusline_height = 1.5 }",
             "{ statusline_separator = 3 }",
+            "{ notify_style = 'osc8' }",
         ] {
             assert!(patched(source).is_err(), "{source}");
         }

@@ -4,7 +4,7 @@ use std::io::{self, ErrorKind};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use crate::DEFAULTS;
+use crate::Side;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Locations {
@@ -66,32 +66,38 @@ pub fn user_dir(dir: &Path) -> PathBuf {
     dir.join("user")
 }
 
-pub fn user_file(dir: &Path) -> PathBuf {
-    user_dir(dir).join("init.lua")
+pub fn user_file(dir: &Path, side: Side) -> PathBuf {
+    user_dir(dir).join(side.init_name())
 }
 
-pub fn defaults_file(dir: &Path) -> PathBuf {
-    dir.join("defaults").join("init.lua")
+pub fn defaults_file(dir: &Path, side: Side) -> PathBuf {
+    dir.join("defaults").join(side.init_name())
 }
 
 pub fn prepare(dir: &Path) -> io::Result<()> {
-    let defaults = defaults_file(dir);
-    let defaults_dir = defaults.parent().expect("defaults_file has a parent");
-    fs::create_dir_all(defaults_dir)?;
+    fs::create_dir_all(dir.join("defaults"))?;
     fs::create_dir_all(dir.join("user"))?;
+    write_defaults(dir, Side::Client)?;
+    write_defaults(dir, Side::Server)
+}
+
+fn write_defaults(dir: &Path, side: Side) -> io::Result<()> {
+    let defaults = defaults_file(dir, side);
+    let content = side.defaults();
     match fs::read(&defaults) {
-        Ok(current) if current == DEFAULTS.as_bytes() => return Ok(()),
+        Ok(current) if current == content.as_bytes() => return Ok(()),
         Ok(_) => {}
         Err(error) if error.kind() == ErrorKind::NotFound => {}
         Err(error) => return Err(error),
     }
     static WRITES: AtomicU64 = AtomicU64::new(0);
-    let temporary = defaults_dir.join(format!(
-        ".init.lua.{}.{}",
+    let temporary = dir.join("defaults").join(format!(
+        ".{}.{}.{}",
+        side.init_name(),
         std::process::id(),
         WRITES.fetch_add(1, Ordering::Relaxed)
     ));
-    let written = fs::write(&temporary, DEFAULTS).and_then(|()| fs::rename(&temporary, &defaults));
+    let written = fs::write(&temporary, content).and_then(|()| fs::rename(&temporary, &defaults));
     if written.is_err() {
         let _ = fs::remove_file(&temporary);
     }
@@ -149,12 +155,20 @@ mod tests {
     fn files_derive_from_the_directory() {
         let dir = Path::new("/tmp/cfg/gband");
         assert_eq!(
-            user_file(dir),
+            user_file(dir, Side::Client),
             PathBuf::from("/tmp/cfg/gband/user/init.lua")
         );
         assert_eq!(
-            defaults_file(dir),
+            user_file(dir, Side::Server),
+            PathBuf::from("/tmp/cfg/gband/user/server.lua")
+        );
+        assert_eq!(
+            defaults_file(dir, Side::Client),
             PathBuf::from("/tmp/cfg/gband/defaults/init.lua")
+        );
+        assert_eq!(
+            defaults_file(dir, Side::Server),
+            PathBuf::from("/tmp/cfg/gband/defaults/server.lua")
         );
     }
 
@@ -195,8 +209,13 @@ mod tests {
         let scratch = Scratch::new("first");
         let dir = scratch.dir();
         prepare(&dir).unwrap();
-        assert_eq!(fs::read_to_string(defaults_file(&dir)).unwrap(), DEFAULTS);
-        assert_eq!(entries(&dir.join("defaults")), ["init.lua"]);
+        for side in [Side::Client, Side::Server] {
+            assert_eq!(
+                fs::read_to_string(defaults_file(&dir, side)).unwrap(),
+                side.defaults()
+            );
+        }
+        assert_eq!(entries(&dir.join("defaults")), ["init.lua", "server.lua"]);
         assert!(entries(&dir.join("user")).is_empty());
     }
 
@@ -205,7 +224,7 @@ mod tests {
         let scratch = Scratch::new("user");
         let dir = scratch.dir();
         fs::create_dir_all(dir.join("defaults")).unwrap();
-        fs::write(defaults_file(&dir), DEFAULTS).unwrap();
+        fs::write(defaults_file(&dir, Side::Client), crate::DEFAULTS).unwrap();
         prepare(&dir).unwrap();
         assert!(entries(&dir.join("user")).is_empty());
     }
@@ -215,10 +234,17 @@ mod tests {
         let scratch = Scratch::new("edited");
         let dir = scratch.dir();
         prepare(&dir).unwrap();
-        fs::write(defaults_file(&dir), "gband.set { prefix = 'ctrl+b' }").unwrap();
+        for side in [Side::Client, Side::Server] {
+            fs::write(defaults_file(&dir, side), "gband.set { prefix = 'ctrl+b' }").unwrap();
+        }
         prepare(&dir).unwrap();
-        assert_eq!(fs::read_to_string(defaults_file(&dir)).unwrap(), DEFAULTS);
-        assert_eq!(entries(&dir.join("defaults")), ["init.lua"]);
+        for side in [Side::Client, Side::Server] {
+            assert_eq!(
+                fs::read_to_string(defaults_file(&dir, side)).unwrap(),
+                side.defaults()
+            );
+        }
+        assert_eq!(entries(&dir.join("defaults")), ["init.lua", "server.lua"]);
     }
 
     #[test]
@@ -226,12 +252,17 @@ mod tests {
         let scratch = Scratch::new("kept");
         let dir = scratch.dir();
         fs::create_dir_all(dir.join("user")).unwrap();
-        fs::write(user_file(&dir), "gband.unbind('prefix q')").unwrap();
+        fs::write(user_file(&dir, Side::Client), "gband.unbind('prefix q')").unwrap();
+        fs::write(user_file(&dir, Side::Server), "gband.set {}").unwrap();
         fs::write(dir.join("user").join("notes.txt"), "notes").unwrap();
         prepare(&dir).unwrap();
         assert_eq!(
-            fs::read_to_string(user_file(&dir)).unwrap(),
+            fs::read_to_string(user_file(&dir, Side::Client)).unwrap(),
             "gband.unbind('prefix q')"
+        );
+        assert_eq!(
+            fs::read_to_string(user_file(&dir, Side::Server)).unwrap(),
+            "gband.set {}"
         );
         assert_eq!(
             fs::read_to_string(dir.join("user").join("notes.txt")).unwrap(),
@@ -245,7 +276,7 @@ mod tests {
         let dir = scratch.dir();
         prepare(&dir).unwrap();
         let modified = || {
-            fs::metadata(defaults_file(&dir))
+            fs::metadata(defaults_file(&dir, Side::Client))
                 .unwrap()
                 .modified()
                 .unwrap()

@@ -280,14 +280,11 @@ fn handler_dispatches_are_returned() {
 #[test]
 fn error_in_a_callback() {
     let scratch = Scratch::new("handler-error");
-    let file = scratch.plugin_file(
-        "first",
-        "plugin/first.lua",
+    let file = scratch.client_plugin("first",
         "log = {}\ngband.on('FocusChanged', function()\n  log[#log + 1] = 'first'\n  error('handler failed')\nend)",
     );
-    scratch.plugin_file(
+    scratch.client_plugin(
         "second",
-        "plugin/second.lua",
         "gband.on('FocusChanged', function() log[#log + 1] = 'second' end)",
     );
     let config = scratch.loaded();

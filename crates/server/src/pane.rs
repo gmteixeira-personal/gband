@@ -18,6 +18,8 @@ use portable_pty::{
 use tokio::sync::{mpsc, watch};
 use tracing::Span;
 
+use crate::scripting::Taps;
+
 const DRAIN_TIMEOUT: Duration = Duration::from_millis(500);
 
 pub type Checkpoint = <Grid as Emulator>::Checkpoint;
@@ -75,6 +77,7 @@ pub struct SpawnRequest<'a> {
     pub socket: &'a Path,
     pub session: &'a SessionName,
     pub size: Size,
+    pub taps: &'a Arc<Taps>,
 }
 
 impl Pane {
@@ -192,6 +195,7 @@ pub fn spawn(
         socket,
         session,
         size,
+        taps,
     } = request;
     let pair = native_pty_system()
         .openpty(pty_size(size))
@@ -231,8 +235,13 @@ pub fn spawn(
 
     let (drained_tx, drained) = std_mpsc::channel::<()>();
     let output_pane = Arc::clone(&pane);
+    let tap = Tap {
+        taps: Arc::clone(taps),
+        session: session.clone(),
+        pane: id,
+    };
     thread::spawn(move || {
-        read_output(reader, &output_pane);
+        read_output(reader, &output_pane, &tap);
         drop(drained_tx);
     });
 
@@ -258,12 +267,21 @@ pub fn spawn(
     })
 }
 
-fn read_output(mut reader: Box<dyn Read + Send>, pane: &Pane) {
+struct Tap {
+    taps: Arc<Taps>,
+    session: SessionName,
+    pane: PaneId,
+}
+
+fn read_output(mut reader: Box<dyn Read + Send>, pane: &Pane, tap: &Tap) {
     let mut buffer = vec![0; 64 * 1024];
     loop {
         match reader.read(&mut buffer) {
             Ok(0) | Err(_) => break,
-            Ok(n) => pane.process(&buffer[..n]),
+            Ok(n) => {
+                tap.taps.output(&tap.session, tap.pane, &buffer[..n]);
+                pane.process(&buffer[..n]);
+            }
         }
     }
 }

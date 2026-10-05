@@ -130,11 +130,7 @@ fn user_settings_after_the_colorscheme() {
 fn plugin_default_kept() {
     let scratch = Scratch::new("plugin-default");
     scratch.user_file("colors/dusk.lua", DUSK);
-    scratch.plugin_file(
-        "pane",
-        "plugin/pane.lua",
-        "gband.hl.default('PaneSegment', { fg = 4 })",
-    );
+    scratch.client_plugin("pane", "gband.hl.default('PaneSegment', { fg = 4 })");
     scratch.write(JOB);
     let config = scratch.loaded();
     clean(&run_job(&config, "gband.colorscheme('dusk')"));
@@ -148,11 +144,7 @@ fn colorscheme_overrides_a_plugin_default() {
         "colors/dusk.lua",
         "gband.hl.set('PaneSegment', { fg = '#00ff00' })",
     );
-    scratch.plugin_file(
-        "pane",
-        "plugin/pane.lua",
-        "gband.hl.default('PaneSegment', { fg = 4 })",
-    );
+    scratch.client_plugin("pane", "gband.hl.default('PaneSegment', { fg = 4 })");
     scratch.write("gband.colorscheme('dusk')");
     let config = scratch.loaded();
     assert_eq!(
@@ -291,12 +283,8 @@ fn failed_switch_emits_nothing() {
 fn colorscheme_errors_disable_no_plugin() {
     let scratch = Scratch::new("no-disable");
     scratch.user_file("colors/broken.lua", "error('boom')");
-    scratch.plugin_file(
-        "theme",
-        "plugin/theme.lua",
-        "gband.colorscheme('broken')\nafter = true",
-    );
-    scratch.plugin_file("theme", "plugin/z.lua", "later = true");
+    scratch.client_plugin("theme", "gband.colorscheme('broken')\nafter = true");
+    scratch.client_plugin("zeta", "later = true");
     let config = scratch.loaded();
     assert!(global::<bool>(&config, "after"));
     assert!(global::<bool>(&config, "later"));

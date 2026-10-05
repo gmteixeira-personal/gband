@@ -1,8 +1,10 @@
 mod connection;
 mod event;
+mod hub;
 mod lock;
 mod pane;
 mod registry;
+mod scripting;
 mod session;
 
 use std::ffi::OsString;
@@ -23,11 +25,15 @@ use tokio::task::JoinSet;
 use tracing::Instrument;
 
 use crate::connection::Context;
-use crate::registry::Registry;
+use crate::hub::Hub;
+use crate::registry::{Registry, Shared};
+use crate::scripting::Taps;
 use crate::session::INITIAL_AREA;
 
 pub use crate::event::{CAPACITY, Published, SessionEvent};
+pub use crate::hub::QUEUE_LIMIT;
 pub use crate::lock::kill;
+pub use crate::scripting::{NOTICE_BUDGET, OUTPUT_BUDGET, Reloader, Scripting};
 
 pub const SUN_PATH_MAX: usize = 107;
 const PRIVATE_SOCKET_MASK: u32 = 0o177;
@@ -40,6 +46,7 @@ pub struct ServerConfig {
     pub cwd: PathBuf,
     pub executable: ExecutableId,
     pub options: watch::Receiver<LayoutOptions>,
+    pub scripting: Option<Scripting>,
 }
 
 pub fn user_shell() -> OsString {
@@ -64,13 +71,22 @@ pub async fn run_with_events(
     let _lock = lock::acquire(&socket)?;
     let mut terminate = signal(SignalKind::terminate()).context("cannot handle SIGTERM")?;
     tokio::spawn(event::log(events.subscribe()).in_current_span());
+    let hub = Arc::new(Hub::default());
+    let taps = match config.scripting {
+        Some(scripting) => scripting::start(scripting, Arc::clone(&hub), &events),
+        None => Taps::idle(),
+    };
     let (requests_tx, mut requests) = mpsc::unbounded_channel();
     let mut registry = Registry::new(
         config.program,
         socket.clone(),
         requests_tx.clone(),
-        events,
-        config.options,
+        Shared {
+            events,
+            options: config.options,
+            hub: Arc::clone(&hub),
+            taps: Arc::clone(&taps),
+        },
     );
     registry.create(config.session, config.cwd, INITIAL_AREA)?;
     let listener = bind(&socket)?;
@@ -82,6 +98,8 @@ pub async fn run_with_events(
             pid: std::process::id(),
             executable: config.executable,
         },
+        hub,
+        taps,
     });
     let mut clients = JoinSet::new();
     while !registry.is_empty() {

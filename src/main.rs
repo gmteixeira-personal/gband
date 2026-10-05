@@ -10,9 +10,9 @@ use gband::executable;
 use gband::logging::{self, Role};
 use gband::paths::{self, ServerName};
 use gband_client::{ClientConfig, Configuration, Outcome, UnixTransport};
-use gband_lua::{Config, ConfigError, LoadOptions, Locations};
+use gband_lua::{Config, ConfigError, LoadOptions, Locations, Side};
 use gband_protocol::SessionName;
-use gband_server::{SUN_PATH_MAX, ServerConfig};
+use gband_server::{SUN_PATH_MAX, Scripting, ServerConfig};
 use tokio::sync::watch;
 
 #[derive(Parser)]
@@ -273,19 +273,19 @@ fn server(socket: PathBuf, session: SessionName, runtime_dir: &Path) -> Result<E
         }
         _ => {}
     }
-    let loaded = configuration();
-    let (options_tx, options) = watch::channel(loaded.config.options.layout);
+    let loaded = configuration(Side::Server);
+    let (options_tx, options) = watch::channel(loaded.config.options.layout.clone());
+    let (scripting, reloader) = Scripting::new(loaded.config, loaded.error);
     let _watcher = loaded.locations.map(|locations| {
         gband_lua::watch(
             locations,
+            Side::Server,
             LoadOptions::default(),
-            move |result| match result {
-                Ok(config) => {
-                    tracing::info!("configuration reloaded");
-                    log_errors(&config);
-                    options_tx.send_replace(config.options.layout);
+            move |result| {
+                if let Ok(config) = &result {
+                    options_tx.send_replace(config.options.layout.clone());
                 }
-                Err(error) => tracing::warn!("configuration error: {error}"),
+                reloader.reload(result);
             },
         )
     });
@@ -296,6 +296,7 @@ fn server(socket: PathBuf, session: SessionName, runtime_dir: &Path) -> Result<E
         cwd: std::env::current_dir().context("cannot read the current directory")?,
         executable: executable::identity().context("cannot identify the gband executable")?,
         options,
+        scripting: Some(scripting),
     };
     tokio::runtime::Runtime::new()
         .context("cannot start the async runtime")?
@@ -309,17 +310,17 @@ struct Loaded {
     locations: Option<Locations>,
 }
 
-fn log_errors(config: &Config) {
-    for error in &config.errors {
+fn log_errors(loaded: &Loaded) {
+    for error in loaded.error.iter().chain(&loaded.config.errors) {
         tracing::warn!("configuration error: {error}");
     }
 }
 
-fn configuration() -> Loaded {
+fn configuration(side: Side) -> Loaded {
     let Some(locations) = Locations::from_env() else {
         tracing::info!("no configuration directory, using the defaults");
         return Loaded {
-            config: gband_lua::defaults(),
+            config: gband_lua::defaults(side),
             error: None,
             locations: None,
         };
@@ -331,18 +332,17 @@ fn configuration() -> Loaded {
         );
     }
     let options = LoadOptions::default();
-    let (config, error) = match gband_lua::load(&locations, &options) {
+    let (config, error) = match gband_lua::load(&locations, side, &options) {
         Ok(config) => (config, None),
         Err(error) => {
-            tracing::warn!("configuration error: {error}");
-            let config = gband_lua::load_defaults(&locations, &options).unwrap_or_else(|error| {
-                tracing::warn!("configuration error: {error}");
-                gband_lua::defaults()
-            });
+            let config =
+                gband_lua::load_defaults(&locations, side, &options).unwrap_or_else(|error| {
+                    tracing::warn!("configuration error: {error}");
+                    gband_lua::defaults(side)
+                });
             (config, Some(error))
         }
     };
-    log_errors(&config);
     Loaded {
         config,
         error,
@@ -385,12 +385,18 @@ fn attach(socket: PathBuf, session: SessionName, selection: &Selection) -> Resul
     }
     let (config, transport) = client(socket, session, selection, true)?;
     let kill_command = config.kill_command.clone();
-    let loaded = configuration();
+    let loaded = configuration(Side::Client);
+    log_errors(&loaded);
     let (reloads_tx, reloads) = tokio::sync::mpsc::unbounded_channel();
     let _watcher = loaded.locations.map(|locations| {
-        gband_lua::watch(locations, LoadOptions::default(), move |result| {
-            let _ = reloads_tx.send(result);
-        })
+        gband_lua::watch(
+            locations,
+            Side::Client,
+            LoadOptions::default(),
+            move |result| {
+                let _ = reloads_tx.send(result);
+            },
+        )
     });
     let configuration = Configuration {
         config: loaded.config,

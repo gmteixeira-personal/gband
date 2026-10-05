@@ -82,8 +82,36 @@ impl TestEnv {
         path
     }
 
+    pub fn write_manifest(&self, plugin: &str, extra: &str) -> PathBuf {
+        self.write_plugin_file(
+            plugin,
+            "plugin.lua",
+            &format!("return {{ name = '{plugin}', version = '0.1.0'{extra} }}"),
+        )
+    }
+
+    pub fn write_client_plugin(&self, plugin: &str, source: &str) -> PathBuf {
+        self.write_manifest(plugin, "");
+        self.write_plugin_file(plugin, "client.lua", source)
+    }
+
+    pub fn write_server_plugin(&self, plugin: &str, source: &str) -> PathBuf {
+        self.write_manifest(plugin, "");
+        self.write_plugin_file(plugin, "server.lua", source)
+    }
+
     pub fn user_lua(&self) -> PathBuf {
         self.config_dir().join("user").join("init.lua")
+    }
+
+    pub fn server_lua(&self) -> PathBuf {
+        self.config_dir().join("user").join("server.lua")
+    }
+
+    pub fn write_server_config(&self, source: &str) {
+        let path = self.server_lua();
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, source).unwrap();
     }
 
     pub fn defaults_lua(&self) -> PathBuf {

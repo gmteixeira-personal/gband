@@ -50,9 +50,8 @@ fn plugin_error(config: &Config) -> &gband_lua::ConfigError {
 #[test]
 fn plugin_component_without_an_id() {
     let scratch = Scratch::new("plugin-no-id");
-    scratch.plugin_file(
+    scratch.client_plugin(
         "pane",
-        "plugin/pane.lua",
         "added = gband.ui.statusline.add({ render = function() return 'x' end })",
     );
     let config = scratch.loaded();
@@ -62,9 +61,7 @@ fn plugin_component_without_an_id() {
 #[test]
 fn plugin_component_with_an_id() {
     let scratch = Scratch::new("plugin-id");
-    scratch.plugin_file(
-        "pane",
-        "plugin/pane.lua",
+    scratch.client_plugin("pane",
         "added = gband.ui.statusline.add({ id = 'count', render = function() end })\nfull = gband.ui.statusline.add({ id = 'pane.other', render = function() end })\nok = pcall(gband.ui.statusline.add, { id = 'else.where', render = function() end })",
     );
     let config = scratch.loaded();
@@ -164,9 +161,7 @@ fn user_events_and_built_in_events_are_accepted() {
 #[test]
 fn list_entries() {
     let scratch = Scratch::new("list");
-    scratch.plugin_file(
-        "pane",
-        "plugin/pane.lua",
+    scratch.client_plugin("pane",
         "gband.ui.statusline.add({ align = 'right', priority = 3, order = 4, hl = 'PaneSegment', render = function() end })",
     );
     scratch.write("gband.ui.statusline.add({ id = 'zeta', render = function() end })\ngband.ui.statusline.add({ id = 'alpha', render = function() end })");
@@ -195,8 +190,12 @@ fn list_entries() {
 #[test]
 fn remove_a_bundled_segment() {
     let scratch = Scratch::new("remove");
-    let config =
-        gband_lua::load_defaults(&scratch.locations(), &gband_lua::LoadOptions::default()).unwrap();
+    let config = gband_lua::load_defaults(
+        &scratch.locations(),
+        gband_lua::Side::Client,
+        &gband_lua::LoadOptions::default(),
+    )
+    .unwrap();
     let mut state = drawn(80);
     state.table = "prefix".to_owned();
     assert!(shown(&config, state.clone()).contains("prefix"));
@@ -443,8 +442,12 @@ fn fill_pass_renders_once_more_at_most() {
 
 fn default_config(name: &str) -> (Scratch, Config) {
     let scratch = Scratch::new(name);
-    let config =
-        gband_lua::load_defaults(&scratch.locations(), &gband_lua::LoadOptions::default()).unwrap();
+    let config = gband_lua::load_defaults(
+        &scratch.locations(),
+        gband_lua::Side::Client,
+        &gband_lua::LoadOptions::default(),
+    )
+    .unwrap();
     (scratch, config)
 }
 
@@ -786,9 +789,7 @@ fn added_after_the_load() {
 #[test]
 fn failing_component() {
     let scratch = Scratch::new("failing");
-    let file = scratch.plugin_file(
-        "pane",
-        "plugin/pane.lua",
+    let file = scratch.client_plugin("pane",
         "gband.ui.statusline.add({\n  order = 1,\n  render = function()\n\n\n\n\n\n    error('boom')\n  end,\n})",
     );
     scratch.write(
@@ -833,9 +834,7 @@ fn invalid_return_disables() {
 #[test]
 fn looping_render() {
     let scratch = Scratch::new("looping");
-    scratch.plugin_file(
-        "spin",
-        "plugin/spin.lua",
+    scratch.client_plugin("spin",
         "gband.ui.statusline.add({ order = 1, render = function() while true do end end })\ngband.on('FocusChanged', function() spin_handled = true end)",
     );
     scratch.write(&format!(
@@ -863,9 +862,7 @@ fn looping_render() {
 #[test]
 fn failed_plugin_components_are_hidden() {
     let scratch = Scratch::new("failed-plugin");
-    scratch.plugin_file(
-        "pane",
-        "plugin/pane.lua",
+    scratch.client_plugin("pane",
         "gband.ui.statusline.add({ render = function() return 'pane' end })\ngband.bind('alt+p', function() while true do end end)",
     );
     scratch.write(JOB);
@@ -1028,4 +1025,56 @@ fn sample_pane_plugin_default_group() {
     let config = scratch.loaded();
     let link: String = eval(&config, "return gband.hl.get('PaneSegment').link");
     assert_eq!(link, "StatusLineAccent");
+}
+
+#[test]
+fn waiting_agents_counted() {
+    let (_scratch, config) = loaded(
+        "waiting-agents",
+        "gband.ui.statusline.add({
+  id = 'agents',
+  redraw_on = { 'PaneStateChanged' },
+  render = function(ctx)
+    local waiting = 0
+    for _, entry in ipairs(ctx.panes) do
+      if entry.state.agent == 'waiting' then
+        waiting = waiting + 1
+      end
+    end
+    first = ctx.panes[1].pane .. '/' .. ctx.panes[1].band
+    return 'waiting ' .. waiting
+  end,
+})",
+    );
+    let mut layout = gband_core::layout::Layout::new();
+    let band = layout.bands()[0].id;
+    let mut after = None;
+    for _ in 0..3 {
+        let pane = layout.allocate_pane();
+        layout.open(
+            pane,
+            band,
+            after,
+            None,
+            &gband_core::layout::LayoutOptions::default(),
+        );
+        after = Some(pane);
+    }
+    let waiting = || {
+        std::collections::BTreeMap::from([(
+            "agent".to_owned(),
+            gband_protocol::Value::string("waiting"),
+        )])
+    };
+    let state = ViewState {
+        layout: std::sync::Arc::new(layout),
+        states: std::sync::Arc::new(std::collections::BTreeMap::from([
+            (PaneId(1), waiting()),
+            (PaneId(3), waiting()),
+        ])),
+        ..drawn(40)
+    };
+    let line = presented(&config, state);
+    assert!(text(&line, 40).contains("waiting 2"), "{}", text(&line, 40));
+    assert_eq!(eval::<String>(&config, "return first"), "1/1");
 }

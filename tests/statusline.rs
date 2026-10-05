@@ -117,9 +117,8 @@ fn hints_in_the_default_line() {
 #[test]
 fn looping_component_is_stopped() {
     let env = TestEnv::new("statusline-loop");
-    env.write_plugin_file(
+    env.write_client_plugin(
         "spin",
-        "plugin/spin.lua",
         "gband.ui.statusline.add({ render = function() while true do end end })",
     );
     let mut client = attached_with_width(&env, 200);

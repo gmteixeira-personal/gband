@@ -65,17 +65,17 @@ async fn mismatched_version_is_rejected_and_server_keeps_serving() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn version_four_client_is_rejected_by_version_five() {
-    let server = TestServer::start("version-four", &["/bin/sh"]).await;
+async fn version_five_client_is_rejected_by_version_six() {
+    let server = TestServer::start("version-five", &["/bin/sh"]).await;
     let mut peer = Peer::connect(&server.socket()).await;
     peer.send(&Hello {
-        version: 4,
+        version: 5,
         cols: 80,
         rows: 24,
     })
     .await;
     let reply: HelloReply = peer.recv().await.unwrap();
-    assert_eq!(reply, HelloReply::Rejected { version: 5 });
+    assert_eq!(reply, HelloReply::Rejected { version: 6 });
     assert!(peer.closes().await);
 }
 

@@ -81,10 +81,10 @@ async fn pane_exit_comes_before_its_close() {
         .position(|event| matches!(event, SessionEvent::PaneExited { pane, .. } if *pane == second))
         .expect("no exit before the close");
     assert_eq!(exited, seen.len() - 2, "{seen:?}");
-    let SessionEvent::PaneExited { status, .. } = &seen[exited] else {
+    let SessionEvent::PaneExited { code, signal, .. } = &seen[exited] else {
         unreachable!();
     };
-    assert!(status.contains('3'), "{status}");
+    assert_eq!((*code, *signal), (Some(3), None));
 }
 
 #[tokio::test(flavor = "multi_thread")]

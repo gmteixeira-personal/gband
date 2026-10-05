@@ -10,7 +10,7 @@ mod transport;
 pub mod windows;
 
 use std::collections::{BTreeMap, HashMap};
-use std::io::stdout;
+use std::io::{Write, stdout};
 use std::sync::Arc;
 use std::thread;
 use std::time::Instant;
@@ -27,9 +27,10 @@ use gband_core::view::{CenterFocusedColumn, Scene, View, ViewAction};
 use gband_emulator::{Emulator, Grid};
 use gband_lua::{
     BandState, Binding, ColumnState, Config, ConfigError, Dispatch, Event, Options, Outcome as Ran,
-    PaneInput, Runtime, StatusLine, ViewState, WindowRequest,
+    PaneInput, PaneStates, PluginManifest, Requirement as Needed, Runtime, StatusLine, Version,
+    ViewState, WindowRequest,
 };
-use gband_protocol::{ClientMessage, ExecutableId, ServerMessage, SessionName};
+use gband_protocol::{ClientMessage, ExecutableId, Requirement, ServerMessage, SessionName, Value};
 use ratatui::layout::Rect;
 use ratatui::{DefaultTerminal, Frame};
 use tokio::sync::mpsc;
@@ -152,6 +153,8 @@ pub struct Display {
     colors: ColorSupport,
     line: Option<StatusLine>,
     windows: Windows,
+    states: Arc<PaneStates>,
+    ready: bool,
 }
 
 impl Display {
@@ -174,7 +177,30 @@ impl Display {
             colors: ColorSupport::default(),
             line: None,
             windows: Windows::new(),
+            states: Arc::new(PaneStates::new()),
+            ready: false,
         }
+    }
+
+    pub fn is_ready(&self) -> bool {
+        self.ready
+    }
+
+    pub fn pane_state(&self, pane: PaneId) -> Option<&BTreeMap<String, Value>> {
+        self.states.get(&pane)
+    }
+
+    fn set_state(&mut self, pane: PaneId, key: String, value: Option<Value>) -> Option<Value> {
+        let states = Arc::make_mut(&mut self.states);
+        let state = states.entry(pane).or_default();
+        let previous = match value {
+            Some(value) => state.insert(key, value),
+            None => state.remove(&key),
+        };
+        if state.is_empty() {
+            states.remove(&pane);
+        }
+        previous
     }
 
     pub fn windows(&self) -> &Windows {
@@ -277,6 +303,7 @@ impl Display {
             layout: Arc::clone(&self.layout),
             area: self.area,
             ribbon: self.reported_size(),
+            states: Arc::clone(&self.states),
         }
     }
 
@@ -333,6 +360,15 @@ impl Display {
         match message {
             ServerMessage::Layout { cols, rows, layout } => {
                 self.grids.retain(|&pane, _| layout.contains(pane));
+                let previous = Arc::clone(&self.layout);
+                if self
+                    .states
+                    .keys()
+                    .any(|&pane| previous.contains(pane) && !layout.contains(pane))
+                {
+                    Arc::make_mut(&mut self.states)
+                        .retain(|&pane, _| layout.contains(pane) || !previous.contains(pane));
+                }
                 self.layout = Arc::new(layout);
                 let area = Size::new(cols, rows);
                 if area != self.area {
@@ -358,8 +394,13 @@ impl Display {
             ServerMessage::Focus(pane) => {
                 self.with_view(|view, scene| view.focus_pane(pane, scene))
             }
-            ServerMessage::Opened { .. } => {
-                tracing::warn!("ignoring an opened reply outside the controls")
+            ServerMessage::Opened { .. }
+            | ServerMessage::Event { .. }
+            | ServerMessage::PaneState { .. }
+            | ServerMessage::Result { .. }
+            | ServerMessage::Requirements(_)
+            | ServerMessage::ServerError(_) => {
+                tracing::warn!("ignoring a bridge message outside the controls")
             }
             ServerMessage::Exited => return Some(Outcome::Exited),
             ServerMessage::Info { .. } => tracing::warn!("ignoring a repeated server info"),
@@ -446,6 +487,7 @@ impl Display {
 #[derive(Debug, PartialEq)]
 pub enum Step {
     Send(ClientMessage),
+    Write(Vec<u8>),
     Detach,
     Nothing,
 }
@@ -513,6 +555,43 @@ pub struct Controls {
     runtime: Runtime,
     leader: Leader,
     refresh_pending: bool,
+    plugins: Vec<PluginManifest>,
+    pending: Vec<Event>,
+    awaiting: Option<String>,
+}
+
+fn unmet(plugins: &[PluginManifest], required: &Requirement) -> Option<ConfigError> {
+    let Requirement {
+        plugin,
+        requirement,
+    } = required;
+    let needed: Needed = match requirement.parse() {
+        Ok(needed) => needed,
+        Err(reason) => {
+            return Some(ConfigError::new(format!(
+                "the server requires the plugin `{plugin}` {requirement} in the client, which is not a requirement: {reason}"
+            )));
+        }
+    };
+    let held = plugins
+        .iter()
+        .find(|manifest| manifest.name == *plugin)
+        .and_then(|manifest| manifest.version.clone());
+    match held {
+        None => Some(ConfigError::new(format!(
+            "the server requires the plugin `{plugin}` {requirement} in the client, which does not have it"
+        ))),
+        Some(version) => {
+            let met = version
+                .parse::<Version>()
+                .is_ok_and(|parsed| needed.is_met_by(parsed));
+            (!met).then(|| {
+                ConfigError::new(format!(
+                    "the server requires the plugin `{plugin}` {requirement} in the client, which has version {version}"
+                ))
+            })
+        }
+    }
 }
 
 impl Controls {
@@ -525,6 +604,69 @@ impl Controls {
             runtime: config.runtime,
             leader: Leader::default(),
             refresh_pending: false,
+            plugins: config.plugins,
+            pending: Vec::new(),
+            awaiting: None,
+        }
+    }
+
+    pub fn attach_when_ready(&mut self, session: &str) {
+        self.awaiting = Some(session.to_owned());
+    }
+
+    pub fn is_attached(&self) -> bool {
+        self.awaiting.is_none()
+    }
+
+    fn report(&mut self, display: &mut Display, error: String) {
+        tracing::warn!("configuration error: {error}");
+        display.set_banner(Some(error));
+    }
+
+    fn bridge(&mut self, display: &mut Display, message: ServerMessage, steps: &mut Vec<Step>) {
+        match message {
+            ServerMessage::PaneState { pane, key, value } => {
+                let previous = display.set_state(pane, key.clone(), value.clone());
+                if display.ready && previous != value {
+                    self.pending.push(Event::PaneStateChanged {
+                        pane,
+                        key,
+                        value,
+                        previous,
+                    });
+                }
+            }
+            ServerMessage::Event {
+                name,
+                data,
+                queued,
+                time,
+            } => self.pending.push(Event::ServerEvent {
+                name,
+                data,
+                queued,
+                time,
+            }),
+            ServerMessage::Result { call, result } => {
+                let outcome = self.runtime.answer(call, result);
+                self.apply(display, outcome, steps);
+            }
+            ServerMessage::Requirements(required) => {
+                display.ready = true;
+                let errors: Vec<ConfigError> = required
+                    .iter()
+                    .filter_map(|required| unmet(&self.plugins, required))
+                    .collect();
+                for error in errors {
+                    self.report(display, error.to_string());
+                }
+                if let Some(session) = self.awaiting.take() {
+                    self.refresh_pending = true;
+                    self.pending.push(Event::Attached { session });
+                }
+            }
+            ServerMessage::ServerError(error) => self.report(display, format!("server: {error}")),
+            _ => {}
         }
     }
 
@@ -575,6 +717,17 @@ impl Controls {
             for message in messages {
                 if let ServerMessage::Opened { request, pane } = message {
                     controls.opened(display, request, pane, steps);
+                    continue;
+                }
+                if matches!(
+                    message,
+                    ServerMessage::PaneState { .. }
+                        | ServerMessage::Event { .. }
+                        | ServerMessage::Result { .. }
+                        | ServerMessage::Requirements(_)
+                        | ServerMessage::ServerError(_)
+                ) {
+                    controls.bridge(display, message, steps);
                     continue;
                 }
                 outcome = display.apply(message);
@@ -700,7 +853,11 @@ impl Controls {
                     .map(Step::Send)
                     .collect();
                 let resized = display.set_placement(Placement::new(&config.options.statusline));
+                let awaiting = self.awaiting.take();
+                let pending = std::mem::take(&mut self.pending);
                 *self = Self::new(config, display);
+                self.awaiting = awaiting;
+                self.pending = pending;
                 let mut events = vec![Event::ConfigReloaded];
                 if previous != ROOT {
                     events.push(Event::KeyTableChanged {
@@ -740,6 +897,7 @@ impl Controls {
             self.table_changed(&mut table, &mut events);
             let after = display.observe();
             events.extend(changes(before, after.as_ref()));
+            events.append(&mut self.pending);
             before = after;
             if events.is_empty() {
                 break;
@@ -811,6 +969,13 @@ impl Controls {
                     PaneInput::Paste(text) => ClientMessage::Paste { pane, text },
                 })),
                 Dispatch::Window(request) => steps.push(window_step(display, request)),
+                Dispatch::Write(bytes) => steps.push(Step::Write(bytes)),
+                Dispatch::Call { call, name, args } => {
+                    steps.push(Step::Send(ClientMessage::Command { call, name, args }));
+                }
+                Dispatch::Targeted { .. } => {
+                    tracing::debug!("ignoring a server action dispatched in the client")
+                }
             }
         }
         for error in &outcome.errors {
@@ -896,6 +1061,12 @@ async fn perform(connection: &mut Connection, steps: Vec<Step>) -> Result<Option
     for step in steps {
         match step {
             Step::Send(message) => connection.send(&message).await?,
+            Step::Write(bytes) => {
+                let mut out = stdout();
+                if let Err(error) = out.write_all(&bytes).and_then(|()| out.flush()) {
+                    tracing::warn!("cannot write to the terminal: {error}");
+                }
+            }
             Step::Detach => {
                 let _ = connection.send(&ClientMessage::Detach).await;
                 return Ok(Some(Outcome::Detached));
@@ -922,10 +1093,7 @@ async fn attach(
         display.set_banner(Some(error.to_string()));
     }
     let mut reloads = configuration.reloads;
-    let steps = controls.attached(&mut display, &session.to_string());
-    if let Some(outcome) = perform(connection, steps).await? {
-        return Ok(outcome);
-    }
+    controls.attach_when_ready(session.as_str());
     loop {
         let mut messages = Vec::new();
         while let Some(message) = connection.reader.try_recv::<ServerMessage>()? {
@@ -971,7 +1139,7 @@ async fn attach(
                 Ok(false) | Err(gband_protocol::IoError::Io(_)) => return Ok(Outcome::LostServer),
                 Err(error) => return Err(error.into()),
             },
-            event = events.recv() => match event {
+            event = events.recv(), if controls.is_attached() => match event {
                 Some(TerminalEvent::Key(key_event)) => {
                     let Some(key) = key_from_event(&key_event) else { continue };
                     let steps = controls.press(&mut display, key);
