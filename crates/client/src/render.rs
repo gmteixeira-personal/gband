@@ -11,6 +11,8 @@ use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{Block, Widget};
 use tui_term::widget::{Cursor, PseudoTerminal, Screen};
 
+use crate::animation::{Band, Drawn, DrawnTile};
+
 pub const FOCUSED_BORDER: Style = Style::new().add_modifier(Modifier::BOLD);
 pub const UNFOCUSED_BORDER: Style = Style::new().add_modifier(Modifier::DIM);
 
@@ -19,6 +21,7 @@ pub struct Ribbon<'a> {
     pub area: Size,
     pub view: &'a View,
     pub grids: &'a HashMap<PaneId, Grid>,
+    pub drawn: &'a Drawn,
 }
 
 pub fn draw_frame(frame: &mut Frame<'_>, ribbon: &Ribbon<'_>) {
@@ -29,54 +32,110 @@ pub fn draw_frame(frame: &mut Frame<'_>, ribbon: &Ribbon<'_>) {
 
 pub fn render(ribbon: &Ribbon<'_>, buffer: &mut Buffer) -> Option<Position> {
     let target = buffer.area;
-    let workspace = ribbon.layout.workspace(ribbon.view.workspace())?;
-    let camera = i64::from(ribbon.view.camera());
     let focused = ribbon.view.focused();
     let mut cursor = None;
-    for tile in tiles(workspace, ribbon.area) {
-        let left = i64::from(tile.x) - camera;
-        let right = left + i64::from(tile.width);
-        if right <= 0 || left >= i64::from(target.width) || tile.y >= target.height {
+    for band in &ribbon.drawn.bands {
+        let Some(workspace) = ribbon.layout.workspace(band.workspace) else {
             continue;
-        }
-        let is_focused = focused == Some(tile.pane);
-        let grid = ribbon.grids.get(&tile.pane);
-        let window = Window {
-            start: (-left).max(0) as u16,
-            end: (i64::from(target.width) - left).min(i64::from(tile.width)) as u16,
-            rows: tile.height.min(target.height - tile.y),
         };
-        let (scratch, shift) = draw_tile(&tile, grid, is_focused, &window);
-        for row in 0..window.rows {
-            for column in window.start..window.end {
-                let x = (left + i64::from(column)) as u16;
-                buffer[(target.x + x, target.y + tile.y + row)] =
-                    scratch[(column - shift, row)].clone();
+        let mut placed: Vec<(PaneId, DrawnTile)> = tiles(workspace, ribbon.area)
+            .iter()
+            .map(|tile| {
+                let drawn = ribbon.drawn.tiles.get(&tile.pane).copied();
+                (tile.pane, drawn.unwrap_or_else(|| DrawnTile::from(tile)))
+            })
+            .collect();
+        placed.sort_by_key(|&(pane, _)| focused == Some(pane));
+        for (pane, tile) in placed {
+            let Some(placement) = Placement::new(&tile, band, target) else {
+                continue;
+            };
+            let is_focused = focused == Some(pane);
+            let grid = ribbon.grids.get(&pane);
+            let (scratch, shift) = draw_tile(&tile, grid, is_focused, &placement.window);
+            let window = &placement.window;
+            for row in window.top..window.bottom {
+                for column in window.start..window.end {
+                    let x = (placement.left + i64::from(column)) as u16;
+                    let y = (placement.top + i64::from(row)) as u16;
+                    buffer[(target.x + x, target.y + y)] =
+                        scratch[(column - shift.cols, row - shift.rows)].clone();
+                }
             }
-        }
-        if is_focused {
-            cursor = grid.and_then(|grid| cursor_position(&tile, left, grid, target));
+            if is_focused && ribbon.drawn.settled {
+                cursor = grid.and_then(|grid| cursor_position(&tile, &placement, grid, target));
+            }
         }
     }
     cursor
 }
 
+impl From<&Tile> for DrawnTile {
+    fn from(tile: &Tile) -> Self {
+        Self {
+            x: i64::from(tile.x),
+            y: i64::from(tile.y),
+            width: tile.width,
+            height: tile.height,
+        }
+    }
+}
+
+struct Placement {
+    left: i64,
+    top: i64,
+    window: Window,
+}
+
+impl Placement {
+    fn new(tile: &DrawnTile, band: &Band, target: Rect) -> Option<Self> {
+        let height = i64::from(target.height);
+        let left = tile.x - band.camera;
+        let top = band.top + tile.y;
+        let clip_top = band.top.max(0);
+        let clip_bottom = (band.top + height).min(height);
+        let width = i64::from(tile.width);
+        let rows = i64::from(tile.height);
+        let window = Window {
+            start: (-left).clamp(0, width) as u16,
+            end: (i64::from(target.width) - left).clamp(0, width) as u16,
+            top: (clip_top - top).clamp(0, rows) as u16,
+            bottom: (clip_bottom - top).clamp(0, rows) as u16,
+        };
+        (window.start < window.end && window.top < window.bottom).then_some(Self {
+            left,
+            top,
+            window,
+        })
+    }
+}
+
 struct Window {
     start: u16,
     end: u16,
+    top: u16,
+    bottom: u16,
+}
+
+#[derive(Clone, Copy)]
+struct Shift {
+    cols: u16,
     rows: u16,
 }
 
 struct Shifted<'a, S> {
     screen: &'a S,
-    cols: u16,
+    shift: Shift,
 }
 
 impl<S: Screen> Screen for Shifted<'_, S> {
     type C = S::C;
 
     fn cell(&self, row: u16, col: u16) -> Option<&Self::C> {
-        self.screen.cell(row, col.checked_add(self.cols)?)
+        self.screen.cell(
+            row.checked_add(self.shift.rows)?,
+            col.checked_add(self.shift.cols)?,
+        )
     }
 
     fn hide_cursor(&self) -> bool {
@@ -88,16 +147,25 @@ impl<S: Screen> Screen for Shifted<'_, S> {
     }
 }
 
-fn draw_tile(tile: &Tile, grid: Option<&Grid>, focused: bool, window: &Window) -> (Buffer, u16) {
+fn draw_tile(
+    tile: &DrawnTile,
+    grid: Option<&Grid>,
+    focused: bool,
+    window: &Window,
+) -> (Buffer, Shift) {
     let cut_left = u16::from(window.start > 0);
     let cut_right = u16::from(window.end < tile.width);
-    let cut_bottom = u16::from(window.rows < tile.height);
-    let shift = window.start - cut_left;
+    let cut_top = u16::from(window.top > 0);
+    let cut_bottom = u16::from(window.bottom < tile.height);
+    let shift = Shift {
+        cols: window.start - cut_left,
+        rows: window.top - cut_top,
+    };
     let area = Rect::new(
         0,
         0,
         window.end - window.start + cut_left + cut_right,
-        window.rows + cut_bottom,
+        window.bottom - window.top + cut_top + cut_bottom,
     );
     let mut scratch = Buffer::empty(area);
     let style = if focused {
@@ -111,7 +179,7 @@ fn draw_tile(tile: &Tile, grid: Option<&Grid>, focused: bool, window: &Window) -
     if let Some(grid) = grid {
         let screen = Shifted {
             screen: grid.screen(),
-            cols: shift,
+            shift,
         };
         PseudoTerminal::new(&screen)
             .cursor(Cursor::default().visibility(false))
@@ -120,16 +188,24 @@ fn draw_tile(tile: &Tile, grid: Option<&Grid>, focused: bool, window: &Window) -
     (scratch, shift)
 }
 
-fn cursor_position(tile: &Tile, left: i64, grid: &Grid, target: Rect) -> Option<Position> {
+fn cursor_position(
+    tile: &DrawnTile,
+    placement: &Placement,
+    grid: &Grid,
+    target: Rect,
+) -> Option<Position> {
     let (row, column) = grid.cursor()?;
-    let inner = tile.terminal_size();
-    if row >= inner.rows || column >= inner.cols {
+    let interior = Size::new(
+        tile.width.saturating_sub(2 * BORDER).max(1),
+        tile.height.saturating_sub(2 * BORDER).max(1),
+    );
+    if row >= interior.rows || column >= interior.cols {
         return None;
     }
-    let x = left + i64::from(BORDER + column);
-    let y = tile.y + BORDER + row;
-    if x < 0 || x >= i64::from(target.width) || y >= target.height {
+    let x = placement.left + i64::from(BORDER + column);
+    let y = placement.top + i64::from(BORDER + row);
+    if x < 0 || x >= i64::from(target.width) || y < 0 || y >= i64::from(target.height) {
         return None;
     }
-    Some(Position::new(target.x + x as u16, target.y + y))
+    Some(Position::new(target.x + x as u16, target.y + y as u16))
 }
