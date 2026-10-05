@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher as _};
 
-use crate::{Config, ConfigError, load, user_file};
+use crate::{Config, ConfigError, LoadOptions, Locations, load, user_dir};
 
 const DEBOUNCE: Duration = Duration::from_millis(100);
 
@@ -20,13 +20,12 @@ enum Watching {
     Parent,
 }
 
-pub fn watch<F>(dir: PathBuf, deliver: F) -> Watcher
+pub fn watch<F>(locations: Locations, options: LoadOptions, deliver: F) -> Watcher
 where
     F: FnMut(Result<Config, ConfigError>) + Send + 'static,
 {
     let idle = Watcher { _watcher: None };
-    let path = user_file(&dir);
-    let directory = path.parent().expect("user_file has a parent").to_path_buf();
+    let directory = user_dir(&locations.config);
     let (events_tx, events) = mpsc::channel();
     let watcher = match notify::recommended_watcher(move |event| {
         let _ = events_tx.send(event);
@@ -39,9 +38,12 @@ where
     };
     let watching = {
         let mut inner = watcher.lock().expect("watcher lock");
-        if inner.watch(&directory, RecursiveMode::NonRecursive).is_ok() {
+        if inner.watch(&directory, RecursiveMode::Recursive).is_ok() {
             Watching::Directory
-        } else if inner.watch(&dir, RecursiveMode::NonRecursive).is_ok() {
+        } else if inner
+            .watch(&locations.config, RecursiveMode::NonRecursive)
+            .is_ok()
+        {
             Watching::Parent
         } else {
             tracing::info!(
@@ -54,7 +56,11 @@ where
     let weak = Arc::downgrade(&watcher);
     let spawned = thread::Builder::new()
         .name("gband-config".to_owned())
-        .spawn(move || reload(dir, directory, watching, events, weak, deliver));
+        .spawn(move || {
+            reload(
+                locations, options, directory, watching, events, weak, deliver,
+            )
+        });
     if let Err(error) = spawned {
         tracing::warn!("cannot watch the configuration: {error}");
         return idle;
@@ -65,7 +71,8 @@ where
 }
 
 fn reload<F>(
-    dir: PathBuf,
+    locations: Locations,
+    options: LoadOptions,
     directory: PathBuf,
     mut watching: Watching,
     events: mpsc::Receiver<notify::Result<Event>>,
@@ -74,10 +81,9 @@ fn reload<F>(
 ) where
     F: FnMut(Result<Config, ConfigError>),
 {
-    let path = user_file(&dir);
     while let Ok(event) = events.recv() {
         let relevant = match watching {
-            Watching::Directory => touches(&event, &path),
+            Watching::Directory => touches_lua(&event, &directory),
             Watching::Parent => touches(&event, &directory),
         };
         if !relevant {
@@ -88,11 +94,8 @@ fn reload<F>(
                 return;
             };
             let mut watcher = watcher.lock().expect("watcher lock");
-            if watcher
-                .watch(&directory, RecursiveMode::NonRecursive)
-                .is_ok()
-            {
-                let _ = watcher.unwatch(&dir);
+            if watcher.watch(&directory, RecursiveMode::Recursive).is_ok() {
+                let _ = watcher.unwatch(&locations.config);
                 watching = Watching::Directory;
             }
         }
@@ -105,15 +108,30 @@ fn reload<F>(
                 Err(RecvTimeoutError::Disconnected) => return,
             }
         }
-        deliver(load(&dir));
+        deliver(load(&locations, &options));
     }
 }
 
+fn changed(event: &notify::Result<Event>) -> Option<&Event> {
+    event
+        .as_ref()
+        .ok()
+        .filter(|event| !matches!(event.kind, EventKind::Access(_)))
+}
+
 fn touches(event: &notify::Result<Event>, target: &Path) -> bool {
-    let Ok(event) = event else {
-        return false;
-    };
-    !matches!(event.kind, EventKind::Access(_)) && event.paths.iter().any(|path| path == target)
+    changed(event).is_some_and(|event| event.paths.iter().any(|path| path == target))
+}
+
+fn touches_lua(event: &notify::Result<Event>, directory: &Path) -> bool {
+    changed(event).is_some_and(|event| {
+        event.paths.iter().any(|path| {
+            path.starts_with(directory)
+                && path
+                    .file_name()
+                    .is_some_and(|name| name.as_encoded_bytes().ends_with(b".lua"))
+        })
+    })
 }
 
 #[cfg(test)]
@@ -122,7 +140,7 @@ mod tests {
     use std::sync::mpsc::Receiver;
 
     use super::*;
-    use crate::defaults_file;
+    use crate::{defaults_file, user_file};
 
     struct Scratch(PathBuf);
 
@@ -148,7 +166,11 @@ mod tests {
 
     fn watched(dir: &Path) -> (Watcher, Receiver<Result<Config, ConfigError>>) {
         let (tx, rx) = mpsc::channel();
-        let watcher = watch(dir.to_path_buf(), move |result| {
+        let locations = Locations {
+            config: dir.to_path_buf(),
+            plugins: None,
+        };
+        let watcher = watch(locations, LoadOptions::default(), move |result| {
             let _ = tx.send(result);
         });
         (watcher, rx)
@@ -191,6 +213,31 @@ mod tests {
 
         fs::remove_file(&path).unwrap();
         assert_eq!(prefix_of(&next(&rx)), defaults);
+    }
+
+    #[test]
+    fn user_plugin_file_edited() {
+        let scratch = Scratch::new("user-plugin");
+        let dir = scratch.dir();
+        crate::prepare(&dir).unwrap();
+        let plugin = dir.join("user").join("plugin");
+        fs::create_dir_all(&plugin).unwrap();
+        let (_watcher, rx) = watched(&dir);
+        fs::write(
+            plugin.join("keys.lua"),
+            "gband.bind('alt+k', gband.action.focus_pane_up)",
+        )
+        .unwrap();
+        let config = loop {
+            let config = next(&rx);
+            if config.keymap.contains_key("root") {
+                break config;
+            }
+        };
+        assert_eq!(config.keymap["root"].len(), 1);
+        settle(&rx);
+        fs::write(plugin.join("notes.txt"), "notes").unwrap();
+        assert!(rx.recv_timeout(Duration::from_secs(1)).is_err());
     }
 
     #[test]

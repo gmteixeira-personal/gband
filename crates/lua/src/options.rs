@@ -1,12 +1,19 @@
+use std::collections::BTreeMap;
 use std::fmt;
+use std::path::PathBuf;
 
 use gband_core::input::{Key, KeyCode, Modifiers};
 use gband_core::layout::{LayoutOptions, Proportion};
 use gband_core::view::CenterFocusedColumn;
+use mlua::{IntoLua, Lua, LuaSerdeExt, Table, Value};
 use serde::Deserialize;
 use serde::de::{self, Deserializer, Visitor};
 
-use crate::keys::parse_key;
+use crate::api::require_loading;
+use crate::error::{ConfigError, caller};
+use crate::guard;
+use crate::keys::{key_name, parse_key};
+use crate::owner;
 
 const MAX_DENOMINATOR: u64 = 100;
 
@@ -50,12 +57,461 @@ impl Options {
     }
 }
 
+impl Options {
+    fn reset(&mut self, name: &str) {
+        let defaults = Options::default();
+        match name {
+            "prefix" => self.prefix = defaults.prefix,
+            "default_column_width" => self.layout.default_width = defaults.layout.default_width,
+            "width_presets" => self.layout.presets = defaults.layout.presets,
+            "center_focused_column" => self.center_focused_column = defaults.center_focused_column,
+            _ => {}
+        }
+    }
+
+    fn get(&self, lua: &Lua, name: &str) -> mlua::Result<Value> {
+        let width = |width: Proportion| f64::from(width.num) / f64::from(width.den);
+        match name {
+            "prefix" => key_name(self.prefix).into_lua(lua),
+            "default_column_width" => width(self.layout.default_width).into_lua(lua),
+            "width_presets" => lua
+                .create_sequence_from(self.layout.presets.iter().map(|&preset| width(preset)))?
+                .into_lua(lua),
+            "center_focused_column" => lua.to_value(&self.center_focused_column),
+            _ => Ok(Value::Nil),
+        }
+    }
+}
+
 pub const NAMES: [&str; 4] = [
     "prefix",
     "default_column_width",
     "width_presets",
     "center_focused_column",
 ];
+
+const BUILTIN: [(&str, &str, &str); 4] = [
+    ("prefix", "string", "the key that starts a key sequence"),
+    (
+        "default_column_width",
+        "number",
+        "the width of a new pane's column, as a fraction of the screen",
+    ),
+    (
+        "width_presets",
+        "list",
+        "the widths that cycling a column's width steps through",
+    ),
+    (
+        "center_focused_column",
+        "string",
+        "when the view centres the focused column: never, always or on-overflow",
+    ),
+];
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum OptValue {
+    Boolean(bool),
+    Integer(i64),
+    Number(f64),
+    String(String),
+}
+
+impl IntoLua for OptValue {
+    fn into_lua(self, lua: &Lua) -> mlua::Result<Value> {
+        match self {
+            OptValue::Boolean(value) => value.into_lua(lua),
+            OptValue::Integer(value) => value.into_lua(lua),
+            OptValue::Number(value) => value.into_lua(lua),
+            OptValue::String(value) => value.into_lua(lua),
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum OptType {
+    Boolean,
+    Integer,
+    Number,
+    String,
+}
+
+impl OptType {
+    fn parse(name: &str) -> Option<Self> {
+        Some(match name {
+            "boolean" => OptType::Boolean,
+            "integer" => OptType::Integer,
+            "number" => OptType::Number,
+            "string" => OptType::String,
+            _ => return None,
+        })
+    }
+
+    fn name(self) -> &'static str {
+        match self {
+            OptType::Boolean => "boolean",
+            OptType::Integer => "integer",
+            OptType::Number => "number",
+            OptType::String => "string",
+        }
+    }
+
+    fn accept(self, raw: &Raw) -> Option<OptValue> {
+        Some(match (self, raw) {
+            (OptType::Boolean, Raw::Boolean(value)) => OptValue::Boolean(*value),
+            (OptType::Integer, Raw::Integer(value)) => OptValue::Integer(*value),
+            (OptType::Integer, Raw::Number(value))
+                if value.fract() == 0.0 && value.abs() < 9.007_199_254_740_992e15 =>
+            {
+                OptValue::Integer(*value as i64)
+            }
+            (OptType::Number, Raw::Integer(value)) => OptValue::Number(*value as f64),
+            (OptType::Number, Raw::Number(value)) => OptValue::Number(*value),
+            (OptType::String, Raw::String(value)) => OptValue::String(value.clone()),
+            _ => return None,
+        })
+    }
+}
+
+#[derive(Clone, Debug)]
+enum Raw {
+    Boolean(bool),
+    Integer(i64),
+    Number(f64),
+    String(String),
+    Other(&'static str),
+}
+
+impl Raw {
+    fn from_value(value: &Value) -> mlua::Result<Self> {
+        Ok(match value {
+            Value::Boolean(value) => Raw::Boolean(*value),
+            Value::Integer(value) => Raw::Integer(*value),
+            Value::Number(value) => Raw::Number(*value),
+            Value::String(value) => Raw::String(value.to_str()?.to_owned()),
+            other => Raw::Other(other.type_name()),
+        })
+    }
+
+    fn type_name(&self) -> &'static str {
+        match self {
+            Raw::Boolean(_) => "boolean",
+            Raw::Integer(_) | Raw::Number(_) => "number",
+            Raw::String(_) => "string",
+            Raw::Other(name) => name,
+        }
+    }
+}
+
+struct Declared {
+    kind: OptType,
+    values: Option<Vec<OptValue>>,
+    default: OptValue,
+    value: OptValue,
+    desc: Option<String>,
+}
+
+impl Declared {
+    fn validate(&self, raw: &Raw) -> Result<OptValue, String> {
+        let value = self.kind.accept(raw).ok_or_else(|| {
+            format!(
+                "expected a value of type {}, found {}",
+                self.kind.name(),
+                raw.type_name()
+            )
+        })?;
+        match &self.values {
+            Some(values) if !values.contains(&value) => {
+                Err("the value is not one of the allowed values".to_owned())
+            }
+            _ => Ok(value),
+        }
+    }
+}
+
+type Location = Option<(PathBuf, u32)>;
+
+struct Pending {
+    raw: Raw,
+    location: Location,
+    owner: Option<String>,
+}
+
+#[derive(Default)]
+pub(crate) struct Store {
+    options: Options,
+    declared: BTreeMap<String, Declared>,
+    pending: BTreeMap<String, Pending>,
+}
+
+fn store(lua: &Lua) -> mlua::AppDataRefMut<'_, Store> {
+    lua.app_data_mut::<Store>()
+        .expect("options are installed with the runtime")
+}
+
+pub(crate) fn current(lua: &Lua) -> Options {
+    store(lua).options.clone()
+}
+
+pub(crate) fn merge(lua: &Lua, patch: OptionsPatch) {
+    store(lua).options.merge(patch);
+}
+
+pub(crate) fn patch(lua: &Lua, name: &str, value: Value) -> Result<OptionsPatch, String> {
+    let single = lua.create_table().map_err(|error| error.to_string())?;
+    single.set(name, value).map_err(|error| error.to_string())?;
+    lua.from_value(Value::Table(single))
+        .map_err(|error| match error {
+            mlua::Error::DeserializeError(message) => message,
+            other => other.to_string(),
+        })
+}
+
+pub(crate) fn invalid(name: &str, reason: &str) -> String {
+    format!("invalid value for option `{name}`: {reason}")
+}
+
+fn report(lua: &Lua, location: Location, owner: Option<String>, message: String) {
+    guard::push(
+        lua,
+        ConfigError {
+            plugin: owner,
+            location,
+            message,
+        },
+    );
+}
+
+pub(crate) fn install(lua: &Lua, gband: &Table) -> mlua::Result<()> {
+    lua.set_app_data(Store::default());
+    let declare = lua.create_function(declare)?;
+    let list = lua.create_function(list)?;
+    let opt = lua.create_table()?;
+    let meta = lua.create_table()?;
+    meta.set(
+        "__index",
+        lua.create_function(
+            move |lua, (_, name): (Value, Value)| -> mlua::Result<Value> {
+                let Value::String(name) = name else {
+                    return Ok(Value::Nil);
+                };
+                let name = name.to_str()?.to_owned();
+                match name.as_str() {
+                    "declare" => return Ok(Value::Function(declare.clone())),
+                    "list" => return Ok(Value::Function(list.clone())),
+                    _ => {}
+                }
+                let store = store(lua);
+                if NAMES.contains(&name.as_str()) {
+                    return store.options.get(lua, &name);
+                }
+                match store.declared.get(&name) {
+                    Some(declared) => declared.value.clone().into_lua(lua),
+                    None => Ok(Value::Nil),
+                }
+            },
+        )?,
+    )?;
+    meta.set("__newindex", lua.create_function(assign)?)?;
+    opt.set_metatable(Some(meta))?;
+    gband.set("opt", opt)
+}
+
+fn assign(lua: &Lua, (_, name, value): (Value, Value, Value)) -> mlua::Result<()> {
+    let Value::String(name) = name else {
+        return Err(ConfigError::raise(lua, "option names must be strings"));
+    };
+    let name = name.to_str()?.to_owned();
+    if name == "declare" || name == "list" {
+        return Err(ConfigError::raise(
+            lua,
+            format!("gband.opt.{name} cannot be assigned"),
+        ));
+    }
+    require_loading(lua, "setting an option")?;
+    let location = caller(lua);
+    let owner = owner::current(lua);
+    if NAMES.contains(&name.as_str()) {
+        match patch(lua, &name, value) {
+            Ok(patch) => merge(lua, patch),
+            Err(reason) => {
+                store(lua).options.reset(&name);
+                report(lua, location, owner, invalid(&name, &reason));
+            }
+        }
+        return Ok(());
+    }
+    let raw = Raw::from_value(&value)?;
+    let mut store = store(lua);
+    match store.declared.get_mut(&name) {
+        Some(declared) => match declared.validate(&raw) {
+            Ok(value) => declared.value = value,
+            Err(reason) => {
+                declared.value = declared.default.clone();
+                drop(store);
+                report(lua, location, owner, invalid(&name, &reason));
+            }
+        },
+        None => {
+            store.pending.insert(
+                name,
+                Pending {
+                    raw,
+                    location,
+                    owner,
+                },
+            );
+        }
+    }
+    Ok(())
+}
+
+fn declare(lua: &Lua, (name, spec): (Value, Value)) -> mlua::Result<String> {
+    let name = match &name {
+        Value::String(name) if !name.as_bytes().is_empty() => name.to_str()?.to_owned(),
+        _ => {
+            return Err(ConfigError::raise(
+                lua,
+                "gband.opt.declare expects a name as a non-empty string",
+            ));
+        }
+    };
+    let full = owner::full_name(lua, &name)?;
+    let Value::Table(spec) = spec else {
+        return Err(ConfigError::raise(
+            lua,
+            format!("the declaration of `{full}` must be a table"),
+        ));
+    };
+    let kind = match spec.get::<Value>("type")? {
+        Value::String(kind) => OptType::parse(&kind.to_str()?),
+        _ => None,
+    }
+    .ok_or_else(|| {
+        ConfigError::raise(
+            lua,
+            format!("the option `{full}` must have the type boolean, integer, number or string"),
+        )
+    })?;
+    let values = match spec.get::<Value>("values")? {
+        Value::Nil => None,
+        Value::Table(list) => Some(
+            list.sequence_values::<Value>()
+                .map(|value| {
+                    let raw = Raw::from_value(&value?)?;
+                    kind.accept(&raw).ok_or_else(|| {
+                        ConfigError::raise(
+                            lua,
+                            format!(
+                                "the allowed values of `{full}` must be of type {}",
+                                kind.name()
+                            ),
+                        )
+                    })
+                })
+                .collect::<mlua::Result<Vec<_>>>()?,
+        ),
+        _ => {
+            return Err(ConfigError::raise(
+                lua,
+                format!("the allowed values of `{full}` must be a list"),
+            ));
+        }
+    };
+    let desc = match spec.get::<Value>("desc")? {
+        Value::Nil => None,
+        Value::String(desc) => Some(desc.to_str()?.to_owned()),
+        _ => {
+            return Err(ConfigError::raise(
+                lua,
+                format!("the description of `{full}` must be a string"),
+            ));
+        }
+    };
+    let raw = Raw::from_value(&spec.get::<Value>("default")?)?;
+    let mut declared = Declared {
+        kind,
+        values,
+        default: OptValue::Boolean(false),
+        value: OptValue::Boolean(false),
+        desc,
+    };
+    declared.default = declared.validate(&raw).map_err(|reason| {
+        ConfigError::raise(
+            lua,
+            format!("invalid default for option `{full}`: {reason}"),
+        )
+    })?;
+    declared.value = declared.default.clone();
+    if NAMES.contains(&full.as_str()) || store(lua).declared.contains_key(&full) {
+        return Err(ConfigError::raise(
+            lua,
+            format!("the option `{full}` is already declared"),
+        ));
+    }
+    require_loading(lua, "gband.opt.declare")?;
+    let mut store = store(lua);
+    let mut rejected = None;
+    if let Some(pending) = store.pending.remove(&full) {
+        match declared.validate(&pending.raw) {
+            Ok(value) => declared.value = value,
+            Err(reason) => rejected = Some((pending, reason)),
+        }
+    }
+    store.declared.insert(full.clone(), declared);
+    drop(store);
+    if let Some((pending, reason)) = rejected {
+        report(
+            lua,
+            pending.location,
+            pending.owner,
+            invalid(&full, &reason),
+        );
+    }
+    Ok(full)
+}
+
+fn list(lua: &Lua, (): ()) -> mlua::Result<Table> {
+    let defaults = Options::default();
+    let list = lua.create_table()?;
+    let store = store(lua);
+    let mut entries: Vec<(String, Table)> = Vec::new();
+    for (name, kind, desc) in BUILTIN {
+        let entry = lua.create_table()?;
+        entry.set("name", name)?;
+        entry.set("type", kind)?;
+        entry.set("default", defaults.get(lua, name)?)?;
+        entry.set("value", store.options.get(lua, name)?)?;
+        entry.set("desc", desc)?;
+        entries.push((name.to_owned(), entry));
+    }
+    for (name, declared) in &store.declared {
+        let entry = lua.create_table()?;
+        entry.set("name", name.as_str())?;
+        entry.set("type", declared.kind.name())?;
+        entry.set("default", declared.default.clone())?;
+        entry.set("value", declared.value.clone())?;
+        entry.set("desc", declared.desc.as_deref())?;
+        entries.push((name.clone(), entry));
+    }
+    entries.sort_by(|a, b| a.0.cmp(&b.0));
+    for (_, entry) in entries {
+        list.push(entry)?;
+    }
+    Ok(list)
+}
+
+pub(crate) fn finish(lua: &Lua) {
+    let pending = std::mem::take(&mut store(lua).pending);
+    for (name, pending) in pending {
+        report(
+            lua,
+            pending.location,
+            pending.owner,
+            format!("no option `{name}` is declared"),
+        );
+    }
+}
 
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]

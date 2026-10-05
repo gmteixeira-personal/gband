@@ -67,6 +67,21 @@ impl TestEnv {
         self.config_home().join("gband")
     }
 
+    pub fn data_home(&self) -> PathBuf {
+        self.root.join("data")
+    }
+
+    pub fn plugins_dir(&self) -> PathBuf {
+        self.data_home().join("gband").join("plugins")
+    }
+
+    pub fn write_plugin_file(&self, plugin: &str, relative: &str, source: &str) -> PathBuf {
+        let path = self.plugins_dir().join(plugin).join(relative);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, source).unwrap();
+        path
+    }
+
     pub fn user_lua(&self) -> PathBuf {
         self.config_dir().join("user").join("init.lua")
     }
@@ -136,6 +151,7 @@ impl TestEnv {
         command.env("XDG_STATE_HOME", self.state_home());
         command.env("XDG_RUNTIME_DIR", self.runtime_home());
         command.env("XDG_CONFIG_HOME", self.config_home());
+        command.env("XDG_DATA_HOME", self.data_home());
         command.env("SHELL", "/bin/sh");
         command.env("TERM", "xterm-256color");
         command.env("INPUTRC", "/dev/null");
@@ -151,6 +167,7 @@ impl TestEnv {
             .env("XDG_STATE_HOME", self.state_home())
             .env("XDG_RUNTIME_DIR", self.runtime_home())
             .env("XDG_CONFIG_HOME", self.config_home())
+            .env("XDG_DATA_HOME", self.data_home())
             .env("SHELL", "/bin/sh")
             .env("INPUTRC", "/dev/null")
             .env_remove("GBAND")

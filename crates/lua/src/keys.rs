@@ -46,6 +46,40 @@ pub fn parse_key(name: &str) -> Result<Key, KeyError> {
     }
 }
 
+pub fn key_name(key: Key) -> String {
+    let mut name = String::new();
+    if key.modifiers.ctrl {
+        name.push_str("ctrl+");
+    }
+    if key.modifiers.alt {
+        name.push_str("alt+");
+    }
+    if key.modifiers.shift && !matches!(key.code, KeyCode::Char(_)) {
+        name.push_str("shift+");
+    }
+    match key.code {
+        KeyCode::Char(' ') => name.push_str("space"),
+        KeyCode::Char(c) => name.push(c),
+        KeyCode::Enter => name.push_str("enter"),
+        KeyCode::Tab => name.push_str("tab"),
+        KeyCode::BackTab => name.push_str("backtab"),
+        KeyCode::Backspace => name.push_str("backspace"),
+        KeyCode::Escape => name.push_str("escape"),
+        KeyCode::Up => name.push_str("up"),
+        KeyCode::Down => name.push_str("down"),
+        KeyCode::Left => name.push_str("left"),
+        KeyCode::Right => name.push_str("right"),
+        KeyCode::Home => name.push_str("home"),
+        KeyCode::End => name.push_str("end"),
+        KeyCode::Insert => name.push_str("insert"),
+        KeyCode::Delete => name.push_str("delete"),
+        KeyCode::PageUp => name.push_str("pageup"),
+        KeyCode::PageDown => name.push_str("pagedown"),
+        KeyCode::F(number) => name.push_str(&format!("f{number}")),
+    }
+    name
+}
+
 fn named(name: &str) -> Option<KeyCode> {
     Some(match name {
         "enter" => KeyCode::Enter,
@@ -132,6 +166,26 @@ mod tests {
         assert_eq!(parse_key("f12"), key(KeyCode::F(12), Modifiers::NONE));
         assert_eq!(parse_key("F1"), key(KeyCode::F(1), Modifiers::NONE));
         assert_eq!(parse_key("shift+tab"), key(KeyCode::Tab, Modifiers::SHIFT));
+    }
+
+    #[test]
+    fn names_read_back_as_the_same_key() {
+        for name in [
+            "ctrl+space",
+            "ctrl+b",
+            "alt+h",
+            "D",
+            "+",
+            "ctrl+alt++",
+            "shift+tab",
+            "Ctrl+PageUp",
+            "f12",
+            "enter",
+        ] {
+            let key = parse_key(name).unwrap();
+            assert_eq!(parse_key(&key_name(key)), Ok(key), "{name}");
+        }
+        assert_eq!(key_name(parse_key("ctrl+space").unwrap()), "ctrl+space");
     }
 
     #[test]

@@ -11,7 +11,7 @@ use gband_core::layout::{
 };
 use gband_core::view::ViewAction;
 use gband_lua::keys::parse_key;
-use gband_lua::{Config, ConfigError, DEFAULTS};
+use gband_lua::{Config, ConfigError, DEFAULTS, LoadOptions, Locations};
 use gband_protocol::{ClientMessage, ServerMessage};
 use gband_test_support::{TIMEOUT, TestClient, TestServer};
 use tokio::time::timeout;
@@ -154,7 +154,11 @@ impl Scratch {
         let path = gband_lua::user_file(&self.0);
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(&path, source).unwrap();
-        gband_lua::load(&self.0)
+        let locations = Locations {
+            config: self.0.clone(),
+            plugins: None,
+        };
+        gband_lua::load(&locations, &LoadOptions::default())
     }
 }
 

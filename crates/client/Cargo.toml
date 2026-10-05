@@ -24,3 +24,4 @@ thiserror.workspace = true
 gband-server.workspace = true
 gband-test-support.workspace = true
 insta.workspace = true
+tracing-subscriber.workspace = true
