@@ -22,7 +22,7 @@ fn tile(pane: u32, x: u32, width: u16) -> Tile {
     }
 }
 
-fn targets(workspace: u32, workspaces: &[u32], camera: u32, tiles: Vec<Tile>) -> Targets {
+fn targets(workspace: u32, workspaces: &[u32], camera: i64, tiles: Vec<Tile>) -> Targets {
     Targets {
         workspace: WorkspaceId(workspace),
         workspaces: workspaces.iter().copied().map(WorkspaceId).collect(),
@@ -33,7 +33,7 @@ fn targets(workspace: u32, workspaces: &[u32], camera: u32, tiles: Vec<Tile>) ->
     }
 }
 
-fn settled(workspace: u32, workspaces: &[u32], camera: u32, tiles: Vec<Tile>) -> Presentation {
+fn settled(workspace: u32, workspaces: &[u32], camera: i64, tiles: Vec<Tile>) -> Presentation {
     let mut presentation = Presentation::new(Animations::On);
     presentation.update(
         Instant::now(),

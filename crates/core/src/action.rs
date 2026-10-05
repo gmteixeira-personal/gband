@@ -26,5 +26,6 @@ pub enum SessionCommand {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ClientAction {
     Detach,
+    SendPrefix,
     SendKey(Key),
 }

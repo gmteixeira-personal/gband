@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 use crate::action::SessionCommand;
-use crate::geometry::{Size, column_spans, tiles};
+use crate::geometry::{Size, Span, column_spans, tiles};
 use crate::layout::{Layout, Location, PaneId, SessionAction, Workspace, WorkspaceId};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -16,10 +16,19 @@ pub enum ViewAction {
     WorkspaceUp,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum CenterFocusedColumn {
+    #[default]
+    Never,
+    Always,
+    OnOverflow,
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 struct WorkspaceView {
     focus: Option<PaneId>,
-    camera: u32,
+    camera: i64,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -36,10 +45,15 @@ pub struct View {
     position: Location,
     recency: HashMap<PaneId, u64>,
     tick: u64,
+    policy: CenterFocusedColumn,
 }
 
 impl View {
     pub fn new(scene: Scene<'_>) -> Self {
+        Self::with_policy(scene, CenterFocusedColumn::default())
+    }
+
+    pub fn with_policy(scene: Scene<'_>, policy: CenterFocusedColumn) -> Self {
         let first = &scene.layout.workspaces()[0];
         let mut view = Self {
             workspace: first.id,
@@ -47,12 +61,17 @@ impl View {
             position: Location::default(),
             recency: HashMap::new(),
             tick: 0,
+            policy,
         };
         if let Some(pane) = first.first_pane() {
             view.set_focus(pane);
         }
         view.sync(scene);
         view
+    }
+
+    pub fn set_center_focused_column(&mut self, policy: CenterFocusedColumn) {
+        self.policy = policy;
     }
 
     pub fn workspace(&self) -> WorkspaceId {
@@ -65,7 +84,7 @@ impl View {
             .and_then(|state| state.focus)
     }
 
-    pub fn camera(&self) -> u32 {
+    pub fn camera(&self) -> i64 {
         self.workspaces
             .get(&self.workspace)
             .map_or(0, |state| state.camera)
@@ -77,6 +96,7 @@ impl View {
             SessionCommand::OpenPane => SessionAction::OpenPane {
                 workspace: self.workspace,
                 after: focused,
+                program: None,
             },
             SessionCommand::ClosePane => SessionAction::ClosePane(focused?),
             SessionCommand::ConsumeOrExpel(direction) => SessionAction::ConsumeOrExpel {
@@ -102,14 +122,14 @@ impl View {
             return Vec::new();
         };
         let left = self.camera();
-        let right = left + u32::from(scene.viewport.cols);
+        let right = left + i64::from(scene.viewport.cols);
         tiles(workspace, scene.area)
             .into_iter()
             .filter(|tile| {
                 tile.width > 0
                     && tile.height > 0
-                    && tile.x < right
-                    && tile.span().end() > left
+                    && i64::from(tile.x) < right
+                    && i64::from(tile.span().end()) > left
                     && tile.y < scene.viewport.rows
             })
             .map(|tile| tile.pane)
@@ -117,6 +137,7 @@ impl View {
     }
 
     pub fn apply(&mut self, action: ViewAction, scene: Scene<'_>) {
+        let previous = self.focused();
         let Some(index) = scene.layout.workspace_index(self.workspace) else {
             self.sync(scene);
             return;
@@ -148,19 +169,24 @@ impl View {
                 self.enter(target);
             }
         }
-        self.sync(scene);
+        self.settle(scene, previous);
     }
 
     pub fn focus_pane(&mut self, pane: PaneId, scene: Scene<'_>) {
         let Some(location) = scene.layout.locate(pane) else {
             return;
         };
+        let previous = self.focused();
         self.workspace = scene.layout.workspaces()[location.workspace].id;
         self.set_focus(pane);
-        self.sync(scene);
+        self.settle(scene, previous);
     }
 
     pub fn sync(&mut self, scene: Scene<'_>) {
+        self.settle(scene, None);
+    }
+
+    fn settle(&mut self, scene: Scene<'_>, previous: Option<PaneId>) {
         let layout = scene.layout;
         self.workspaces
             .retain(|&id, _| layout.workspace_index(id).is_some());
@@ -195,7 +221,7 @@ impl View {
                 row: 0,
             },
         };
-        self.follow(workspace, scene);
+        self.follow(workspace, scene, previous);
     }
 
     fn enter(&mut self, workspace: &Workspace) {
@@ -255,20 +281,59 @@ impl View {
         self.recency.insert(pane, self.tick);
     }
 
-    fn follow(&mut self, workspace: &Workspace, scene: Scene<'_>) {
+    fn follow(&mut self, workspace: &Workspace, scene: Scene<'_>, previous: Option<PaneId>) {
         let Some((column, _)) = self.focused().and_then(|pane| workspace.locate(pane)) else {
             return;
         };
-        let span = column_spans(workspace, scene.area)[column];
-        let viewport = u32::from(scene.viewport.cols);
+        let spans = column_spans(workspace, scene.area);
+        let span = spans[column];
+        let viewport = i64::from(scene.viewport.cols);
         let state = self.workspaces.entry(workspace.id).or_default();
-        if span.x >= state.camera && span.end() <= state.camera + viewport {
-            return;
-        }
-        state.camera = if u32::from(span.width) >= viewport || span.x < state.camera {
-            span.x
-        } else {
-            span.end() - viewport
+        let centre = match self.policy {
+            CenterFocusedColumn::Never => false,
+            CenterFocusedColumn::Always => true,
+            CenterFocusedColumn::OnOverflow => previous
+                .and_then(|pane| workspace.locate(pane))
+                .filter(|&(from, _)| from != column)
+                .is_some_and(|(from, _)| {
+                    let beside = if from < column {
+                        column - 1
+                    } else {
+                        column + 1
+                    };
+                    let (left, right) = (spans[column.min(beside)], spans[column.max(beside)]);
+                    i64::from(right.end()) - i64::from(left.x) > viewport
+                }),
         };
+        state.camera = if centre {
+            centred(span, viewport)
+        } else {
+            revealed(span, viewport, state.camera)
+        };
+    }
+}
+
+fn centred(span: Span, viewport: i64) -> i64 {
+    let width = i64::from(span.width);
+    let x = i64::from(span.x);
+    if width >= viewport {
+        x
+    } else {
+        x - (viewport - width) / 2
+    }
+}
+
+fn revealed(span: Span, viewport: i64, camera: i64) -> i64 {
+    let (x, end, width) = (
+        i64::from(span.x),
+        i64::from(span.end()),
+        i64::from(span.width),
+    );
+    if x >= camera && end <= camera + viewport {
+        camera
+    } else if width >= viewport || x < camera {
+        x
+    } else {
+        end - viewport
     }
 }

@@ -4,9 +4,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::Result;
+use anyhow::{Result, bail};
 use gband_core::geometry::{Size, tiles};
-use gband_core::layout::{Layout, PaneId, SessionAction, WorkspaceId};
+use gband_core::layout::{Layout, LayoutOptions, PaneId, Program, SessionAction, WorkspaceId};
 use gband_protocol::SessionName;
 use portable_pty::{ChildKiller, ExitStatus};
 use rustix::process::{Pid, Signal};
@@ -50,6 +50,7 @@ pub struct SessionConfig {
     pub socket: PathBuf,
     pub area: Size,
     pub events: Bus,
+    pub options: watch::Receiver<LayoutOptions>,
 }
 
 struct Live {
@@ -92,7 +93,7 @@ impl Session {
             settle_at: None,
         };
         let workspace = session.layout.workspaces()[0].id;
-        session.open(workspace, None)?;
+        session.open(workspace, None, None)?;
         session.publish();
         Ok(session)
     }
@@ -188,7 +189,11 @@ impl Session {
 
     fn act(&mut self, action: SessionAction, focus: Option<mpsc::UnboundedSender<PaneId>>) {
         match action {
-            SessionAction::OpenPane { workspace, after } => match self.open(workspace, after) {
+            SessionAction::OpenPane {
+                workspace,
+                after,
+                program,
+            } => match self.open(workspace, after, program.as_ref()) {
                 Ok(Some(pane)) => {
                     self.publish();
                     if let Some(focus) = focus {
@@ -200,7 +205,8 @@ impl Session {
             },
             SessionAction::ClosePane(pane) => self.close(pane),
             other => {
-                let events = self.layout.apply(other, self.area);
+                let options = self.config.options.borrow().clone();
+                let events = self.layout.apply(other, self.area, &options);
                 if !events.is_empty() {
                     self.config.events.layout(events);
                     self.publish();
@@ -209,17 +215,31 @@ impl Session {
         }
     }
 
-    fn open(&mut self, workspace: WorkspaceId, after: Option<PaneId>) -> Result<Option<PaneId>> {
+    fn open(
+        &mut self,
+        workspace: WorkspaceId,
+        after: Option<PaneId>,
+        program: Option<&Program>,
+    ) -> Result<Option<PaneId>> {
         if !self.layout.can_open(workspace, after) {
             return Ok(None);
         }
+        let argv = match program {
+            None => self.config.program.clone(),
+            Some(Program::CommandLine(line)) => {
+                vec![crate::user_shell(), "-c".into(), line.into()]
+            }
+            Some(Program::Argv(argv)) if argv.is_empty() => bail!("the argument list is empty"),
+            Some(Program::Argv(argv)) => argv.iter().map(OsString::from).collect(),
+        };
         let id = self.layout.allocate_pane();
-        let events = self.layout.open(id, workspace, after);
+        let options = self.config.options.borrow().clone();
+        let events = self.layout.open(id, workspace, after, &options);
         self.config.events.layout(events);
         let size = self.terminal_size(id).expect("an opened pane has a tile");
         let request = SpawnRequest {
             id,
-            program: &self.config.program,
+            program: &argv,
             cwd: &self.config.cwd,
             socket: &self.config.socket,
             session: &self.config.name,

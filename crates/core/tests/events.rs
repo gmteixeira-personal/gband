@@ -1,7 +1,8 @@
 use gband_core::event::LayoutEvent;
 use gband_core::geometry::Size;
 use gband_core::layout::{
-    Direction, Layout, PaneHeight, PaneId, Proportion, SessionAction, Step, Weight, WorkspaceId,
+    Direction, Layout, LayoutOptions, PaneHeight, PaneId, Proportion, SessionAction, Step, Weight,
+    WorkspaceId,
 };
 
 const AREA: Size = Size::new(80, 24);
@@ -13,7 +14,7 @@ fn open(
 ) -> (PaneId, Vec<LayoutEvent>) {
     let pane = layout.allocate_pane();
     let id = layout.workspaces()[workspace].id;
-    let events = layout.open(pane, id, after);
+    let events = layout.open(pane, id, after, &LayoutOptions::default());
     (pane, events)
 }
 
@@ -101,6 +102,7 @@ fn consume_into_the_left_neighbour_moves_one_pane() {
             direction: Direction::Left,
         },
         AREA,
+        &LayoutOptions::default(),
     );
     assert_eq!(
         events,
@@ -124,6 +126,7 @@ fn expel_to_the_right_moves_one_pane() {
             direction: Direction::Left,
         },
         AREA,
+        &LayoutOptions::default(),
     );
     let events = layout.apply(
         SessionAction::ConsumeOrExpel {
@@ -131,6 +134,7 @@ fn expel_to_the_right_moves_one_pane() {
             direction: Direction::Right,
         },
         AREA,
+        &LayoutOptions::default(),
     );
     assert_eq!(
         events,
@@ -152,7 +156,11 @@ fn consume_at_the_edge_produces_nothing() {
     for (pane, direction) in [(first, Direction::Left), (second, Direction::Right)] {
         assert!(
             layout
-                .apply(SessionAction::ConsumeOrExpel { pane, direction }, AREA)
+                .apply(
+                    SessionAction::ConsumeOrExpel { pane, direction },
+                    AREA,
+                    &LayoutOptions::default()
+                )
                 .is_empty()
         );
     }
@@ -174,19 +182,35 @@ fn cycling_and_toggling_widths_report_the_column() {
         }]
     };
     assert_eq!(
-        layout.apply(SessionAction::CycleWidth(second), AREA),
+        layout.apply(
+            SessionAction::CycleWidth(second),
+            AREA,
+            &LayoutOptions::default()
+        ),
         changed(Proportion::TWO_THIRDS, false)
     );
     assert_eq!(
-        layout.apply(SessionAction::CycleWidth(second), AREA),
+        layout.apply(
+            SessionAction::CycleWidth(second),
+            AREA,
+            &LayoutOptions::default()
+        ),
         changed(Proportion::ONE_THIRD, false)
     );
     assert_eq!(
-        layout.apply(SessionAction::ToggleFullWidth(second), AREA),
+        layout.apply(
+            SessionAction::ToggleFullWidth(second),
+            AREA,
+            &LayoutOptions::default()
+        ),
         changed(Proportion::ONE_THIRD, true)
     );
     assert_eq!(
-        layout.apply(SessionAction::ToggleFullWidth(second), AREA),
+        layout.apply(
+            SessionAction::ToggleFullWidth(second),
+            AREA,
+            &LayoutOptions::default()
+        ),
         changed(Proportion::ONE_THIRD, false)
     );
 }
@@ -199,12 +223,20 @@ fn actions_on_a_missing_pane_produce_nothing() {
     assert!(layout.remove(missing).is_empty());
     assert!(
         layout
-            .apply(SessionAction::CycleWidth(missing), AREA)
+            .apply(
+                SessionAction::CycleWidth(missing),
+                AREA,
+                &LayoutOptions::default()
+            )
             .is_empty()
     );
     assert!(
         layout
-            .apply(SessionAction::ToggleFullWidth(missing), AREA)
+            .apply(
+                SessionAction::ToggleFullWidth(missing),
+                AREA,
+                &LayoutOptions::default()
+            )
             .is_empty()
     );
 }
@@ -218,7 +250,7 @@ fn growing_a_column_width_reports_it_once() {
         step: Step::Grow,
     };
     assert_eq!(
-        layout.apply(grow, AREA),
+        layout.apply(grow, AREA, &LayoutOptions::default()),
         [LayoutEvent::ColumnWidthChanged {
             workspace: workspace(&layout, 0),
             column: 0,
@@ -231,9 +263,13 @@ fn growing_a_column_width_reports_it_once() {
         step: Step::Shrink,
     };
     for _ in 0..6 {
-        layout.apply(shrink, AREA);
+        layout.apply(shrink.clone(), AREA, &LayoutOptions::default());
     }
-    assert!(layout.apply(shrink, AREA).is_empty());
+    assert!(
+        layout
+            .apply(shrink.clone(), AREA, &LayoutOptions::default())
+            .is_empty()
+    );
 }
 
 fn second_column_stack() -> (Layout, PaneId, PaneId) {
@@ -247,6 +283,7 @@ fn second_column_stack() -> (Layout, PaneId, PaneId) {
             direction: Direction::Left,
         },
         AREA,
+        &LayoutOptions::default(),
     );
     (layout, top, bottom)
 }
@@ -261,6 +298,7 @@ fn growing_a_pane_height_reports_the_column() {
                 step: Step::Grow,
             },
             AREA,
+            &LayoutOptions::default()
         ),
         [LayoutEvent::PaneHeightsChanged {
             workspace: workspace(&layout, 0),
@@ -276,10 +314,18 @@ fn height_steps_at_the_limits_produce_nothing() {
         let (mut layout, top, _) = second_column_stack();
         let action = SessionAction::StepHeight { pane: top, step };
         for _ in 0..presses {
-            assert!(!layout.apply(action, AREA).is_empty());
+            assert!(
+                !layout
+                    .apply(action.clone(), AREA, &LayoutOptions::default())
+                    .is_empty()
+            );
         }
         let before = layout.clone();
-        assert!(layout.apply(action, AREA).is_empty());
+        assert!(
+            layout
+                .apply(action.clone(), AREA, &LayoutOptions::default())
+                .is_empty()
+        );
         assert_eq!(layout, before);
     }
 }

@@ -3,7 +3,9 @@ use std::path::PathBuf;
 
 use gband_core::geometry::Size;
 use gband_core::input::{Key, KeyCode, Modifiers};
-use gband_core::layout::{Direction, Layout, PaneHeight, PaneId, SessionAction, Step, Weight};
+use gband_core::layout::{
+    Direction, Layout, LayoutOptions, PaneHeight, PaneId, Program, SessionAction, Step, Weight,
+};
 use gband_protocol::{
     ClientMessage, Decoder, ExecutableId, Hello, HelloReply, PROTOCOL_VERSION, ServerMessage,
     SessionName, SessionSummary, encode,
@@ -157,10 +159,26 @@ fn session_actions_round_trip() {
         SessionAction::OpenPane {
             workspace,
             after: None,
+            program: None,
         },
         SessionAction::OpenPane {
             workspace,
             after: Some(PaneId(4)),
+            program: None,
+        },
+        SessionAction::OpenPane {
+            workspace,
+            after: Some(PaneId(2)),
+            program: Some(Program::Argv(vec![
+                "htop".to_owned(),
+                "-d".to_owned(),
+                "10".to_owned(),
+            ])),
+        },
+        SessionAction::OpenPane {
+            workspace,
+            after: None,
+            program: Some(Program::CommandLine("echo $GBAND_PANE".to_owned())),
         },
         SessionAction::ClosePane(PaneId(5)),
         SessionAction::ConsumeOrExpel {
@@ -198,20 +216,33 @@ fn layout_round_trips() {
     let second = layout.allocate_pane();
     let third = layout.allocate_pane();
     let w1 = layout.workspaces()[0].id;
-    layout.open(first, w1, None);
-    layout.open(second, w1, Some(first));
+    layout.open(first, w1, None, &LayoutOptions::default());
+    layout.open(second, w1, Some(first), &LayoutOptions::default());
     layout.apply(
         SessionAction::ConsumeOrExpel {
             pane: second,
             direction: Direction::Left,
         },
         AREA,
+        &LayoutOptions::default(),
     );
-    layout.apply(SessionAction::CycleWidth(first), AREA);
-    layout.apply(SessionAction::CycleWidth(first), AREA);
-    layout.apply(SessionAction::ToggleFullWidth(first), AREA);
+    layout.apply(
+        SessionAction::CycleWidth(first),
+        AREA,
+        &LayoutOptions::default(),
+    );
+    layout.apply(
+        SessionAction::CycleWidth(first),
+        AREA,
+        &LayoutOptions::default(),
+    );
+    layout.apply(
+        SessionAction::ToggleFullWidth(first),
+        AREA,
+        &LayoutOptions::default(),
+    );
     let w2 = layout.workspaces()[1].id;
-    layout.open(third, w2, None);
+    layout.open(third, w2, None, &LayoutOptions::default());
     assert_eq!(layout.workspaces().len(), 3);
     round_trip(ServerMessage::Layout {
         cols: 120,
@@ -225,25 +256,26 @@ fn heights_in_the_layout_round_trip() {
     let mut layout = Layout::new();
     let workspace = layout.workspaces()[0].id;
     let panes: Vec<PaneId> = (0..3).map(|_| layout.allocate_pane()).collect();
-    layout.open(panes[0], workspace, None);
+    layout.open(panes[0], workspace, None, &LayoutOptions::default());
     for pair in panes.windows(2) {
-        layout.open(pair[1], workspace, Some(pair[0]));
+        layout.open(pair[1], workspace, Some(pair[0]), &LayoutOptions::default());
         layout.apply(
             SessionAction::ConsumeOrExpel {
                 pane: pair[1],
                 direction: Direction::Left,
             },
             AREA,
+            &LayoutOptions::default(),
         );
     }
     let grow = |pane| SessionAction::StepHeight {
         pane,
         step: Step::Grow,
     };
-    layout.apply(grow(panes[1]), AREA);
-    layout.apply(grow(panes[0]), AREA);
+    layout.apply(grow(panes[1]), AREA, &LayoutOptions::default());
+    layout.apply(grow(panes[0]), AREA, &LayoutOptions::default());
     layout.remove(panes[2]);
-    layout.apply(grow(panes[0]), Size::new(80, 50));
+    layout.apply(grow(panes[0]), Size::new(80, 50), &LayoutOptions::default());
     assert_eq!(
         layout.workspaces()[0].columns[0].heights,
         [PaneHeight::Fixed(14), PaneHeight::Auto(Weight::new(10, 7))]

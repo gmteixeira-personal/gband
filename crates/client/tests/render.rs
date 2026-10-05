@@ -4,8 +4,8 @@ use std::time::Instant;
 use gband_client::animation::{Animations, Band, Drawn, Presentation, Targets};
 use gband_client::render::{Ribbon, draw_frame};
 use gband_core::geometry::{Size, tiles};
-use gband_core::layout::{Direction, Layout, PaneId, SessionAction, Step};
-use gband_core::view::{Scene, View, ViewAction};
+use gband_core::layout::{Direction, Layout, LayoutOptions, PaneId, SessionAction, Step};
+use gband_core::view::{CenterFocusedColumn, Scene, View, ViewAction};
 use gband_emulator::{Emulator, Grid};
 use insta::assert_snapshot;
 use ratatui::Terminal;
@@ -16,6 +16,7 @@ struct Fixture {
     area: Size,
     view: View,
     grids: HashMap<PaneId, Grid>,
+    banner: Option<String>,
 }
 
 impl Fixture {
@@ -25,7 +26,12 @@ impl Fixture {
         let mut panes = Vec::new();
         for _ in 0..columns {
             let pane = layout.allocate_pane();
-            layout.open(pane, workspace, panes.last().copied());
+            layout.open(
+                pane,
+                workspace,
+                panes.last().copied(),
+                &LayoutOptions::default(),
+            );
             panes.push(pane);
         }
         let view = View::new(Scene {
@@ -38,6 +44,7 @@ impl Fixture {
             area,
             view,
             grids: HashMap::new(),
+            banner: None,
         };
         fixture.reset_grids();
         (fixture, panes)
@@ -54,7 +61,8 @@ impl Fixture {
     }
 
     fn change(&mut self, action: SessionAction, viewport_cols: u16) {
-        self.layout.apply(action, self.area);
+        self.layout
+            .apply(action, self.area, &LayoutOptions::default());
         let scene = Scene {
             layout: &self.layout,
             area: self.area,
@@ -99,6 +107,7 @@ impl Fixture {
             view: &self.view,
             grids: &self.grids,
             drawn,
+            banner: self.banner.as_deref(),
         };
         terminal.draw(|frame| draw_frame(frame, &ribbon)).unwrap();
         let backend = terminal.backend();
@@ -276,7 +285,9 @@ fn workspace_switch_mid_slide() {
     let (mut fixture, panes) = Fixture::new(Size::new(60, 12), 1, 60);
     let below = fixture.layout.workspaces()[1].id;
     let pane = fixture.layout.allocate_pane();
-    fixture.layout.open(pane, below, None);
+    fixture
+        .layout
+        .open(pane, below, None, &LayoutOptions::default());
     fixture.reset_grids();
     fixture.write(panes[0], b"upper");
     fixture.write(pane, b"lower");
@@ -309,4 +320,30 @@ fn focused_tile_is_drawn_over_overlapping_tiles() {
     drawn.tiles.get_mut(&panes[1]).unwrap().x = 20;
     drawn.settled = false;
     assert_snapshot!(fixture.render_drawn(Size::new(80, 8), &drawn));
+}
+
+#[test]
+fn centred_first_column_leaves_the_strip_start_empty() {
+    let (mut fixture, panes) = Fixture::new(Size::new(80, 24), 1, 80);
+    fixture.view = View::with_policy(
+        Scene {
+            layout: &fixture.layout,
+            area: fixture.area,
+            viewport: Size::new(80, 24),
+        },
+        CenterFocusedColumn::Always,
+    );
+    fixture.write(panes[0], b"centred");
+    assert_eq!(fixture.view.camera(), -20);
+    assert_snapshot!(fixture.render(Size::new(80, 24)));
+}
+
+#[test]
+fn configuration_error_banner_covers_the_bottom_row() {
+    let (mut fixture, panes) = Fixture::new(Size::new(40, 6), 1, 40);
+    fixture.write(panes[0], b"$ ");
+    fixture.banner = Some(
+        "/home/u/.config/gband/init.lua:12: unexpected symbol near 'x'\nstack traceback".to_owned(),
+    );
+    assert_snapshot!(fixture.render(Size::new(40, 6)));
 }

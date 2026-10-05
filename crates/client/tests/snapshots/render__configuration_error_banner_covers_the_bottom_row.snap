@@ -1,0 +1,37 @@
+---
+source: crates/client/tests/render.rs
+expression: "fixture.render(Size::new(40, 6))"
+---
+Buffer {
+    area: Rect { x: 0, y: 0, width: 40, height: 6 },
+    content: [
+        "┌──────────────────┐                    ",
+        "│$                 │                    ",
+        "│                  │                    ",
+        "│                  │                    ",
+        "│                  │                    ",
+        "/home/u/.config/gband/init.lua:12: unexp",
+    ],
+    styles: [
+        x: 0, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 20, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 0, y: 1, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 1, y: 1, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 19, y: 1, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 20, y: 1, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 0, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 1, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 19, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 20, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 0, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 1, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 19, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 20, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 0, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 1, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 19, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 20, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 0, y: 5, fg: Red, bg: Reset, underline: Reset, modifier: REVERSED,
+    ]
+}
+cursor: Some(Position { x: 3, y: 1 })

@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use gband_core::geometry::Size;
 use gband_core::input::{Key, KeyCode};
-use gband_core::layout::{PaneId, SessionAction};
+use gband_core::layout::{LayoutOptions, PaneId, Proportion, SessionAction};
 use gband_protocol::ClientMessage;
 use gband_test_support::*;
 use tokio::time::Instant;
@@ -117,8 +117,9 @@ async fn concurrent_opens_give_every_client_the_same_layout() {
     let open = SessionAction::OpenPane {
         workspace,
         after: Some(pane),
+        program: None,
     };
-    first.act(open).await;
+    first.act(open.clone()).await;
     second.act(open).await;
     first.wait_until(|client| client.focus.len() == 1).await;
     second.wait_until(|client| client.focus.len() == 1).await;
@@ -274,4 +275,28 @@ async fn stacked_panes_share_the_height() {
         .await;
     stty_size(&mut client, first, "11 38").await;
     stty_size(&mut client, second, "10 38").await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn new_default_width_applies_to_columns_opened_after_it() {
+    let runtime_dir = runtime_dir("reload-width");
+    let (options, receiver) = tokio::sync::watch::channel(LayoutOptions::default());
+    let config = gband_server::ServerConfig {
+        options: receiver,
+        ..config(&runtime_dir, &["/bin/sh"])
+    };
+    let server = TestServer::start_with(runtime_dir, config).await;
+    let mut client = server.attach(80, 24).await;
+    let first = client.first();
+    options.send_replace(LayoutOptions {
+        default_width: Proportion::ONE_THIRD,
+        ..LayoutOptions::default()
+    });
+    let second = client.open_after(first).await;
+    let width = |client: &TestClient, pane: PaneId| {
+        let location = client.layout.locate(pane).unwrap();
+        client.layout.workspaces()[location.workspace].columns[location.column].width
+    };
+    assert_eq!(width(&client, first), Proportion::ONE_HALF);
+    assert_eq!(width(&client, second), Proportion::ONE_THIRD);
 }

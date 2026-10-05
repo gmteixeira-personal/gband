@@ -121,7 +121,7 @@ impl Spring {
 pub struct Targets {
     pub workspace: WorkspaceId,
     pub workspaces: Vec<WorkspaceId>,
-    pub camera: u32,
+    pub camera: i64,
     pub band: u16,
     pub tiles: Vec<Tile>,
     pub focused: Option<PaneId>,
@@ -327,7 +327,7 @@ impl Shown {
             workspaces: targets.workspaces.clone(),
             band: targets.band,
             focused: targets.focused,
-            camera: Spring::at_rest(f64::from(targets.camera), now),
+            camera: Spring::at_rest(targets.camera as f64, now),
             vertical: Spring::at_rest(targets.top(targets.workspace).unwrap_or(0.0), now),
             tiles: targets
                 .tiles
@@ -350,7 +350,7 @@ impl Shown {
             snap_vertical = true;
         }
         if targets.workspace == self.workspace {
-            self.camera.retarget(f64::from(targets.camera), now);
+            self.camera.retarget(targets.camera as f64, now);
             self.retarget_tiles(now, targets);
         } else {
             if !snap_vertical {
@@ -358,7 +358,7 @@ impl Shown {
             }
             self.leaving
                 .retain(|&(workspace, _)| workspace != targets.workspace);
-            self.camera = Spring::at_rest(f64::from(targets.camera), now);
+            self.camera = Spring::at_rest(targets.camera as f64, now);
             self.tiles.clear();
             self.retarget_tiles(now, targets);
         }

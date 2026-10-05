@@ -1,74 +1,52 @@
-use gband_core::action::{Action, ClientAction, SessionCommand};
-use gband_core::input::{Key, KeyCode, Modifiers};
-use gband_core::layout::{Direction, Step};
-use gband_core::view::ViewAction;
+use gband_core::input::{Key, KeyCode};
+use gband_lua::{Binding, Chord, Keys};
 
-pub const PREFIX: Key = Key {
-    code: KeyCode::Char('a'),
-    modifiers: Modifiers::CTRL,
-};
+pub struct Keymap {
+    pub prefix: Key,
+    pub direct: Vec<(Key, Binding)>,
+    pub prefixed: Vec<(Chord, Binding)>,
+}
 
-const fn char_key(c: char) -> Key {
-    Key {
-        code: KeyCode::Char(c),
-        modifiers: Modifiers::NONE,
+impl Keymap {
+    pub fn new(prefix: Key, bindings: Vec<(Keys, Binding)>) -> Self {
+        let mut keymap = Self {
+            prefix,
+            direct: Vec::new(),
+            prefixed: Vec::new(),
+        };
+        for (keys, binding) in bindings {
+            match keys {
+                Keys::Direct(key) => keymap.direct.push((key, binding)),
+                Keys::Prefixed(chord) => keymap.prefixed.push((chord, binding)),
+            }
+        }
+        keymap
+    }
+
+    fn chord_key(&self, chord: Chord) -> Key {
+        match chord {
+            Chord::Key(key) => key,
+            Chord::Prefix => self.prefix,
+        }
     }
 }
 
-pub const BINDINGS: &[(Key, Action)] = &[
-    (char_key('h'), Action::View(ViewAction::FocusLeft)),
-    (char_key('l'), Action::View(ViewAction::FocusRight)),
-    (char_key('j'), Action::View(ViewAction::FocusDown)),
-    (char_key('k'), Action::View(ViewAction::FocusUp)),
-    (char_key('u'), Action::View(ViewAction::WorkspaceDown)),
-    (char_key('i'), Action::View(ViewAction::WorkspaceUp)),
-    (
-        Key {
-            code: KeyCode::Enter,
-            modifiers: Modifiers::NONE,
-        },
-        Action::Session(SessionCommand::OpenPane),
-    ),
-    (char_key('q'), Action::Session(SessionCommand::ClosePane)),
-    (
-        char_key('['),
-        Action::Session(SessionCommand::ConsumeOrExpel(Direction::Left)),
-    ),
-    (
-        char_key(']'),
-        Action::Session(SessionCommand::ConsumeOrExpel(Direction::Right)),
-    ),
-    (char_key('r'), Action::Session(SessionCommand::CycleWidth)),
-    (
-        char_key('f'),
-        Action::Session(SessionCommand::ToggleFullWidth),
-    ),
-    (
-        char_key('-'),
-        Action::Session(SessionCommand::StepWidth(Step::Shrink)),
-    ),
-    (
-        char_key('='),
-        Action::Session(SessionCommand::StepWidth(Step::Grow)),
-    ),
-    (
-        char_key('_'),
-        Action::Session(SessionCommand::StepHeight(Step::Shrink)),
-    ),
-    (
-        char_key('+'),
-        Action::Session(SessionCommand::StepHeight(Step::Grow)),
-    ),
-    (char_key('R'), Action::Session(SessionCommand::ResetHeight)),
-    (char_key('D'), Action::Client(ClientAction::Detach)),
-    (PREFIX, Action::Client(ClientAction::SendKey(PREFIX))),
-];
-
-#[derive(Debug, PartialEq, Eq)]
-pub enum Command {
+#[derive(Debug)]
+pub enum Command<'a> {
     Send(Key),
-    Run(Action),
+    Run(&'a Binding),
     Discard,
+}
+
+impl PartialEq for Command<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Command::Send(a), Command::Send(b)) => a == b,
+            (Command::Run(a), Command::Run(b)) => std::ptr::eq(*a, *b),
+            (Command::Discard, Command::Discard) => true,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug, Default)]
@@ -77,18 +55,26 @@ pub struct Leader {
 }
 
 impl Leader {
-    pub fn handle(&mut self, key: Key) -> Command {
-        if !std::mem::take(&mut self.after_prefix) {
-            if matches(PREFIX, key) {
-                self.after_prefix = true;
-                return Command::Discard;
-            }
-            return Command::Send(key);
+    pub fn handle<'a>(&mut self, keymap: &'a Keymap, key: Key) -> Command<'a> {
+        if std::mem::take(&mut self.after_prefix) {
+            return keymap
+                .prefixed
+                .iter()
+                .find(|&&(chord, _)| matches(keymap.chord_key(chord), key))
+                .map_or(Command::Discard, |(_, binding)| Command::Run(binding));
         }
-        BINDINGS
-            .iter()
-            .find(|(bound, _)| matches(*bound, key))
-            .map_or(Command::Discard, |&(_, action)| Command::Run(action))
+        if let Some((_, binding)) = keymap.direct.iter().find(|(bound, _)| matches(*bound, key)) {
+            return Command::Run(binding);
+        }
+        if !keymap.prefixed.is_empty() && matches(keymap.prefix, key) {
+            self.after_prefix = true;
+            return Command::Discard;
+        }
+        Command::Send(key)
+    }
+
+    pub fn reset(&mut self) {
+        self.after_prefix = false;
     }
 }
 
@@ -105,23 +91,58 @@ fn matches(bound: Key, key: Key) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use gband_core::action::{Action, ClientAction, SessionCommand};
+    use gband_core::input::Modifiers;
+    use gband_core::layout::{Direction, Step};
+    use gband_core::view::ViewAction;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use gband_lua::keys::parse_key;
+
     use super::*;
 
-    fn after_prefix(key: Key) -> Command {
-        let mut leader = Leader::default();
-        assert_eq!(leader.handle(PREFIX), Command::Discard);
-        leader.handle(key)
+    fn defaults() -> Keymap {
+        let config = gband_lua::defaults();
+        Keymap::new(config.options.prefix, config.bindings)
     }
 
-    #[test]
-    fn every_table_entry_runs_after_the_prefix() {
-        for &(key, action) in BINDINGS {
-            assert_eq!(after_prefix(key), Command::Run(action), "{key:?}");
+    fn configured(source: &str) -> Keymap {
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
+        let path = std::env::temp_dir().join(format!(
+            "gband-client-bindings-{}-{}.lua",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::write(&path, source).unwrap();
+        let config = gband_lua::load(&path).unwrap();
+        let _ = std::fs::remove_file(&path);
+        Keymap::new(config.options.prefix, config.bindings)
+    }
+
+    fn key(name: &str) -> Key {
+        parse_key(name).unwrap()
+    }
+
+    fn char_key(c: char) -> Key {
+        Key::plain(KeyCode::Char(c))
+    }
+
+    fn ran(command: Command<'_>) -> Option<Action> {
+        match command {
+            Command::Run(Binding::Action(action)) => Some(*action),
+            _ => None,
         }
     }
 
+    fn after_prefix(keymap: &Keymap, key: Key) -> Option<Action> {
+        let mut leader = Leader::default();
+        assert_eq!(leader.handle(keymap, keymap.prefix), Command::Discard);
+        ran(leader.handle(keymap, key))
+    }
+
     #[test]
-    fn table_keys_follow_the_spec() {
+    fn default_keys_follow_the_spec() {
+        let keymap = defaults();
         let expected = [
             ('h', Action::View(ViewAction::FocusLeft)),
             ('l', Action::View(ViewAction::FocusRight)),
@@ -151,125 +172,166 @@ mod tests {
             ),
             ('+', Action::Session(SessionCommand::StepHeight(Step::Grow))),
             ('R', Action::Session(SessionCommand::ResetHeight)),
+            ('D', Action::Client(ClientAction::Detach)),
         ];
         for (c, action) in expected {
-            assert_eq!(after_prefix(char_key(c)), Command::Run(action), "{c}");
+            assert_eq!(after_prefix(&keymap, char_key(c)), Some(action), "{c}");
         }
         assert_eq!(
-            after_prefix(Key::plain(KeyCode::Enter)),
-            Command::Run(Action::Session(SessionCommand::OpenPane))
+            after_prefix(&keymap, Key::plain(KeyCode::Enter)),
+            Some(Action::Session(SessionCommand::OpenPane))
         );
+        assert!(keymap.direct.is_empty());
+        assert_eq!(keymap.prefixed.len(), expected.len() + 2);
     }
 
     #[test]
-    fn every_table_entry_names_an_action_of_its_kind() {
-        #[derive(Debug, PartialEq)]
-        enum Kind {
-            View,
-            Session,
-            Client,
-        }
-        let kind = |action: &Action| match action {
-            Action::View(_) => Kind::View,
-            Action::Session(_) => Kind::Session,
-            Action::Client(_) => Kind::Client,
-        };
-        let expected = [
-            (char_key('h'), Kind::View),
-            (char_key('l'), Kind::View),
-            (char_key('j'), Kind::View),
-            (char_key('k'), Kind::View),
-            (char_key('u'), Kind::View),
-            (char_key('i'), Kind::View),
-            (Key::plain(KeyCode::Enter), Kind::Session),
-            (char_key('q'), Kind::Session),
-            (char_key('['), Kind::Session),
-            (char_key(']'), Kind::Session),
-            (char_key('r'), Kind::Session),
-            (char_key('f'), Kind::Session),
-            (char_key('-'), Kind::Session),
-            (char_key('='), Kind::Session),
-            (char_key('_'), Kind::Session),
-            (char_key('+'), Kind::Session),
-            (char_key('R'), Kind::Session),
-            (char_key('D'), Kind::Client),
-            (PREFIX, Kind::Client),
-        ];
-        assert_eq!(BINDINGS.len(), expected.len());
-        for (key, expected) in expected {
-            let (_, action) = BINDINGS
-                .iter()
-                .find(|(bound, _)| *bound == key)
-                .unwrap_or_else(|| panic!("{key:?} is not bound"));
-            assert_eq!(kind(action), expected, "{key:?}");
+    fn every_default_binding_names_an_action() {
+        let keymap = defaults();
+        for (chord, binding) in &keymap.prefixed {
+            assert!(matches!(binding, Binding::Action(_)), "{chord:?}");
         }
     }
 
     #[test]
     fn shift_d_detaches_with_or_without_the_shift_flag() {
+        let keymap = defaults();
+        let detach = Some(Action::Client(ClientAction::Detach));
         assert_eq!(
-            after_prefix(Key::new(KeyCode::Char('D'), Modifiers::SHIFT)),
-            Command::Run(Action::Client(ClientAction::Detach))
+            after_prefix(&keymap, Key::new(KeyCode::Char('D'), Modifiers::SHIFT)),
+            detach
         );
-        assert_eq!(
-            after_prefix(char_key('D')),
-            Command::Run(Action::Client(ClientAction::Detach))
-        );
+        assert_eq!(after_prefix(&keymap, char_key('D')), detach);
     }
 
     #[test]
     fn plus_grows_the_height_with_or_without_the_shift_flag() {
-        let grow = Command::Run(Action::Session(SessionCommand::StepHeight(Step::Grow)));
+        let keymap = defaults();
+        let grow = Some(Action::Session(SessionCommand::StepHeight(Step::Grow)));
         assert_eq!(
-            after_prefix(Key::new(KeyCode::Char('+'), Modifiers::SHIFT)),
+            after_prefix(&keymap, Key::new(KeyCode::Char('+'), Modifiers::SHIFT)),
             grow
         );
-        assert_eq!(after_prefix(char_key('+')), grow);
+        assert_eq!(after_prefix(&keymap, char_key('+')), grow);
     }
 
     #[test]
     fn lowercase_d_is_discarded() {
-        assert_eq!(after_prefix(char_key('d')), Command::Discard);
+        let keymap = defaults();
+        let mut leader = Leader::default();
+        leader.handle(&keymap, keymap.prefix);
+        assert_eq!(leader.handle(&keymap, char_key('d')), Command::Discard);
     }
 
     #[test]
     fn prefix_twice_sends_one_prefix() {
+        let keymap = defaults();
         let mut leader = Leader::default();
-        assert_eq!(leader.handle(PREFIX), Command::Discard);
+        assert_eq!(leader.handle(&keymap, keymap.prefix), Command::Discard);
         assert_eq!(
-            leader.handle(PREFIX),
-            Command::Run(Action::Client(ClientAction::SendKey(PREFIX)))
+            ran(leader.handle(&keymap, keymap.prefix)),
+            Some(Action::Client(ClientAction::SendPrefix))
         );
-        assert_eq!(leader.handle(char_key('h')), Command::Send(char_key('h')));
+        assert_eq!(
+            leader.handle(&keymap, char_key('h')),
+            Command::Send(char_key('h'))
+        );
     }
 
     #[test]
     fn unbound_key_after_the_prefix_is_discarded() {
+        let keymap = defaults();
         let mut leader = Leader::default();
-        assert_eq!(leader.handle(PREFIX), Command::Discard);
-        assert_eq!(leader.handle(char_key('x')), Command::Discard);
-        assert_eq!(leader.handle(char_key('x')), Command::Send(char_key('x')));
+        assert_eq!(leader.handle(&keymap, keymap.prefix), Command::Discard);
+        assert_eq!(leader.handle(&keymap, char_key('x')), Command::Discard);
+        assert_eq!(
+            leader.handle(&keymap, char_key('x')),
+            Command::Send(char_key('x'))
+        );
     }
 
     #[test]
     fn modifiers_other_than_shift_must_match() {
-        assert_eq!(
-            after_prefix(Key::new(KeyCode::Char('h'), Modifiers::ALT)),
-            Command::Discard
-        );
-        assert_eq!(
-            after_prefix(Key::new(KeyCode::Char('q'), Modifiers::CTRL)),
-            Command::Discard
-        );
+        let keymap = defaults();
+        assert_eq!(after_prefix(&keymap, key("alt+h")), None);
+        assert_eq!(after_prefix(&keymap, key("ctrl+q")), None);
     }
 
     #[test]
     fn keys_without_the_prefix_pass_through() {
+        let keymap = defaults();
         let mut leader = Leader::default();
-        let up = Key::plain(KeyCode::Up);
-        let ctrl_b = Key::new(KeyCode::Char('b'), Modifiers::CTRL);
-        assert_eq!(leader.handle(char_key('h')), Command::Send(char_key('h')));
-        assert_eq!(leader.handle(up), Command::Send(up));
-        assert_eq!(leader.handle(ctrl_b), Command::Send(ctrl_b));
+        for pressed in [char_key('h'), Key::plain(KeyCode::Up), key("ctrl+b")] {
+            assert_eq!(leader.handle(&keymap, pressed), Command::Send(pressed));
+        }
+    }
+
+    #[test]
+    fn direct_binding_acts_without_the_prefix() {
+        let keymap = configured("gband.bind('alt+h', gband.action.focus_column_left)");
+        let mut leader = Leader::default();
+        assert_eq!(
+            ran(leader.handle(&keymap, key("alt+h"))),
+            Some(Action::View(ViewAction::FocusLeft))
+        );
+    }
+
+    #[test]
+    fn unbound_alt_key_reaches_the_pane() {
+        let keymap = configured("gband.bind('alt+h', gband.action.focus_column_left)");
+        let mut leader = Leader::default();
+        assert_eq!(
+            leader.handle(&keymap, key("alt+x")),
+            Command::Send(key("alt+x"))
+        );
+    }
+
+    #[test]
+    fn another_prefix_key() {
+        let keymap = configured("gband.set { prefix = 'ctrl+b' }");
+        let mut leader = Leader::default();
+        assert_eq!(leader.handle(&keymap, key("ctrl+b")), Command::Discard);
+        assert_eq!(
+            ran(leader.handle(&keymap, char_key('q'))),
+            Some(Action::Session(SessionCommand::ClosePane))
+        );
+        assert_eq!(
+            leader.handle(&keymap, key("ctrl+a")),
+            Command::Send(key("ctrl+a"))
+        );
+        assert_eq!(leader.handle(&keymap, key("ctrl+b")), Command::Discard);
+        assert_eq!(
+            ran(leader.handle(&keymap, key("ctrl+b"))),
+            Some(Action::Client(ClientAction::SendPrefix))
+        );
+    }
+
+    #[test]
+    fn no_prefix_binding_left() {
+        let keymap = configured(
+            "for _, key in ipairs({ 'h', 'l', 'j', 'k', 'u', 'i', 'enter', 'q', '[', ']', 'r', 'f', '-', '=', '_', '+', 'R', 'D', 'prefix' }) do gband.unbind('prefix ' .. key) end",
+        );
+        assert!(keymap.prefixed.is_empty());
+        let mut leader = Leader::default();
+        assert_eq!(
+            leader.handle(&keymap, key("ctrl+a")),
+            Command::Send(key("ctrl+a"))
+        );
+        assert_eq!(
+            leader.handle(&keymap, char_key('h')),
+            Command::Send(char_key('h'))
+        );
+    }
+
+    #[test]
+    fn reset_ends_a_prefix_sequence() {
+        let keymap = defaults();
+        let mut leader = Leader::default();
+        assert_eq!(leader.handle(&keymap, keymap.prefix), Command::Discard);
+        leader.reset();
+        assert_eq!(
+            leader.handle(&keymap, char_key('q')),
+            Command::Send(char_key('q'))
+        );
     }
 }

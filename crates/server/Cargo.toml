@@ -10,9 +10,7 @@ gband-protocol.workspace = true
 gband-emulator.workspace = true
 portable-pty.workspace = true
 tokio = { workspace = true, features = ["full"] }
-mlua.workspace = true
 rustix.workspace = true
-notify.workspace = true
 serde.workspace = true
 anyhow.workspace = true
 tracing.workspace = true

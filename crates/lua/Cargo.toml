@@ -1,0 +1,13 @@
+[package]
+name = "gband-lua"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+gband-core.workspace = true
+mlua.workspace = true
+serde.workspace = true
+notify.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
