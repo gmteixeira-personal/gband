@@ -22,7 +22,7 @@ Defines how the client's Lua runtime finds, loads and isolates plugins: the runt
 - **THEN** `/opt/hello/plugin/hello.lua` is sourced after `user/init.lua`
 
 ### Requirement: Module lookup
-`require(name)` SHALL look for the module in each runtimepath entry in order, before Lua's own search path: a name `a.b` SHALL be found at `lua/a/b.lua`, then at `lua/a/b/init.lua`, in each entry. The first file found SHALL be loaded, and errors in it SHALL name its path and line.
+`require(name)` SHALL look for the module in each runtimepath entry in order, before Lua's own search path: a name `a.b` SHALL be found at `lua/a/b.lua`, then at `lua/a/b/init.lua`, in each entry. When no entry holds the module, `require` SHALL look among the modules bundled with gband, which the status-line capability lists, and only then in Lua's own search path. The first file found SHALL be loaded, and errors in it SHALL name its path and line. Errors in a bundled module SHALL name its path under `gband/`, such as `gband/statusline/band.lua`.
 
 #### Scenario: Module from a plugin directory
 - **WHEN** `/tmp/data/gband/plugins/hello/lua/hello/init.lua` exists and `user/init.lua` calls `require("hello")`
@@ -35,6 +35,14 @@ Defines how the client's Lua runtime finds, loads and isolates plugins: the runt
 #### Scenario: Submodule
 - **WHEN** a runtimepath entry holds `lua/hello/keys.lua`
 - **THEN** `require("hello.keys")` loads it
+
+#### Scenario: Bundled module
+- **WHEN** no runtimepath entry holds `lua/gband/statusline/band.lua`
+- **THEN** `require("gband.statusline.band")` loads the bundled module
+
+#### Scenario: Bundled module shadowed
+- **WHEN** `user/lua/gband/statusline/band.lua` exists
+- **THEN** `require("gband.statusline.band")` loads `user/lua/gband/statusline/band.lua`
 
 ### Requirement: Plugin files
 After the init file returns, loading SHALL source, for each runtimepath entry in order, every file matching `plugin/*.lua` in ascending byte order of their names, then every file matching `plugin/client/*.lua` in the same order. Files in `plugin/server/`, in any other subdirectory of `plugin`, or not ending in `.lua` SHALL NOT be sourced. `plugin/server/` SHALL be reserved for a server runtime. Each file SHALL be sourced once per load.
@@ -111,7 +119,7 @@ A plugin error while a callback runs after loading SHALL be reported, and SHALL 
 #### Scenario: Setup error
 - **WHEN** the plugin `broken` registers the action `broken.go`, binds `alt+b` to it, then raises an error on line 6 of its file in `setup`
 - **THEN** the client starts with the configuration's other bindings and options
-- **AND** the banner shows a plugin error naming `broken`, its file and line 6
+- **AND** the client shows a plugin error naming `broken`, its file and line 6, in the status line's error item
 - **AND** Alt+B does nothing
 
 #### Scenario: Error in a plugin file

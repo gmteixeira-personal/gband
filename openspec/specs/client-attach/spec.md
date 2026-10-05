@@ -135,7 +135,7 @@ A release build, and a debug build that does not replace, SHALL attach to the se
 - **AND** it exits with status 1 without changing the terminal
 
 ### Requirement: Send input
-The client SHALL send each key press and repeat that the key bindings do not consume to the server as a key naming the focused pane, each paste as a paste naming the focused pane, and each change of its terminal's size as a resize. Keys and pastes SHALL be dropped while no pane is focused. Keys the input-encoding capability cannot represent SHALL be dropped. On attach, the client SHALL report its terminal size.
+The client SHALL send each key press and repeat that the key bindings do not consume to the server as a key naming the focused pane, each paste as a paste naming the focused pane, and each change of its reported size, as "Ribbon area" defines it, as a resize carrying the reported size. Keys and pastes SHALL be dropped while no pane is focused. Keys the input-encoding capability cannot represent SHALL be dropped. On attach, the client SHALL report its reported size as its terminal size.
 
 #### Scenario: Typing runs a command
 - **WHEN** the user types `echo hi` and Enter
@@ -149,6 +149,10 @@ The client SHALL send each key press and repeat that the key bindings do not con
 #### Scenario: Resize reaches the program
 - **WHEN** the only pane sits in a column of width 1/2, the user resizes the terminal to 70 columns and runs `tput cols`
 - **THEN** the pane prints `33`
+
+#### Scenario: Height excludes the status line
+- **WHEN** the client's terminal is 80×24, the status line takes one row, and the only pane runs `tput lines`
+- **THEN** the pane prints `21`
 
 ### Requirement: Leaving the client
 Whenever the client exits after taking the terminal, it SHALL first leave the alternate screen, disable raw mode and bracketed paste, and show the cursor. It SHALL then print one line to standard output, followed by the note for a server from a different build when one applies, and exit as follows:
@@ -172,36 +176,68 @@ Whenever the client exits after taking the terminal, it SHALL first leave the al
 - **WHEN** the server is killed with SIGKILL while a client is attached
 - **THEN** the client restores the terminal, prints `[lost server]` and exits with status 1
 
-### Requirement: Present the ribbon
-After the handshake, the client SHALL take the terminal full screen in raw mode with bracketed paste enabled. It SHALL keep its own grid of every pane, as the wire-protocol capability defines, and its own view, as the layout-view capability defines. It SHALL draw only the viewed band, except during a band switch, when it SHALL draw the bands the animations capability places on screen. While the configuration capability shows a configuration error, the client SHALL draw that error over the bottom row, after the tiles.
+### Requirement: Ribbon area
+The client's ribbon area SHALL be the rows of its terminal that the status line leaves, as the status-line capability places it, at the terminal's full width. The size of the ribbon area SHALL be the client's reported size. Wherever the layout-view and animations capabilities speak of the client's terminal, its size or its top row, they SHALL mean the ribbon area, its size and its top row. The client's view SHALL use the ribbon area as its viewport, so the camera, the shown panes and the drawn bands follow the ribbon area, not the terminal.
 
-Each pane SHALL be drawn in its tile, as the layout capability's tile geometry gives it for the screen area in the latest layout. A tile SHALL be drawn at its strip position less the viewed band's camera position, from the terminal's top row. While an animation runs, the tile's position and size, the camera and the band's top row SHALL be the drawn values the animations capability defines. At rest they equal the values above. Each tile SHALL show a one-cell border around the pane's grid, which is drawn from its top-left corner. The focused pane's border SHALL be drawn in a style distinct from the other borders.
+The reported size SHALL change when the terminal changes size, and when a successful reload changes `statusline_position` or `statusline_height` so that the ribbon area changes. Every change of the reported size SHALL be handled as a change of the terminal's size: the client SHALL report the new size to the server, as "Send input" defines, and its drawn state SHALL snap, as the animations capability defines for a terminal resize.
+
+#### Scenario: Status line at the bottom
+- **WHEN** the client's terminal is 80×24 and the status line takes its bottom row
+- **THEN** the client reports the size 80×23
+
+#### Scenario: Status line off
+- **WHEN** the client's terminal is 80×24 and `statusline_position` is `"off"`
+- **THEN** the client reports the size 80×24
+
+#### Scenario: Turning the status line off
+- **WHEN** the client's 80×24 terminal sets the screen area, the status line takes the bottom row, the only pane sits in a column of width 1/2, and the user sets `statusline_position` to `"off"` in `user/init.lua`
+- **THEN** after the reload the client reports 80×24, and the pane's tile is 40×24
+- **AND** `tput lines` in the pane prints `22`
+
+#### Scenario: Moving the status line
+- **WHEN** the status line takes the bottom row and the user sets `statusline_position` to `"top"` in `user/init.lua`
+- **THEN** after the reload the client reports the same size as before
+- **AND** the ribbon is drawn from row 1, and the status line on row 0
+
+### Requirement: Present the ribbon
+After the handshake, the client SHALL take the terminal full screen in raw mode with bracketed paste enabled. It SHALL keep its own grid of every pane, as the wire-protocol capability defines, and its own view, as the layout-view capability defines. It SHALL draw only the viewed band, except during a band switch, when it SHALL draw the bands the animations capability places on screen. It SHALL draw the ribbon in the ribbon area and the status line in the rows the status-line capability gives it. While the configuration capability shows a configuration error and no status line is drawn, the client SHALL draw that error over the ribbon area's bottom row, after the tiles.
+
+Each pane SHALL be drawn in its tile, as the layout capability's tile geometry gives it for the screen area in the latest layout. A tile SHALL be drawn at its strip position less the viewed band's camera position, from the ribbon area's top row. While an animation runs, the tile's position and size, the camera and the band's top row SHALL be the drawn values the animations capability defines. At rest they equal the values above. Each tile SHALL show a one-cell border around the pane's grid, which is drawn from its top-left corner. The focused pane's border SHALL be drawn in a style distinct from the other borders.
 
 A pane's grid MAY differ in size from its tile's interior while the server has not yet resized the pane. The border SHALL still follow the tile, at its drawn size while an animation runs. A grid larger than the interior SHALL be cut at the interior's right and bottom edges, and interior cells the grid does not cover SHALL be blank.
 
-A tile that crosses the terminal's left, right or bottom edge SHALL be cut at that edge, and the part of the tile inside the terminal SHALL be drawn unchanged, except where a configuration error covers the bottom row. No tile SHALL be resized to fit the terminal. A tile wholly outside the terminal SHALL NOT be drawn, and cells no tile or configuration error covers SHALL be blank.
+A tile that crosses the ribbon area's left, right, top or bottom edge SHALL be cut at that edge, and the part of the tile inside the ribbon area SHALL be drawn unchanged, except where a configuration error covers the bottom row. No tile SHALL be resized to fit the ribbon area. A tile wholly outside the ribbon area SHALL NOT be drawn, no tile SHALL be drawn over the status line, and cells of the ribbon area that no tile or configuration error covers SHALL be blank.
 
-The terminal's cursor SHALL sit where the focused pane's cursor is. It SHALL be hidden when the focused pane hides its cursor, when that cell lies outside the terminal or outside the tile's interior, when no pane is focused, or while the animations capability hides it during motion.
+The terminal's cursor SHALL sit where the focused pane's cursor is. It SHALL be hidden when the focused pane hides its cursor, when that cell lies outside the ribbon area or outside the tile's interior, when no pane is focused, or while the animations capability hides it during motion.
 
 #### Scenario: Two columns side by side
-- **WHEN** the client's 80×24 terminal sets the screen area, and the viewed band holds two columns of width 1/2 with the second focused
+- **WHEN** the client's 80×24 terminal sets the screen area, the status line is off, and the viewed band holds two columns of width 1/2 with the second focused
 - **THEN** the first tile fills screen columns 0 to 39 and the second fills 40 to 79, each with a border
 - **AND** only the second tile's border has the focused style
 - **AND** the cursor sits in the second tile
 
 #### Scenario: Column clipped at the left edge
-- **WHEN** the client's 80×24 terminal sets the screen area, the viewed band holds two columns of width 2/3, and the client focuses the second
+- **WHEN** the client's 80×24 terminal sets the screen area, the status line is off, the viewed band holds two columns of width 2/3, and the client focuses the second
 - **THEN** the second tile fills screen columns 27 to 79
 - **AND** screen columns 0 to 26 show the rightmost 27 columns of the first tile, without its left border
 
 #### Scenario: Tile larger than the terminal
-- **WHEN** the screen area is 120×40 because of another client, this client's terminal is 100×30, and the viewed band holds one column of width 1/2
+- **WHEN** the screen area is 120×40 because of another client, this client's terminal is 100×30, the status line is off, and the viewed band holds one column of width 1/2
 - **THEN** this client draws the top 30 rows of the 60-column tile
 - **AND** the tile's bottom border is not drawn
 
+#### Scenario: Tile taller than the ribbon area
+- **WHEN** the screen area is 120×40 because of another client, this client's terminal is 100×30, the status line takes the bottom row, and the viewed band holds one column of width 1/2
+- **THEN** this client draws the top 29 rows of the 60-column tile on rows 0 to 28
+- **AND** row 29 shows the status line
+
+#### Scenario: Ribbon below a top status line
+- **WHEN** the client's 80×24 terminal sets the screen area, the status line takes the top row, and the viewed band holds two columns of width 1/2
+- **THEN** both tiles span rows 1 to 23, and row 0 shows the status line
+
 #### Scenario: Empty band
 - **WHEN** the client views an empty band
-- **THEN** the screen is blank and the cursor is hidden
+- **THEN** the ribbon area is blank and the cursor is hidden
 
 #### Scenario: Grid smaller than its tile
 - **WHEN** a pane's tile is 50×30 and its grid is still 38×22
@@ -219,7 +255,7 @@ The terminal's cursor SHALL sit where the focused pane's cursor is. It SHALL be 
 - **AND** the cursor is hidden
 
 #### Scenario: Configuration error over the ribbon
-- **WHEN** the client's 40×6 terminal sets the screen area, the viewed band holds one column of width 1/2, and the client shows a configuration error
+- **WHEN** the client's 40×6 terminal sets the screen area, the status line is off, the viewed band holds one column of width 1/2, and the client shows a configuration error
 - **THEN** the bottom row shows the error, cut at the terminal's width
 - **AND** the rows above it show the tile unchanged
 
@@ -301,7 +337,7 @@ A binding to an action SHALL dispatch it. A binding to a Lua function SHALL run 
 - **AND** the pane prints `46`
 
 #### Scenario: Grow the pane's height
-- **WHEN** the client's 80×24 terminal sets the screen area, a column holds two panes with automatic heights with the top one focused, and the user presses Ctrl+Space then `+`
+- **WHEN** the client's 80×25 terminal, whose status line takes one row, sets the screen area, a column holds two panes with automatic heights with the top one focused, and the user presses Ctrl+Space then `+`
 - **THEN** the top tile is 14 rows high and the bottom tile is 10 rows high
 
 #### Scenario: Direct binding acts without the prefix
