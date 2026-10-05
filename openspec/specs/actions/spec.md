@@ -22,7 +22,7 @@ A key binding SHALL name exactly one action or one Lua function. Pressing a key 
 
 #### Scenario: Action from another source
 - **WHEN** a test dispatches the close-pane session action to a client whose focused pane is the second of two
-- **THEN** the second pane closes, as it does when the user presses Ctrl+A then `q`
+- **THEN** the second pane closes, as it does when the user presses Ctrl+Space then `q`
 
 ### Requirement: Session actions resolve against the view
 A session action from a binding SHALL name no pane. Before sending it, the client SHALL resolve it against its view: the pane is the focused pane, and open pane also takes the viewed workspace. A session action that needs a pane SHALL be dropped when no pane is focused. Open pane SHALL be sent with no pane to open after when no pane is focused.

@@ -53,7 +53,7 @@ The configuration file SHALL be `user/init.lua` in the configuration directory. 
 #### Scenario: User file replaces the defaults
 - **WHEN** `user/init.lua` holds only `gband.bind("alt+h", gband.action.focus_column_left)` and a client attaches
 - **THEN** Alt+H focuses the column to the left
-- **AND** Ctrl+A then `q` reaches the focused pane as `\x01` and then `q`
+- **AND** Ctrl+Space then `q` reaches the focused pane as `\x00` and then `q`
 
 ### Requirement: Defaults use the public API
 The default configuration SHALL use only the `gband` API that the configuration file can use. Evaluated alone, it SHALL produce the default options of "Options" and the default key bindings of the client-attach capability. The default key bindings SHALL exist only in the default configuration.
@@ -73,12 +73,17 @@ The default configuration SHALL use only the `gband` API that the configuration 
 
 | option | value | default |
 |---|---|---|
-| `prefix` | one key, as "Key names" defines | `"ctrl+a"` |
+| `prefix` | one key, as "Key names" defines | `"ctrl+space"` |
 | `default_column_width` | a number greater than 0 and at most 10000 | `1/2` |
 | `width_presets` | a list of one or more numbers, each greater than 0 and at most 10000 | `{ 1/3, 1/2, 2/3 }` |
 | `center_focused_column` | `"never"`, `"always"` or `"on-overflow"` | `"never"` |
 
 A width SHALL be read as the fraction closest to the number whose denominator is at most 100, in lowest terms, so `1/3` reads as 1/3. The width presets SHALL be held in ascending order with duplicates removed. An unknown option name, a value of the wrong type, a value out of range or an unknown camera policy SHALL be a configuration error naming the option.
+
+#### Scenario: Default prefix
+- **WHEN** `user/init.lua` binds `prefix q` to `gband.action.close_pane` and does not set `prefix`, and two panes are open
+- **THEN** Ctrl+Space then `q` closes the focused pane
+- **AND** Ctrl+A reaches the focused pane as `\x01`
 
 #### Scenario: Partial update
 - **WHEN** `init.lua` calls `gband.set { default_column_width = 1/3 }`
@@ -143,19 +148,19 @@ A key list of more than two keys, two keys whose first is not `prefix`, an inval
 
 #### Scenario: Override a default
 - **WHEN** `user/init.lua` is a copy of `defaults/init.lua` that then binds `prefix q` to `gband.action.detach`
-- **THEN** Ctrl+A then `q` detaches, and no binding closes the pane
+- **THEN** Ctrl+Space then `q` detaches, and no binding closes the pane
 
 #### Scenario: Unbind a default
 - **WHEN** `user/init.lua` is a copy of `defaults/init.lua` that then calls `gband.unbind("prefix q")`
-- **THEN** Ctrl+A then `q` discards both keys
+- **THEN** Ctrl+Space then `q` discards both keys
 
 #### Scenario: Prefix changed after binding
 - **WHEN** `user/init.lua` binds `prefix h` to `gband.action.focus_column_left` and later sets `prefix` to `"ctrl+b"`
 - **THEN** Ctrl+B then `h` focuses the column to the left
-- **AND** Ctrl+A reaches the focused pane as `\x01`
+- **AND** Ctrl+Space reaches the focused pane as `\x00`
 
 #### Scenario: Direct binding of the prefix key
-- **WHEN** line 4 of `user/init.lua` binds `ctrl+a` while the prefix is `ctrl+a`
+- **WHEN** line 4 of `user/init.lua` binds `ctrl+space` while the prefix is `ctrl+space`
 - **THEN** loading fails with an error at `user/init.lua` line 4
 
 #### Scenario: Key chain too long
@@ -213,7 +218,7 @@ Loading SHALL apply all of a configuration or none of it. When loading fails, th
 
 #### Scenario: Broken file at start
 - **WHEN** `user/init.lua` sets `prefix` to `"ctrl+b"` and then raises an error, and a client attaches
-- **THEN** the prefix is Ctrl+A and the default bindings apply
+- **THEN** the prefix is Ctrl+Space and the default bindings apply
 
 #### Scenario: Broken edit keeps the running configuration
 - **WHEN** `user/init.lua` binds `alt+h` and has loaded, and the user saves a version that binds `alt+j` and has a syntax error
