@@ -30,7 +30,7 @@ struct Cli {
     )]
     session: Option<SessionName>,
     #[command(subcommand)]
-    command: Command,
+    command: Option<Command>,
 }
 
 #[derive(Args)]
@@ -83,7 +83,9 @@ impl Selection {
 enum Command {
     #[command(about = "Run the server that hosts the panes")]
     Server,
-    #[command(about = "Attach a client to a session, starting a server if needed")]
+    #[command(
+        about = "Attach a client to a session, starting a server if needed; runs when no command is given"
+    )]
     Attach,
     #[command(about = "List the sessions of the running server")]
     ListSessions,
@@ -115,6 +117,7 @@ impl Command {
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
+    let command = cli.command.unwrap_or(Command::Attach);
     if cli.selection.server.is_some() && cli.selection.socket.is_some() {
         Cli::command()
             .error(
@@ -124,7 +127,7 @@ fn main() -> ExitCode {
             .exit();
     }
     if cli.session.is_some()
-        && let Some(subcommand) = cli.command.ignores_session()
+        && let Some(subcommand) = command.ignores_session()
     {
         Cli::command()
             .error(
@@ -136,7 +139,7 @@ fn main() -> ExitCode {
             .exit();
     }
     let session = cli.session.unwrap_or_default();
-    let role = cli.command.role();
+    let role = command.role();
 
     let _guard = match logging::init(role) {
         Ok(guard) => guard,
@@ -158,7 +161,7 @@ fn main() -> ExitCode {
         .as_ref()
         .ok()
         .map(|socket| tracing::error_span!("gband", socket = %socket.display()).entered());
-    let result = socket.and_then(|socket| match cli.command {
+    let result = socket.and_then(|socket| match command {
         Command::Server => server(socket, session, &runtime_dir),
         Command::Attach => attach(socket, session, &cli.selection),
         Command::ListSessions => list_sessions(socket, &cli.selection),
