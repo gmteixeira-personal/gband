@@ -5,7 +5,7 @@
 
 ## 2. Loading and reload
 
-- [x] 2.1 Change `load` to evaluate `user/init.lua` alone when it exists, otherwise the built-in default text named `@<dir>/defaults/init.lua`, each starting from `Options::default()` and no bindings. Verify with unit tests for "User file replaces the defaults", "Copied defaults load unchanged", "Rebind a key", "Unbind a key" and "Prefix changed after binding", and that an error in the default text would name `defaults/init.lua`
+- [x] 2.1 Change `load` to evaluate `user/init.lua` alone when it exists, otherwise the built-in default text named `@<dir>/defaults/init.lua`, each starting from `Options::default()` and no bindings. Verify with unit tests for "User file replaces the defaults", "Copied defaults load unchanged", "Override a default", "Unbind a default" and "Prefix changed after binding", and that an error in the default text would name `defaults/init.lua`
 - [x] 2.2 Make the watcher observe `user/` for `init.lua`, falling back to the configuration directory until `user/` exists, and never observe `defaults/`. Verify with tests that writing, renaming over and deleting `user/init.lua` each deliver a reload within one second, and that writing `defaults/init.lua` delivers none within one second
 
 ## 3. Processes

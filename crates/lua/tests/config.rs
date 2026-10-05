@@ -7,8 +7,8 @@ use gband_core::layout::{Direction, Program, Proportion, Step};
 use gband_core::view::{CenterFocusedColumn, ViewAction};
 use gband_lua::keys::parse_key;
 use gband_lua::{
-    ACTIONS, Binding, Chord, Config, ConfigError, Dispatch, Keys, Options, call, defaults_file,
-    load, prepare, user_file,
+    ACTIONS, Binding, Chord, Config, ConfigError, DEFAULTS, Dispatch, Keys, Options, call,
+    defaults_file, load, prepare, user_file,
 };
 
 struct Scratch(PathBuf);
@@ -363,10 +363,10 @@ fn direct_binding() {
 }
 
 #[test]
-fn rebind_a_key() {
+fn override_a_default() {
     let config = loaded(
-        "rebind",
-        "gband.bind('prefix q', gband.action.close_pane)\ngband.bind('prefix q', gband.action.detach)",
+        "override",
+        &format!("{DEFAULTS}\ngband.bind('prefix q', gband.action.detach)"),
     );
     assert_eq!(
         action_of(&config, prefixed("q")),
@@ -379,12 +379,16 @@ fn rebind_a_key() {
 }
 
 #[test]
-fn unbind_a_key() {
+fn unbind_a_default() {
     let config = loaded(
         "unbind",
-        "gband.bind('prefix q', gband.action.close_pane)\ngband.unbind('prefix q')\ngband.unbind('alt+z')",
+        &format!("{DEFAULTS}\ngband.unbind('prefix q')\ngband.unbind('alt+z')"),
     );
-    assert!(config.bindings.is_empty());
+    assert!(binding(&config, prefixed("q")).is_none());
+    assert_eq!(
+        config.bindings.len(),
+        gband_lua::defaults().bindings.len() - 1
+    );
 }
 
 #[test]
