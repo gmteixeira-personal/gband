@@ -7,9 +7,9 @@ Defines how Lua code reacts to what happens in the client: registering handlers 
 ## Requirements
 
 ### Requirement: Event handlers
-`gband.on(event, fn, opts)` SHALL register `fn` as a handler of `event`, which SHALL be the name of a built-in event or `User`. `opts.group` SHALL be an optional group, given by the id or the name `gband.augroup` returned or took. `opts.once`, when `true`, SHALL remove the handler before its first run. `opts.pattern`, allowed only for `User`, SHALL make the handler run only for `User` events of that name. An unknown event, a `pattern` for an event other than `User`, an unknown group, or an argument of the wrong type SHALL be an error at the line of the call.
+`gband.on(event, fn, opts)` SHALL register `fn` as a handler of `event`, which SHALL be the name of a built-in event of the process's side or `User`. `opts.group` SHALL be an optional group, given by the id or the name `gband.augroup` returned or took. `opts.once`, when `true`, SHALL remove the handler before its first run. `opts.pattern`, allowed only for `User` and `ServerEvent`, SHALL make the handler run only for events of that name. An unknown event, a `pattern` for another event, an unknown group, or an argument of the wrong type SHALL be an error at the line of the call.
 
-The client SHALL run the handlers of an event in the order they were registered, each as a callback that belongs to the plugin that registered it, and each with its own copy of the event's payload table. The server SHALL never run a handler.
+The client SHALL run the handlers of an event in the order they were registered, each as a callback that belongs to the plugin that registered it, and each with its own copy of the event's payload table. The server SHALL run only the handlers registered in its own Lua state, for the events the server-runtime capability defines, and never a handler of a client.
 
 #### Scenario: Handler receives the payload
 - **WHEN** a handler of `TerminalResized` is registered and the client's terminal becomes 100×30
@@ -26,6 +26,14 @@ The client SHALL run the handlers of an event in the order they were registered,
 #### Scenario: Unknown event
 - **WHEN** line 2 of `user/init.lua` calls `gband.on("FocusChange", fn)`
 - **THEN** loading fails with an error at `user/init.lua` line 2 naming `FocusChange`
+
+#### Scenario: Server event pattern
+- **WHEN** a client handler is registered with `gband.on("ServerEvent", fn, { pattern = "agent.done" })` and the server emits `agent.waiting` then `agent.done`
+- **THEN** the handler runs once, for `agent.done`
+
+#### Scenario: Server event name in the client
+- **WHEN** line 4 of `user/init.lua` calls `gband.on("PaneOutput", fn)`
+- **THEN** loading fails with an error at `user/init.lua` line 4 naming `PaneOutput`
 
 ### Requirement: Handler groups
 `gband.augroup(name, opts)` SHALL return the integer id of the group `name`, the same id each time within one load. When `opts.clear` is `true` or absent, it SHALL first remove every handler in the group. When `opts.clear` is `false`, it SHALL keep them.
@@ -65,6 +73,8 @@ The client SHALL emit these events, and no other built-in events:
 | `KeyTableChanged` | `table`, `previous`: key table names | the active key table changes, as the client-attach capability defines |
 | `HighlightChanged` | `group`: the group's name | a group's settings change after the configuration has loaded, as the highlights capability defines |
 | `ColorschemeChanged` | `name`, `previous`: colorscheme names | a colorscheme loads after the configuration has loaded, as the colorschemes capability defines |
+| `ServerEvent` | `name`, `data`, `queued`, `time` | the server sends an event, as the plugin-bridge capability defines |
+| `PaneStateChanged` | `pane`, `key`, `value`, `previous` | the server changes a pane's state, as the plugin-bridge capability defines |
 
 The first layout after attaching SHALL emit no `PaneOpened` and no `LayoutChanged`, and establishing the client's first view SHALL emit neither `FocusChanged` nor `BandChanged`. A layout that opens or closes a pane SHALL emit `LayoutChanged` after its `PaneOpened` and `PaneClosed` events.
 
@@ -85,12 +95,16 @@ The first layout after attaching SHALL emit no `PaneOpened` and no `LayoutChange
 - **THEN** `LayoutChanged` runs once, and neither `PaneOpened` nor `PaneClosed` runs
 
 #### Scenario: Nothing at attach
-- **WHEN** a client attaches to a session holding three panes
-- **THEN** `Attached` runs once and no `PaneOpened`, `LayoutChanged`, `FocusChanged` or `BandChanged` runs
+- **WHEN** a client attaches to a session holding three panes, one of which has a non-empty state
+- **THEN** `Attached` runs once and no `PaneOpened`, `LayoutChanged`, `FocusChanged`, `BandChanged` or `PaneStateChanged` runs
 
 #### Scenario: Reload
 - **WHEN** `user/init.lua` registers a `ConfigReloaded` handler and the user saves it unchanged
 - **THEN** the handler registered by the reloaded file runs once
+
+#### Scenario: State change
+- **WHEN** the server sets pane 1's `agent` to `"waiting"`
+- **THEN** `PaneStateChanged` runs once with `pane` 1, `key` `"agent"`, `value` `"waiting"` and `previous` nil
 
 ### Requirement: Actions from handlers
 A handler MAY call action values, `gband.spawn` and `gband.keymap.enter` as a binding function does. The actions it dispatches SHALL run after it returns, in the order dispatched. Events that those actions cause SHALL be emitted in turn. An event emitted while ten events are already being delivered, each caused by the one before, SHALL NOT be delivered, and the process SHALL record a warning in its log.

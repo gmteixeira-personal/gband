@@ -7,7 +7,7 @@ Defines how the client's Lua runtime finds, loads and isolates plugins: the runt
 ## Requirements
 
 ### Requirement: Runtimepath
-`gband.runtimepath` SHALL be a Lua list of directory paths. When loading starts, it SHALL hold the `user` directory of the configuration directory, followed by every directory directly under the plugins directory, in ascending byte order of their names. The plugins directory SHALL be `gband/plugins` under `$XDG_DATA_HOME` when that variable holds an absolute path, otherwise `.local/share/gband/plugins` under the user's home directory. A missing plugins directory SHALL leave only the `user` directory in the list, and SHALL NOT be an error. The init file MAY change the list. Module lookup and plugin sourcing SHALL use the list as it stands when they run. An entry that does not exist SHALL contribute nothing and SHALL NOT be an error.
+`gband.runtimepath` SHALL be a Lua list of directory paths. Each process SHALL build it from its own environment and the files of the machine it runs on: the server from the server's, and each client from its own. When loading starts, it SHALL hold the `user` directory of the configuration directory, followed by every directory directly under the plugins directory, in ascending byte order of their names. The plugins directory SHALL be `gband/plugins` under `$XDG_DATA_HOME` when that variable holds an absolute path, otherwise `.local/share/gband/plugins` under the user's home directory. A missing plugins directory SHALL leave only the `user` directory in the list, and SHALL NOT be an error. The init file MAY change the list. Module lookup, manifest evaluation and side file sourcing SHALL use the list as it stands when they run. An entry that does not exist SHALL contribute nothing and SHALL NOT be an error.
 
 #### Scenario: Default runtimepath
 - **WHEN** `XDG_CONFIG_HOME` is `/tmp/cfg`, `XDG_DATA_HOME` is `/tmp/data`, and `/tmp/data/gband/plugins` holds the directories `zeta` and `alpha`
@@ -18,8 +18,13 @@ Defines how the client's Lua runtime finds, loads and isolates plugins: the runt
 - **THEN** the plugins directory is `/home/u/.local/share/gband/plugins`
 
 #### Scenario: Init file adds an entry
-- **WHEN** `user/init.lua` appends `/opt/hello` to `gband.runtimepath` and `/opt/hello/plugin/hello.lua` exists
-- **THEN** `/opt/hello/plugin/hello.lua` is sourced after `user/init.lua`
+- **WHEN** `user/init.lua` appends `/opt/hello` to `gband.runtimepath`, and `/opt/hello` holds a valid manifest and `client.lua`
+- **THEN** `/opt/hello/client.lua` is sourced after `user/init.lua`
+
+#### Scenario: Each side reads its own machine
+- **WHEN** the server runs with `XDG_DATA_HOME` `/srv/data` and a client with `XDG_DATA_HOME` `/home/u/data`
+- **THEN** the server's runtimepath lists the directories under `/srv/data/gband/plugins`
+- **AND** the client's lists those under `/home/u/data/gband/plugins`
 
 ### Requirement: Module lookup
 `require(name)` SHALL look for the module in each runtimepath entry in order, before Lua's own search path: a name `a.b` SHALL be found at `lua/a/b.lua`, then at `lua/a/b/init.lua`, in each entry. When no entry holds the module, `require` SHALL look among the modules bundled with gband, which the status-line capability lists, and only then in Lua's own search path. The first file found SHALL be loaded, and errors in it SHALL name its path and line. Errors in a bundled module SHALL name its path under `gband/`, such as `gband/statusline/band.lua`.
@@ -45,26 +50,43 @@ Defines how the client's Lua runtime finds, loads and isolates plugins: the runt
 - **THEN** `require("gband.statusline.band")` loads `user/lua/gband/statusline/band.lua`
 
 ### Requirement: Plugin files
-After the init file returns, loading SHALL source, for each runtimepath entry in order, every file matching `plugin/*.lua` in ascending byte order of their names, then every file matching `plugin/client/*.lua` in the same order. Files in `plugin/server/`, in any other subdirectory of `plugin`, or not ending in `.lua` SHALL NOT be sourced. `plugin/server/` SHALL be reserved for a server runtime. Each file SHALL be sourced once per load.
+After the init file returns, loading SHALL source, for each plugin in runtimepath order whose manifest is valid, its side file once: `client.lua` in a client, and `server.lua` in the server. A plugin MAY hold only one side file, and the other side SHALL then source nothing of it without an error. The `user` directory SHALL have no side file: its init file is `user/init.lua` in a client and `user/server.lua` in the server. A runtimepath entry without a manifest SHALL contribute its modules and colorschemes only; when it holds `client.lua` or `server.lua`, the process SHALL report a plugin error naming the missing manifest and source neither. No file under a `plugin` directory, in any entry, SHALL be sourced.
 
 #### Scenario: Load order
-- **WHEN** the runtimepath holds `user` then the plugin directory `hello`, and `user/plugin/b.lua`, `user/plugin/a.lua`, `user/plugin/client/c.lua` and `hello/plugin/d.lua` each append their name to a shared list
-- **THEN** the list after loading is `init`, `a`, `b`, `c`, `d`, where `init` is appended by `user/init.lua`
+- **WHEN** the runtimepath holds `user`, then the plugins `alpha` and `beta`, each with a valid manifest and a `client.lua`, and each file appends its name to a shared list
+- **THEN** the client's list after loading is `init`, `alpha`, `beta`, where `init` is appended by `user/init.lua`
+
+#### Scenario: One file per side
+- **WHEN** a plugin holds a valid manifest, a `server.lua` that appends `s` to a pane's state key `log`, and a `client.lua` that raises an error
+- **THEN** the server sources only `server.lua` and reports no error
+- **AND** the client sources only `client.lua` and reports its error
+
+#### Scenario: Client-only plugin
+- **WHEN** a plugin holds a valid manifest and only `client.lua`
+- **THEN** the server loads it with no error and sources nothing of it
+
+#### Scenario: Legacy plugin files are ignored
+- **WHEN** a plugin directory holds `plugin/keys.lua` and `plugin/client/k.lua`, each raising an error
+- **THEN** neither process sources them and neither reports an error
 
 #### Scenario: Server plugin files are ignored
 - **WHEN** a plugin directory holds `plugin/server/s.lua`, which raises an error
-- **THEN** loading reports no error and `s.lua` is never run
+- **THEN** neither process reports an error and `s.lua` is never run
 
 #### Scenario: Default configuration with a plugin
-- **WHEN** no `user/init.lua` exists and a plugin directory's `plugin/keys.lua` binds `alt+g` with `gband.keymap.set`
+- **WHEN** no `user/init.lua` exists and a plugin's `client.lua` binds `alt+g` with `gband.keymap.set`
 - **THEN** the default bindings apply and Alt+G runs the plugin's binding
 
 ### Requirement: Side and API version
-`gband.side` SHALL be the string `"client"`. `gband.api_version` SHALL be the integer `1`. Both SHALL be set before the init file runs.
+`gband.side` SHALL be the string `"client"` in a client and `"server"` in the server. `gband.api_version` SHALL be the integer `1` on both sides. Both SHALL be set before the init file runs.
 
 #### Scenario: Side and version
 - **WHEN** `user/init.lua` reads `gband.side` and `gband.api_version`
 - **THEN** they are `"client"` and `1`
+
+#### Scenario: Server side
+- **WHEN** `user/server.lua` reads `gband.side`
+- **THEN** it is `"server"`
 
 ### Requirement: Plugin modules
 A plugin module SHALL be a table with a `setup` function, an optional string `name` and an optional integer `api`. `gband.plugin(name, opts)` SHALL require the module `name`, check its shape, and call its `setup` with `opts`, or with an empty table when `opts` is nil. The plugin's name SHALL be the module's `name` field when it has one, and `name` otherwise. When the module's `api` differs from `gband.api_version`, the process SHALL record a warning naming the plugin and both versions in its log, and SHALL still set the plugin up. `gband.plugin` SHALL return `true` when `setup` returns, and `false` when the module cannot be found, has the wrong shape, or its `setup` raises an error, each reported as a plugin error. Calling `gband.plugin` again for a plugin already set up in this load SHALL be a plugin error, and SHALL NOT call `setup` again.
@@ -110,25 +132,29 @@ A name that a plugin registers for an action or a command, or declares for an op
 - **THEN** `gband.action.greet` holds the action
 
 ### Requirement: Plugin errors
-Sourcing a plugin's file, setting a plugin up and running a callback that belongs to a plugin SHALL each run protected, so that an error raised there SHALL NOT escape to the code around it. Such an error is a plugin error. It SHALL be recorded in the process's log with the plugin's name, the file and the line, and reported as the configuration capability defines.
+Evaluating a plugin's manifest, sourcing a plugin's side file, setting a plugin up and running a callback that belongs to a plugin SHALL each run protected, so that an error raised there SHALL NOT escape to the code around it. Such an error is a plugin error. It SHALL be recorded in the process's log with the plugin's name, the file and the line, and reported as the configuration capability defines.
 
-A plugin error while loading SHALL NOT fail the load. It SHALL mark the plugin failed for the rest of that load: its remaining plugin files SHALL NOT be sourced, and every callback that belongs to it SHALL be disabled, whether registered before or after the error. A key bound to a disabled callback SHALL do nothing when pressed, a disabled event handler SHALL NOT run, running a disabled command SHALL return `false`, and calling a disabled registered action SHALL do nothing. Options the plugin declared SHALL keep their values.
+A plugin error while loading SHALL NOT fail the load. It SHALL mark the plugin failed for the rest of that load: its side file SHALL NOT be sourced when it is not yet, and every callback that belongs to it SHALL be disabled, whether registered before or after the error. A key bound to a disabled callback SHALL do nothing when pressed, a disabled event handler SHALL NOT run, running a disabled command SHALL return `false`, and calling a disabled registered action SHALL do nothing. Options the plugin declared SHALL keep their values.
 
 A plugin error while a callback runs after loading SHALL be reported, and SHALL leave the callback enabled. The actions it dispatched before the error SHALL stand, and other callbacks SHALL be unaffected.
 
 #### Scenario: Setup error
 - **WHEN** the plugin `broken` registers the action `broken.go`, binds `alt+b` to it, then raises an error on line 6 of its file in `setup`
 - **THEN** the client starts with the configuration's other bindings and options
-- **AND** the client shows a plugin error naming `broken`, its file and line 6, in the status line's error item
+- **AND** the client shows a plugin error naming `broken`, its file and line 6
 - **AND** Alt+B does nothing
 
 #### Scenario: Error in a plugin file
-- **WHEN** a plugin directory's `plugin/a.lua` raises an error and its `plugin/b.lua` exists
-- **THEN** `b.lua` is not sourced and the load succeeds
+- **WHEN** a plugin's `client.lua` binds `alt+b` on line 1 and raises an error on line 2
+- **THEN** the load succeeds, the plugin is failed, and Alt+B does nothing
 
 #### Scenario: Error in a callback
 - **WHEN** a plugin's handler for `FocusChanged` raises an error, and a second handler for `FocusChanged` belongs to another plugin
 - **THEN** the second handler runs, the error is reported, and the first handler runs again on the next focus change
+
+#### Scenario: Error in a server handler
+- **WHEN** a plugin's `server.lua` handler of `PaneOpened` raises an error, and another plugin's handler of `PaneOpened` sets a pane state key
+- **THEN** the key is set, and the server keeps running its panes
 
 ### Requirement: Instruction limit
 A run of Lua code started by the runtime, whether the init file, a plugin file, a plugin's setup or one call of a callback, SHALL be stopped with an error once it has executed 100,000,000 Lua VM instructions. A stopped plugin file, setup or callback SHALL be a plugin error that marks its plugin failed, as "Plugin errors" defines, also when the callback runs after loading. A stopped init file SHALL fail the load. A stopped callback that belongs to no plugin SHALL be reported as an error raised in it.
@@ -150,3 +176,36 @@ A run of Lua code started by the runtime, whether the init file, a plugin file, 
 - **WHEN** the plugin `hello` calls `print("ready", 3)` while the client runs
 - **THEN** the client log records `ready	3` naming `hello`
 - **AND** the client's screen is unchanged
+
+### Requirement: Plugin manifest
+A runtimepath entry other than the `user` directory SHALL be a plugin when it holds a file `plugin.lua`, its manifest. Loading SHALL evaluate each manifest, in runtimepath order, before sourcing any side file, as code that belongs to the plugin, in an environment holding no globals, so that it can only compute and return data. The manifest SHALL return a table holding `name`, a string equal to the entry's last path component, `version`, a version as the plugin-bridge capability defines, and optionally `client`, a requirement as the plugin-bridge capability defines, which only the server reads. A manifest that raises an error, returns anything else, or names another plugin SHALL be a plugin error that marks the plugin failed, and its side file SHALL NOT be sourced.
+
+`gband.plugins()` SHALL return one table per plugin whose manifest the load evaluated, in runtimepath order, each holding `name`, `version`, `client` and `failed`, the last `true` when the plugin is failed. Changing a returned table SHALL change nothing else.
+
+#### Scenario: Valid manifest
+- **WHEN** `plugins/agent-status/plugin.lua` returns `{ name = "agent-status", version = "0.1.0" }`
+- **THEN** `gband.plugins()` holds one entry with `name` `agent-status`, `version` `0.1.0` and `failed` `false`
+
+#### Scenario: Name mismatch
+- **WHEN** `plugins/agent-status/plugin.lua` returns `{ name = "agents", version = "1" }`, and `plugins/agent-status/client.lua` exists
+- **THEN** a plugin error names `agent-status` and `agents`
+- **AND** `client.lua` is not sourced
+
+#### Scenario: Manifest cannot reach gband
+- **WHEN** a manifest calls `gband.keymap.set("alt+x", fn)` on line 1
+- **THEN** a plugin error at that line is reported and no binding is made
+
+### Requirement: Side guard
+Each process's `gband` table SHALL hold only the API of its side. Reading a field of `gband`, or of `gband.action`, that only the other side provides SHALL raise an error naming the field and the side that provides it, at the line of the read. The fields only the client provides SHALL be `bind`, `unbind`, `spawn`, `keymap`, `ui`, `hl`, `colorscheme`, `layout`, `view`, `pane`, `band`, `win`, `rpc`, `notify`, `bell`, `clipboard`, `open`, and the view and client actions in `gband.action`. The fields only the server provides SHALL be `sessions` and `session`. Every other field the plugins, configuration, lua-events and lua-commands capabilities define SHALL exist on both sides, with each side's own behaviour where the server-runtime capability defines one.
+
+#### Scenario: Client API in the server
+- **WHEN** line 3 of a plugin's `server.lua` reads `gband.keymap`
+- **THEN** a plugin error at that line names `gband.keymap` and the client
+
+#### Scenario: Server API in the client
+- **WHEN** line 2 of `user/init.lua` calls `gband.sessions()`
+- **THEN** loading fails with an error at that line naming `gband.sessions` and the server
+
+#### Scenario: View action in the server
+- **WHEN** a server handler calls `gband.action.focus_column_left()`
+- **THEN** a plugin error names `focus_column_left` and the client

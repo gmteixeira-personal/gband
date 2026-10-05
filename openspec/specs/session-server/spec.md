@@ -259,7 +259,7 @@ Each session SHALL have its own screen area. A session's screen area SHALL be th
 - **THEN** that pane's PTY becomes 58 columns by 28 rows
 
 ### Requirement: Session actions
-The server SHALL own the session's layout, as the layout capability defines it, and change it only through session actions. It SHALL apply the session actions of every client in the order it receives them, and send the resulting layout to every attached client. An action that names a pane or a band no longer in the layout SHALL be ignored. The session actions SHALL be:
+The server SHALL own the session's layout, as the layout capability defines it, and change it only through session actions. It SHALL apply the session actions of every client, and those the server's Lua calls as the server-runtime capability defines, in the order it receives them, and send the resulting layout to every attached client. An action that names a pane or a band no longer in the layout SHALL be ignored. The session actions SHALL be:
 
 | action | effect |
 |---|---|
@@ -276,7 +276,7 @@ The server SHALL own the session's layout, as the layout capability defines it, 
 | set width | set the width of the named pane's column to the width the action names |
 | set height | set the height of the named pane to the rows or the weight the action names |
 
-After placing an opened pane whose action asks for focus, the server SHALL send the client that asked for it, after the layout that holds the pane, a message telling it to focus that pane. When the program of a new pane cannot be started, the server SHALL record the reason in its log and leave the layout unchanged.
+After placing an opened pane whose action asks for focus, the server SHALL send the client that asked for it, after the layout that holds the pane, a message telling it to focus that pane. A pane opened by the server's Lua SHALL NOT change any client's focus. When the program of a new pane cannot be started, the server SHALL record the reason in its log and leave the layout unchanged.
 
 #### Scenario: Open a pane
 - **WHEN** two clients are attached and the first asks to open a pane next to the pane it focuses
@@ -307,6 +307,10 @@ After placing an opened pane whose action asks for focus, the server SHALL send 
 #### Scenario: Set a column's width
 - **WHEN** a client asks to set the width of pane 1's column to 2/5
 - **THEN** every attached client receives a layout in which pane 1's column has width 2/5 and full width off
+
+#### Scenario: Action from the server's Lua
+- **WHEN** a server handler of `PaneOpened` calls `gband.action.grow_column_width` for the new pane
+- **THEN** every attached client receives a layout in which that pane's column is wider than the default width
 
 ### Requirement: Close a pane
 When a client asks to close a plugin pane, the pane SHALL leave the layout at once. When a client asks to close any other pane, the server SHALL send SIGHUP to that pane's program. If the program is still running 2 seconds later, the server SHALL send SIGKILL to the pane's foreground process group and to its program. The pane SHALL leave the layout when its program exits, as "Session ends with its last pane" defines.
