@@ -109,7 +109,7 @@ A server name SHALL be 1 to 64 bytes long and hold only ASCII letters, digits, `
 3. The `GBAND` environment variable, when it is set and not empty: the path it holds.
 4. `default.sock` in the gband runtime directory.
 
-Giving both options, a name that breaks the rule, or an empty path SHALL be an invalid invocation. A resolved socket path longer than 107 bytes SHALL be refused with one line on standard error that names the path and the limit, and exit status 1.
+Giving both options, a name that breaks the rule, or an empty path SHALL be an invalid invocation. `gband test` addresses no server: when `-S` or `-p` is given to it, `gband` SHALL print one line to standard error saying that the option does not apply to that subcommand and exit with status 2, without creating or writing a log file. A resolved socket path longer than 107 bytes SHALL be refused with one line on standard error that names the path and the limit, and exit status 1.
 
 #### Scenario: Named server
 - **WHEN** the user runs `gband -S feature attach` with `XDG_RUNTIME_DIR=/run/user/1000`
@@ -147,8 +147,13 @@ Giving both options, a name that breaks the rule, or an empty path SHALL be an i
 - **AND** the process exits with status 1
 - **AND** no shell is started
 
+#### Scenario: Server option given to test
+- **WHEN** the user runs `gband test -S feature`
+- **THEN** standard error says that `-S` does not apply to `test`
+- **AND** the process exits with status 2
+
 ### Requirement: Session option
-The `gband` binary SHALL accept the option `-s <name>`, long form `--session <name>`, before or after the subcommand. It names a session as the session-server capability defines session names. When it is absent, the session name SHALL be `default`. `gband server`, `gband attach` and `gband kill-session` SHALL use it. When the name is not a valid session name, `gband` SHALL print one line to standard error stating the rule for session names and exit with status 2, without creating or writing a log file. When `-s` is given to `kill-server` or `list-sessions`, which do not select a session, `gband` SHALL print one line to standard error saying that the option does not apply to that subcommand and exit with status 2, without creating or writing a log file.
+The `gband` binary SHALL accept the option `-s <name>`, long form `--session <name>`, before or after the subcommand. It names a session as the session-server capability defines session names. When it is absent, the session name SHALL be `default`. `gband server`, `gband attach` and `gband kill-session` SHALL use it. When the name is not a valid session name, `gband` SHALL print one line to standard error stating the rule for session names and exit with status 2, without creating or writing a log file. When `-s` is given to `kill-server`, `list-sessions` or `test`, which do not select a session, `gband` SHALL print one line to standard error saying that the option does not apply to that subcommand and exit with status 2, without creating or writing a log file.
 
 #### Scenario: Option after the subcommand
 - **WHEN** the user runs `gband attach -s work`
@@ -169,3 +174,8 @@ The `gband` binary SHALL accept the option `-s <name>`, long form `--session <na
 - **THEN** standard error says that `-s` does not apply to `kill-server`
 - **AND** the process exits with status 2
 - **AND** no server is stopped
+
+#### Scenario: Session option given to test
+- **WHEN** the user runs `gband test -s work`
+- **THEN** standard error says that `-s` does not apply to `test`
+- **AND** the process exits with status 2

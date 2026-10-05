@@ -78,7 +78,7 @@ After the init file returns, loading SHALL source, for each plugin in runtimepat
 - **THEN** the default bindings apply and Alt+G runs the plugin's binding
 
 ### Requirement: Side and API version
-`gband.side` SHALL be the string `"client"` in a client and `"server"` in the server. `gband.api_version` SHALL be the integer `1` on both sides. Both SHALL be set before the init file runs.
+`gband.side` SHALL be the string `"client"` in a client, `"server"` in the server, and `"test"` in a test file that `gband test` runs, as the plugin-testing capability defines. `gband.api_version` SHALL be the integer `1` on every side. Both SHALL be set before the init file or the test file runs.
 
 #### Scenario: Side and version
 - **WHEN** `user/init.lua` reads `gband.side` and `gband.api_version`
@@ -87,6 +87,10 @@ After the init file returns, loading SHALL source, for each plugin in runtimepat
 #### Scenario: Server side
 - **WHEN** `user/server.lua` reads `gband.side`
 - **THEN** it is `"server"`
+
+#### Scenario: Test side
+- **WHEN** a test file read by `gband test -` prints `gband.side`
+- **THEN** standard output holds `test`
 
 ### Requirement: Plugin modules
 A plugin module SHALL be a table with a `setup` function, an optional string `name` and an optional integer `api`. `gband.plugin(name, opts)` SHALL require the module `name`, check its shape, and call its `setup` with `opts`, or with an empty table when `opts` is nil. The plugin's name SHALL be the module's `name` field when it has one, and `name` otherwise. When the module's `api` differs from `gband.api_version`, the process SHALL record a warning naming the plugin and both versions in its log, and SHALL still set the plugin up. `gband.plugin` SHALL return `true` when `setup` returns, and `false` when the module cannot be found, has the wrong shape, or its `setup` raises an error, each reported as a plugin error. Calling `gband.plugin` again for a plugin already set up in this load SHALL be a plugin error, and SHALL NOT call `setup` again.
@@ -170,12 +174,16 @@ A run of Lua code started by the runtime, whether the init file, a plugin file, 
 - **AND** pressing the key again does nothing
 
 ### Requirement: Print goes to the log
-`print` SHALL write its arguments, converted as Lua's `tostring` converts them and separated by tabs, to the process's log at the info level, naming the plugin the calling code belongs to when it belongs to one. It SHALL NOT write to the terminal.
+In a client and in the server, `print` SHALL write its arguments, converted as Lua's `tostring` converts them and separated by tabs, to the process's log at the info level, naming the plugin the calling code belongs to when it belongs to one. It SHALL NOT write to the terminal. In the test side, `print` SHALL write the same line, followed by a newline, to the standard output of `gband test`.
 
 #### Scenario: Print from a plugin
 - **WHEN** the plugin `hello` calls `print("ready", 3)` while the client runs
 - **THEN** the client log records `ready	3` naming `hello`
 - **AND** the client's screen is unchanged
+
+#### Scenario: Print in a test
+- **WHEN** a case calls `print("step", 2)`
+- **THEN** the standard output of `gband test` holds the line `step	2`
 
 ### Requirement: Plugin manifest
 A runtimepath entry other than the `user` directory SHALL be a plugin when it holds a file `plugin.lua`, its manifest. Loading SHALL evaluate each manifest, in runtimepath order, before sourcing any side file, as code that belongs to the plugin, in an environment holding no globals, so that it can only compute and return data. The manifest SHALL return a table holding `name`, a string equal to the entry's last path component, `version`, a version as the plugin-bridge capability defines, and optionally `client`, a requirement as the plugin-bridge capability defines, which only the server reads. A manifest that raises an error, returns anything else, or names another plugin SHALL be a plugin error that marks the plugin failed, and its side file SHALL NOT be sourced.
@@ -196,7 +204,7 @@ A runtimepath entry other than the `user` directory SHALL be a plugin when it ho
 - **THEN** a plugin error at that line is reported and no binding is made
 
 ### Requirement: Side guard
-Each process's `gband` table SHALL hold only the API of its side. Reading a field of `gband`, or of `gband.action`, that only the other side provides SHALL raise an error naming the field and the side that provides it, at the line of the read. The fields only the client provides SHALL be `bind`, `unbind`, `spawn`, `keymap`, `ui`, `hl`, `colorscheme`, `layout`, `view`, `pane`, `band`, `win`, `rpc`, `notify`, `bell`, `clipboard`, `open`, and the view and client actions in `gband.action`. The fields only the server provides SHALL be `sessions` and `session`. Every other field the plugins, configuration, lua-events and lua-commands capabilities define SHALL exist on both sides, with each side's own behaviour where the server-runtime capability defines one.
+Each process's `gband` table SHALL hold only the API of its side. Reading a field of `gband`, or of `gband.action`, that only another side provides SHALL raise an error naming the field and the side that provides it, at the line of the read. The fields only the client provides SHALL be `bind`, `unbind`, `spawn`, `keymap`, `ui`, `hl`, `colorscheme`, `layout`, `view`, `pane`, `band`, `win`, `rpc`, `notify`, `bell`, `clipboard`, `open`, and the view and client actions in `gband.action`. The fields only the server provides SHALL be `sessions` and `session`. Every other field the plugins, configuration, lua-events and lua-commands capabilities define SHALL exist on the client and the server, with each side's own behaviour where the server-runtime capability defines one. The test side's `gband` SHALL hold only `side` and `api_version`; reading any field that the client or the server provides there SHALL raise an error naming the field and the sides that provide it.
 
 #### Scenario: Client API in the server
 - **WHEN** line 3 of a plugin's `server.lua` reads `gband.keymap`
@@ -209,3 +217,7 @@ Each process's `gband` table SHALL hold only the API of its side. Reading a fiel
 #### Scenario: View action in the server
 - **WHEN** a server handler calls `gband.action.focus_column_left()`
 - **THEN** a plugin error names `focus_column_left` and the client
+
+#### Scenario: Client API in a test file
+- **WHEN** line 4 of a test file reads `gband.opt`
+- **THEN** the file fails with an error at line 4 naming `gband.opt`, the client and the server
