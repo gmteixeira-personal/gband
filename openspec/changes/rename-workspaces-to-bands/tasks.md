@@ -23,4 +23,4 @@
 
 - [x] 5.1 Run `rg -n -i workspace --glob '!openspec/changes/archive/**' --glob '!openspec/changes/rename-workspaces-to-bands/**'` and verify that every remaining match is Cargo's workspace: a `Cargo.toml` key, a `cargo ... --workspace` command line, or the terminal-emulator spec's manifests scenario
 - [x] 5.2 Run `cargo test --workspace` and `cargo clippy --workspace --all-targets -- -D warnings`, and check that no comment breaks the rules in `CLAUDE.md`. Verify that both commands pass
-- [ ] 5.3 Attach to a fresh server, open a pane, press `prefix u` and `prefix i`, and verify that the view slides to the empty band below and back with no change in behaviour
+- [x] 5.3 Attach to a fresh server, open a pane, press `prefix u` and `prefix i`, and verify that the view slides to the empty band below and back with no change in behaviour
