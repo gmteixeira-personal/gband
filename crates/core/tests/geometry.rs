@@ -1,7 +1,7 @@
 use gband_core::geometry::{Size, Span, Tile, column_spans, column_width, pane_heights, tiles};
 use gband_core::layout::{
-    Column, Direction, Layout, PaneHeight, PaneId, Proportion, SessionAction, Weight, Workspace,
-    WorkspaceId,
+    Column, Direction, Layout, LayoutOptions, PaneHeight, PaneId, Proportion, SessionAction,
+    Weight, Workspace, WorkspaceId,
 };
 
 const AREA: Size = Size::new(80, 24);
@@ -10,14 +10,14 @@ fn single() -> (Layout, PaneId) {
     let mut layout = Layout::new();
     let pane = layout.allocate_pane();
     let workspace = layout.workspaces()[0].id;
-    layout.open(pane, workspace, None);
+    layout.open(pane, workspace, None, &LayoutOptions::default());
     (layout, pane)
 }
 
 fn open_after(layout: &mut Layout, after: PaneId) -> PaneId {
     let pane = layout.allocate_pane();
     let workspace = layout.workspaces()[0].id;
-    layout.open(pane, workspace, Some(after));
+    layout.open(pane, workspace, Some(after), &LayoutOptions::default());
     pane
 }
 
@@ -48,9 +48,21 @@ fn default_column_on_an_80_by_24_area() {
 fn columns_side_by_side() {
     let (mut layout, first) = single();
     let second = open_after(&mut layout, first);
-    layout.apply(SessionAction::CycleWidth(first), AREA);
-    layout.apply(SessionAction::CycleWidth(first), AREA);
-    layout.apply(SessionAction::CycleWidth(second), AREA);
+    layout.apply(
+        SessionAction::CycleWidth(first),
+        AREA,
+        &LayoutOptions::default(),
+    );
+    layout.apply(
+        SessionAction::CycleWidth(first),
+        AREA,
+        &LayoutOptions::default(),
+    );
+    layout.apply(
+        SessionAction::CycleWidth(second),
+        AREA,
+        &LayoutOptions::default(),
+    );
     let spans = column_spans(&layout.workspaces()[0], Size::new(90, 30));
     assert_eq!((spans[0].x, spans[0].end()), (0, 30));
     assert_eq!((spans[1].x, spans[1].end()), (30, 90));
@@ -68,6 +80,7 @@ fn stack_with_a_leftover_row() {
             direction: Direction::Left,
         },
         AREA,
+        &LayoutOptions::default(),
     );
     let tiles = first_tiles(&layout, Size::new(80, 25));
     assert_eq!((tiles[0].pane, tiles[0].y, tiles[0].height), (first, 0, 13));
@@ -81,7 +94,11 @@ fn stack_with_a_leftover_row() {
 #[test]
 fn full_width_fills_the_area() {
     let (mut layout, first) = single();
-    layout.apply(SessionAction::ToggleFullWidth(first), AREA);
+    layout.apply(
+        SessionAction::ToggleFullWidth(first),
+        AREA,
+        &LayoutOptions::default(),
+    );
     let tiles = first_tiles(&layout, Size::new(100, 30));
     assert_eq!(tiles[0].width, 100);
 }
@@ -103,7 +120,7 @@ fn terminal_size_is_at_least_one_cell() {
 
 #[test]
 fn column_width_follows_the_proportion_and_the_minimum() {
-    let mut column = Column::new(PaneId(1));
+    let mut column = Column::new(PaneId(1), Proportion::ONE_HALF);
     let area = Size::new(90, 24);
     assert_eq!(column_width(&column, area), 45);
     column.width = Proportion::ONE_THIRD;
@@ -127,6 +144,7 @@ fn panes_beyond_the_area_rows_get_no_height() {
                 direction: Direction::Left,
             },
             AREA,
+            &LayoutOptions::default(),
         );
     }
     let tiles = first_tiles(&layout, Size::new(80, 2));
@@ -159,7 +177,7 @@ fn empty_workspace_has_no_tiles() {
 }
 
 fn column(heights: &[PaneHeight]) -> Column {
-    let mut column = Column::new(PaneId(1));
+    let mut column = Column::new(PaneId(1), Proportion::ONE_HALF);
     column.panes = (1..=heights.len() as u32).map(PaneId).collect();
     column.heights = heights.to_vec();
     column
@@ -225,7 +243,7 @@ fn weight_one_heights_split_as_before() {
 }
 
 fn column_of_width(width: Proportion) -> Column {
-    let mut column = Column::new(PaneId(1));
+    let mut column = Column::new(PaneId(1), Proportion::ONE_HALF);
     column.width = width;
     column
 }

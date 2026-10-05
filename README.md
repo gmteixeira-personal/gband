@@ -27,6 +27,76 @@ gband follows niri's scrollable tiling model instead:
 gband embeds a Lua runtime.
 Configuration and automation are Lua scripts, so key bindings, layout behavior and custom commands are code you can change.
 
+## Configuration
+
+gband reads `$XDG_CONFIG_HOME/gband/init.lua`, or `~/.config/gband/init.lua` when `XDG_CONFIG_HOME` is unset.
+The file is optional.
+gband first runs its built-in defaults, then your file, so your file only needs what you want to change.
+Saving the file reloads it while gband runs.
+An error in the file shows on the bottom row with its line number, and gband keeps the last configuration that loaded.
+
+```lua
+-- Change options. Each call changes only the options it names.
+gband.set {
+  prefix = "ctrl+b",
+  default_column_width = 1/3,
+  width_presets = { 1/3, 1/2, 2/3, 1 },
+  center_focused_column = "on-overflow",
+}
+
+-- A direct binding acts without the prefix key.
+gband.bind("alt+h", gband.action.focus_column_left)
+gband.bind("alt+l", gband.action.focus_column_right)
+
+-- A prefix binding acts on the key pressed after the prefix key.
+gband.bind("prefix x", gband.action.close_pane)
+
+-- Remove a binding, including one of the defaults.
+gband.unbind("prefix q")
+
+-- A function binding can call actions and open panes running a command.
+gband.bind("alt+n", function()
+  gband.spawn { cmd = "htop" }
+end)
+gband.bind("alt+w", function()
+  gband.action.focus_column_right()
+  gband.action.focus_column_right()
+end)
+```
+
+The options and their defaults:
+
+| option | value | default |
+|---|---|---|
+| `prefix` | one key | `"ctrl+a"` |
+| `default_column_width` | the width of a new column, as a fraction of the screen | `1/2` |
+| `width_presets` | the widths that cycling the column width steps through | `{ 1/3, 1/2, 2/3 }` |
+| `center_focused_column` | `"never"`, `"always"` or `"on-overflow"` | `"never"` |
+
+A key is a key name with optional `ctrl`, `alt` and `shift` modifiers joined by `+`, such as `alt+h`, `ctrl+PageUp` or `alt++`.
+A key name is one character, or `enter`, `tab`, `backtab`, `backspace`, `escape`, `space`, the arrow keys `up`, `down`, `left` and `right`, `home`, `end`, `insert`, `delete`, `pageup`, `pagedown`, or `f1` to `f12`.
+`prefix prefix` binds the prefix key pressed twice.
+
+`gband.spawn { cmd = ... }` takes a command line as a string, which your shell runs, or a list of a program and its arguments.
+Without `cmd`, it opens your shell.
+
+The actions in `gband.action`:
+
+| action | effect |
+|---|---|
+| `focus_column_left`, `focus_column_right` | focus the column to the left or right |
+| `focus_pane_down`, `focus_pane_up` | focus the pane below or above |
+| `focus_workspace_down`, `focus_workspace_up` | view the workspace below or above |
+| `open_pane` | open a pane running your shell right of the focused column |
+| `close_pane` | close the focused pane |
+| `consume_or_expel_left`, `consume_or_expel_right` | move the focused pane into or out of the neighbouring column |
+| `cycle_column_width` | step the column's width through the presets |
+| `toggle_full_width` | toggle full width of the column |
+| `grow_column_width`, `shrink_column_width` | widen or narrow the column by a tenth of the screen |
+| `grow_pane_height`, `shrink_pane_height`, `reset_pane_height` | change or reset the height of the focused pane |
+| `detach` | detach the client |
+| `send_prefix` | send the prefix key to the focused pane |
+
 ## Building
 
 Install a stable Rust toolchain, version 1.89 or newer, and a C compiler such as `gcc` or `clang`.

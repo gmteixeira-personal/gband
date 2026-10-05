@@ -15,12 +15,13 @@ use anyhow::{Context, Result};
 use crossterm::cursor::Show;
 use crossterm::event::{self, DisableBracketedPaste, EnableBracketedPaste, Event};
 use crossterm::execute;
-use gband_core::action::{Action, ClientAction};
+use gband_core::action::{Action, ClientAction, SessionCommand};
 use gband_core::geometry::Size;
 use gband_core::input::Key;
-use gband_core::layout::{Layout, PaneId};
-use gband_core::view::{Scene, View, ViewAction};
+use gband_core::layout::{Layout, PaneId, Program, SessionAction};
+use gband_core::view::{CenterFocusedColumn, Scene, View, ViewAction};
 use gband_emulator::{Emulator, Grid};
+use gband_lua::{Binding, Config, ConfigError, Dispatch, Lua, Options};
 use gband_protocol::{ClientMessage, ExecutableId, ServerMessage, SessionName};
 use ratatui::DefaultTerminal;
 use tokio::sync::mpsc;
@@ -28,7 +29,7 @@ use tokio::sync::mpsc;
 use crate::animation::{
     ANIMATIONS_VARIABLE, Animations, Drawn, FRAME, Presentation, Targets, parse_animations,
 };
-use crate::bindings::{Command, Leader};
+use crate::bindings::{Command, Keymap, Leader};
 pub use crate::connect::{Connection, connect};
 use crate::input::key_from_event;
 use crate::render::{Ribbon, draw_frame};
@@ -40,6 +41,12 @@ pub struct ClientConfig {
     pub identity: ExecutableId,
     pub replace_mismatched: bool,
     pub kill_command: String,
+}
+
+pub struct Configuration {
+    pub config: Config,
+    pub error: Option<ConfigError>,
+    pub reloads: mpsc::UnboundedReceiver<Result<Config, ConfigError>>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -62,7 +69,11 @@ fn runtime() -> Result<tokio::runtime::Runtime> {
         .context("cannot start the async runtime")
 }
 
-pub fn run(config: ClientConfig, transport: impl Transport) -> Result<Report> {
+pub fn run(
+    config: ClientConfig,
+    transport: impl Transport,
+    configuration: Configuration,
+) -> Result<Report> {
     let cwd = std::env::current_dir().context("cannot read the current directory")?;
     let animations = parse_animations(std::env::var(ANIMATIONS_VARIABLE).ok().as_deref());
     runtime()?.block_on(async {
@@ -78,7 +89,7 @@ pub fn run(config: ClientConfig, transport: impl Transport) -> Result<Report> {
         let outcome = {
             let _restore = TerminalGuard::enter()?;
             let mut terminal = ratatui::init();
-            attach(&mut terminal, &mut connection, animations).await?
+            attach(&mut terminal, &mut connection, animations, configuration).await?
         };
         tracing::info!("client finished: {outcome:?}");
         Ok(Report {
@@ -113,6 +124,9 @@ pub struct Display {
     view: Option<View>,
     shown: Option<Vec<PaneId>>,
     presentation: Presentation,
+    prefix: Option<Key>,
+    policy: CenterFocusedColumn,
+    banner: Option<String>,
 }
 
 impl Display {
@@ -125,7 +139,26 @@ impl Display {
             view: None,
             shown: None,
             presentation: Presentation::new(animations),
+            prefix: None,
+            policy: CenterFocusedColumn::default(),
+            banner: None,
         }
+    }
+
+    pub fn configure(&mut self, options: &Options) {
+        self.prefix = Some(options.prefix);
+        self.policy = options.center_focused_column;
+        if let Some(view) = &mut self.view {
+            view.set_center_focused_column(self.policy);
+        }
+    }
+
+    pub fn banner(&self) -> Option<&str> {
+        self.banner.as_deref()
+    }
+
+    pub fn set_banner(&mut self, banner: Option<String>) {
+        self.banner = banner;
     }
 
     pub fn report_shown(&mut self) -> Option<ClientMessage> {
@@ -181,7 +214,7 @@ impl Display {
 
     fn sync(&mut self) {
         if self.view.is_none() {
-            self.view = Some(View::new(self.scene()));
+            self.view = Some(View::with_policy(self.scene(), self.policy));
             self.presentation.snap();
         } else {
             self.with_view(View::sync);
@@ -233,17 +266,85 @@ impl Display {
     }
 }
 
+#[derive(Debug, PartialEq)]
 pub enum Step {
     Send(ClientMessage),
     Detach,
     Nothing,
 }
 
-fn press(display: &mut Display, leader: &mut Leader, key: Key) -> Step {
-    match leader.handle(key) {
-        Command::Send(key) => dispatch(display, Action::Client(ClientAction::SendKey(key))),
-        Command::Run(action) => dispatch(display, action),
-        Command::Discard => Step::Nothing,
+pub struct Controls {
+    keymap: Keymap,
+    lua: Lua,
+    leader: Leader,
+}
+
+impl Controls {
+    pub fn new(config: Config, display: &mut Display) -> Self {
+        display.configure(&config.options);
+        Self {
+            keymap: Keymap::new(config.options.prefix, config.bindings),
+            lua: config.lua,
+            leader: Leader::default(),
+        }
+    }
+
+    pub fn press(&mut self, display: &mut Display, key: Key) -> Vec<Step> {
+        match self.leader.handle(&self.keymap, key) {
+            Command::Send(key) => vec![dispatch(
+                display,
+                Action::Client(ClientAction::SendKey(key)),
+            )],
+            Command::Run(Binding::Action(action)) => vec![dispatch(display, *action)],
+            Command::Run(Binding::Function(function)) => {
+                let (dispatched, error) = gband_lua::call(&self.lua, function);
+                let steps = dispatched
+                    .into_iter()
+                    .map(|entry| match entry {
+                        Dispatch::Action(action) => dispatch(display, action),
+                        Dispatch::Spawn(program) => spawn(display, program),
+                    })
+                    .collect();
+                if let Some(error) = error {
+                    tracing::warn!("configuration error: {error}");
+                    display.set_banner(Some(error.to_string()));
+                }
+                steps
+            }
+            Command::Discard => Vec::new(),
+        }
+    }
+
+    pub fn reload(&mut self, display: &mut Display, result: Result<Config, ConfigError>) {
+        match result {
+            Ok(config) => {
+                tracing::info!("configuration reloaded");
+                *self = Self::new(config, display);
+                display.set_banner(None);
+            }
+            Err(error) => {
+                tracing::warn!("configuration error: {error}");
+                self.leader.reset();
+                display.set_banner(Some(error.to_string()));
+            }
+        }
+    }
+}
+
+fn spawn(display: &mut Display, program: Option<Program>) -> Step {
+    let open = display
+        .view
+        .as_ref()
+        .and_then(|view| view.resolve(SessionCommand::OpenPane));
+    match open {
+        Some(SessionAction::OpenPane {
+            workspace, after, ..
+        }) => Step::Send(ClientMessage::Action(SessionAction::OpenPane {
+            workspace,
+            after,
+            program,
+        })),
+        _ => Step::Nothing,
     }
 }
 
@@ -259,6 +360,9 @@ pub fn dispatch(display: &mut Display, action: Action) -> Step {
             .and_then(|view| view.resolve(command))
             .map(ClientMessage::Action),
         Action::Client(ClientAction::Detach) => return Step::Detach,
+        Action::Client(ClientAction::SendPrefix) => display
+            .prefix
+            .and_then(|prefix| display.key_to_focused(prefix)),
         Action::Client(ClientAction::SendKey(key)) => display.key_to_focused(key),
     };
     message.map_or(Step::Nothing, Step::Send)
@@ -268,11 +372,14 @@ async fn attach(
     terminal: &mut DefaultTerminal,
     connection: &mut Connection,
     animations: Animations,
+    configuration: Configuration,
 ) -> Result<Outcome> {
     let mut events = spawn_events();
     let size = terminal.size()?;
     let mut display = Display::new(Size::new(size.width, size.height), animations);
-    let mut leader = Leader::default();
+    let mut controls = Controls::new(configuration.config, &mut display);
+    display.set_banner(configuration.error.map(|error| error.to_string()));
+    let mut reloads = configuration.reloads;
     loop {
         if let Some(outcome) = apply_messages(connection, &mut display)? {
             draw(terminal, &mut display, Instant::now())?;
@@ -289,6 +396,7 @@ async fn attach(
         tokio::select! {
             () = tokio::time::sleep_until(frame.unwrap_or_else(tokio::time::Instant::now)),
                 if frame.is_some() => {}
+            Some(result) = reloads.recv() => controls.reload(&mut display, result),
             filled = connection.reader.fill() => match filled {
                 Ok(true) => {}
                 Ok(false) | Err(gband_protocol::IoError::Io(_)) => return Ok(Outcome::LostServer),
@@ -297,13 +405,15 @@ async fn attach(
             event = events.recv() => match event {
                 Some(Event::Key(key_event)) => {
                     let Some(key) = key_from_event(&key_event) else { continue };
-                    match press(&mut display, &mut leader, key) {
-                        Step::Send(message) => connection.send(&message).await?,
-                        Step::Detach => {
-                            let _ = connection.send(&ClientMessage::Detach).await;
-                            return Ok(Outcome::Detached);
+                    for step in controls.press(&mut display, key) {
+                        match step {
+                            Step::Send(message) => connection.send(&message).await?,
+                            Step::Detach => {
+                                let _ = connection.send(&ClientMessage::Detach).await;
+                                return Ok(Outcome::Detached);
+                            }
+                            Step::Nothing => {}
                         }
-                        Step::Nothing => {}
                     }
                 }
                 Some(Event::Paste(text)) => {
@@ -356,6 +466,7 @@ fn draw(terminal: &mut DefaultTerminal, display: &mut Display, now: Instant) -> 
             view,
             grids: &display.grids,
             drawn,
+            banner: display.banner.as_deref(),
         };
         draw_frame(frame, &ribbon);
     })?;

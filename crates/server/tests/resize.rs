@@ -57,6 +57,7 @@ async fn open(client: &mut TestClient, after: PaneId) -> PaneId {
         .act(SessionAction::OpenPane {
             workspace: client.layout.workspaces()[0].id,
             after: Some(after),
+            program: None,
         })
         .await;
     client.wait_until(|client| client.focus.len() > seen).await;

@@ -1,9 +1,17 @@
+use std::fs;
+use std::path::PathBuf;
+
 use gband_client::animation::Animations;
-use gband_client::{Display, Step, dispatch};
+use gband_client::{Controls, Display, Step, dispatch};
 use gband_core::action::{Action, SessionCommand};
 use gband_core::geometry::Size;
-use gband_core::layout::{Direction, SessionAction};
+use gband_core::input::Key;
+use gband_core::layout::{
+    Direction, Layout, LayoutOptions, PaneId, Program, SessionAction, WorkspaceId,
+};
 use gband_core::view::ViewAction;
+use gband_lua::keys::parse_key;
+use gband_lua::{Config, ConfigError};
 use gband_protocol::{ClientMessage, ServerMessage};
 use gband_test_support::{TIMEOUT, TestClient, TestServer};
 use tokio::time::timeout;
@@ -127,4 +135,206 @@ async fn shown_panes_follow_the_view_and_are_not_repeated() {
     let down = Some(ViewAction::FocusDown);
     assert_eq!(report(&mut client, &mut display, down).await, None);
     assert_eq!(display.focused(), Some(d));
+}
+
+struct Scratch(PathBuf);
+
+impl Scratch {
+    fn new(name: &str) -> Self {
+        let path = std::env::temp_dir().join(format!(
+            "gband-client-actions-{name}-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&path);
+        fs::create_dir_all(&path).unwrap();
+        Self(path)
+    }
+
+    fn load(&self, source: &str) -> Result<Config, ConfigError> {
+        let path = self.0.join("init.lua");
+        fs::write(&path, source).unwrap();
+        gband_lua::load(&path)
+    }
+}
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
+fn three_columns() -> (Display, Vec<PaneId>) {
+    let mut layout = Layout::new();
+    let workspace = layout.workspaces()[0].id;
+    let mut panes = Vec::new();
+    for _ in 0..3 {
+        let pane = layout.allocate_pane();
+        layout.open(
+            pane,
+            workspace,
+            panes.last().copied(),
+            &LayoutOptions::default(),
+        );
+        panes.push(pane);
+    }
+    let mut display = Display::new(Size::new(80, 24), Animations::Off);
+    display.apply(ServerMessage::Layout {
+        cols: 80,
+        rows: 24,
+        layout,
+    });
+    (display, panes)
+}
+
+fn key(name: &str) -> Key {
+    parse_key(name).unwrap()
+}
+
+#[test]
+fn action_called_from_a_function() {
+    let scratch = Scratch::new("function");
+    let config = scratch
+        .load(
+            "gband.bind('alt+w', function()\n  gband.action.focus_column_right()\n  gband.action.focus_column_right()\nend)",
+        )
+        .unwrap();
+    let (mut display, panes) = three_columns();
+    let mut controls = Controls::new(config, &mut display);
+    assert_eq!(display.focused(), Some(panes[0]));
+    assert_eq!(
+        controls.press(&mut display, key("alt+w")),
+        [Step::Nothing, Step::Nothing]
+    );
+    assert_eq!(display.focused(), Some(panes[2]));
+}
+
+#[test]
+fn spawn_a_command_line_sends_open_pane_with_the_program() {
+    let scratch = Scratch::new("spawn");
+    let config = scratch
+        .load("gband.bind('alt+n', function() gband.spawn({ cmd = 'fish' }) end)")
+        .unwrap();
+    let (mut display, panes) = three_columns();
+    let mut controls = Controls::new(config, &mut display);
+    assert_eq!(
+        controls.press(&mut display, key("alt+n")),
+        [Step::Send(ClientMessage::Action(SessionAction::OpenPane {
+            workspace: WorkspaceId(1),
+            after: Some(panes[0]),
+            program: Some(Program::CommandLine("fish".to_owned())),
+        }))]
+    );
+}
+
+#[test]
+fn error_in_a_binding_function_keeps_the_dispatched_actions() {
+    let scratch = Scratch::new("error");
+    let config = scratch
+        .load(
+            "gband.bind('alt+e', function()\n  gband.action.focus_column_left()\n\n\n\n\n\n\n  error('broken')\nend)",
+        )
+        .unwrap();
+    let (mut display, panes) = three_columns();
+    let mut controls = Controls::new(config, &mut display);
+    for _ in 0..2 {
+        dispatch(&mut display, Action::View(ViewAction::FocusRight));
+    }
+    assert_eq!(display.focused(), Some(panes[2]));
+    controls.press(&mut display, key("alt+e"));
+    assert_eq!(display.focused(), Some(panes[1]));
+    let banner = display.banner().unwrap();
+    let expected = format!("{}:9: broken", scratch.0.join("init.lua").display());
+    assert_eq!(banner, expected);
+}
+
+#[test]
+fn send_prefix_follows_the_prefix_option() {
+    let scratch = Scratch::new("prefix");
+    let config = scratch.load("gband.set { prefix = 'ctrl+b' }").unwrap();
+    let (mut display, panes) = three_columns();
+    let mut controls = Controls::new(config, &mut display);
+    assert_eq!(controls.press(&mut display, key("ctrl+b")), []);
+    assert_eq!(
+        controls.press(&mut display, key("ctrl+b")),
+        [Step::Send(ClientMessage::Key {
+            pane: panes[0],
+            key: key("ctrl+b"),
+        })]
+    );
+    assert_eq!(
+        controls.press(&mut display, key("ctrl+a")),
+        [Step::Send(ClientMessage::Key {
+            pane: panes[0],
+            key: key("ctrl+a"),
+        })]
+    );
+}
+
+#[test]
+fn reload_replaces_the_bindings_and_ends_a_prefix_sequence() {
+    let scratch = Scratch::new("reload");
+    let (mut display, panes) = three_columns();
+    let mut controls = Controls::new(scratch.load("").unwrap(), &mut display);
+    assert_eq!(controls.press(&mut display, key("ctrl+a")), []);
+    controls.reload(
+        &mut display,
+        scratch.load("gband.bind('alt+l', gband.action.focus_column_right)"),
+    );
+    assert_eq!(
+        controls.press(&mut display, key("q")),
+        [Step::Send(ClientMessage::Key {
+            pane: panes[0],
+            key: key("q"),
+        })]
+    );
+    controls.press(&mut display, key("alt+l"));
+    assert_eq!(display.focused(), Some(panes[1]));
+}
+
+#[test]
+fn failed_reload_keeps_the_running_configuration_until_a_good_one() {
+    let scratch = Scratch::new("broken");
+    let (mut display, panes) = three_columns();
+    let mut controls = Controls::new(
+        scratch
+            .load("gband.bind('alt+l', gband.action.focus_column_right)")
+            .unwrap(),
+        &mut display,
+    );
+    controls.reload(
+        &mut display,
+        scratch.load("gband.bind('alt+j', gband.action.focus_column_left)\nlocal = 1"),
+    );
+    let banner = display.banner().unwrap().to_owned();
+    assert!(banner.contains("init.lua:2:"), "{banner}");
+    controls.press(&mut display, key("alt+l"));
+    assert_eq!(display.focused(), Some(panes[1]));
+    assert_eq!(
+        controls.press(&mut display, key("alt+j")),
+        [Step::Send(ClientMessage::Key {
+            pane: panes[1],
+            key: key("alt+j"),
+        })]
+    );
+    controls.reload(&mut display, scratch.load(""));
+    assert_eq!(display.banner(), None);
+}
+
+#[test]
+fn camera_policy_follows_the_configuration() {
+    let scratch = Scratch::new("camera");
+    let (mut display, _) = three_columns();
+    let mut controls = Controls::new(
+        scratch
+            .load("gband.set { center_focused_column = 'always' }")
+            .unwrap(),
+        &mut display,
+    );
+    controls.press(&mut display, key("ctrl+a"));
+    controls.press(&mut display, key("l"));
+    let shown = display.report_shown();
+    assert_eq!(
+        shown,
+        Some(ClientMessage::Shown(vec![PaneId(1), PaneId(2), PaneId(3)]))
+    );
 }

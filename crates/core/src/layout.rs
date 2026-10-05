@@ -113,12 +113,30 @@ impl PaneHeight {
     pub const DEFAULT: Self = Self::Auto(Weight::ONE);
 }
 
-pub const WIDTH_PRESETS: [Proportion; 3] = [
-    Proportion::ONE_THIRD,
-    Proportion::ONE_HALF,
-    Proportion::TWO_THIRDS,
-];
-pub const DEFAULT_WIDTH: Proportion = Proportion::ONE_HALF;
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LayoutOptions {
+    pub default_width: Proportion,
+    pub presets: Vec<Proportion>,
+}
+
+impl Default for LayoutOptions {
+    fn default() -> Self {
+        Self {
+            default_width: Proportion::ONE_HALF,
+            presets: vec![
+                Proportion::ONE_THIRD,
+                Proportion::ONE_HALF,
+                Proportion::TWO_THIRDS,
+            ],
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Program {
+    CommandLine(String),
+    Argv(Vec<String>),
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Column {
@@ -129,11 +147,11 @@ pub struct Column {
 }
 
 impl Column {
-    pub fn new(pane: PaneId) -> Self {
+    pub fn new(pane: PaneId, width: Proportion) -> Self {
         Self {
             panes: vec![pane],
             heights: vec![PaneHeight::DEFAULT],
-            width: DEFAULT_WIDTH,
+            width,
             full_width: false,
         }
     }
@@ -159,13 +177,31 @@ impl Column {
         }
     }
 
-    fn cycle_width(&mut self) {
+    fn cycle_width(&mut self, presets: &[Proportion]) {
         let current = self.effective_width();
+        let smallest = presets.iter().copied().reduce(|smallest, preset| {
+            if smallest.exceeds(preset) {
+                preset
+            } else {
+                smallest
+            }
+        });
+        let larger = presets
+            .iter()
+            .copied()
+            .filter(|preset| preset.exceeds(current))
+            .reduce(|nearest, preset| {
+                if nearest.exceeds(preset) {
+                    preset
+                } else {
+                    nearest
+                }
+            });
+        let Some(width) = larger.or(smallest) else {
+            return;
+        };
         self.full_width = false;
-        self.width = WIDTH_PRESETS
-            .into_iter()
-            .find(|preset| preset.exceeds(current))
-            .unwrap_or(WIDTH_PRESETS[0]);
+        self.width = width;
     }
 
     pub fn step_width(&mut self, step: Step) {
@@ -239,11 +275,12 @@ pub enum Direction {
     Right,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SessionAction {
     OpenPane {
         workspace: WorkspaceId,
         after: Option<PaneId>,
+        program: Option<Program>,
     },
     ClosePane(PaneId),
     ConsumeOrExpel {
@@ -352,6 +389,7 @@ impl Layout {
         pane: PaneId,
         workspace: WorkspaceId,
         after: Option<PaneId>,
+        options: &LayoutOptions,
     ) -> Vec<LayoutEvent> {
         if !self.can_open(workspace, after) || self.contains(pane) {
             return Vec::new();
@@ -365,7 +403,9 @@ impl Layout {
             Some((column, _)) => column + 1,
             None => 0,
         };
-        target.columns.insert(index, Column::new(pane));
+        target
+            .columns
+            .insert(index, Column::new(pane, options.default_width));
         let mut events = vec![LayoutEvent::PaneOpened { pane, workspace }];
         events.extend(self.normalize());
         events
@@ -389,13 +429,20 @@ impl Layout {
         events
     }
 
-    pub fn apply(&mut self, action: SessionAction, area: Size) -> Vec<LayoutEvent> {
+    pub fn apply(
+        &mut self,
+        action: SessionAction,
+        area: Size,
+        options: &LayoutOptions,
+    ) -> Vec<LayoutEvent> {
         match action {
             SessionAction::OpenPane { .. } | SessionAction::ClosePane(_) => Vec::new(),
             SessionAction::ConsumeOrExpel { pane, direction } => {
-                self.consume_or_expel(pane, direction)
+                self.consume_or_expel(pane, direction, options)
             }
-            SessionAction::CycleWidth(pane) => self.with_column(pane, Column::cycle_width),
+            SessionAction::CycleWidth(pane) => {
+                self.with_column(pane, |column| column.cycle_width(&options.presets))
+            }
             SessionAction::ToggleFullWidth(pane) => {
                 self.with_column(pane, |column| column.full_width = !column.full_width)
             }
@@ -452,7 +499,12 @@ impl Layout {
         }]
     }
 
-    fn consume_or_expel(&mut self, pane: PaneId, direction: Direction) -> Vec<LayoutEvent> {
+    fn consume_or_expel(
+        &mut self,
+        pane: PaneId,
+        direction: Direction,
+        options: &LayoutOptions,
+    ) -> Vec<LayoutEvent> {
         let Some(location) = self.locate(pane) else {
             return Vec::new();
         };
@@ -464,7 +516,7 @@ impl Layout {
                 Direction::Left => location.column,
                 Direction::Right => location.column + 1,
             };
-            columns.insert(index, Column::new(pane));
+            columns.insert(index, Column::new(pane, options.default_width));
             (index, 0)
         } else {
             let target = match direction {

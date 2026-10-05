@@ -6,6 +6,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 
 use anyhow::Result;
 use gband_core::geometry::Size;
+use gband_core::layout::LayoutOptions;
 use gband_protocol::{SessionName, SessionSummary};
 use tokio::sync::{broadcast, mpsc, oneshot, watch};
 use tracing::Instrument;
@@ -62,6 +63,7 @@ pub struct Registry {
     socket: PathBuf,
     requests: mpsc::UnboundedSender<Request>,
     events: broadcast::Sender<Published>,
+    options: watch::Receiver<LayoutOptions>,
     next_id: u64,
 }
 
@@ -71,6 +73,7 @@ impl Registry {
         socket: PathBuf,
         requests: mpsc::UnboundedSender<Request>,
         events: broadcast::Sender<Published>,
+        options: watch::Receiver<LayoutOptions>,
     ) -> Self {
         Self {
             sessions: BTreeMap::new(),
@@ -78,6 +81,7 @@ impl Registry {
             socket,
             requests,
             events,
+            options,
             next_id: 1,
         }
     }
@@ -105,6 +109,7 @@ impl Registry {
                     socket: self.socket.clone(),
                     area,
                     events: Bus::new(self.events.clone(), name.clone()),
+                    options: self.options.clone(),
                 },
                 exits_tx,
             )

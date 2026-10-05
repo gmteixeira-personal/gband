@@ -12,12 +12,13 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context as _, Result, bail};
+use gband_core::layout::LayoutOptions;
 use gband_protocol::{ExecutableId, ServerMessage, SessionName};
 use portable_pty::CommandBuilder;
 use rustix::fs::Mode;
 use tokio::net::UnixListener;
 use tokio::signal::unix::{SignalKind, signal};
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::{broadcast, mpsc, watch};
 use tokio::task::JoinSet;
 use tracing::Instrument;
 
@@ -38,6 +39,7 @@ pub struct ServerConfig {
     pub program: Vec<OsString>,
     pub cwd: PathBuf,
     pub executable: ExecutableId,
+    pub options: watch::Receiver<LayoutOptions>,
 }
 
 pub fn user_shell() -> OsString {
@@ -63,7 +65,13 @@ pub async fn run_with_events(
     let mut terminate = signal(SignalKind::terminate()).context("cannot handle SIGTERM")?;
     tokio::spawn(event::log(events.subscribe()).in_current_span());
     let (requests_tx, mut requests) = mpsc::unbounded_channel();
-    let mut registry = Registry::new(config.program, socket.clone(), requests_tx.clone(), events);
+    let mut registry = Registry::new(
+        config.program,
+        socket.clone(),
+        requests_tx.clone(),
+        events,
+        config.options,
+    );
     registry.create(config.session, config.cwd, INITIAL_AREA)?;
     let listener = bind(&socket)?;
     tracing::info!("listening");

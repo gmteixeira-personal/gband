@@ -1,4 +1,7 @@
+use std::time::Duration;
+
 use gband_core::input::{Key, KeyCode};
+use gband_core::layout::{PaneId, Program, SessionAction};
 use gband_test_support::*;
 
 async fn converges(name: &str, program: &str) -> TestClient {
@@ -67,4 +70,64 @@ async fn output_longer_than_one_screen() {
     )
     .await;
     assert!(client.screen().contents().contains("line 200"));
+}
+
+async fn open_running(client: &mut TestClient, program: Program) -> PaneId {
+    let first = client.first();
+    let workspace = client.layout.workspaces()[0].id;
+    client
+        .act(SessionAction::OpenPane {
+            workspace,
+            after: Some(first),
+            program: Some(program),
+        })
+        .await;
+    client.wait_until(|client| !client.focus.is_empty()).await;
+    client.focus[0]
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn command_line_program_runs_in_the_user_shell() {
+    let server = TestServer::start("prog-line", &["/bin/sh"]).await;
+    let mut client = server.attach(80, 24).await;
+    let pane = open_running(
+        &mut client,
+        Program::CommandLine("echo $GBAND_PANE; sleep 5".to_owned()),
+    )
+    .await;
+    let id = pane.to_string();
+    client
+        .wait_for_pane(pane, |screen| {
+            screen.contents().lines().any(|line| line.trim() == id)
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn argument_list_program_runs_without_a_shell() {
+    let server = TestServer::start("prog-argv", &["/bin/sh"]).await;
+    let mut client = server.attach(80, 24).await;
+    let argv = ["printf", "%s-%s", "a", "b"].map(str::to_owned).to_vec();
+    let pane = open_running(&mut client, Program::Argv(argv)).await;
+    client.wait_for_pane_text(pane, "a-b").await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn program_that_cannot_start_leaves_the_layout() {
+    let server = TestServer::start("prog-missing", &["/bin/sh"]).await;
+    let mut client = server.attach(80, 24).await;
+    let before = client.layout.clone();
+    let workspace = before.workspaces()[0].id;
+    client
+        .act(SessionAction::OpenPane {
+            workspace,
+            after: Some(client.first()),
+            program: Some(Program::Argv(vec!["/nonexistent".to_owned()])),
+        })
+        .await;
+    assert!(client.pump(Duration::from_millis(500)).await);
+    assert_eq!(client.layout, before);
+    assert!(client.focus.is_empty());
+    client.type_line("echo still-serving").await;
+    client.wait_for_text("still-serving\n").await;
 }

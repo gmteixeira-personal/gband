@@ -7,14 +7,15 @@ use gband_emulator::{Emulator, Grid};
 use ratatui::Frame;
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Position, Rect};
-use ratatui::style::{Modifier, Style};
-use ratatui::widgets::{Block, Widget};
+use ratatui::style::{Color, Modifier, Style};
+use ratatui::widgets::{Block, Clear, Widget};
 use tui_term::widget::{Cursor, PseudoTerminal, Screen};
 
 use crate::animation::{Band, Drawn, DrawnTile};
 
 pub const FOCUSED_BORDER: Style = Style::new().add_modifier(Modifier::BOLD);
 pub const UNFOCUSED_BORDER: Style = Style::new().add_modifier(Modifier::DIM);
+pub const BANNER: Style = Style::new().fg(Color::Red).add_modifier(Modifier::REVERSED);
 
 pub struct Ribbon<'a> {
     pub layout: &'a Layout,
@@ -22,12 +23,29 @@ pub struct Ribbon<'a> {
     pub view: &'a View,
     pub grids: &'a HashMap<PaneId, Grid>,
     pub drawn: &'a Drawn,
+    pub banner: Option<&'a str>,
 }
 
 pub fn draw_frame(frame: &mut Frame<'_>, ribbon: &Ribbon<'_>) {
-    if let Some(cursor) = render(ribbon, frame.buffer_mut()) {
+    let cursor = render(ribbon, frame.buffer_mut());
+    if let Some(banner) = ribbon.banner {
+        draw_banner(frame.buffer_mut(), banner);
+    }
+    if let Some(cursor) = cursor {
         frame.set_cursor_position(cursor);
     }
+}
+
+fn draw_banner(buffer: &mut Buffer, text: &str) {
+    let area = buffer.area;
+    let Some(row) = area.bottom().checked_sub(1).filter(|_| area.height > 0) else {
+        return;
+    };
+    let line = Rect::new(area.x, row, area.width, 1);
+    Clear.render(line, buffer);
+    buffer.set_style(line, BANNER);
+    let first_line = text.lines().next().unwrap_or_default();
+    buffer.set_stringn(area.x, row, first_line, usize::from(area.width), BANNER);
 }
 
 pub fn render(ribbon: &Ribbon<'_>, buffer: &mut Buffer) -> Option<Position> {

@@ -1,7 +1,9 @@
 use gband_core::action::SessionCommand;
 use gband_core::geometry::Size;
-use gband_core::layout::{Direction, Layout, PaneId, SessionAction, Step};
-use gband_core::view::{Scene, View, ViewAction};
+use gband_core::layout::{
+    Direction, Layout, LayoutOptions, PaneId, Proportion, SessionAction, Step,
+};
+use gband_core::view::{CenterFocusedColumn, Scene, View, ViewAction};
 
 const AREA: Size = Size::new(80, 24);
 
@@ -16,7 +18,11 @@ fn scene(layout: &Layout) -> Scene<'_> {
 fn open(layout: &mut Layout, workspace: usize, after: Option<PaneId>) -> PaneId {
     let pane = layout.allocate_pane();
     let id = layout.workspaces()[workspace].id;
-    assert!(!layout.open(pane, id, after).is_empty());
+    assert!(
+        !layout
+            .open(pane, id, after, &LayoutOptions::default())
+            .is_empty()
+    );
     pane
 }
 
@@ -37,6 +43,7 @@ fn stack_into_left(layout: &mut Layout, pane: PaneId) {
             direction: Direction::Left,
         },
         AREA,
+        &LayoutOptions::default(),
     );
 }
 
@@ -200,6 +207,7 @@ fn focused_pane_expelled_keeps_focus() {
             direction: Direction::Right,
         },
         AREA,
+        &LayoutOptions::default(),
     );
     view.sync(scene(&layout));
     assert_eq!(view.focused(), Some(panes[1]));
@@ -329,7 +337,11 @@ fn camera_scrolls_just_enough_and_back() {
 #[test]
 fn camera_aligns_a_wide_column_to_its_start() {
     let (mut layout, panes) = row_of_columns(2);
-    layout.apply(SessionAction::ToggleFullWidth(panes[1]), AREA);
+    layout.apply(
+        SessionAction::ToggleFullWidth(panes[1]),
+        AREA,
+        &LayoutOptions::default(),
+    );
     let mut view = View::new(Scene {
         layout: &layout,
         area: Size::new(100, 24),
@@ -357,6 +369,111 @@ fn camera_follows_a_narrower_terminal() {
         area: AREA,
         viewport: Size::new(60, 24),
     });
+    assert_eq!(view.camera(), 20);
+}
+
+fn view_with(layout: &Layout, policy: CenterFocusedColumn) -> View {
+    View::with_policy(scene(layout), policy)
+}
+
+fn columns_of(width: Proportion, count: usize) -> (Layout, Vec<PaneId>) {
+    let options = LayoutOptions {
+        default_width: width,
+        ..LayoutOptions::default()
+    };
+    let mut layout = Layout::new();
+    let mut panes = Vec::new();
+    for _ in 0..count {
+        let pane = layout.allocate_pane();
+        let id = layout.workspaces()[0].id;
+        layout.open(pane, id, panes.last().copied(), &options);
+        panes.push(pane);
+    }
+    (layout, panes)
+}
+
+#[test]
+fn always_centres_the_focused_column() {
+    let (layout, _) = row_of_columns(3);
+    let mut view = view_with(&layout, CenterFocusedColumn::Always);
+    act(&mut view, &layout, &[ViewAction::FocusRight]);
+    assert_eq!(view.camera(), 20);
+}
+
+#[test]
+fn always_centres_the_first_column_left_of_the_strip() {
+    let (layout, _) = row_of_columns(1);
+    let view = view_with(&layout, CenterFocusedColumn::Always);
+    assert_eq!(view.camera(), -20);
+}
+
+#[test]
+fn always_aligns_a_column_wider_than_the_terminal() {
+    let (layout, _) = columns_of(Proportion::new(3, 2), 2);
+    let mut view = view_with(&layout, CenterFocusedColumn::Always);
+    act(&mut view, &layout, &[ViewAction::FocusRight]);
+    assert_eq!(view.camera(), 120);
+}
+
+#[test]
+fn on_overflow_scrolls_just_enough_when_the_pair_fits() {
+    let (layout, _) = row_of_columns(3);
+    let mut view = view_with(&layout, CenterFocusedColumn::OnOverflow);
+    act(&mut view, &layout, &[ViewAction::FocusRight]);
+    assert_eq!(view.camera(), 0);
+    act(&mut view, &layout, &[ViewAction::FocusRight]);
+    assert_eq!(view.camera(), 40);
+}
+
+#[test]
+fn on_overflow_centres_when_the_pair_does_not_fit() {
+    let (layout, _) = columns_of(Proportion::TWO_THIRDS, 3);
+    let mut view = view_with(&layout, CenterFocusedColumn::OnOverflow);
+    assert_eq!(view.camera(), 0);
+    act(&mut view, &layout, &[ViewAction::FocusRight]);
+    assert_eq!(view.camera(), 40);
+}
+
+#[test]
+fn on_overflow_follows_a_width_change_as_never() {
+    let (mut layout, panes) = row_of_columns(2);
+    let mut view = view_with(&layout, CenterFocusedColumn::OnOverflow);
+    act(&mut view, &layout, &[ViewAction::FocusRight]);
+    assert_eq!(view.camera(), 0);
+    layout.apply(
+        SessionAction::StepWidth {
+            pane: panes[1],
+            step: Step::Grow,
+        },
+        AREA,
+        &LayoutOptions::default(),
+    );
+    view.sync(scene(&layout));
+    assert_eq!(view.camera(), 8);
+}
+
+#[test]
+fn on_overflow_centres_a_new_column_that_does_not_fit_beside_the_focus() {
+    let (mut layout, panes) = columns_of(Proportion::TWO_THIRDS, 1);
+    let mut view = view_with(&layout, CenterFocusedColumn::OnOverflow);
+    let opened = layout.allocate_pane();
+    let options = LayoutOptions {
+        default_width: Proportion::TWO_THIRDS,
+        ..LayoutOptions::default()
+    };
+    layout.open(opened, layout.workspaces()[0].id, Some(panes[0]), &options);
+    view.sync(scene(&layout));
+    view.focus_pane(opened, scene(&layout));
+    assert_eq!(view.camera(), 40);
+}
+
+#[test]
+fn policy_change_applies_from_the_next_move() {
+    let (layout, _) = row_of_columns(3);
+    let mut view = View::new(scene(&layout));
+    view.set_center_focused_column(CenterFocusedColumn::Always);
+    assert_eq!(view.camera(), 0);
+    act(&mut view, &layout, &[ViewAction::FocusRight]);
     assert_eq!(view.camera(), 20);
 }
 
@@ -418,6 +535,7 @@ fn session_commands_resolve_to_the_focused_pane() {
             SessionAction::OpenPane {
                 workspace,
                 after: Some(panes[2]),
+                program: None,
             },
         ),
         (
@@ -489,6 +607,7 @@ fn open_pane_on_the_empty_workspace_names_it_and_no_pane() {
         Some(SessionAction::OpenPane {
             workspace: empty,
             after: None,
+            program: None,
         })
     );
 }
@@ -504,7 +623,11 @@ fn column_beyond_the_right_edge_is_not_shown() {
 fn partly_visible_column_is_shown() {
     let (mut layout, panes) = row_of_columns(2);
     for &pane in &panes {
-        layout.apply(SessionAction::CycleWidth(pane), AREA);
+        layout.apply(
+            SessionAction::CycleWidth(pane),
+            AREA,
+            &LayoutOptions::default(),
+        );
     }
     let mut view = View::new(scene(&layout));
     act(&mut view, &layout, &[ViewAction::FocusRight]);

@@ -10,7 +10,7 @@ use anyhow::{Result, bail};
 use gband_client::{Connection, Link, Transport};
 use gband_core::geometry::Size;
 use gband_core::input::{Key, KeyCode};
-use gband_core::layout::{Layout, PaneId, SessionAction};
+use gband_core::layout::{Layout, LayoutOptions, PaneId, SessionAction};
 pub use gband_emulator::{Emulator, Grid};
 use gband_protocol::{
     ClientMessage, ExecutableId, Hello, HelloReply, IoError, MessageReader, MessageWriter,
@@ -65,6 +65,7 @@ pub fn config(runtime_dir: &Path, program: &[&str]) -> ServerConfig {
         program: program.iter().map(OsString::from).collect(),
         cwd: runtime_dir.to_path_buf(),
         executable: IDENTITY,
+        options: tokio::sync::watch::channel(LayoutOptions::default()).1,
     }
 }
 
@@ -395,6 +396,7 @@ impl TestClient {
         self.act(SessionAction::OpenPane {
             workspace,
             after: Some(after),
+            program: None,
         })
         .await;
         self.wait_until(|client| client.focus.len() > seen).await;

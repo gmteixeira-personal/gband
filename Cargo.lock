@@ -925,6 +925,7 @@ dependencies = [
  "gband-client",
  "gband-core",
  "gband-emulator",
+ "gband-lua",
  "gband-protocol",
  "gband-server",
  "gband-test-support",
@@ -945,11 +946,11 @@ dependencies = [
  "crossterm",
  "gband-core",
  "gband-emulator",
+ "gband-lua",
  "gband-protocol",
  "gband-server",
  "gband-test-support",
  "insta",
- "mlua",
  "notify-rust",
  "ratatui",
  "rustix",
@@ -980,6 +981,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "gband-lua"
+version = "0.1.0"
+dependencies = [
+ "gband-core",
+ "mlua",
+ "notify",
+ "serde",
+ "thiserror 2.0.21",
+ "tracing",
+]
+
+[[package]]
 name = "gband-protocol"
 version = "0.1.0"
 dependencies = [
@@ -1000,8 +1013,6 @@ dependencies = [
  "gband-emulator",
  "gband-protocol",
  "gband-test-support",
- "mlua",
- "notify",
  "portable-pty",
  "rustix",
  "serde",

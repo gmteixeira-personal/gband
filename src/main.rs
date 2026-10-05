@@ -9,9 +9,11 @@ use gband::completions::{self, Shell};
 use gband::executable;
 use gband::logging::{self, Role};
 use gband::paths::{self, ServerName};
-use gband_client::{ClientConfig, Outcome, UnixTransport};
+use gband_client::{ClientConfig, Configuration, Outcome, UnixTransport};
+use gband_lua::{Config, ConfigError};
 use gband_protocol::SessionName;
 use gband_server::{SUN_PATH_MAX, ServerConfig};
+use tokio::sync::watch;
 
 #[derive(Parser)]
 #[command(
@@ -271,17 +273,61 @@ fn server(socket: PathBuf, session: SessionName, runtime_dir: &Path) -> Result<E
         }
         _ => {}
     }
+    let loaded = configuration();
+    let (options_tx, options) = watch::channel(loaded.config.options.layout);
+    let _watcher = loaded.path.map(|path| {
+        gband_lua::watch(path, move |result| match result {
+            Ok(config) => {
+                tracing::info!("configuration reloaded");
+                options_tx.send_replace(config.options.layout);
+            }
+            Err(error) => tracing::warn!("configuration error: {error}"),
+        })
+    });
     let config = ServerConfig {
         socket,
         session,
         program: vec![gband_server::user_shell()],
         cwd: std::env::current_dir().context("cannot read the current directory")?,
         executable: executable::identity().context("cannot identify the gband executable")?,
+        options,
     };
     tokio::runtime::Runtime::new()
         .context("cannot start the async runtime")?
         .block_on(gband_server::run(config))?;
     Ok(ExitCode::SUCCESS)
+}
+
+struct Loaded {
+    config: Config,
+    error: Option<ConfigError>,
+    path: Option<PathBuf>,
+}
+
+fn configuration() -> Loaded {
+    let Some(path) = gband_lua::config_path() else {
+        tracing::info!("no configuration directory, using the defaults");
+        return Loaded {
+            config: gband_lua::defaults(),
+            error: None,
+            path: None,
+        };
+    };
+    match gband_lua::load(&path) {
+        Ok(config) => Loaded {
+            config,
+            error: None,
+            path: Some(path),
+        },
+        Err(error) => {
+            tracing::warn!("configuration error: {error}");
+            Loaded {
+                config: gband_lua::defaults(),
+                error: Some(error),
+                path: Some(path),
+            }
+        }
+    }
 }
 
 fn client(
@@ -319,7 +365,19 @@ fn attach(socket: PathBuf, session: SessionName, selection: &Selection) -> Resul
     }
     let (config, transport) = client(socket, session, selection, true)?;
     let kill_command = config.kill_command.clone();
-    let report = gband_client::run(config, transport)?;
+    let loaded = configuration();
+    let (reloads_tx, reloads) = tokio::sync::mpsc::unbounded_channel();
+    let _watcher = loaded.path.map(|path| {
+        gband_lua::watch(path, move |result| {
+            let _ = reloads_tx.send(result);
+        })
+    });
+    let configuration = Configuration {
+        config: loaded.config,
+        error: loaded.error,
+        reloads,
+    };
+    let report = gband_client::run(config, transport, configuration)?;
     let (line, status) = match report.outcome {
         Outcome::Detached => ("[detached]", ExitCode::SUCCESS),
         Outcome::Exited => ("[exited]", ExitCode::SUCCESS),
