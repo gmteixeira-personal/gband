@@ -36,7 +36,3 @@ Bash binds `\x00` to `set-mark`, which changes nothing on screen. The "Literal C
 ## Migration Plan
 
 None in code. A user who wants Ctrl+A keeps or adds `gband.set { prefix = "ctrl+a" }` in `user/init.lua`.
-
-## Open Questions
-
-- `openspec validate ctrl-space-prefix --strict` reports that MODIFIED "Bind and unbind keys" omits "Override a default" and "Unbind a default". config-directory drops those two scenarios and reports the same error today. This delta is written against the specs as config-directory leaves them, so the error clears once config-directory fixes its delta and is archived. Run validation again before implementing.

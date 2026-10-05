@@ -5,7 +5,7 @@
 ## 2. Default prefix
 
 - [ ] 2.1 Set `prefix = "ctrl+space"` in the built-in default configuration in `crates/lua/src/`, and make the `prefix` of `Options::default()` in `crates/lua/src/options.rs` Ctrl with `KeyCode::Char(' ')`. Verify with `cargo test -p gband-lua` after updating the tests that pin the default prefix, including `crates/lua/tests/config.rs`
-- [ ] 2.2 Update the `crates/lua` tests for "Default prefix", "Rebind a key", "Unbind a key", "Prefix changed after binding" (Ctrl+Space reaching the pane) and "Direct binding of the prefix key" binding `ctrl+space` at line 4. Verify with `cargo test -p gband-lua`
+- [ ] 2.2 Update the `crates/lua` tests for "Default prefix", "Override a default", "Unbind a default", "Prefix changed after binding" (Ctrl+Space reaching the pane) and "Direct binding of the prefix key" binding `ctrl+space` at line 4. Verify with `cargo test -p gband-lua`
 
 ## 3. Client
 
