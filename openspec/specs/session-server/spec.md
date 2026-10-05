@@ -68,7 +68,7 @@ At most one server SHALL serve a socket path. Servers selected with different op
 - **THEN** both servers run, each with its own shell
 
 ### Requirement: Pane program
-On creating a session, the server SHALL open that session's first pane. Every pane SHALL run the user's shell in its own new PTY: `$SHELL` when it is set, otherwise the user's login shell. The shell SHALL start in its session's working directory. Its environment SHALL be the server's, with `TERM=xterm-256color`, `COLORTERM=truecolor`, `GBAND` set to the socket path, `GBAND_SESSION` set to the session's name and `GBAND_PANE` set to the pane's identifier in decimal. The PTY's initial size SHALL be the terminal size the layout gives the pane for its session's current screen area.
+On creating a session, the server SHALL open that session's first pane. Every pane SHALL run, in its own new PTY, the program its open pane action names, or the user's shell when the action names none and for the first pane. The user's shell SHALL be `$SHELL` when it is set, otherwise the user's login shell. A program named as a command line SHALL run as the user's shell with the arguments `-c` and that command line. A program named as an argument list SHALL run as that list. The program SHALL start in its session's working directory. Its environment SHALL be the server's, with `TERM=xterm-256color`, `COLORTERM=truecolor`, `GBAND` set to the socket path, `GBAND_SESSION` set to the session's name and `GBAND_PANE` set to the pane's identifier in decimal. The PTY's initial size SHALL be the terminal size the layout gives the pane for its session's current screen area.
 
 #### Scenario: Environment of the pane
 - **WHEN** a client attaches and the user runs `echo $TERM $COLORTERM $GBAND` in the pane
@@ -85,6 +85,18 @@ On creating a session, the server SHALL open that session's first pane. Every pa
 #### Scenario: Size before any client
 - **WHEN** the server starts and no client has attached
 - **THEN** the first pane's PTY is 38 columns by 22 rows
+
+#### Scenario: Command line program
+- **WHEN** a client asks to open a pane naming the command line `echo $GBAND_PANE; sleep 5`
+- **THEN** the new pane prints its identifier, as the user's shell expands it
+
+#### Scenario: Argument list program
+- **WHEN** a client asks to open a pane naming the argument list `printf`, `%s-%s`, `a`, `b`
+- **THEN** the new pane prints `a-b` without a shell expanding it
+
+#### Scenario: Program that cannot start
+- **WHEN** a client asks to open a pane naming the argument list `/nonexistent`
+- **THEN** the server records the reason in its log and the layout is unchanged
 
 ### Requirement: Authoritative screen
 The server SHALL keep each pane's screen state by feeding everything the pane's program writes to its PTY into a terminal grid of its own. It SHALL keep reading every pane's PTY whether or not a client is attached, so no program ever blocks on output. Escape sequences a grid does not handle SHALL be recorded in the server log at `debug` level, naming the sequence.
