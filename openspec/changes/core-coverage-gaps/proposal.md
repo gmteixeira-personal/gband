@@ -42,5 +42,5 @@ None. The tests pin behaviour that the current specs already describe or that th
 - crates/core/tests/layout.rs
 - crates/core/tests/view.rs
 - crates/core/tests/geometry.rs
-- crates/core/tests/events.rs
+- crates/core/tests/input_encoding.rs
 - openspec/changes/core-coverage-gaps/
