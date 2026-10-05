@@ -12,7 +12,7 @@ Buffer {
         "│                  ││                  │",
         "│                  ││                  │",
         "└──────────────────┘└──────────────────┘",
-        "band 1                               2/2",
+        "band 1 │ C-space prefix              2/2",
     ],
     styles: [
         x: 0, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
@@ -50,6 +50,9 @@ Buffer {
         x: 0, y: 6, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
         x: 20, y: 6, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
         x: 0, y: 7, fg: Indexed(153), bg: Indexed(236), underline: Reset, modifier: NONE,
+        x: 6, y: 7, fg: Indexed(60), bg: Indexed(236), underline: Reset, modifier: NONE,
+        x: 9, y: 7, fg: Indexed(111), bg: Indexed(236), underline: Reset, modifier: BOLD,
+        x: 16, y: 7, fg: Indexed(153), bg: Indexed(236), underline: Reset, modifier: NONE,
         x: 37, y: 7, fg: Indexed(110), bg: Indexed(236), underline: Reset, modifier: NONE,
     ]
 }

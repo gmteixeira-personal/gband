@@ -312,7 +312,43 @@ fn mode_segment_after_the_prefix() {
         "{}",
         client.status()
     );
-    assert!(!client.status().contains("prefix"), "{}", client.status());
+    assert!(!client.status().contains("│ prefix"), "{}", client.status());
+}
+
+#[test]
+fn hints_after_the_prefix() {
+    let (_scratch, mut client) = defaults("hints", "", Size::new(80, 24));
+    client.attach(3, 1);
+    assert!(
+        client.status().starts_with("band 1 │ C-space prefix "),
+        "{}",
+        client.status()
+    );
+    client.press("ctrl+space");
+    let status = client.status();
+    assert!(
+        status.starts_with("band 1 │ prefix │ h left  l right  j down"),
+        "{status}"
+    );
+    assert!(
+        status.trim_end_matches(" 2/3").trim_end().ends_with(" …"),
+        "{status}"
+    );
+    assert_eq!(status.chars().count(), 80);
+}
+
+#[test]
+fn back_to_root() {
+    let (_scratch, mut client) = defaults("back-to-root", "", Size::new(80, 24));
+    client.attach(3, 1);
+    client.press("ctrl+space");
+    client.press("h");
+    assert!(
+        client.status().starts_with("band 1 │ C-space prefix "),
+        "{}",
+        client.status()
+    );
+    assert!(!client.status().contains("left"), "{}", client.status());
 }
 
 #[test]
@@ -453,6 +489,14 @@ fn default_status_line() {
     let (_scratch, mut client) = defaults("snapshot-default", "", Size::new(40, 8));
     client.attach(2, 1);
     assert_snapshot!(client.screen(Size::new(40, 8)));
+}
+
+#[test]
+fn prefix_hints_cut() {
+    let (_scratch, mut client) = defaults("snapshot-prefix-hints", "", Size::new(80, 8));
+    client.attach(2, 1);
+    client.press("ctrl+space");
+    assert_snapshot!(client.screen(Size::new(80, 8)));
 }
 
 #[test]

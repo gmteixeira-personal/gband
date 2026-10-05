@@ -3,7 +3,7 @@ local host = ...
 local ALIGN = { left = true, center = true, right = true }
 local FIELDS = {
   id = true, render = true, align = true, priority = true, order = true,
-  hl = true, redraw_on = true, redraw_interval = true,
+  hl = true, redraw_on = true, redraw_interval = true, fill = true,
 }
 local MIN_INTERVAL = 100
 local REGIONS = { "left", "center", "right" }
@@ -109,6 +109,9 @@ local function validate(spec)
   if interval ~= nil and (type(interval) ~= "number" or not is_integer(interval) or interval < MIN_INTERVAL) then
     return nil, "`redraw_interval` must be an integer number of milliseconds, at least " .. MIN_INTERVAL
   end
+  if spec.fill ~= nil and type(spec.fill) ~= "boolean" then
+    return nil, "`fill` must be a boolean"
+  end
   return {
     render = spec.render,
     align = align,
@@ -117,6 +120,7 @@ local function validate(spec)
     hl = hl,
     redraw_on = redraw_on,
     interval = interval and math.tointeger(interval),
+    fill = spec.fill or false,
     enabled = true,
   }
 end
@@ -380,7 +384,9 @@ local function render(component, state)
     cancel(component)
     return
   end
-  local ok, result = host.call(component.plugin, nil, component.render, context(component, state))
+  local ctx = context(component, state)
+  component.context_width = ctx.width
+  local ok, result = host.call(component.plugin, nil, component.render, ctx)
   if not ok then
     disable(component)
     return
@@ -397,6 +403,31 @@ local function render(component, state)
     cells = cells + gband.ui.width(span.text)
   end
   component.width = cells
+end
+
+local function render_order(a, b)
+  if a.fill ~= b.fill then
+    return b.fill
+  end
+  if a.fill and a.priority ~= b.priority then
+    return a.priority > b.priority
+  end
+  return a.seq < b.seq
+end
+
+local function refill(state)
+  local fills = {}
+  for _, component in ipairs(components) do
+    if component.fill and component.enabled then
+      fills[#fills + 1] = component
+    end
+  end
+  table.sort(fills, render_order)
+  for _, component in ipairs(fills) do
+    if available(component, state) ~= component.context_width then
+      render(component, state)
+    end
+  end
 end
 
 local function stop_timers()
@@ -416,6 +447,7 @@ local function start_timer(component)
       return
     end
     render(component, state)
+    refill(state)
     layout(state)
   end)
 end
@@ -436,14 +468,22 @@ host.after_event(function(name)
   end
   local every = name == nil or name == "HighlightChanged" or name == "ColorschemeChanged"
     or (name == "TerminalResized" and state.width ~= rendered_width)
+  local due = {}
   for _, component in ipairs(snapshot()) do
     start_timer(component)
     if every or component.redraw_on[name] then
-      render(component, state)
+      due[#due + 1] = component
     end
+  end
+  table.sort(due, render_order)
+  for _, component in ipairs(due) do
+    render(component, state)
   end
   if every then
     rendered_width = state.width
+  end
+  if #due > 0 then
+    refill(state)
   end
   layout(state)
 end)
@@ -486,6 +526,7 @@ function statusline.add(spec)
     if state.drawn then
       start_timer(component)
       render(component, state)
+      refill(state)
       layout(state)
     end
   end
@@ -514,6 +555,7 @@ function statusline.list()
       priority = component.priority,
       order = component.order,
       hl = component.hl,
+      fill = component.fill,
       plugin = component.plugin,
       enabled = component.enabled,
     }

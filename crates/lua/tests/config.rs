@@ -205,7 +205,10 @@ fn defaults_reproduce_the_built_in_behaviour() {
     ]
     .map(|((table, chord), action)| (table.to_owned(), chord, action));
     assert_eq!(actions(&config), expected);
-    assert_eq!(component_ids(&config), ["band", "mode", "position"]);
+    assert_eq!(
+        component_ids(&config),
+        ["band", "hints", "mode", "position"]
+    );
 }
 
 fn component_ids(config: &Config) -> Vec<String> {

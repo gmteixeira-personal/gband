@@ -98,7 +98,19 @@ fn mode_segment_while_the_prefix_is_held() {
     client.send(b"x");
     client.wait_for("the prefix table gone", |screen| {
         let bottom = row(screen, 23);
-        bottom.starts_with("band 1") && !bottom.contains("prefix")
+        bottom.starts_with("band 1 │ C-space prefix") && !bottom.contains("│ prefix")
+    });
+}
+
+#[test]
+fn hints_in_the_default_line() {
+    let env = TestEnv::new("statusline-hints");
+    let client = attached(&env);
+    client.wait_for("the hints on the bottom row", |screen| {
+        let bottom = row(screen, 23);
+        bottom.starts_with("band 1 │ C-space prefix ")
+            && bottom.ends_with("1/1")
+            && bottom.chars().count() == 80
     });
 }
 

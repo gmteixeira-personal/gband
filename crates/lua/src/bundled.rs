@@ -12,7 +12,7 @@ pub(crate) const API: [(&str, &str); 3] = [
     ),
 ];
 
-const MODULES: [(&str, &str); 4] = [
+const MODULES: [(&str, &str); 5] = [
     (
         "statusline/band.lua",
         include_str!("runtime/gband/statusline/band.lua"),
@@ -20,6 +20,10 @@ const MODULES: [(&str, &str); 4] = [
     (
         "statusline/mode.lua",
         include_str!("runtime/gband/statusline/mode.lua"),
+    ),
+    (
+        "statusline/hints.lua",
+        include_str!("runtime/gband/statusline/hints.lua"),
     ),
     (
         "statusline/position.lua",

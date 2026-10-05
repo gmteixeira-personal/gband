@@ -334,6 +334,112 @@ fn available_width() {
     assert_eq!(global::<i64>(&config, "width"), 67);
 }
 
+#[test]
+fn fill_of_the_wrong_type() {
+    let scratch = Scratch::new("fill-type");
+    let path = scratch.write(
+        "local r = function() end\n\n\ngband.ui.statusline.add({ id = 'a', fill = 'yes', render = r })",
+    );
+    let error = scratch.load().err().unwrap();
+    assert_error_at(&error, &path, 4, "fill");
+}
+
+#[test]
+fn list_entries_hold_fill() {
+    let (_scratch, config) = loaded(
+        "fill-list",
+        "gband.ui.statusline.add({ id = 'a', fill = true, render = function() end })\ngband.ui.statusline.add({ id = 'b', render = function() end })",
+    );
+    let fills: Vec<bool> = eval(
+        &config,
+        "local l = gband.ui.statusline.list()\nreturn { l[1].fill, l[2].fill }",
+    );
+    assert_eq!(fills, [true, false]);
+}
+
+fn column_state(index: u32, count: u32) -> ViewState {
+    let mut state = drawn(80);
+    state.column = Some(ColumnState { index, count });
+    state
+}
+
+fn focus(config: &Config, state: ViewState) {
+    clean(&config.runtime.set_state(state));
+    clean(&config.runtime.emit(&Event::FocusChanged {
+        pane: Some(PaneId(1)),
+        previous: Some(PaneId(2)),
+    }));
+}
+
+const POSITION: &str = "gband.ui.statusline.add({ id = 'p', align = 'right', redraw_on = { 'FocusChanged' }, render = function(ctx) return ctx.column.index .. '/' .. ctx.column.count end })\n";
+
+#[test]
+fn fill_renders_after_the_others() {
+    let (_scratch, config) = loaded(
+        "fill-after",
+        "order = {}\ngband.ui.statusline.add({ id = 'f', fill = true, order = 2, redraw_on = { 'KeyTableChanged' }, render = function(ctx) order[#order + 1] = 'f' fill_width = ctx.width return 'f' end })\ngband.ui.statusline.add({ id = 'm', order = 1, redraw_on = { 'KeyTableChanged' }, render = function(ctx) order[#order + 1] = 'm' if ctx.table ~= 'root' then return ctx.table end end })",
+    );
+    presented(&config, drawn(40));
+    assert_eq!(global::<i64>(&config, "fill_width"), 40);
+    clean(&run_job(&config, "order = {}"));
+    let mut state = drawn(40);
+    state.table = "prefix".to_owned();
+    clean(&config.runtime.set_state(state));
+    clean(&config.runtime.emit(&Event::KeyTableChanged {
+        table: "prefix".to_owned(),
+        previous: "root".to_owned(),
+    }));
+    let order: Vec<String> = global(&config, "order");
+    assert_eq!(order, ["m", "f"]);
+    assert_eq!(global::<i64>(&config, "fill_width"), 40 - 6 - 3);
+}
+
+#[test]
+fn fill_follows_another_components_width() {
+    let (_scratch, config) = loaded(
+        "fill-follows",
+        &format!(
+            "{POSITION}gband.ui.statusline.add({{ id = 'f', fill = true, render = function(ctx) renders.f = (renders.f or 0) + 1 fill_width = ctx.width return 'f' end }})"
+        ),
+    );
+    presented(&config, column_state(2, 3));
+    assert_eq!(renders(&config, "f"), 1);
+    let before = global::<i64>(&config, "fill_width");
+    assert_eq!(before, 80 - 3 - 1);
+    focus(&config, column_state(10, 12));
+    assert_eq!(renders(&config, "f"), 2);
+    assert_eq!(global::<i64>(&config, "fill_width"), before - 2);
+}
+
+#[test]
+fn fill_width_unchanged() {
+    let (_scratch, config) = loaded(
+        "fill-unchanged",
+        &format!(
+            "{POSITION}gband.ui.statusline.add({{ id = 'f', fill = true, render = counted('f', 'f') }})"
+        ),
+    );
+    presented(&config, column_state(2, 3));
+    focus(&config, column_state(3, 3));
+    assert_eq!(renders(&config, "f"), 1);
+}
+
+#[test]
+fn fill_pass_renders_once_more_at_most() {
+    let (_scratch, config) = loaded(
+        "fill-bounded",
+        &format!(
+            "{POSITION}for _, pair in ipairs({{ {{ 'f1', 2 }}, {{ 'f2', 1 }} }}) do\n  local id = pair[1]\n  gband.ui.statusline.add({{ id = id, fill = true, priority = pair[2], render = function(ctx) renders[id] = (renders[id] or 0) + 1 return string.rep('x', ctx.width // 2) end }})\nend"
+        ),
+    );
+    presented(&config, column_state(2, 3));
+    assert_eq!(renders(&config, "f1"), 2);
+    assert_eq!(renders(&config, "f2"), 2);
+    focus(&config, column_state(10, 12));
+    assert_eq!(renders(&config, "f1"), 3);
+    assert_eq!(renders(&config, "f2"), 3);
+}
+
 fn default_config(name: &str) -> (Scratch, Config) {
     let scratch = Scratch::new(name);
     let config =

@@ -31,4 +31,5 @@ set("prefix", "prefix", action.send_prefix, { desc = "send the prefix key to the
 
 gband.plugin("gband.statusline.band")
 gband.plugin("gband.statusline.mode")
+gband.plugin("gband.statusline.hints")
 gband.plugin("gband.statusline.position")

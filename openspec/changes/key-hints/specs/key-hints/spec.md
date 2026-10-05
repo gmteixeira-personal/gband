@@ -36,7 +36,7 @@ Each hint SHALL be the key, as "Key form" shows it, in the group `KeyHintKey`, o
 - **THEN** the left region shows `band 1`, the separator, then `C-space prefix`
 
 #### Scenario: Prefix table with the defaults
-- **WHEN** the default configuration is in use, the client's terminal is 200 columns wide, and the user presses Ctrl+Space
+- **WHEN** the default configuration is in use, the client's terminal is 240 columns wide, and the user presses Ctrl+Space
 - **THEN** the segment starts with `h left  l right  j down  k up  u band down  i band up`
 - **AND** ends with `D detach  C-space send prefix`
 
