@@ -1,0 +1,67 @@
+## MODIFIED Requirements
+
+### Requirement: Log to a file per role
+The `server`, `attach`, `list-sessions`, `kill-session` and `kill-server` subcommands SHALL write their logs to files in the log directory. No `gband` subcommand SHALL write log events to standard output or standard error. The `server` subcommand SHALL log to the `server` file series, and the `attach`, `list-sessions`, `kill-session` and `kill-server` subcommands to the `client` file series. Subcommands that other capabilities define, such as shell-completions' `completions` and `install-completions`, SHALL log only as those capabilities state. Each line SHALL carry a timestamp, the level, the event's source module and its message, with no terminal colour codes.
+
+#### Scenario: Server logs to its own series
+- **WHEN** the user runs `gband server`
+- **THEN** a file whose name starts with `server.` and ends with `.log` exists in the log directory
+- **AND** no file of the `client` series was written by that run
+
+#### Scenario: Kill-server logs to the client series
+- **WHEN** the user runs `gband kill-server`
+- **THEN** a file whose name starts with `client.` and ends with `.log` exists in the log directory
+- **AND** no file of the `server` series was written by that run
+
+#### Scenario: List-sessions logs to the client series
+- **WHEN** the user runs `gband list-sessions`
+- **THEN** a file whose name starts with `client.` and ends with `.log` exists in the log directory
+- **AND** no file of the `server` series was written by that run
+
+#### Scenario: Kill-session logs to the client series
+- **WHEN** the user runs `gband kill-session`
+- **THEN** a file whose name starts with `client.` and ends with `.log` exists in the log directory
+- **AND** no file of the `server` series was written by that run
+
+#### Scenario: Completion subcommands write no log
+- **WHEN** the user runs `gband completions bash` with `XDG_STATE_HOME` naming an empty directory
+- **THEN** the process exits with status 0
+- **AND** the directory stays empty
+
+#### Scenario: No colour codes in the file
+- **WHEN** any subcommand writes a log line
+- **THEN** the line contains no ANSI escape sequence
+
+### Requirement: Log directory location
+The log directory SHALL be `gband/log` under the XDG state directory: `$XDG_STATE_HOME/gband/log/` when `XDG_STATE_HOME` is set to an absolute path, and `~/.local/state/gband/log/` otherwise. On a platform with no state directory, it SHALL be `log` under gband's local data directory. `gband` SHALL create the directory and any missing parents when a subcommand that logs starts.
+
+#### Scenario: XDG_STATE_HOME set
+- **WHEN** the user runs `gband server` with `XDG_STATE_HOME=/tmp/s`
+- **THEN** the server log file is written under `/tmp/s/gband/log/`
+
+#### Scenario: Directory missing
+- **WHEN** the log directory does not exist and the user runs `gband attach`
+- **THEN** `gband` creates it and writes the client log there
+
+### Requirement: Level from the environment
+The log level SHALL default to `info`. When the `GBAND_LOG` environment variable is set, `gband` SHALL use it as a filter directive in the `tracing` `EnvFilter` syntax, such as `debug` or `gband=trace,info`. When `GBAND_LOG` cannot be parsed, `gband` SHALL use the default level and record a warning in the log that quotes the rejected value.
+
+#### Scenario: Default level
+- **WHEN** `GBAND_LOG` is unset and a subcommand that logs runs
+- **THEN** the log holds `info` events and no `debug` or `trace` events
+
+#### Scenario: Raised level
+- **WHEN** the user runs `gband server` with `GBAND_LOG=debug`
+- **THEN** `debug` events from `gband` appear in the server log
+
+#### Scenario: Unparseable filter
+- **WHEN** the user runs `gband server` with `GBAND_LOG=[[[` and `SHELL=/bin/true`
+- **THEN** the process still exits with status 0
+- **AND** the server log holds a warning quoting `[[[`
+
+### Requirement: Panics are logged
+A panic in any thread of a `gband` process running a subcommand that logs SHALL be recorded in that process's log at `error` level with the panic message and its source location, and the record SHALL reach the file before the process exits.
+
+#### Scenario: Panic reaches the log
+- **WHEN** a thread of `gband server` panics with the message `boom`
+- **THEN** the server log holds an `error` event containing `boom` and the file and line of the panic
