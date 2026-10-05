@@ -17,7 +17,7 @@ Every action SHALL be exactly one of three kinds:
 A key binding SHALL name exactly one action or one Lua function. Pressing a key bound to an action SHALL have the same effect as dispatching that action from any other source.
 
 #### Scenario: Every binding names an action
-- **WHEN** the bindings of `defaults.lua` are listed
+- **WHEN** the bindings of the default configuration are listed
 - **THEN** every entry names one view, session or client action
 
 #### Scenario: Action from another source

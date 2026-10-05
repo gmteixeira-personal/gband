@@ -226,7 +226,7 @@ The terminal's cursor SHALL sit where the focused pane's cursor is. It SHALL be 
 ### Requirement: Key bindings
 The client SHALL take its key bindings and its prefix key from the configuration, as the configuration capability defines them. Outside a prefix sequence, a key that a direct binding names SHALL run that binding, and the prefix key SHALL start a prefix sequence. The client SHALL send neither to the server. Any other key outside a prefix sequence SHALL be sent to the focused pane. The key pressed next in a prefix sequence SHALL end it: a key that a prefix binding names SHALL run that binding, and any other key SHALL discard both keys. When no prefix binding exists, the prefix key SHALL be sent to the focused pane like any other key.
 
-With no configuration file, the bindings SHALL be those `defaults.lua` makes: Ctrl+A as the prefix, no direct binding, and these prefix bindings:
+With no configuration file, the bindings SHALL be those the default configuration makes: Ctrl+A as the prefix, no direct binding, and these prefix bindings:
 
 | key after Ctrl+A | Lua binding | action | kind |
 |---|---|---|---|
@@ -298,21 +298,21 @@ A binding to an action SHALL dispatch it. A binding to a Lua function SHALL run 
 - **THEN** the top tile is 14 rows high and the bottom tile is 10 rows high
 
 #### Scenario: Direct binding acts without the prefix
-- **WHEN** `init.lua` binds `alt+h` to `gband.action.focus_column_left`, the second of two panes is focused, and the user presses Alt+H
+- **WHEN** `user/init.lua` binds `alt+h` to `gband.action.focus_column_left`, the second of two panes is focused, and the user presses Alt+H
 - **THEN** the first pane is focused
 - **AND** neither pane receives the key
 
 #### Scenario: Unbound Alt key reaches the pane
-- **WHEN** `init.lua` binds `alt+h` and the user presses Alt+X
+- **WHEN** `user/init.lua` binds `alt+h` and the user presses Alt+X
 - **THEN** the focused pane receives `\x1bx`
 
 #### Scenario: Another prefix key
-- **WHEN** `init.lua` sets `prefix` to `"ctrl+b"` and the user presses Ctrl+B then `q` with two panes open
+- **WHEN** `user/init.lua` is a copy of `defaults/init.lua` that then sets `prefix` to `"ctrl+b"`, and the user presses Ctrl+B then `q` with two panes open
 - **THEN** the focused pane closes
 - **AND** pressing Ctrl+A sends `\x01` to the focused pane
 
 #### Scenario: No prefix binding left
-- **WHEN** `init.lua` unbinds every prefix binding and the user presses Ctrl+A then `h`
+- **WHEN** `user/init.lua` makes no prefix binding and the user presses Ctrl+A then `h`
 - **THEN** the focused pane receives `\x01` and then `h`
 
 ### Requirement: Report shown panes
