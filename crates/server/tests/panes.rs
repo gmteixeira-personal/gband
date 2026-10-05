@@ -132,12 +132,19 @@ async fn concurrent_opens_give_every_client_the_same_layout() {
 async fn latest_client_sets_the_area() {
     let server = TestServer::start("area", &["/bin/sh"]).await;
     let mut first = server.attach(120, 40).await;
+    first.show_all().await;
+    first
+        .wait_for(|screen| screen.size() == Size::new(58, 38))
+        .await;
     let pane = first.first();
     stty_size(&mut first, pane, "38 58").await;
 
     let mut second = server.attach(100, 30).await;
+    second.show_all().await;
     assert_eq!(second.area, Size::new(100, 30));
-    assert_eq!(second.screen().size(), Size::new(48, 28));
+    second
+        .wait_for(|screen| screen.size() == Size::new(48, 28))
+        .await;
     stty_size(&mut second, pane, "28 48").await;
 
     first
@@ -161,6 +168,10 @@ async fn opening_a_pane_keeps_other_sizes_and_width_changes_resize() {
     let record = runtime_dir.join("winched");
     let server = TestServer::start_in(runtime_dir, &["/bin/sh"]).await;
     let mut client = server.attach(90, 30).await;
+    client.show_all().await;
+    client
+        .wait_for(|screen| screen.size() == Size::new(43, 28))
+        .await;
     let first = client.first();
     client.wait_for_prompt(first).await;
     client
@@ -170,6 +181,7 @@ async fn opening_a_pane_keeps_other_sizes_and_width_changes_resize() {
         ))
         .await;
     let second = client.open_after(first).await;
+    client.show_all().await;
     client
         .wait_for_pane(second, |screen| screen.size() == Size::new(43, 28))
         .await;
@@ -247,8 +259,10 @@ async fn one_of_two_shells_exiting_leaves_the_session_running() {
 async fn stacked_panes_share_the_height() {
     let server = TestServer::start("stack", &["/bin/sh"]).await;
     let mut client = server.attach(80, 25).await;
+    client.show_all().await;
     let first = client.first();
     let second = client.open_after(first).await;
+    client.show_all().await;
     client
         .act(SessionAction::ConsumeOrExpel {
             pane: second,

@@ -57,7 +57,6 @@ None.
 - crates/server/src/session.rs
 - crates/server/tests/panes.rs
 - crates/server/tests/resize.rs
-- crates/server/tests/sessions.rs
 - crates/test-support/src/lib.rs
 - crates/client/src/bindings.rs
 - crates/client/src/lib.rs

@@ -3,6 +3,7 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 use crate::event::LayoutEvent;
+use crate::geometry::{MIN_TILE_HEIGHT, Size, fixed_height_limit, pane_heights};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct PaneId(pub u32);
@@ -23,9 +24,22 @@ impl fmt::Display for WorkspaceId {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Step {
+    Grow,
+    Shrink,
+}
+
+pub(crate) fn gcd(mut a: u64, mut b: u64) -> u64 {
+    while b != 0 {
+        (a, b) = (b, a % b);
+    }
+    a
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Proportion {
-    pub num: u8,
-    pub den: u8,
+    pub num: u32,
+    pub den: u32,
 }
 
 impl Proportion {
@@ -34,17 +48,69 @@ impl Proportion {
     pub const TWO_THIRDS: Self = Self::new(2, 3);
     pub const WHOLE: Self = Self::new(1, 1);
 
-    pub const fn new(num: u8, den: u8) -> Self {
+    pub const MAX: u32 = 10000;
+    const STEP_TENTHS: u64 = 10;
+
+    pub const fn new(num: u32, den: u32) -> Self {
         Self { num, den }
     }
 
     pub fn of(self, cells: u16) -> u16 {
-        (u32::from(cells) * u32::from(self.num) / u32::from(self.den)) as u16
+        let cells = u64::from(cells) * u64::from(self.num) / u64::from(self.den);
+        cells.min(u64::from(u16::MAX)) as u16
+    }
+
+    pub fn step(self, step: Step) -> Self {
+        let den = u64::from(self.den) * Self::STEP_TENTHS;
+        let num = u64::from(self.num) * Self::STEP_TENTHS;
+        let num = match step {
+            Step::Grow => num + u64::from(self.den),
+            Step::Shrink => num.saturating_sub(u64::from(self.den)),
+        };
+        let num = num.min(u64::from(Self::MAX) * den);
+        let divisor = gcd(num, den);
+        Self::new((num / divisor) as u32, (den / divisor) as u32)
     }
 
     fn exceeds(self, other: Self) -> bool {
-        u16::from(self.num) * u16::from(other.den) > u16::from(other.num) * u16::from(self.den)
+        u64::from(self.num) * u64::from(other.den) > u64::from(other.num) * u64::from(self.den)
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Weight {
+    num: u16,
+    den: u16,
+}
+
+impl Weight {
+    pub const ONE: Self = Self { num: 1, den: 1 };
+
+    pub fn new(num: u16, den: u16) -> Self {
+        let divisor = gcd(u64::from(num), u64::from(den)) as u16;
+        Self {
+            num: num / divisor,
+            den: den / divisor,
+        }
+    }
+
+    pub fn num(self) -> u16 {
+        self.num
+    }
+
+    pub fn den(self) -> u16 {
+        self.den
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PaneHeight {
+    Auto(Weight),
+    Fixed(u16),
+}
+
+impl PaneHeight {
+    pub const DEFAULT: Self = Self::Auto(Weight::ONE);
 }
 
 pub const WIDTH_PRESETS: [Proportion; 3] = [
@@ -57,6 +123,7 @@ pub const DEFAULT_WIDTH: Proportion = Proportion::ONE_HALF;
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Column {
     pub panes: Vec<PaneId>,
+    pub heights: Vec<PaneHeight>,
     pub width: Proportion,
     pub full_width: bool,
 }
@@ -65,22 +132,65 @@ impl Column {
     pub fn new(pane: PaneId) -> Self {
         Self {
             panes: vec![pane],
+            heights: vec![PaneHeight::DEFAULT],
             width: DEFAULT_WIDTH,
             full_width: false,
         }
     }
 
-    fn cycle_width(&mut self) {
-        let current = if self.full_width {
+    fn push(&mut self, pane: PaneId) {
+        self.panes.push(pane);
+        self.heights.push(PaneHeight::DEFAULT);
+    }
+
+    fn remove(&mut self, row: usize) {
+        self.panes.remove(row);
+        self.heights.remove(row);
+        if let [last @ PaneHeight::Auto(_)] = self.heights.as_mut_slice() {
+            *last = PaneHeight::DEFAULT;
+        }
+    }
+
+    fn effective_width(&self) -> Proportion {
+        if self.full_width {
             Proportion::WHOLE
         } else {
             self.width
-        };
+        }
+    }
+
+    fn cycle_width(&mut self) {
+        let current = self.effective_width();
         self.full_width = false;
         self.width = WIDTH_PRESETS
             .into_iter()
             .find(|preset| preset.exceeds(current))
             .unwrap_or(WIDTH_PRESETS[0]);
+    }
+
+    pub fn step_width(&mut self, step: Step) {
+        let current = self.effective_width();
+        self.full_width = false;
+        self.width = current.step(step);
+    }
+
+    fn step_height(&mut self, row: usize, step: Step, area: Size) {
+        let rows = pane_heights(self, area.rows);
+        if matches!(self.heights[row], PaneHeight::Auto(_)) {
+            let mut sorted = rows.clone();
+            sorted.sort_unstable();
+            let median = sorted[sorted.len() / 2].max(1);
+            for (height, &tile) in self.heights.iter_mut().zip(&rows) {
+                *height = PaneHeight::Auto(Weight::new(tile.max(1), median));
+            }
+        }
+        let ceiling = fixed_height_limit(self.panes.len(), area.rows);
+        let step_rows = ((u32::from(area.rows) + 5) / 10).max(1) as u16;
+        let target = match step {
+            Step::Grow => rows[row].saturating_add(step_rows),
+            Step::Shrink => rows[row].saturating_sub(step_rows),
+        };
+        self.heights[row] = PaneHeight::Fixed(target.min(ceiling).max(MIN_TILE_HEIGHT));
     }
 }
 
@@ -142,6 +252,15 @@ pub enum SessionAction {
     },
     CycleWidth(PaneId),
     ToggleFullWidth(PaneId),
+    StepWidth {
+        pane: PaneId,
+        step: Step,
+    },
+    StepHeight {
+        pane: PaneId,
+        step: Step,
+    },
+    ResetHeight(PaneId),
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -258,7 +377,7 @@ impl Layout {
         };
         let workspace = &mut self.workspaces[location.workspace];
         let column = &mut workspace.columns[location.column];
-        column.panes.remove(location.row);
+        column.remove(location.row);
         if column.panes.is_empty() {
             workspace.columns.remove(location.column);
         }
@@ -270,7 +389,7 @@ impl Layout {
         events
     }
 
-    pub fn apply(&mut self, action: SessionAction) -> Vec<LayoutEvent> {
+    pub fn apply(&mut self, action: SessionAction, area: Size) -> Vec<LayoutEvent> {
         match action {
             SessionAction::OpenPane { .. } | SessionAction::ClosePane(_) => Vec::new(),
             SessionAction::ConsumeOrExpel { pane, direction } => {
@@ -280,7 +399,38 @@ impl Layout {
             SessionAction::ToggleFullWidth(pane) => {
                 self.with_column(pane, |column| column.full_width = !column.full_width)
             }
+            SessionAction::StepWidth { pane, step } => {
+                self.with_column(pane, |column| column.step_width(step))
+            }
+            SessionAction::StepHeight { pane, step } => {
+                self.with_heights(pane, |column, row| column.step_height(row, step, area))
+            }
+            SessionAction::ResetHeight(pane) => self.with_heights(pane, |column, row| {
+                column.heights[row] = PaneHeight::DEFAULT;
+            }),
         }
+    }
+
+    fn with_heights(
+        &mut self,
+        pane: PaneId,
+        change: impl FnOnce(&mut Column, usize),
+    ) -> Vec<LayoutEvent> {
+        let Some(location) = self.locate(pane) else {
+            return Vec::new();
+        };
+        let workspace = &mut self.workspaces[location.workspace];
+        let column = &mut workspace.columns[location.column];
+        let before = column.heights.clone();
+        change(column, location.row);
+        if column.heights == before {
+            return Vec::new();
+        }
+        vec![LayoutEvent::PaneHeightsChanged {
+            workspace: workspace.id,
+            column: location.column,
+            heights: column.heights.clone(),
+        }]
     }
 
     fn with_column(&mut self, pane: PaneId, change: impl FnOnce(&mut Column)) -> Vec<LayoutEvent> {
@@ -309,7 +459,7 @@ impl Layout {
         let workspace = &mut self.workspaces[location.workspace];
         let columns = &mut workspace.columns;
         let (column, row) = if columns[location.column].panes.len() > 1 {
-            columns[location.column].panes.remove(location.row);
+            columns[location.column].remove(location.row);
             let index = match direction {
                 Direction::Left => location.column,
                 Direction::Right => location.column + 1,
@@ -332,7 +482,7 @@ impl Layout {
             } else {
                 target
             };
-            columns[target].panes.push(pane);
+            columns[target].push(pane);
             (target, columns[target].panes.len() - 1)
         };
         vec![LayoutEvent::PaneMoved {

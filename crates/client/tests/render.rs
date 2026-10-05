@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use gband_client::render::{Ribbon, draw_frame};
 use gband_core::geometry::{Size, tiles};
-use gband_core::layout::{Direction, Layout, PaneId, SessionAction};
+use gband_core::layout::{Direction, Layout, PaneId, SessionAction, Step};
 use gband_core::view::{Scene, View, ViewAction};
 use gband_emulator::{Emulator, Grid};
 use insta::assert_snapshot;
@@ -29,7 +29,7 @@ impl Fixture {
         let view = View::new(Scene {
             layout: &layout,
             area,
-            viewport_cols,
+            viewport: Size::new(viewport_cols, area.rows),
         });
         let mut fixture = Self {
             layout,
@@ -52,11 +52,11 @@ impl Fixture {
     }
 
     fn change(&mut self, action: SessionAction, viewport_cols: u16) {
-        self.layout.apply(action);
+        self.layout.apply(action, self.area);
         let scene = Scene {
             layout: &self.layout,
             area: self.area,
-            viewport_cols,
+            viewport: Size::new(viewport_cols, self.area.rows),
         };
         self.view.sync(scene);
         self.reset_grids();
@@ -66,7 +66,7 @@ impl Fixture {
         let scene = Scene {
             layout: &self.layout,
             area: self.area,
-            viewport_cols,
+            viewport: Size::new(viewport_cols, self.area.rows),
         };
         self.view.apply(action, scene);
     }
@@ -176,4 +176,45 @@ fn stacked_column() {
     fixture.act(ViewAction::FocusDown, 60);
     assert_eq!(fixture.view.focused(), Some(panes[1]));
     assert_snapshot!(fixture.render(Size::new(60, 12)));
+}
+
+#[test]
+fn column_wider_than_the_terminal_shows_its_left_border() {
+    let (mut fixture, panes) = Fixture::new(Size::new(80, 24), 1, 80);
+    for _ in 0..6 {
+        fixture.change(
+            SessionAction::StepWidth {
+                pane: panes[0],
+                step: Step::Grow,
+            },
+            80,
+        );
+    }
+    assert_eq!(
+        tiles(&fixture.layout.workspaces()[0], fixture.area)[0].width,
+        88
+    );
+    assert_eq!(fixture.view.camera(), 0);
+    fixture.write(panes[0], "0123456789".repeat(9).as_bytes());
+    assert_snapshot!(fixture.render(Size::new(80, 24)));
+}
+
+#[test]
+fn grid_smaller_than_its_tile() {
+    let (mut fixture, panes) = Fixture::new(Size::new(100, 30), 1, 100);
+    fixture.grids.insert(panes[0], Grid::new(Size::new(38, 22)));
+    fixture.write(panes[0], format!("{}\r\nsmall", "s".repeat(38)).as_bytes());
+    assert_snapshot!(fixture.render(Size::new(100, 30)));
+}
+
+#[test]
+fn grid_larger_than_its_tile() {
+    let (mut fixture, panes) = Fixture::new(Size::new(80, 24), 1, 80);
+    fixture.grids.insert(panes[0], Grid::new(Size::new(48, 28)));
+    for row in 0..28 {
+        let line = format!("{row:02}{}", "L".repeat(46));
+        fixture.write(panes[0], format!("\x1b[{};1H{line}", row + 1).as_bytes());
+    }
+    fixture.write(panes[0], b"\x1b[28;48H");
+    assert_snapshot!(fixture.render(Size::new(80, 24)));
 }

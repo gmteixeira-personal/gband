@@ -178,6 +178,7 @@ fn named_server_starts_on_demand() {
     let args = ["-S", "feature", "attach"];
     let mut client = Attached::start_with(&env, GBAND, &args, 160, 30, |_| {});
     client.wait_for_prompt();
+    thread::sleep(Duration::from_millis(300));
     client.shell_pid(&env);
     client.run("echo $GBAND");
     client.wait_for_line(env.socket_named("feature").to_str().unwrap());
@@ -194,6 +195,22 @@ fn terminal_resize_reaches_the_program() {
     thread::sleep(Duration::from_millis(300));
     client.run("clear; tput cols");
     client.wait_for_line("33");
+}
+
+#[test]
+fn leader_equals_grows_the_column() {
+    let env = TestEnv::new("grow");
+    let mut client = Attached::start(&env, 80, 24);
+    client.wait_for_prompt();
+    client.shell_pid(&env);
+    client.send(b"\x01=");
+    client.wait_for("a tile 48 columns wide", |screen| {
+        let tiles = tiles(screen);
+        tiles.len() == 1 && tiles[0].left == 0 && tiles[0].right == 47
+    });
+    thread::sleep(Duration::from_millis(300));
+    client.run("clear; tput cols");
+    client.wait_for_line("46");
 }
 
 fn install(path: &Path) {

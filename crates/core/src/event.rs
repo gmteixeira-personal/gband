@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 
-use crate::layout::{PaneId, Proportion, WorkspaceId};
+use crate::layout::{PaneHeight, PaneId, Proportion, WorkspaceId};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LayoutEvent {
     PaneOpened {
         pane: PaneId,
@@ -23,6 +23,11 @@ pub enum LayoutEvent {
         column: usize,
         width: Proportion,
         full_width: bool,
+    },
+    PaneHeightsChanged {
+        workspace: WorkspaceId,
+        column: usize,
+        heights: Vec<PaneHeight>,
     },
     WorkspaceAdded {
         workspace: WorkspaceId,

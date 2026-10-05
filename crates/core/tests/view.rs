@@ -1,6 +1,6 @@
 use gband_core::action::SessionCommand;
 use gband_core::geometry::Size;
-use gband_core::layout::{Direction, Layout, PaneId, SessionAction};
+use gband_core::layout::{Direction, Layout, PaneId, SessionAction, Step};
 use gband_core::view::{Scene, View, ViewAction};
 
 const AREA: Size = Size::new(80, 24);
@@ -9,7 +9,7 @@ fn scene(layout: &Layout) -> Scene<'_> {
     Scene {
         layout,
         area: AREA,
-        viewport_cols: 80,
+        viewport: Size::new(80, 24),
     }
 }
 
@@ -31,10 +31,13 @@ fn row_of_columns(count: usize) -> (Layout, Vec<PaneId>) {
 }
 
 fn stack_into_left(layout: &mut Layout, pane: PaneId) {
-    layout.apply(SessionAction::ConsumeOrExpel {
-        pane,
-        direction: Direction::Left,
-    });
+    layout.apply(
+        SessionAction::ConsumeOrExpel {
+            pane,
+            direction: Direction::Left,
+        },
+        AREA,
+    );
 }
 
 fn act(view: &mut View, layout: &Layout, actions: &[ViewAction]) {
@@ -191,10 +194,13 @@ fn focused_pane_expelled_keeps_focus() {
     stack_into_left(&mut layout, panes[1]);
     let mut view = View::new(scene(&layout));
     act(&mut view, &layout, &[ViewAction::FocusDown]);
-    layout.apply(SessionAction::ConsumeOrExpel {
-        pane: panes[1],
-        direction: Direction::Right,
-    });
+    layout.apply(
+        SessionAction::ConsumeOrExpel {
+            pane: panes[1],
+            direction: Direction::Right,
+        },
+        AREA,
+    );
     view.sync(scene(&layout));
     assert_eq!(view.focused(), Some(panes[1]));
     assert_eq!(layout.locate(panes[1]).unwrap().column, 1);
@@ -323,18 +329,18 @@ fn camera_scrolls_just_enough_and_back() {
 #[test]
 fn camera_aligns_a_wide_column_to_its_start() {
     let (mut layout, panes) = row_of_columns(2);
-    layout.apply(SessionAction::ToggleFullWidth(panes[1]));
+    layout.apply(SessionAction::ToggleFullWidth(panes[1]), AREA);
     let mut view = View::new(Scene {
         layout: &layout,
         area: Size::new(100, 24),
-        viewport_cols: 80,
+        viewport: Size::new(80, 24),
     });
     view.apply(
         ViewAction::FocusRight,
         Scene {
             layout: &layout,
             area: Size::new(100, 24),
-            viewport_cols: 80,
+            viewport: Size::new(80, 24),
         },
     );
     assert_eq!(view.camera(), 50);
@@ -349,7 +355,7 @@ fn camera_follows_a_narrower_terminal() {
     view.sync(Scene {
         layout: &layout,
         area: AREA,
-        viewport_cols: 60,
+        viewport: Size::new(60, 24),
     });
     assert_eq!(view.camera(), 20);
 }
@@ -414,6 +420,38 @@ fn session_commands_resolve_to_the_focused_pane() {
                 after: Some(panes[2]),
             },
         ),
+        (
+            SessionCommand::StepWidth(Step::Grow),
+            SessionAction::StepWidth {
+                pane: panes[2],
+                step: Step::Grow,
+            },
+        ),
+        (
+            SessionCommand::StepWidth(Step::Shrink),
+            SessionAction::StepWidth {
+                pane: panes[2],
+                step: Step::Shrink,
+            },
+        ),
+        (
+            SessionCommand::StepHeight(Step::Grow),
+            SessionAction::StepHeight {
+                pane: panes[2],
+                step: Step::Grow,
+            },
+        ),
+        (
+            SessionCommand::StepHeight(Step::Shrink),
+            SessionAction::StepHeight {
+                pane: panes[2],
+                step: Step::Shrink,
+            },
+        ),
+        (
+            SessionCommand::ResetHeight,
+            SessionAction::ResetHeight(panes[2]),
+        ),
     ];
     for (command, expected) in cases {
         assert_eq!(view.resolve(command), Some(expected), "{command:?}");
@@ -431,6 +469,9 @@ fn commands_on_a_pane_resolve_to_nothing_without_focus() {
         SessionCommand::ConsumeOrExpel(Direction::Right),
         SessionCommand::CycleWidth,
         SessionCommand::ToggleFullWidth,
+        SessionCommand::StepWidth(Step::Grow),
+        SessionCommand::StepHeight(Step::Shrink),
+        SessionCommand::ResetHeight,
     ] {
         assert_eq!(view.resolve(command), None, "{command:?}");
     }
@@ -450,4 +491,48 @@ fn open_pane_on_the_empty_workspace_names_it_and_no_pane() {
             after: None,
         })
     );
+}
+
+#[test]
+fn column_beyond_the_right_edge_is_not_shown() {
+    let (layout, panes) = row_of_columns(3);
+    let view = View::new(scene(&layout));
+    assert_eq!(view.shown(scene(&layout)), [panes[0], panes[1]]);
+}
+
+#[test]
+fn partly_visible_column_is_shown() {
+    let (mut layout, panes) = row_of_columns(2);
+    for &pane in &panes {
+        layout.apply(SessionAction::CycleWidth(pane), AREA);
+    }
+    let mut view = View::new(scene(&layout));
+    act(&mut view, &layout, &[ViewAction::FocusRight]);
+    assert_eq!(view.camera(), 26);
+    assert_eq!(view.shown(scene(&layout)), [panes[0], panes[1]]);
+}
+
+#[test]
+fn pane_below_the_bottom_edge_is_not_shown() {
+    let (mut layout, panes) = row_of_columns(2);
+    stack_into_left(&mut layout, panes[1]);
+    let scene = Scene {
+        layout: &layout,
+        area: Size::new(120, 60),
+        viewport: Size::new(100, 30),
+    };
+    let view = View::new(scene);
+    assert_eq!(view.shown(scene), [panes[0]]);
+}
+
+#[test]
+fn panes_of_other_workspaces_are_not_shown() {
+    let mut layout = Layout::new();
+    open(&mut layout, 0, None);
+    let other = open(&mut layout, 1, None);
+    let mut view = View::new(scene(&layout));
+    act(&mut view, &layout, &[ViewAction::WorkspaceDown]);
+    assert_eq!(view.shown(scene(&layout)), [other]);
+    act(&mut view, &layout, &[ViewAction::WorkspaceDown]);
+    assert_eq!(view.shown(scene(&layout)), []);
 }

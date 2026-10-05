@@ -48,6 +48,10 @@ impl Deref for Attachment {
 
 impl Drop for Attachment {
     fn drop(&mut self) {
+        self.handle.command(Command::Shown {
+            client: self.client,
+            panes: Vec::new(),
+        });
         self.handle.clients.fetch_sub(1, Ordering::AcqRel);
         self.handle.events.send(SessionEvent::ClientDetached {
             client: self.client,
@@ -200,7 +204,7 @@ async fn attach(
     let (focus_tx, mut focus) = mpsc::unbounded_channel();
     let mut ended = session.ended.clone();
     loop {
-        if dispatch(&mut link.reader, &session, &focus_tx)? {
+        if dispatch(&mut link.reader, &session, client, &focus_tx)? {
             return Ok(());
         }
         tokio::select! {
@@ -229,6 +233,7 @@ async fn attach(
 fn dispatch(
     reader: &mut MessageReader<impl AsyncRead + Unpin>,
     session: &SessionHandle,
+    client: u64,
     focus_tx: &mpsc::UnboundedSender<PaneId>,
 ) -> Result<bool> {
     while let Some(message) = reader.try_recv::<ClientMessage>()? {
@@ -244,6 +249,7 @@ fn dispatch(
                     matches!(action, SessionAction::OpenPane { .. }).then(|| focus_tx.clone());
                 session.command(Command::Action { action, focus });
             }
+            ClientMessage::Shown(panes) => session.command(Command::Shown { client, panes }),
             ClientMessage::Detach => return Ok(true),
             ClientMessage::Attach { .. }
             | ClientMessage::ListSessions

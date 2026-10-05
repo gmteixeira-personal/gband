@@ -1,5 +1,10 @@
-use gband_core::geometry::{Size, Span, Tile, column_spans, column_width, tiles};
-use gband_core::layout::{Column, Direction, Layout, PaneId, Proportion, SessionAction};
+use gband_core::geometry::{Size, Span, Tile, column_spans, column_width, pane_heights, tiles};
+use gband_core::layout::{
+    Column, Direction, Layout, PaneHeight, PaneId, Proportion, SessionAction, Weight, Workspace,
+    WorkspaceId,
+};
+
+const AREA: Size = Size::new(80, 24);
 
 fn single() -> (Layout, PaneId) {
     let mut layout = Layout::new();
@@ -43,9 +48,9 @@ fn default_column_on_an_80_by_24_area() {
 fn columns_side_by_side() {
     let (mut layout, first) = single();
     let second = open_after(&mut layout, first);
-    layout.apply(SessionAction::CycleWidth(first));
-    layout.apply(SessionAction::CycleWidth(first));
-    layout.apply(SessionAction::CycleWidth(second));
+    layout.apply(SessionAction::CycleWidth(first), AREA);
+    layout.apply(SessionAction::CycleWidth(first), AREA);
+    layout.apply(SessionAction::CycleWidth(second), AREA);
     let spans = column_spans(&layout.workspaces()[0], Size::new(90, 30));
     assert_eq!((spans[0].x, spans[0].end()), (0, 30));
     assert_eq!((spans[1].x, spans[1].end()), (30, 90));
@@ -57,10 +62,13 @@ fn columns_side_by_side() {
 fn stack_with_a_leftover_row() {
     let (mut layout, first) = single();
     let second = open_after(&mut layout, first);
-    layout.apply(SessionAction::ConsumeOrExpel {
-        pane: second,
-        direction: Direction::Left,
-    });
+    layout.apply(
+        SessionAction::ConsumeOrExpel {
+            pane: second,
+            direction: Direction::Left,
+        },
+        AREA,
+    );
     let tiles = first_tiles(&layout, Size::new(80, 25));
     assert_eq!((tiles[0].pane, tiles[0].y, tiles[0].height), (first, 0, 13));
     assert_eq!(
@@ -73,7 +81,7 @@ fn stack_with_a_leftover_row() {
 #[test]
 fn full_width_fills_the_area() {
     let (mut layout, first) = single();
-    layout.apply(SessionAction::ToggleFullWidth(first));
+    layout.apply(SessionAction::ToggleFullWidth(first), AREA);
     let tiles = first_tiles(&layout, Size::new(100, 30));
     assert_eq!(tiles[0].width, 100);
 }
@@ -113,10 +121,13 @@ fn panes_beyond_the_area_rows_get_no_height() {
     let second = open_after(&mut layout, first);
     let third = open_after(&mut layout, second);
     for pane in [second, third] {
-        layout.apply(SessionAction::ConsumeOrExpel {
-            pane,
-            direction: Direction::Left,
-        });
+        layout.apply(
+            SessionAction::ConsumeOrExpel {
+                pane,
+                direction: Direction::Left,
+            },
+            AREA,
+        );
     }
     let tiles = first_tiles(&layout, Size::new(80, 2));
     let rows: Vec<_> = tiles
@@ -145,4 +156,100 @@ fn tile_span_is_its_column_span() {
 fn empty_workspace_has_no_tiles() {
     let (layout, _) = single();
     assert!(tiles(&layout.workspaces()[1], Size::new(80, 24)).is_empty());
+}
+
+fn column(heights: &[PaneHeight]) -> Column {
+    let mut column = Column::new(PaneId(1));
+    column.panes = (1..=heights.len() as u32).map(PaneId).collect();
+    column.heights = heights.to_vec();
+    column
+}
+
+fn workspace_of(columns: Vec<Column>) -> Workspace {
+    Workspace {
+        id: WorkspaceId(1),
+        columns,
+    }
+}
+
+fn rows(heights: &[PaneHeight]) -> Vec<(u16, u16)> {
+    tiles(&workspace_of(vec![column(heights)]), AREA)
+        .iter()
+        .map(|tile| (tile.y, tile.height))
+        .collect()
+}
+
+fn auto(num: u16, den: u16) -> PaneHeight {
+    PaneHeight::Auto(Weight::new(num, den))
+}
+
+#[test]
+fn fixed_pane_above_an_automatic_pane() {
+    assert_eq!(
+        rows(&[PaneHeight::Fixed(16), auto(1, 1)]),
+        [(0, 16), (16, 8)]
+    );
+}
+
+#[test]
+fn automatic_panes_share_by_weight() {
+    assert_eq!(
+        rows(&[auto(10, 7), auto(1, 1), PaneHeight::Fixed(9)]),
+        [(0, 9), (9, 6), (15, 9)]
+    );
+}
+
+#[test]
+fn fixed_height_leaves_room_for_the_others() {
+    assert_eq!(
+        rows(&[PaneHeight::Fixed(30), auto(1, 1), auto(1, 1)]),
+        [(0, 18), (18, 3), (21, 3)]
+    );
+}
+
+#[test]
+fn automatic_pane_raised_to_three_rows() {
+    assert_eq!(rows(&[auto(1, 20), auto(1, 1)]), [(0, 3), (3, 21)]);
+}
+
+#[test]
+fn lone_fixed_pane_leaves_rows_uncovered() {
+    assert_eq!(rows(&[PaneHeight::Fixed(20)]), [(0, 20)]);
+    assert_eq!(rows(&[PaneHeight::Fixed(30)]), [(0, 24)]);
+}
+
+#[test]
+fn weight_one_heights_split_as_before() {
+    let heights = pane_heights(&column(&[auto(1, 1); 3]), 25);
+    assert_eq!(heights, [9, 8, 8]);
+}
+
+fn column_of_width(width: Proportion) -> Column {
+    let mut column = Column::new(PaneId(1));
+    column.width = width;
+    column
+}
+
+#[test]
+fn column_wider_than_the_area() {
+    let column = column_of_width(Proportion::new(11, 10));
+    assert_eq!(column_width(&column, AREA), 88);
+    let tiles = tiles(&workspace_of(vec![column]), AREA);
+    assert_eq!(tiles[0].width, 88);
+}
+
+#[test]
+fn column_of_width_zero_is_three_cells() {
+    assert_eq!(
+        column_width(&column_of_width(Proportion::new(0, 1)), AREA),
+        3
+    );
+}
+
+#[test]
+fn column_width_stops_at_the_cell_limit() {
+    let column = column_of_width(Proportion::new(Proportion::MAX, 1));
+    assert_eq!(column_width(&column, AREA), u16::MAX);
+    let spans = column_spans(&workspace_of(vec![column.clone(), column]), AREA);
+    assert_eq!((spans[1].x, spans[1].end()), (65535, 131070));
 }

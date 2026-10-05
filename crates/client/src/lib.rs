@@ -105,6 +105,7 @@ pub struct Display {
     terminal: Size,
     grids: HashMap<PaneId, Grid>,
     view: Option<View>,
+    shown: Option<Vec<PaneId>>,
 }
 
 impl Display {
@@ -115,7 +116,17 @@ impl Display {
             terminal,
             grids: HashMap::new(),
             view: None,
+            shown: None,
         }
+    }
+
+    pub fn report_shown(&mut self) -> Option<ClientMessage> {
+        let shown = self.view.as_ref()?.shown(self.scene());
+        if self.shown.as_ref() == Some(&shown) {
+            return None;
+        }
+        self.shown = Some(shown.clone());
+        Some(ClientMessage::Shown(shown))
     }
 
     pub fn focused(&self) -> Option<PaneId> {
@@ -177,7 +188,7 @@ impl Display {
         Scene {
             layout: &self.layout,
             area: self.area,
-            viewport_cols: self.terminal.cols,
+            viewport: self.terminal,
         }
     }
 
@@ -185,7 +196,7 @@ impl Display {
         let scene = Scene {
             layout: &self.layout,
             area: self.area,
-            viewport_cols: self.terminal.cols,
+            viewport: self.terminal,
         };
         if let Some(view) = &mut self.view {
             change(view, scene);
@@ -237,6 +248,9 @@ async fn attach(terminal: &mut DefaultTerminal, connection: &mut Connection) -> 
         if let Some(outcome) = apply_messages(connection, &mut display)? {
             draw(terminal, &display)?;
             return Ok(outcome);
+        }
+        if let Some(message) = display.report_shown() {
+            let _ = connection.send(&message).await;
         }
         draw(terminal, &display)?;
         tokio::select! {
