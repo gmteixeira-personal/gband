@@ -26,9 +26,15 @@ This change depends on core-coverage-gaps, which adds tests to the same `crates/
 
 ### Width steps are exact fractions
 
-`Proportion::step(self, step: Step) -> Proportion` adds or subtracts 1/10, clamps to `[1/10, 1]`, and reduces by the greatest common divisor. Starting from the presets, denominators stay within 2, 3, 10 and 30, so `u8` fields hold every reachable value. `Step` is a new `enum Step { Grow, Shrink }` in `layout.rs`. `Column::step_width` treats full width as `Proportion::WHOLE` and turns it off, as `cycle_width` does. Changes go through the existing `with_column`, so `ColumnWidthChanged` is emitted only when the pair `(width, full_width)` changes.
+`Proportion::step(self, step: Step) -> Proportion` adds or subtracts 1/10, clamps to `[0, 10000]`, and reduces by the greatest common divisor. This ports niri's `Column::set_column_width` for `SizeChange::AdjustProportion` on a proportional column: `(current + delta / 100).clamp(0., MAX_F)`, with `MAX_F` 10000. niri then raises the resolved width to the window's minimum. gband's equivalent already exists: `geometry::column_width` keeps a column at `MIN_COLUMN_WIDTH`, so width 0 draws a 3-cell column. `Step` is a new `enum Step { Grow, Shrink }` in `layout.rs`.
 
-Alternative: store widths as a percentage (`u8` 1 to 100). Rejected. 1/3 has no exact percentage, so cycling and stepping would disagree about the presets.
+Starting from the presets, every denominator divides 30, but a numerator can reach 300000. `Proportion`'s fields widen from `u8` to `u32`. `Proportion::of` computes in `u64` and saturates at `u16::MAX`, because `Span::width` and `Tile::width` are `u16`. `exceeds` multiplies in `u64`. Strip positions are already `u32`, so a strip of very wide columns does not overflow before 65535 columns of 65535 cells.
+
+A column wider than the terminal needs no new view rule. The camera already moves to the start of a focused column at least as wide as the terminal, and the renderer cuts tiles at the terminal's edge. `Column::step_width` treats full width as `Proportion::WHOLE` and turns it off, as `cycle_width` does. Changes go through the existing `with_column`, so `ColumnWidthChanged` is emitted only when the pair `(width, full_width)` changes.
+
+Alternatives:
+- Store widths as a percentage (`u8` 1 to 100). Rejected. 1/3 has no exact percentage, so cycling and stepping would disagree about the presets.
+- Keep widths between 1/10 and 1, the first draft of this change. Rejected. niri lets a column grow past the screen width and shrink to its minimum width.
 
 ### Heights follow niri's column model
 
@@ -73,7 +79,7 @@ Alternative: clients report their viewed workspace and camera, and the server co
 
 ### Protocol version 4
 
-`PROTOCOL_VERSION` becomes 4. `ClientMessage::Shown` is appended, and `Column`'s serialised form gains `heights`. postcard has no field tags, so a version 3 peer would misread the layout. The version bump makes both sides refuse instead.
+`PROTOCOL_VERSION` becomes 4. `ClientMessage::Shown` is appended, `Column`'s serialised form gains `heights`, and `Proportion`'s fields widen to `u32`. postcard has no field tags, so a version 3 peer would misread the layout. The version bump makes both sides refuse instead.
 
 ### Test harness
 
@@ -84,6 +90,8 @@ Alternative: clients report their viewed workspace and camera, and the server co
 - [A pane is shown at its old size for at least 100 ms after every change] → This is the intent. The grid is cut or padded inside the correct border, and the size settles once.
 - [A client that never sends `Shown` leaves every pane unresized] → Only this client and the test harness speak the protocol, and both send it. A version 3 client is refused at the handshake.
 - [Bursts longer than the quiet period, such as a slow drag, still resize at each pause] → Acceptable. Each pause is a real stopping point, and the step count drops from one per event to one per pause.
+- [`render::draw_tile` allocates a scratch buffer the size of the whole tile, which for a column 65535 cells wide is about 1.5 million cells per frame] → The renderer draws only the part of each tile inside the terminal, so its buffer is never larger than the terminal.
+- [A very wide column's PTY and grids hold up to 65533 columns on the server and the client] → This is the cost of niri's unbounded widths. It takes about 99990 presses to reach it, and shrinking or cycling the width brings it back.
 - [`heights` and `panes` drift out of step] → Both change only through `Column` methods. A core test checks the lengths after every layout operation the existing tests run.
 - [A fixed pane keeps its rows when another client shrinks the area, so the column can look different on the larger terminal afterwards] → This matches niri on an output mode change, and geometry clamps the fixed pane so the others keep 3 rows each.
 - [SIGWINCH counting in tests is timing-sensitive] → The tests space their messages well inside 100 ms and assert on the final size before counting. Each count waits for the size, never for a fixed sleep.

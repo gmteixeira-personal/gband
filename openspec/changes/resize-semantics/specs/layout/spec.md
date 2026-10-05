@@ -5,7 +5,7 @@ A column's width SHALL be a proportion of the screen area's width, and a column 
 
 Cycling a column's width SHALL turn full width off and set the width to the smallest preset larger than the current width, or to 1/3 when no preset is larger. A column with full width on SHALL count as width 1 while cycling. Toggling full width SHALL flip the flag and keep the proportion.
 
-Growing or shrinking a column's width SHALL turn full width off and add or subtract 1/10 to the current width, keeping the result between 1/10 and 1. A column with full width on SHALL count as width 1 while growing or shrinking. A width SHALL always be held in lowest terms. When the result equals the current width and full width was already off, nothing SHALL change.
+Growing or shrinking a column's width SHALL turn full width off and add or subtract 1/10 to the current width, keeping the result between 0 and 10000. A width above 1 SHALL make the column wider than the screen area. A column with full width on SHALL count as width 1 while growing or shrinking. A width SHALL always be held in lowest terms. When the result equals the current width and full width was already off, nothing SHALL change.
 
 #### Scenario: Cycle from the default
 - **WHEN** a column of width 1/2 is cycled three times
@@ -27,13 +27,25 @@ Growing or shrinking a column's width SHALL turn full width off and add or subtr
 - **WHEN** a column of width 1/3 is grown
 - **THEN** its width is 13/30
 
-#### Scenario: Shrink at the minimum
-- **WHEN** a column of width 1/10 is shrunk
-- **THEN** its width stays 1/10 and the layout is unchanged
+#### Scenario: Shrink to zero
+- **WHEN** a column of width 1/2 is shrunk five times
+- **THEN** its width is 2/5, then 3/10, then 1/5, then 1/10, then 0
 
-#### Scenario: Grow at the maximum
-- **WHEN** a column of width 1 with full width off is grown
+#### Scenario: Shrink at zero
+- **WHEN** a column of width 0 is shrunk
 - **THEN** the layout is unchanged
+
+#### Scenario: Grow past the screen width
+- **WHEN** a column of width 1 with full width off is grown
+- **THEN** its width is 11/10
+
+#### Scenario: Grow at the limit
+- **WHEN** a column of width 10000 is grown
+- **THEN** the layout is unchanged
+
+#### Scenario: Grow from full width
+- **WHEN** a column of width 1/3 has full width on and is grown
+- **THEN** its full width is off and its width is 11/10
 
 #### Scenario: Shrink from full width
 - **WHEN** a column of width 1/3 has full width on and is shrunk
@@ -68,7 +80,7 @@ A pane that is consumed or expelled SHALL take an automatic height of weight 1 i
 ### Requirement: Tile geometry
 For a screen area of a given width and height, the layout SHALL give every pane of a workspace a tile on that workspace's strip:
 
-- A column's width in cells SHALL be the area's width when full width is on, and otherwise the area's width multiplied by its proportion and rounded down. It SHALL be at least 3 cells.
+- A column's width in cells SHALL be the area's width when full width is on, and otherwise the area's width multiplied by its proportion and rounded down. It SHALL be at least 3 cells and at most 65535 cells.
 - The first column SHALL start at strip position 0, and each later column SHALL start where the previous one ends.
 - A column's tiles SHALL be stacked from the area's top row, in the column's pane order, with no gap between them.
 - A pane with a fixed height SHALL get that many rows. When its column holds other panes, it SHALL get no more than the area's height less 3 rows for each other pane. When it is alone in its column, it SHALL get no more than the area's height, and the rows below its tile SHALL be covered by no tile.
@@ -111,6 +123,18 @@ For a screen area of a given width and height, the layout SHALL give every pane 
 #### Scenario: Full width
 - **WHEN** a column has full width on and the area is 100×30
 - **THEN** its tile is 100 columns wide
+
+#### Scenario: Column wider than the area
+- **WHEN** a column has width 11/10 and the area is 80×24
+- **THEN** its tile is 88 columns wide
+
+#### Scenario: Column of width zero
+- **WHEN** a column has width 0 and the area is 80×24
+- **THEN** its tile is 3 columns wide
+
+#### Scenario: Width beyond the cell limit
+- **WHEN** a column has width 10000 and the area is 80×24
+- **THEN** its tile is 65535 columns wide
 
 ## ADDED Requirements
 
