@@ -432,6 +432,33 @@ end)",
         .await;
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn float_and_tile_from_the_servers_lua() {
+    let scripted = start(
+        "lua-floating",
+        "gband.on('PaneOpened', function(ev)
+  if ev.pane == 2 then
+    gband.action.toggle_pane_floating({ session = ev.session, pane = ev.pane })
+    gband.action.open_pane({ session = ev.session, band = ev.band, floating = true })
+  end
+end)",
+    )
+    .await;
+    let mut client = scripted.attach().await;
+    let first = client.first();
+    let second = client.open_after(first).await;
+    client
+        .wait_until(|client| client.layout.bands()[0].floating.len() == 2)
+        .await;
+    let floating: Vec<_> = client.layout.bands()[0]
+        .floating
+        .iter()
+        .map(|floating| floating.pane)
+        .collect();
+    assert_eq!(floating[0], second);
+    assert_eq!(client.layout.bands()[0].columns.len(), 1);
+}
+
 const COMMANDS: &str = "gband.cmd.register('focus', function(args, ctx)
   ctx.focus(args.pane)
   return args.pane

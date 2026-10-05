@@ -82,6 +82,7 @@ impl Windows {
             band: request.band,
             after: request.after,
             width: request.width,
+            floating: false,
             focus: request.focus,
             content: PaneContent::Plugin {
                 request: request.window,

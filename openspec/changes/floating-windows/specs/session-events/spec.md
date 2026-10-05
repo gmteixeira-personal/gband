@@ -52,8 +52,8 @@ A pane opened or moved into a column SHALL take an automatic height of weight 1 
 - **THEN** the events are pane moved for P1 naming column 2 and row 1, then pane moved for P2 naming column 2 and row 0
 
 #### Scenario: Float a pane
-- **WHEN** the screen area is 80×24 and P2, alone in a column of width 1/2, is floated
-- **THEN** the events are one pane floated naming P2, its band, column 20, row 0, width 1/2, full width off and 24 rows
+- **WHEN** the screen area is 80×24, the default column width is 1/2, and P2, alone in a column, is floated
+- **THEN** the events are one pane floated naming P2, its band, column 20, row 2, width 1/2, full width off and 20 rows
 
 #### Scenario: Move a floating pane
 - **WHEN** the area is 80×24 and a floating pane whose box starts at column 20 is moved right

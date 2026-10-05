@@ -322,7 +322,7 @@ The built-in events of the client:
 | `BandChanged` | `band`, `previous`: band numbers | the viewed band changes |
 | `PaneOpened` | `pane`, `band` | a pane appears in the layout |
 | `PaneClosed` | `pane`, `band` | a pane leaves the layout |
-| `LayoutChanged` | empty | the bands, columns, panes or column widths change |
+| `LayoutChanged` | empty | the bands, columns, panes, column widths or floating boxes change |
 | `TerminalResized` | `cols`, `rows` | the client's terminal changes size |
 | `ConfigReloaded` | empty | a reload succeeded, to the new configuration's handlers |
 | `KeyTableChanged` | `table`, `previous` | the active key table changes |
@@ -381,11 +381,12 @@ Bindings are made only while the configuration loads.
 `gband.layout()` returns a new table describing the layout the client holds:
 
 - `cols` and `rows`: the size of the screen area.
-- `bands`: one table per band, in order, each with `id` and `columns`.
+- `bands`: one table per band, in order, each with `id`, `columns` and `floating`.
 - `columns`: one table per column, left to right, each with `width` as a number, `full_width` and `panes`.
 - `panes`: one table per pane, top to bottom, each with `id` and either `rows`, a fixed height, or `weight`, an automatic height's weight. A plugin pane of a window this client opened also has `window`.
+- `floating`: one table per floating pane, in the band's floating order, each with `id`, `width` and `full_width` as a column has them, `rows`, the box's height, and `col` and `row`, the box's top-left cell as placed in the screen area. A plugin pane of a window this client opened also has `window`.
 
-`gband.view()` returns `band`, the viewed band, `pane`, the focused pane or nil, `window`, the focused window or nil, `table`, the active key table, and `cols` and `rows`, the size of the ribbon.
+`gband.view()` returns `band`, the viewed band, `pane`, the focused pane or nil, `floating`, true while the band's floating layer has focus, `window`, the focused window or nil, `table`, the active key table, and `cols` and `rows`, the size of the ribbon.
 
 Both can be called from any code that runs after loading.
 They describe the state when they are called: an action the running callback dispatched takes effect only after it returns.
@@ -405,10 +406,16 @@ end, { desc = "describe the layout" })
 
 ## Action targets
 
-A built-in action that acts on the focused pane also takes a target, a table naming the pane: `close_pane`, `consume_or_expel_left`, `consume_or_expel_right`, `cycle_column_width`, `toggle_full_width`, `grow_column_width`, `shrink_column_width`, `grow_pane_height`, `shrink_pane_height` and `reset_pane_height`.
+A built-in action that acts on the focused pane also takes a target, a table naming the pane: `close_pane`, `consume_or_expel_left`, `consume_or_expel_right`, `move_column_left`, `move_column_right`, `move_pane_down`, `move_pane_up`, `cycle_column_width`, `toggle_full_width`, `grow_column_width`, `shrink_column_width`, `grow_pane_height`, `shrink_pane_height` and `reset_pane_height`.
 `gband.action.close_pane({ pane = 3 })` closes pane 3, whichever pane is focused.
 
 `open_pane` takes `band`, `after` or both: the new column follows `after`'s column, or is `band`'s first column when only `band` is given.
+`after` must be a tiled pane.
+`floating = true` opens the pane floating instead, in `band` or in the viewed band, centred at the default width and two height steps shorter than the screen; it cannot be given with `after`.
+
+`toggle_pane_floating` takes `pane` and an optional `after`, a tiled pane of the same band.
+A floating pane is tiled again as a new column after `after`, or, without it, after the tiled pane this client focused last in that band, or as the band's first column.
+`after` is ignored when `pane` is tiled.
 `send_prefix` takes `pane` and sends the prefix key to it.
 `gband.spawn` takes `band` and `after` beside `cmd`.
 
@@ -428,8 +435,9 @@ A pane or band number not in the layout is an error at the line of the call.
 
 - `gband.pane.focus(pane)` views the pane's band and focuses it.
 - `gband.band.view(band)` views a band, focusing the pane last focused there.
-- `gband.pane.set_width(pane, width)` sets the column's width, a number greater than 0 and at most 10000, and turns full width off.
+- `gband.pane.set_width(pane, width)` sets the width of the pane's column, or of its box when it floats, a number greater than 0 and at most 10000, and turns full width off.
 - `gband.pane.set_height(pane, { rows = n })` gives a fixed height; `gband.pane.set_height(pane, { weight = w })` gives an automatic height of weight `w`.
+- `gband.pane.set_position(pane, { col = c, row = r })` places a floating pane's box with its top-left cell at `c` and `r`, kept inside the screen area. A pane that is not floating is an error.
 - `gband.pane.send_keys(pane, keys)` sends a key name, or a list of them, as key presses.
 - `gband.pane.send_text(pane, text)` sends each character as a key press, a line feed or carriage return as Enter and a tab as Tab. Other control characters are an error.
 - `gband.pane.paste(pane, text)` sends `text` as a paste.
@@ -465,10 +473,10 @@ It is one of two kinds:
 | `cursorline` | both | boolean | `false` |
 | `keys` | both | key names to functions | none |
 | `on_close`, `on_resize` | both | function | none |
-| `row`, `col` | float | integer of at least 0, or `"center"` | `"center"` |
-| `width`, `height` | float | integer of at least 1 | half the ribbon |
-| `border` | float | boolean | `true` |
-| `title` | float | string | none |
+| `row`, `col` | floating | integer of at least 0, or `"center"` | `"center"` |
+| `width`, `height` | floating | integer of at least 1 | half the ribbon |
+| `border` | floating | boolean | `true` |
+| `title` | floating | string | none |
 | `band`, `after` | pane | as the `open_pane` target takes them | the viewed band and focused pane |
 | `column_width` | pane | a width | the server's `default_column_width` |
 
@@ -479,18 +487,18 @@ Control characters are removed, and a line longer than the window is cut.
 - `gband.win.set_lines(win, lines)` replaces the lines.
 - `gband.win.scroll(win, count)` moves the first shown line, and `gband.win.set_cursor(win, line)` the cursor line. With `cursorline`, the window scrolls just enough to keep the cursor line shown and draws it in `WindowCursorLine`.
 - `gband.win.focus(win)` focuses a float, or focuses a pane window's pane.
-- `gband.win.set_config(win, config)` changes a float's `row`, `col`, `width`, `height`, `border` or `title`.
+- `gband.win.set_config(win, config)` changes a floating plugin window's `row`, `col`, `width`, `height`, `border` or `title`.
 - `gband.win.close(win)` closes a window, and its pane for a pane window. Closing a window that is not open does nothing.
-- `gband.win.info(win)` returns `id`, `kind`, `focused`, `pane`, `top`, `cursor`, `line_count`, `cols` and `rows`, and for a float `row`, `col`, `width` and `height`.
+- `gband.win.info(win)` returns `id`, `kind`, `focused`, `pane`, `top`, `cursor`, `line_count`, `cols` and `rows`, and for a floating plugin window `row`, `col`, `width` and `height`.
 - `gband.win.list()` returns the open windows' numbers in ascending order.
 
 The focused window is the focused float, otherwise the window of the focused pane.
-A newly opened float with `focus` takes focus; moving focus or viewing another band leaves no float focused.
-The exception is a focus change caused by the float's own `keys` function: the float stays focused until the next key press, whether the change happens at once or arrives later from the server, as an opened pane's focus does.
+A newly opened floating plugin window with `focus` takes focus; moving focus or viewing another band leaves no floating plugin window focused.
+The exception is a focus change caused by the floating plugin window's own `keys` function: it stays focused until the next key press, whether the change happens at once or arrives later from the server, as an opened pane's focus does.
 So a list can run actions on Enter and stay open for the next choice.
 While a window is focused, every key the bindings leave unused goes to it and never to a pane, and pastes are discarded.
 A key in `keys` runs its function with the window's number.
-Without an entry, Up or `k` and Down or `j` move the cursor line or scroll, PageUp and PageDown scroll a page, Home and End show the first or last line, and Escape closes a float.
+Without an entry, Up or `k` and Down or `j` move the cursor line or scroll, PageUp and PageDown scroll a page, Home and End show the first or last line, and Escape closes a floating plugin window.
 
 `on_close` runs once with the window's number when the window closes, but not when a reload closes it.
 `on_resize` runs with the number and the new columns and rows when the window's content area changes size, including when a pane window's size first becomes known.
@@ -579,9 +587,9 @@ gband removes control characters from the text, so a component cannot write esca
 | `width` | the cells left for this component, given the other components' latest output, separators and gaps; a hint, at least 0 |
 | `table` | the active key table |
 | `band` | `{ number, index, count }`: the viewed band's number, its position from the top counting from 1, and the number of bands |
-| `column` | `{ index, count }`: the focused column's position counting from 1, and the band's column count; nil when the band is empty |
+| `column` | `{ index, count }`: the focused column's position counting from 1, and the band's column count; nil when the band is empty or a floating pane is focused |
 | `pane` | the focused pane's number, or nil |
-| `panes` | every pane of the layout, bands from the top, columns from the left and panes from the top, each `{ pane, band, state }`, `state` a copy of its pane state |
+| `panes` | every pane of the layout, bands from the top, columns from the left and panes from the top, then within each band its floating panes, each `{ pane, band, state }`, `state` a copy of its pane state |
 
 `gband.ui.width(text)` returns the cells `text` takes: two for a wide character, zero for a zero-width one.
 `gband.ui.truncate(text, width)` returns `text` when it fits in `width` cells, and otherwise the longest prefix that fits in `width - 1` cells followed by `…`.
@@ -637,7 +645,7 @@ gband bundles five segment plugins:
 | `gband.statusline.band` | `band` | `band ` and the viewed band's index | `BandChanged`, `LayoutChanged` | left | 20 | 10 | `StatusLineSegment` |
 | `gband.statusline.mode` | `mode` | the active key table; hidden in `root` | `KeyTableChanged` | left | 30 | 20 | `StatusLineAccent` |
 | `gband.statusline.hints` | `hints` | the keys of the active key table and what each does, below | `KeyTableChanged`, and as a fill component | left | 0 | 30 | `KeyHintLabel` |
-| `gband.statusline.position` | `position` | the focused column and the column count, such as `3/7`; hidden in an empty band | `FocusChanged`, `BandChanged`, `LayoutChanged` | right | 10 | 10 | `StatusLineMuted` |
+| `gband.statusline.position` | `position` | the focused column and the column count, such as `3/7`; hidden in an empty band and while a floating pane is focused | `FocusChanged`, `BandChanged`, `LayoutChanged` | right | 10 | 10 | `StatusLineMuted` |
 | `gband.statusline.clock` | `clock` | the local time, `os.date(opts.format)`, `"%H:%M"` by default | every `opts.interval` milliseconds, 1000 by default | right | 5 | 20 | `StatusLineMuted` |
 
 Each takes the options `align`, `priority` and `order`, and each but `hints` takes `hl`.
@@ -686,7 +694,11 @@ A binding to a function shows its `desc`, and takes no hint without one.
 | `open_pane` | `new` | `shrink_pane_height` | `shorter` |
 | `close_pane` | `close` | `reset_pane_height` | `reset height` |
 | `consume_or_expel_left` | `stack left` | `detach` | `detach` |
-| | | `send_prefix` | `send prefix` |
+| `move_column_left` | `move left` | `send_prefix` | `send prefix` |
+| `move_column_right` | `move right` | `toggle_pane_floating` | `float` |
+| `move_pane_down` | `move down` | `switch_focus_floating_tiled` | `layer` |
+| `move_pane_up` | `move up` | | |
+
 
 The segment fits itself to its `ctx.width`: it shows the leading hints that fit, followed by ` …` when some are left out, and hides itself when not even the first fits.
 It is a fill component, so that width follows the other segments of the same render.
@@ -778,8 +790,8 @@ The window API defines these groups, as defaults:
 | group | default | use |
 |---|---|---|
 | `Window` | `{}` | every window cell |
-| `WindowBorder` | `{ fg = 8 }` | a float's border |
-| `WindowTitle` | `{ bold = true }` | a float's title, over `WindowBorder` |
+| `WindowBorder` | `{ fg = 8 }` | a floating plugin window's border |
+| `WindowTitle` | `{ bold = true }` | a floating plugin window's title, over `WindowBorder` |
 | `WindowCursorLine` | `{ reverse = true }` | the cursor line |
 
 A change of any group redraws every window.
@@ -791,7 +803,7 @@ A span's style is its group's resolved style over `StatusLine`'s, field by field
 The client draws 24-bit colors when its own `COLORTERM` is `truecolor` or `24bit`.
 Otherwise it draws each `"#rrggbb"` color as the nearest of the palette indexes 16 to 255.
 Index and named colors are drawn as their palette index either way.
-Floats follow these rules.
+Floating plugin windows follow these rules.
 A plugin pane's contents are sent to the server as 24-bit colors, and every client shows them as its terminal does, as it shows a program's colors.
 
 ## Colorschemes: `gband.colorscheme`
@@ -824,7 +836,7 @@ gband.hl.set("PaneSegment", { fg = "#f6c177", bold = true })
 ## Plain data
 
 Everything that crosses between the sides is plain data: event data, pane state values, command arguments and command results.
-A plain data value is nil, a boolean, an integer, a float, a string, or a table whose keys are strings or integers and whose values are plain data.
+A plain data value is nil, a boolean, an integer, a floating-point number, a string, or a table whose keys are strings or integers and whose values are plain data.
 
 - A string passes as its bytes, unchanged, so `"\0\255"` arrives as those two bytes.
 - Integer keys and string keys stay apart: `{ [1] = "a", ["1"] = "b" }` arrives with both keys.
@@ -943,14 +955,16 @@ end)
 
 ### Session actions in the server
 
-The server's `gband.action` holds the session actions: `open_pane`, `close_pane`, `consume_or_expel_left`, `consume_or_expel_right`, `cycle_column_width`, `toggle_full_width`, `grow_column_width`, `shrink_column_width`, `grow_pane_height`, `shrink_pane_height` and `reset_pane_height`.
+The server's `gband.action` holds the session actions: `open_pane`, `close_pane`, `consume_or_expel_left`, `consume_or_expel_right`, `move_column_left`, `move_column_right`, `move_pane_down`, `move_pane_up`, `toggle_pane_floating`, `cycle_column_width`, `toggle_full_width`, `grow_column_width`, `shrink_column_width`, `grow_pane_height`, `shrink_pane_height` and `reset_pane_height`.
 Each takes one target table naming `session` and the `pane` it acts on:
 
 ```lua
 gband.action.close_pane({ session = ev.session, pane = ev.pane })
 ```
 
-`open_pane` takes `session`, `band`, an optional `after` pane, and an optional `program`: a command line string or a list of argument strings.
+`open_pane` takes `session`, `band`, an optional `after` pane, an optional `program`, a command line string or a list of argument strings, and an optional `floating`.
+`floating = true` opens the pane floating in `band`, and cannot be given with `after`.
+`toggle_pane_floating` also takes an optional `after` pane: a floating pane is tiled after it, or as the band's first column without it, since the server knows no client's focus.
 
 ```lua
 gband.action.open_pane({ session = "work", band = 1, after = 2, program = { "htop", "-d", "10" } })
@@ -966,9 +980,11 @@ They can be called only in a callback.
 `gband.sessions()` returns the session names in ascending byte order.
 `gband.session(name)` returns `{ name, bands, clients }`, or nil for an unknown session:
 
-- `bands` lists the bands from the top, each `{ band, columns }`
+- `bands` lists the bands from the top, each `{ band, columns, floating }`
 - each column is `{ width, full_width, panes }`, from the left
 - each pane is `{ pane }`, from the top
+- each floating pane is `{ pane, width, full_width, rows, col, row }`, in the band's floating order, with `col` and `row` the box's top-left cell as placed in the session's screen area
+
 - `clients` lists the numbers of the attached clients, ascending
 
 Each call returns new tables.

@@ -8,7 +8,7 @@ use gband_core::geometry::Size;
 use gband_core::input::{Key, KeyCode, Modifiers};
 use gband_core::layout::{
     BandId, Direction, Layout, LayoutOptions, PaneContent, PaneHeight, PaneId, Program, Proportion,
-    SessionAction, Step, Weight,
+    SessionAction, Step, Vertical, Weight,
 };
 use gband_core::view::ViewAction;
 use gband_lua::{BandState, Config, Dispatch, Outcome, PaneInput, ViewState};
@@ -162,7 +162,223 @@ fn read_the_view() {
     assert_eq!(view.get::<String>("table").unwrap(), "prefix");
     assert_eq!(view.get::<u16>("cols").unwrap(), 80);
     assert_eq!(view.get::<u16>("rows").unwrap(), 23);
-    assert_eq!(view.pairs::<String, mlua::Value>().count(), 5);
+    assert!(!view.get::<bool>("floating").unwrap());
+    assert_eq!(view.pairs::<String, mlua::Value>().count(), 6);
+}
+
+fn with_floating() -> Layout {
+    let mut layout = two_bands();
+    let options = LayoutOptions::default();
+    let floating = layout.allocate_pane();
+    layout.open_floating(floating, BandId(1), None, AREA, &options);
+    let (pane, col, row) = (floating, 50, 3);
+    let height = PaneHeight::Fixed(10);
+    layout.apply(SessionAction::SetHeight { pane, height }, AREA, &options);
+    layout.apply(
+        SessionAction::SetPosition { pane, col, row },
+        AREA,
+        &options,
+    );
+    layout
+}
+
+#[test]
+fn read_a_floating_pane() {
+    let layout = with_floating();
+    assert_eq!(layout.floating(PaneId(4)).unwrap().col, 40);
+    let (_scratch, config) = loaded_with("layout-floating", "", state(layout, 1, Some(1), "root"));
+    let summary: String = eval(
+        &config,
+        r#"
+        local parts = {}
+        for _, band in ipairs(gband.layout().bands) do
+          for _, f in ipairs(band.floating) do
+            parts[#parts + 1] = string.format("%d %.1f %s %d %d %d %s", f.id, f.width, tostring(f.full_width), f.rows, f.col, f.row, tostring(f.window))
+          end
+          parts[#parts + 1] = "|"
+        end
+        return table.concat(parts, " ")
+        "#,
+    );
+    assert_eq!(summary, "4 0.5 false 10 40 3 nil | | |");
+}
+
+#[test]
+fn floating_focus() {
+    let (_scratch, config) = loaded_with(
+        "view-floating",
+        "",
+        state(with_floating(), 1, Some(4), "root"),
+    );
+    let view: Table = eval(&config, "return gband.view()");
+    assert_eq!(view.get::<Option<u32>>("pane").unwrap(), Some(4));
+    assert!(view.get::<bool>("floating").unwrap());
+}
+
+#[test]
+fn open_a_floating_pane() {
+    let floating = |band| {
+        session(SessionAction::OpenPane {
+            band: BandId(band),
+            after: None,
+            width: None,
+            floating: true,
+            focus: true,
+            content: PaneContent::Program(None),
+        })
+    };
+    assert_eq!(
+        dispatched(
+            "open-floating",
+            state(two_bands(), 1, Some(1), "root"),
+            "gband.action.open_pane({ floating = true })"
+        ),
+        [floating(1)]
+    );
+    assert_eq!(
+        dispatched(
+            "open-floating-band",
+            state(two_bands(), 1, Some(1), "root"),
+            "gband.action.open_pane({ band = 2, floating = true })"
+        ),
+        [floating(2)]
+    );
+    assert_eq!(
+        dispatched(
+            "open-tiled",
+            state(two_bands(), 1, Some(1), "root"),
+            "gband.action.open_pane({ after = 1, floating = false })"
+        ),
+        [session(SessionAction::open(
+            BandId(1),
+            Some(PaneId(1)),
+            None
+        ))]
+    );
+}
+
+#[test]
+fn floating_with_after() {
+    failed(
+        "floating-after",
+        state(two_bands(), 1, Some(1), "root"),
+        "gband.action.open_pane({ after = 1, floating = true })",
+        "after",
+    );
+    failed(
+        "floating-not-boolean",
+        state(two_bands(), 1, Some(1), "root"),
+        "gband.action.open_pane({ floating = 'yes' })",
+        "floating",
+    );
+}
+
+#[test]
+fn open_after_a_floating_pane() {
+    failed(
+        "open-after-floating",
+        state(with_floating(), 1, Some(1), "root"),
+        "gband.action.open_pane({ after = 4 })",
+        "4",
+    );
+}
+
+#[test]
+fn tile_a_named_pane_after_a_named_pane() {
+    assert_eq!(
+        dispatched(
+            "tile-after",
+            state(with_floating(), 1, Some(1), "root"),
+            "gband.action.toggle_pane_floating({ pane = 4, after = 1 })"
+        ),
+        [session(SessionAction::ToggleFloating {
+            pane: PaneId(4),
+            after: Some(PaneId(1)),
+        })]
+    );
+    assert_eq!(
+        dispatched(
+            "tile-default",
+            state(with_floating(), 1, Some(1), "root"),
+            "gband.action.toggle_pane_floating({ pane = 4 })"
+        ),
+        [session(SessionAction::ToggleFloating {
+            pane: PaneId(4),
+            after: None,
+        })]
+    );
+}
+
+#[test]
+fn tile_after_a_pane_of_another_band() {
+    failed(
+        "tile-other-band",
+        state(with_floating(), 1, Some(1), "root"),
+        "gband.action.toggle_pane_floating({ pane = 4, after = 3 })",
+        "3",
+    );
+    failed(
+        "tile-without-pane",
+        state(with_floating(), 1, Some(1), "root"),
+        "gband.action.toggle_pane_floating({ after = 1 })",
+        "pane",
+    );
+}
+
+#[test]
+fn place_a_floating_pane() {
+    assert_eq!(
+        dispatched(
+            "set-position",
+            state(with_floating(), 1, Some(1), "root"),
+            "gband.pane.set_position(4, { col = 10, row = 2 })"
+        ),
+        [session(SessionAction::SetPosition {
+            pane: PaneId(4),
+            col: 10,
+            row: 2,
+        })]
+    );
+}
+
+#[test]
+fn set_position_errors() {
+    for (name, code, mentions) in [
+        (
+            "tiled",
+            "gband.pane.set_position(1, { col = 0, row = 0 })",
+            "pane 1",
+        ),
+        ("missing", "gband.pane.set_position(4, { col = 4 })", "row"),
+        (
+            "unknown",
+            "gband.pane.set_position(4, { col = 4, row = 1, z = 2 })",
+            "col",
+        ),
+        (
+            "negative",
+            "gband.pane.set_position(4, { col = -1, row = 1 })",
+            "col",
+        ),
+        (
+            "fraction",
+            "gband.pane.set_position(4, { col = 1.5, row = 1 })",
+            "col",
+        ),
+        (
+            "absent",
+            "gband.pane.set_position(9, { col = 1, row = 1 })",
+            "9",
+        ),
+        ("not-a-table", "gband.pane.set_position(4, 3)", "col"),
+    ] {
+        failed(
+            &format!("set-position-{name}"),
+            state(with_floating(), 1, Some(1), "root"),
+            code,
+            mentions,
+        );
+    }
 }
 
 #[test]
@@ -283,6 +499,34 @@ fn every_pane_action_takes_a_target() {
             },
         ),
         ("reset_pane_height", SessionAction::ResetHeight(PaneId(1))),
+        (
+            "move_column_left",
+            SessionAction::MoveColumn {
+                pane: PaneId(1),
+                direction: Direction::Left,
+            },
+        ),
+        (
+            "move_column_right",
+            SessionAction::MoveColumn {
+                pane: PaneId(1),
+                direction: Direction::Right,
+            },
+        ),
+        (
+            "move_pane_down",
+            SessionAction::MovePane {
+                pane: PaneId(1),
+                direction: Vertical::Down,
+            },
+        ),
+        (
+            "move_pane_up",
+            SessionAction::MovePane {
+                pane: PaneId(1),
+                direction: Vertical::Up,
+            },
+        ),
     ];
     let (_scratch, config) =
         loaded_with("pane-actions", JOB, state(two_bands(), 2, Some(3), "root"));
@@ -556,6 +800,40 @@ fn dispatch_order_follows_the_calls() {
 }
 
 #[test]
+fn set_position_keeps_the_dispatch_order() {
+    assert_eq!(
+        dispatched(
+            "order-position",
+            state(with_floating(), 1, Some(1), "root"),
+            "gband.action.move_column_right({ pane = 4 })\ngband.pane.set_position(4, { col = 1, row = 1 })\ngband.action.toggle_pane_floating({ pane = 4, after = 1 })"
+        ),
+        [
+            session(SessionAction::MoveColumn {
+                pane: PaneId(4),
+                direction: Direction::Right,
+            }),
+            session(SessionAction::SetPosition {
+                pane: PaneId(4),
+                col: 1,
+                row: 1,
+            }),
+            session(SessionAction::ToggleFloating {
+                pane: PaneId(4),
+                after: Some(PaneId(1)),
+            }),
+        ]
+    );
+}
+
+#[test]
+fn set_position_while_loading() {
+    let scratch = Scratch::new("position-loading");
+    let path = scratch.write("\ngband.pane.set_position(1, { col = 0, row = 0 })\n");
+    let error = scratch.load().map(|_| ()).unwrap_err();
+    assert_error_at(&error, &path, 2, "binding function");
+}
+
+#[test]
 fn pane_control_while_loading() {
     let scratch = Scratch::new("pane-loading");
     let path = scratch.write("\n\ngband.pane.focus(1)\n");
@@ -575,6 +853,7 @@ fn spawn_after_a_named_pane() {
             band: BandId(1),
             after: Some(PaneId(1)),
             width: None,
+            floating: false,
             focus: true,
             content: PaneContent::Program(Some(Program::CommandLine("fish".to_owned()))),
         })]

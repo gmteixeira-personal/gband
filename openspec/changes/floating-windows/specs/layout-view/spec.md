@@ -168,7 +168,7 @@ A view's shown panes SHALL be the panes of its viewed band whose tile, as the la
 - **THEN** P4 is not shown
 
 ### Requirement: Focus a named pane
-Focusing a named pane SHALL make that pane's band the viewed band, focus that pane, and make its layer active. The camera SHALL follow the new focus as it follows any change of focus. Focusing a pane not in the layout SHALL leave the view unchanged.
+Focusing a named pane SHALL make that pane's band the viewed band, focus that pane, and make its layer active, as a focus message from the server does. The camera SHALL follow the new focus as it follows any change of focus. Focusing a pane not in the layout SHALL leave the view unchanged.
 
 #### Scenario: Pane in the viewed band
 - **WHEN** a client views a band holding columns A, B and C, focuses A, and focuses the named pane in C

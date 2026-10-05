@@ -276,6 +276,7 @@ fn pane_window_opens_and_sends_its_contents() {
             band: BandId(1),
             after: Some(client.panes[0]),
             width: Some(Proportion::new(1, 4)),
+            floating: false,
             focus: true,
             content: PaneContent::Plugin { request: window },
         })]

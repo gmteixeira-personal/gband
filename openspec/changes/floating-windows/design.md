@@ -32,6 +32,11 @@ The layout lives in `gband_core::layout::Layout`, a list of `Band`s that each ho
 
 `Session::settle` iterates `placed()` for each band's floating panes beside `tiles()`. The pane-resize rules then apply unchanged.
 
+### A new box has one shape
+A pane floated for the first time and a pane opened floating get the same new box: the configured `default_column_width`, the area's height less two height steps, centred, so one step stays free above and below. The user asked for this shape after trying the first version, which kept the tile's size and filled the whole height. Resetting a floating pane's height returns it to the new box's height. `FloatingPane::opened` builds the record, and `float` needs the layout options for the width.
+
+- *Alternative*: keep the tile's width and height. Rejected. A box as tall as the screen hides the strip it floats over, and a box that inherits a full-width column covers everything.
+
 ### Locating a pane returns where it lives
 `Location` stays the tiled position. A new `Place` enum, `Tiled(Location)` or `Floating { band, index }`, is returned by `Layout::place(pane)`. `Layout::apply` matches on it:
 
@@ -85,13 +90,14 @@ Swapping two panes in a column emits two `PaneMoved`. Lua's `LayoutChanged` alre
   - `gband.view()` adds `floating`.
   - `gband.pane.set_position` is a new dispatch, `Dispatch::Session(SetPosition)`, validated against the client's layout.
 - `defaults.lua` adds the ten bindings after `prefix R`.
+- The server's targeted actions in `actions.rs` take `floating` on `open_pane` and an optional `after` on `toggle_pane_floating`, which tiles as the band's first column without one, because the server holds no view. `gband.session()` in `server.rs` lists floating panes, placed in the session's screen area, which `SessionView` now carries.
 - `hints.lua` adds the six short labels.
 
 ### Default keys
 `prefix v` and `prefix V` follow niri's `Mod+V` and `Mod+Shift+V`. The move actions bind `prefix ctrl+h/j/k/l`, as the user chose, and `prefix ctrl+left/right/down/up`, because the project rule is that every directional action takes both hjkl and arrows. crossterm decodes `\x08`, `\x0a`, `\x0b` and `\x0c` in raw mode as Ctrl with h, j, k and l, not as Backspace or Enter, so these bindings match on plain terminals. The input-encoding spec already pins Ctrl+H as distinct from Backspace.
 
-### Protocol version 6
-The layout's serialized shape changes, and postcard has no field tags, so an old peer would misdecode it. `PROTOCOL_VERSION` becomes 6, and the handshake test pins it.
+### Protocol version 7
+The layout's serialized shape changes, and postcard has no field tags, so an old peer would misdecode it. `PROTOCOL_VERSION` becomes 7, and the handshake test pins it.
 
 ## Risks / Trade-offs
 
@@ -104,4 +110,4 @@ The layout's serialized shape changes, and postcard has no field tags, so an old
 
 ## Migration Plan
 
-There is no persisted state. A running server of version 5 refuses new clients with the usual version message, and the user restarts it. Rollback is reverting the change. Nothing on disk changes shape.
+There is no persisted state. A running server of version 6 refuses new clients with the usual version message, and the user restarts it. Rollback is reverting the change. Nothing on disk changes shape.

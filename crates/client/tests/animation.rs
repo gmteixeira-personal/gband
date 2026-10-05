@@ -3,8 +3,9 @@ use std::time::{Duration, Instant};
 use gband_client::animation::{
     Animations, DrawnBand, DrawnTile, Presentation, Spring, Targets, parse_animations,
 };
-use gband_core::geometry::Tile;
-use gband_core::layout::{BandId, PaneId};
+use gband_core::geometry::{Size, Tile};
+use gband_core::layout::{BandId, Direction, Layout, LayoutOptions, PaneId, SessionAction};
+use gband_core::view::{Scene, View};
 
 fn ms(millis: u64) -> Duration {
     Duration::from_millis(millis)
@@ -281,6 +282,89 @@ fn moving_unfocused_tile_keeps_the_presentation_settled() {
     );
     assert!(presentation.is_animating(start + ms(50)));
     assert!(presentation.is_settled(start + ms(50)));
+}
+
+const AREA: Size = Size::new(80, 24);
+
+fn three_columns() -> (Layout, [PaneId; 3]) {
+    let mut layout = Layout::new();
+    let band = layout.bands()[0].id;
+    let mut panes = [PaneId(0); 3];
+    for index in 0..3usize {
+        let pane = layout.allocate_pane();
+        let after = index.checked_sub(1).map(|before| panes[before]);
+        layout.open(pane, band, after, None, &LayoutOptions::default());
+        panes[index] = pane;
+    }
+    (layout, panes)
+}
+
+fn layout_targets(layout: &Layout) -> Targets {
+    let scene = Scene {
+        layout,
+        area: AREA,
+        viewport: AREA,
+    };
+    Targets::new(layout, AREA, &View::new(scene), AREA)
+}
+
+fn toggle(layout: &mut Layout, pane: PaneId) {
+    layout.apply(
+        SessionAction::ToggleFloating { pane, after: None },
+        AREA,
+        &LayoutOptions::default(),
+    );
+}
+
+#[test]
+fn float_a_pane_between_two_columns() {
+    let (mut layout, [_, b, c]) = three_columns();
+    let mut presentation = Presentation::new(Animations::On);
+    presentation.update(Instant::now(), &layout_targets(&layout));
+    toggle(&mut layout, b);
+    let start = Instant::now();
+    presentation.update(start, &layout_targets(&layout));
+    assert_eq!(drawn_tile(&presentation, start, b.0), None);
+    assert_eq!(drawn_tile(&presentation, start, c.0).unwrap().x, 80);
+    let middle = drawn_tile(&presentation, start + ms(50), c.0).unwrap().x;
+    assert!(40 < middle && middle < 80);
+    assert_eq!(
+        drawn_tile(&presentation, start + ms(400), c.0).unwrap().x,
+        40
+    );
+}
+
+#[test]
+fn tiled_pane_appears_at_rest() {
+    let (mut layout, [_, b, _]) = three_columns();
+    toggle(&mut layout, b);
+    let mut presentation = Presentation::new(Animations::On);
+    presentation.update(Instant::now(), &layout_targets(&layout));
+    toggle(&mut layout, b);
+    let start = Instant::now();
+    presentation.update(start, &layout_targets(&layout));
+    assert_eq!(drawn_tile(&presentation, start, b.0).unwrap().x, 0);
+    assert_eq!(drawn_tile(&presentation, start + ms(50), b.0).unwrap().x, 0);
+}
+
+#[test]
+fn moving_a_floating_pane_does_not_animate() {
+    let (mut layout, [_, b, _]) = three_columns();
+    toggle(&mut layout, b);
+    let mut presentation = Presentation::new(Animations::On);
+    presentation.update(Instant::now(), &layout_targets(&layout));
+    layout.apply(
+        SessionAction::MoveColumn {
+            pane: b,
+            direction: Direction::Right,
+        },
+        AREA,
+        &LayoutOptions::default(),
+    );
+    let start = Instant::now();
+    presentation.update(start, &layout_targets(&layout));
+    assert_eq!(drawn_tile(&presentation, start, b.0), None);
+    assert!(!presentation.is_animating(start));
 }
 
 #[test]

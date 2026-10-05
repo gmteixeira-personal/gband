@@ -99,7 +99,7 @@ fn matches(bound: Key, key: Key) -> bool {
 mod tests {
     use gband_core::action::{Action, ClientAction, SessionCommand};
     use gband_core::input::{Modes, Modifiers, encode_key};
-    use gband_core::layout::{Direction, Step};
+    use gband_core::layout::{Direction, Step, Vertical};
     use gband_core::view::ViewAction;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -198,8 +198,39 @@ mod tests {
             after_prefix(&keymap, Key::plain(KeyCode::Enter)),
             Some(Action::Session(SessionCommand::OpenPane))
         );
+        assert_eq!(
+            after_prefix(&keymap, char_key('v')),
+            Some(Action::Session(SessionCommand::ToggleFloating))
+        );
+        assert_eq!(
+            after_prefix(&keymap, char_key('V')),
+            Some(Action::View(ViewAction::SwitchLayer))
+        );
+        let moves = [
+            (
+                'h',
+                KeyCode::Left,
+                SessionCommand::MoveColumn(Direction::Left),
+            ),
+            (
+                'l',
+                KeyCode::Right,
+                SessionCommand::MoveColumn(Direction::Right),
+            ),
+            ('j', KeyCode::Down, SessionCommand::MovePane(Vertical::Down)),
+            ('k', KeyCode::Up, SessionCommand::MovePane(Vertical::Up)),
+        ];
+        for (c, arrow, command) in moves {
+            let action = Some(Action::Session(command));
+            let ctrl = |code| Key::new(code, Modifiers::CTRL);
+            assert_eq!(after_prefix(&keymap, ctrl(KeyCode::Char(c))), action, "{c}");
+            assert_eq!(after_prefix(&keymap, ctrl(arrow)), action, "{arrow:?}");
+        }
         assert!(keymap.table(ROOT).is_empty());
-        assert_eq!(keymap.table(PREFIX).len(), expected.len() + 2);
+        assert_eq!(
+            keymap.table(PREFIX).len(),
+            expected.len() + 2 + 2 + 2 * moves.len()
+        );
     }
 
     #[test]

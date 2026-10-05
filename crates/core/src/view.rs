@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 use crate::action::SessionCommand;
-use crate::geometry::{Size, Span, column_spans, tiles};
-use crate::layout::{Band, BandId, Layout, Location, PaneId, SessionAction};
+use crate::geometry::{PaneBox, Size, Span, boxes, column_spans, tiles};
+use crate::layout::{Band, BandId, Layout, Location, PaneId, Place, SessionAction};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ViewAction {
@@ -16,6 +16,14 @@ pub enum ViewAction {
     BandUp,
     FocusPane(PaneId),
     ViewBand(BandId),
+    SwitchLayer,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Layer {
+    #[default]
+    Tiled,
+    Floating,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -29,8 +37,19 @@ pub enum CenterFocusedColumn {
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 struct BandView {
-    focus: Option<PaneId>,
+    layer: Layer,
+    tiled: Option<PaneId>,
+    floating: Option<PaneId>,
     camera: i64,
+}
+
+impl BandView {
+    fn focused(&self) -> Option<PaneId> {
+        match self.layer {
+            Layer::Tiled => self.tiled,
+            Layer::Floating => self.floating,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -66,7 +85,7 @@ impl View {
             policy,
         };
         if let Some(pane) = first.first_pane() {
-            view.set_focus(pane);
+            view.focus(first, pane);
         }
         view.sync(scene);
         view
@@ -81,7 +100,24 @@ impl View {
     }
 
     pub fn focused(&self) -> Option<PaneId> {
-        self.bands.get(&self.band).and_then(|state| state.focus)
+        self.bands.get(&self.band).and_then(BandView::focused)
+    }
+
+    pub fn layer(&self) -> Layer {
+        self.bands
+            .get(&self.band)
+            .map_or(Layer::Tiled, |state| state.layer)
+    }
+
+    fn tiled_focus(&self) -> Option<PaneId> {
+        self.bands.get(&self.band).and_then(|state| state.tiled)
+    }
+
+    pub fn tiled_in(&self, band: &Band) -> Option<PaneId> {
+        self.bands
+            .get(&band.id)
+            .and_then(|state| state.tiled)
+            .filter(|&pane| band.locate(pane).is_some())
     }
 
     pub fn camera(&self) -> i64 {
@@ -89,11 +125,43 @@ impl View {
     }
 
     pub fn resolve(&self, command: SessionCommand) -> Option<SessionAction> {
-        let focused = self.focused();
+        let tiled = self.tiled_focus();
         match command {
-            SessionCommand::OpenPane => Some(SessionAction::open(self.band, focused, None)),
-            command => command.on_pane(focused?),
+            SessionCommand::OpenPane => Some(SessionAction::open(self.band, tiled, None)),
+            SessionCommand::ToggleFloating => Some(SessionAction::ToggleFloating {
+                pane: self.focused()?,
+                after: tiled,
+            }),
+            command => command.on_pane(self.focused()?),
         }
+    }
+
+    pub fn stacking(&self, scene: Scene<'_>) -> Vec<PaneId> {
+        scene
+            .layout
+            .band(self.band)
+            .map_or_else(Vec::new, |band| self.stacked(band))
+    }
+
+    fn stacked(&self, band: &Band) -> Vec<PaneId> {
+        let mut order: Vec<(Option<u64>, usize, PaneId)> = band
+            .floating
+            .iter()
+            .enumerate()
+            .map(|(index, floating)| {
+                (
+                    self.recency.get(&floating.pane).copied(),
+                    index,
+                    floating.pane,
+                )
+            })
+            .collect();
+        order.sort_unstable();
+        order.into_iter().map(|(_, _, pane)| pane).collect()
+    }
+
+    fn top_floating(&self, band: &Band) -> Option<PaneId> {
+        self.stacked(band).last().copied()
     }
 
     pub fn shown(&self, scene: Scene<'_>) -> Vec<PaneId> {
@@ -102,7 +170,7 @@ impl View {
         };
         let left = self.camera();
         let right = left + i64::from(scene.viewport.cols);
-        tiles(band, scene.area)
+        let tiled = tiles(band, scene.area)
             .into_iter()
             .filter(|tile| {
                 tile.width > 0
@@ -111,8 +179,17 @@ impl View {
                     && i64::from(tile.span().end()) > left
                     && tile.y < scene.viewport.rows
             })
-            .map(|tile| tile.pane)
-            .collect()
+            .map(|tile| tile.pane);
+        let floating = boxes(band, scene.area)
+            .into_iter()
+            .filter(|placed| {
+                placed.width > 0
+                    && placed.height > 0
+                    && placed.x < scene.viewport.cols
+                    && placed.y < scene.viewport.rows
+            })
+            .map(|placed| placed.pane);
+        tiled.chain(floating).collect()
     }
 
     pub fn apply(&mut self, action: ViewAction, scene: Scene<'_>) {
@@ -129,14 +206,29 @@ impl View {
         let bands = scene.layout.bands();
         let band = &bands[index];
         match action {
-            ViewAction::FocusLeft | ViewAction::FocusRight => {
-                if let Some(pane) = self.neighbour_column(band, action) {
-                    self.set_focus(pane);
+            ViewAction::FocusLeft
+            | ViewAction::FocusRight
+            | ViewAction::FocusDown
+            | ViewAction::FocusUp => {
+                let target = match (self.layer(), action) {
+                    (Layer::Floating, _) => self.neighbour_box(band, action, scene.area),
+                    (Layer::Tiled, ViewAction::FocusLeft | ViewAction::FocusRight) => {
+                        self.neighbour_column(band, action)
+                    }
+                    (Layer::Tiled, _) => self.neighbour_row(band, action),
+                };
+                if let Some(pane) = target {
+                    self.focus(band, pane);
                 }
             }
-            ViewAction::FocusDown | ViewAction::FocusUp => {
-                if let Some(pane) = self.neighbour_row(band, action) {
-                    self.set_focus(pane);
+            ViewAction::SwitchLayer => {
+                let state = self.bands.get(&band.id).copied().unwrap_or_default();
+                let target = match state.layer {
+                    Layer::Tiled => self.floating_target(band, state),
+                    Layer::Floating => tiled_target(band, state),
+                };
+                if let Some(pane) = target {
+                    self.focus(band, pane);
                 }
             }
             ViewAction::BandDown | ViewAction::BandUp => {
@@ -170,12 +262,15 @@ impl View {
     }
 
     pub fn focus_pane(&mut self, pane: PaneId, scene: Scene<'_>) {
-        let Some(location) = scene.layout.locate(pane) else {
-            return;
+        let index = match scene.layout.place(pane) {
+            Some(Place::Tiled(location)) => location.band,
+            Some(Place::Floating { band, .. }) => band,
+            None => return,
         };
         let previous = self.focused();
-        self.band = scene.layout.bands()[location.band].id;
-        self.set_focus(pane);
+        let band = &scene.layout.bands()[index];
+        self.band = band.id;
+        self.focus(band, pane);
         self.settle(scene, previous);
     }
 
@@ -197,19 +292,28 @@ impl View {
             }
         };
         let band = &layout.bands()[index];
-        let focus = self.bands.entry(band.id).or_default().focus;
-        match focus {
-            Some(pane) if band.locate(pane).is_some() => {}
-            Some(_) => match self.clamped(band) {
-                Some(pane) => self.set_focus(pane),
-                None => self.clear_focus(),
+        let state = *self.bands.entry(band.id).or_default();
+        let target = match state.focused() {
+            Some(pane) if band.holds(pane) => Some(pane),
+            Some(_) => match state.layer {
+                Layer::Tiled => self.clamped(band).or_else(|| self.top_floating(band)),
+                Layer::Floating => self
+                    .top_floating(band)
+                    .or_else(|| tiled_target(band, state)),
             },
-            None => match band.first_pane() {
-                Some(pane) => self.set_focus(pane),
-                None => self.clear_focus(),
-            },
+            None => band.first_pane().or_else(|| self.top_floating(band)),
+        };
+        match target {
+            Some(pane) if Some(pane) == state.focused() => self.place_focus(band, pane),
+            Some(pane) => self.focus(band, pane),
+            None => self.clear_focus(),
         }
-        self.position = match self.focused().and_then(|pane| layout.locate(pane)) {
+        let state = self.bands.entry(band.id).or_default();
+        state.tiled = state.tiled.filter(|&pane| band.locate(pane).is_some());
+        state.floating = state
+            .floating
+            .filter(|&pane| band.floating_index(pane).is_some());
+        self.position = match state.tiled.and_then(|pane| layout.locate(pane)) {
             Some(location) => location,
             None => Location {
                 band: index,
@@ -222,12 +326,22 @@ impl View {
 
     fn enter(&mut self, band: &Band) {
         self.band = band.id;
-        let state = self.bands.entry(band.id).or_default();
-        let remembered = state.focus.filter(|&pane| band.locate(pane).is_some());
-        state.focus = remembered.or_else(|| band.first_pane());
-        if let Some(pane) = state.focus {
-            self.touch(pane);
+        let state = *self.bands.entry(band.id).or_default();
+        let target = state
+            .focused()
+            .filter(|&pane| band.holds(pane))
+            .or_else(|| band.first_pane())
+            .or_else(|| self.top_floating(band));
+        if let Some(pane) = target {
+            self.focus(band, pane);
         }
+    }
+
+    fn floating_target(&self, band: &Band, state: BandView) -> Option<PaneId> {
+        state
+            .floating
+            .filter(|&pane| band.floating_index(pane).is_some())
+            .or_else(|| self.top_floating(band))
     }
 
     fn clamped(&self, band: &Band) -> Option<PaneId> {
@@ -263,13 +377,55 @@ impl View {
         band.columns[column].panes.get(target).copied()
     }
 
-    fn set_focus(&mut self, pane: PaneId) {
-        self.bands.entry(self.band).or_default().focus = Some(pane);
+    fn neighbour_box(&self, band: &Band, action: ViewAction, area: Size) -> Option<PaneId> {
+        let focused = self.focused()?;
+        let placed = boxes(band, area);
+        let centre = |placed: &PaneBox| {
+            (
+                2 * i32::from(placed.x) + i32::from(placed.width),
+                2 * i32::from(placed.y) + i32::from(placed.height),
+            )
+        };
+        let (x, y) = centre(placed.iter().find(|placed| placed.pane == focused)?);
+        placed
+            .iter()
+            .enumerate()
+            .filter(|(_, candidate)| candidate.pane != focused)
+            .filter_map(|(index, candidate)| {
+                let (cx, cy) = centre(candidate);
+                let (along, across) = match action {
+                    ViewAction::FocusLeft => (x - cx, (cy - y).abs()),
+                    ViewAction::FocusRight => (cx - x, (cy - y).abs()),
+                    ViewAction::FocusUp => (y - cy, (cx - x).abs()),
+                    _ => (cy - y, (cx - x).abs()),
+                };
+                (along > 0).then_some((along, across, index, candidate.pane))
+            })
+            .min()
+            .map(|(_, _, _, pane)| pane)
+    }
+
+    fn focus(&mut self, band: &Band, pane: PaneId) {
+        self.place_focus(band, pane);
         self.touch(pane);
     }
 
+    fn place_focus(&mut self, band: &Band, pane: PaneId) {
+        let state = self.bands.entry(band.id).or_default();
+        if band.floating_index(pane).is_some() {
+            state.layer = Layer::Floating;
+            state.floating = Some(pane);
+        } else {
+            state.layer = Layer::Tiled;
+            state.tiled = Some(pane);
+        }
+    }
+
     fn clear_focus(&mut self) {
-        self.bands.entry(self.band).or_default().focus = None;
+        let state = self.bands.entry(self.band).or_default();
+        state.layer = Layer::Tiled;
+        state.tiled = None;
+        state.floating = None;
     }
 
     fn touch(&mut self, pane: PaneId) {
@@ -278,7 +434,7 @@ impl View {
     }
 
     fn follow(&mut self, band: &Band, scene: Scene<'_>, previous: Option<PaneId>) {
-        let Some((column, _)) = self.focused().and_then(|pane| band.locate(pane)) else {
+        let Some((column, _)) = self.tiled_focus().and_then(|pane| band.locate(pane)) else {
             return;
         };
         let spans = column_spans(band, scene.area);
@@ -307,6 +463,13 @@ impl View {
             revealed(span, viewport, state.camera)
         };
     }
+}
+
+fn tiled_target(band: &Band, state: BandView) -> Option<PaneId> {
+    state
+        .tiled
+        .filter(|&pane| band.locate(pane).is_some())
+        .or_else(|| band.first_pane())
 }
 
 fn centred(span: Span, viewport: i64) -> i64 {

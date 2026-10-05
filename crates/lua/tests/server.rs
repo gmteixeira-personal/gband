@@ -5,12 +5,15 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use common::*;
+use gband_core::geometry::Size;
 use gband_core::layout::{
-    BandId, Layout, LayoutOptions, PaneContent, PaneId, Program, SessionAction,
+    BandId, Layout, LayoutOptions, PaneContent, PaneId, Program, SessionAction, Vertical,
 };
 use gband_lua::server::{Caller, Event, Host, SessionView};
 use gband_lua::{Config, Dispatch, Outcome};
 use gband_protocol::{Key, Value};
+
+const AREA: Size = Size::new(80, 24);
 
 type States = BTreeMap<(String, u32), BTreeMap<String, Value>>;
 
@@ -51,6 +54,7 @@ impl Host for Fake {
         let (layout, clients) = sessions.get(name)?;
         Some(SessionView {
             layout: layout.clone(),
+            area: AREA,
             clients: clients.clone(),
         })
     }
@@ -483,6 +487,83 @@ fn layout_of_a_session() {
 }
 
 #[test]
+fn floating_pane_in_the_structure() {
+    let host = Arc::new(Fake::default());
+    let mut layout = layout_of(2);
+    let pane = PaneId(2);
+    let options = LayoutOptions::default();
+    layout.apply(
+        SessionAction::ToggleFloating { pane, after: None },
+        AREA,
+        &options,
+    );
+    let (col, row) = (70, 3);
+    layout.apply(
+        SessionAction::SetPosition { pane, col, row },
+        AREA,
+        &options,
+    );
+    host.sessions
+        .lock()
+        .unwrap()
+        .insert("work".to_owned(), (layout, vec![]));
+    let (_scratch, config) = server(
+        "gband.on('ConfigReloaded', function()
+           local band = gband.session('work').bands[1]
+           local f = band.floating[1]
+           seen = string.format('%d %d %.1f %s %d %d %d', #band.columns, f.pane, f.width, tostring(f.full_width), f.rows, f.col, f.row)
+         end)",
+        host,
+    );
+    clean(&config.runtime.emit_server(&Event::ConfigReloaded));
+    assert_eq!(global::<String>(&config, "seen"), "1 2 0.5 false 20 40 3");
+}
+
+#[test]
+fn floating_targets() {
+    let (_scratch, config) = server(
+        "gband.on('PaneOpened', function(ev)
+           gband.action.open_pane({ session = ev.session, band = 1, floating = true })
+           gband.action.toggle_pane_floating({ session = ev.session, pane = 3, after = ev.pane })
+           gband.action.toggle_pane_floating({ session = ev.session, pane = 3 })
+           gband.action.move_pane_up({ session = ev.session, pane = 3 })
+         end)",
+        Arc::new(Fake::default()),
+    );
+    let outcome = config.runtime.emit_server(&opened("work", 1));
+    clean(&outcome);
+    let targeted = |action| Dispatch::Targeted {
+        session: "work".to_owned(),
+        action,
+    };
+    assert_eq!(
+        outcome.dispatched,
+        [
+            targeted(SessionAction::OpenPane {
+                band: BandId(1),
+                after: None,
+                width: None,
+                floating: true,
+                focus: false,
+                content: PaneContent::Program(None),
+            }),
+            targeted(SessionAction::ToggleFloating {
+                pane: PaneId(3),
+                after: Some(PaneId(1)),
+            }),
+            targeted(SessionAction::ToggleFloating {
+                pane: PaneId(3),
+                after: None,
+            }),
+            targeted(SessionAction::MovePane {
+                pane: PaneId(3),
+                direction: Vertical::Up,
+            }),
+        ]
+    );
+}
+
+#[test]
 fn open_pane_target_with_a_program_list() {
     let (_scratch, config) = server(
         "gband.on('PaneOpened', function(ev)
@@ -502,6 +583,7 @@ fn open_pane_target_with_a_program_list() {
                     band: BandId(1),
                     after: Some(PaneId(1)),
                     width: None,
+                    floating: false,
                     focus: false,
                     content: PaneContent::Program(Some(Program::Argv(vec![
                         "htop".to_owned(),
@@ -540,6 +622,18 @@ fn invalid_action_targets() {
             "`program`",
         ),
         ("gband.action.close_pane(1)", "target table"),
+        (
+            "gband.action.open_pane({ session = 'w', band = 1, after = 1, floating = true })",
+            "`after`",
+        ),
+        (
+            "gband.action.open_pane({ session = 'w', band = 1, floating = 1 })",
+            "`floating`",
+        ),
+        (
+            "gband.action.close_pane({ session = 'w', pane = 1, after = 2 })",
+            "`after`",
+        ),
     ] {
         let (outcome, _) =
             failed_handler(&format!("gband.on('PaneOpened', function()\n{call}\nend)"));

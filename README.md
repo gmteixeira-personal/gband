@@ -141,9 +141,13 @@ The actions in `gband.action`:
 | `focus_column_left`, `focus_column_right` | focus the column to the left or right |
 | `focus_pane_down`, `focus_pane_up` | focus the pane below or above |
 | `focus_band_down`, `focus_band_up` | view the band below or above |
+| `switch_focus_floating_tiled` | move focus between the band's floating panes and its tiled panes |
 | `open_pane` | open a pane running your shell right of the focused column |
 | `close_pane` | close the focused pane |
 | `consume_or_expel_left`, `consume_or_expel_right` | move the focused pane into or out of the neighbouring column |
+| `move_column_left`, `move_column_right` | swap the column with its neighbour, or move a floating pane left or right |
+| `move_pane_down`, `move_pane_up` | swap the pane with its neighbour in the column, or move a floating pane down or up |
+| `toggle_pane_floating` | float the focused pane over the band, or tile it again |
 | `cycle_column_width` | step the column's width through the presets |
 | `toggle_full_width` | toggle full width of the column |
 | `grow_column_width`, `shrink_column_width` | widen or narrow the column by a tenth of the screen |
@@ -152,6 +156,21 @@ The actions in `gband.action`:
 | `send_prefix` | send the prefix key to the focused pane |
 
 `gband.action.list()` lists every action with its description.
+
+### Floating panes
+
+Each band has a floating layer drawn over its columns, as niri's floating windows are.
+A floating pane is a full pane with its own program, placed in a box that stays where it is while the band scrolls.
+Ctrl+Space then `v` floats the focused pane in a box centred on the screen, as wide as `default_column_width` and two height steps shorter than the screen, and the same keys tile it again as a new column right of the tiled pane you focused last.
+A pane floated again returns to the box it had.
+Ctrl+Space then `V` moves focus between the floating panes and the tiled panes of the band.
+
+The other actions work on a floating pane too.
+The focus keys move between floating panes while the floating layer has focus.
+The width keys change the box's width by the same steps as a column's, and the height keys change its height.
+Ctrl+Space then Ctrl with `h`, `l`, `j` or `k`, or with an arrow key, moves the box a tenth of the screen; on a tiled pane the same keys swap its column with the next column, or the pane with the next pane in its column.
+
+Each client stacks floating panes in its own order, with the one it focused last on top, and draws its plugin floats above them.
 
 ### Status line
 

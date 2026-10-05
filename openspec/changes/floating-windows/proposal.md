@@ -5,7 +5,7 @@ Every pane in gband sits on a band's strip. A pane that should stay in sight whi
 ## What Changes
 
 - **Floating panes**: each band gains a floating layer, drawn over its strip. A floating pane is a full pane with its own program and PTY, placed in a box in the screen area that does not scroll with the camera. Its box has a position, a width that is a proportion of the screen area's width, a full-width flag, and a height in rows.
-- **Float and tile a pane**: a new session action, `toggle_pane_floating`, moves a pane between the strip and the floating layer. A pane floated for the first time keeps its tile's size and is centred in the screen area. A pane floated again returns to the box it last had. A pane tiled again gets a new column right of the client's tiled focus, at its floating width. The default key is Ctrl+Space then `v`.
+- **Float and tile a pane**: a new session action, `toggle_pane_floating`, moves a pane between the strip and the floating layer. A pane floated for the first time, or opened floating, gets a new box: the configured default column width, the screen area's height less two height steps, centred in the screen area. A pane floated again returns to the box it last had. A pane tiled again gets a new column right of the client's tiled focus, at its floating width. The default key is Ctrl+Space then `v`.
 - **Switch layers**: a new view action, `switch_focus_floating_tiled`, moves this client's focus between the floating layer and the tiled layer of the viewed band, as niri's `switch-focus-between-floating-and-tiling` does. The default key is Ctrl+Space then `V`.
 - **One set of operations for both kinds**: the existing actions apply to floating panes too.
   - The four focus actions move focus between floating panes by direction while the floating layer has focus.
@@ -26,7 +26,7 @@ Every pane in gband sits on a band's strip. A pane that should stay in sight whi
   - `gband.layout()` lists each band's floating panes with their boxes.
   - `gband.view()` reports whether the focused pane floats.
 - **Events**: new layout events report a pane floated, a pane tiled, a floating box changed, and a column moved.
-- **BREAKING**: the layout message carries the floating layer, so the protocol version becomes 6. Clients and servers of version 5 refuse each other, as the handshake defines.
+- **BREAKING**: the layout message carries the floating layer, so the protocol version becomes 7. Clients and servers of version 6 refuse each other, as the handshake defines.
 
 Out of scope:
 - Opening a `gband.win` pane window directly as floating. A plugin pane can be floated afterwards like any pane.
@@ -45,17 +45,20 @@ Out of scope:
 - `actions`: the six new built-in actions and their descriptions, and how the new actions resolve against the view.
 - `session-server`: the new session actions.
 - `session-events`: the new layout events.
-- `wire-protocol`: the layout message carries floating panes, the new client actions, and protocol version 6.
+- `wire-protocol`: the layout message carries floating panes, the new client actions, and protocol version 7.
 - `client-attach`: floating panes are drawn between the tiles and the floats, and the default key table gains `v`, `V`, Ctrl+H, Ctrl+J, Ctrl+K, Ctrl+L and the Ctrl arrow keys.
 - `key-hints`: short labels for the new actions.
 - `lua-control`: floating panes in `gband.layout()` and `gband.view()`, targets of the new actions, `open_pane`'s `floating` field, and `gband.pane.set_position`.
 - `animations`: floating panes are drawn at rest, and a pane changing layer does not animate.
+- `server-runtime`: the server's `open_pane` takes `floating`, its `toggle_pane_floating` takes an optional `after`, and `gband.session()` lists each band's floating panes.
+- `lua-events`: `LayoutChanged` also fires when a band's floating panes or their boxes change.
+- `status-line`: `ctx.column` is nil and the position segment hides while a floating pane is focused, and `ctx.panes` lists each band's floating panes after its columns.
 
 ## Impact
 
 - `crates/core/src/layout.rs`, `geometry.rs`, `view.rs`, `action.rs`, `event.rs`: the floating layer, box geometry, move operations, layer focus and the new actions and events.
 - `crates/core/tests/`: layout, geometry, view and event tests.
-- `crates/protocol/src/message.rs` and `crates/protocol/tests/messages.rs`: protocol version 6 and the new actions.
+- `crates/protocol/src/message.rs` and `crates/protocol/tests/messages.rs`: protocol version 7 and the new actions.
 - `crates/server/src/session.rs`: PTY sizes of floating panes, and the focus reply for a pane opened floating.
 - `crates/client/src/render.rs`, `lib.rs`, `animation.rs`: drawing floating panes, stacking, shown panes and cursor.
 - `crates/lua/src/actions.rs`, `control.rs`, `defaults.lua`, `runtime/gband/statusline/hints.lua`: the new actions, targets, layout and view fields, `set_position`, default bindings and hint labels.

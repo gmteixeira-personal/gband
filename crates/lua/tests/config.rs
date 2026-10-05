@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use common::*;
 use gband_core::action::{Action, ClientAction, SessionCommand};
 use gband_core::input::{Key, KeyCode, Modifiers};
-use gband_core::layout::{Direction, Program, Proportion, Step};
+use gband_core::layout::{Direction, Program, Proportion, Step, Vertical};
 use gband_core::view::{CenterFocusedColumn, ViewAction};
 use gband_lua::{
     ACTIONS, Binding, CallbackId, Chord, Config, ConfigError, DEFAULTS, Dispatch, Options,
@@ -178,6 +178,7 @@ fn defaults_reproduce_the_built_in_behaviour() {
     );
     assert_eq!(config.options, Options::default());
     let char_key = |c| ("prefix", Chord::Key(Key::plain(KeyCode::Char(c))));
+    let ctrl_key = |code| ("prefix", Chord::Key(Key::new(code, Modifiers::CTRL)));
     let expected = [
         (char_key('h'), Action::View(ViewAction::FocusLeft)),
         (char_key('l'), Action::View(ViewAction::FocusRight)),
@@ -220,6 +221,43 @@ fn defaults_reproduce_the_built_in_behaviour() {
             Action::Session(SessionCommand::StepHeight(Step::Grow)),
         ),
         (char_key('R'), Action::Session(SessionCommand::ResetHeight)),
+        (
+            char_key('v'),
+            Action::Session(SessionCommand::ToggleFloating),
+        ),
+        (char_key('V'), Action::View(ViewAction::SwitchLayer)),
+        (
+            ctrl_key(KeyCode::Char('h')),
+            Action::Session(SessionCommand::MoveColumn(Direction::Left)),
+        ),
+        (
+            ctrl_key(KeyCode::Char('l')),
+            Action::Session(SessionCommand::MoveColumn(Direction::Right)),
+        ),
+        (
+            ctrl_key(KeyCode::Char('j')),
+            Action::Session(SessionCommand::MovePane(Vertical::Down)),
+        ),
+        (
+            ctrl_key(KeyCode::Char('k')),
+            Action::Session(SessionCommand::MovePane(Vertical::Up)),
+        ),
+        (
+            ctrl_key(KeyCode::Left),
+            Action::Session(SessionCommand::MoveColumn(Direction::Left)),
+        ),
+        (
+            ctrl_key(KeyCode::Right),
+            Action::Session(SessionCommand::MoveColumn(Direction::Right)),
+        ),
+        (
+            ctrl_key(KeyCode::Down),
+            Action::Session(SessionCommand::MovePane(Vertical::Down)),
+        ),
+        (
+            ctrl_key(KeyCode::Up),
+            Action::Session(SessionCommand::MovePane(Vertical::Up)),
+        ),
         (char_key('D'), Action::Client(ClientAction::Detach)),
         (
             ("prefix", Chord::Prefix),
@@ -258,7 +296,7 @@ fn every_default_binding_is_described() {
     );
     assert!(undescribed.is_empty(), "{undescribed:?}");
     let count: usize = eval(&config, "return #gband.keymap.list('prefix')");
-    assert_eq!(count, 19);
+    assert_eq!(count, 29);
 }
 
 #[test]
@@ -279,10 +317,16 @@ fn every_action_is_named() {
         "focus_pane_up",
         "focus_band_down",
         "focus_band_up",
+        "switch_focus_floating_tiled",
         "open_pane",
         "close_pane",
         "consume_or_expel_left",
         "consume_or_expel_right",
+        "move_column_left",
+        "move_column_right",
+        "move_pane_down",
+        "move_pane_up",
+        "toggle_pane_floating",
         "cycle_column_width",
         "toggle_full_width",
         "grow_column_width",
@@ -317,6 +361,22 @@ fn name_and_action_agree() {
     assert_eq!(
         action_of(&config, direct("alt+r")),
         Some(Action::Session(SessionCommand::CycleWidth))
+    );
+}
+
+#[test]
+fn toggle_floating_by_name() {
+    let config = loaded(
+        "toggle-floating",
+        "gband.bind('alt+v', gband.action.toggle_pane_floating)\ngband.bind('alt+s', gband.action.switch_focus_floating_tiled)",
+    );
+    assert_eq!(
+        action_of(&config, direct("alt+v")),
+        Some(Action::Session(SessionCommand::ToggleFloating))
+    );
+    assert_eq!(
+        action_of(&config, direct("alt+s")),
+        Some(Action::View(ViewAction::SwitchLayer))
     );
 }
 

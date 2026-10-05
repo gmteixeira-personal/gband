@@ -1,6 +1,9 @@
 use gband_core::action::{Action, ClientAction, SessionCommand};
+use gband_core::geometry::placed;
 use gband_core::input::{Key, KeyCode};
-use gband_core::layout::{BandId, PaneHeight, PaneId, Proportion, SessionAction, Weight};
+use gband_core::layout::{
+    BandId, PaneContent, PaneHeight, PaneId, Place, Proportion, SessionAction, Weight,
+};
 use gband_core::view::ViewAction;
 use mlua::{Lua, Table, Value};
 
@@ -19,6 +22,7 @@ pub(crate) fn install(lua: &Lua, gband: &Table) -> mlua::Result<()> {
     pane.set("focus", lua.create_function(focus)?)?;
     pane.set("set_width", lua.create_function(set_width)?)?;
     pane.set("set_height", lua.create_function(set_height)?)?;
+    pane.set("set_position", lua.create_function(set_position)?)?;
     pane.set("send_keys", lua.create_function(send_keys)?)?;
     pane.set("send_text", lua.create_function(send_text)?)?;
     pane.set("paste", lua.create_function(paste)?)?;
@@ -99,23 +103,98 @@ pub(crate) fn open_target(
         value => Some(pane(lua, value)?),
     };
     let layout = ui::current_state(lua).layout;
-    let holding = |pane: PaneId| {
-        let location = layout.locate(pane).expect("checked to be in the layout");
-        layout.bands()[location.band].id
+    let holding = match after {
+        None => None,
+        Some(after) => match layout.place(after) {
+            Some(Place::Tiled(location)) => Some(layout.bands()[location.band].id),
+            _ => return Err(format!("pane {after} is not a tiled pane")),
+        },
     };
-    match (band_value, after) {
+    match (band_value, after.zip(holding)) {
         (Value::Nil, None) => Ok(None),
-        (Value::Nil, Some(after)) => Ok(Some((holding(after), Some(after)))),
+        (Value::Nil, Some((after, holding))) => Ok(Some((holding, Some(after)))),
         (value, after) => {
             let band = band(lua, value)?;
-            if let Some(after) = after
-                && holding(after) != band
+            if let Some((after, holding)) = after
+                && holding != band
             {
                 return Err(format!("pane {after} is not in band {band}"));
             }
-            Ok(Some((band, after)))
+            Ok(Some((band, after.map(|(after, _)| after))))
         }
     }
+}
+
+fn get(target: &Table, field: &str) -> Result<Value, String> {
+    target.get(field).map_err(|error| error.to_string())
+}
+
+fn open_pane_target(lua: &Lua, target: &Table, name: &str) -> Result<Dispatch, String> {
+    fields(target, &["band", "after", "floating"], name)?;
+    let band = get(target, "band")?;
+    let after = get(target, "after")?;
+    let floating = match get(target, "floating")? {
+        Value::Nil => false,
+        Value::Boolean(floating) => floating,
+        other => {
+            return Err(format!(
+                "the `floating` of `{name}` must be a boolean, found {}",
+                other.type_name()
+            ));
+        }
+    };
+    if !floating {
+        let (band, after) = open_target(lua, &band, &after)?
+            .ok_or_else(|| format!("the target of `{name}` must name `band` or `after`"))?;
+        return Ok(Dispatch::Session(SessionAction::open(band, after, None)));
+    }
+    if !after.is_nil() {
+        return Err(format!(
+            "the target of `{name}` cannot hold `after` with `floating = true`"
+        ));
+    }
+    let band = match band {
+        Value::Nil => BandId(ui::current_state(lua).band.number),
+        value => self::band(lua, &value)?,
+    };
+    Ok(Dispatch::Session(SessionAction::OpenPane {
+        band,
+        after: None,
+        width: None,
+        floating: true,
+        focus: true,
+        content: PaneContent::Program(None),
+    }))
+}
+
+fn toggle_floating_target(lua: &Lua, target: &Table, name: &str) -> Result<Dispatch, String> {
+    fields(target, &["pane", "after"], name)?;
+    let value = get(target, "pane")?;
+    if value.is_nil() {
+        return Err(format!("the target of `{name}` must name a `pane`"));
+    }
+    let pane = self::pane(lua, &value)?;
+    let after = match get(target, "after")? {
+        Value::Nil => None,
+        value => Some(self::pane(lua, &value)?),
+    };
+    let layout = ui::current_state(lua).layout;
+    let band_of = |pane: PaneId| match layout.place(pane) {
+        Some(Place::Tiled(location)) => Some(location.band),
+        Some(Place::Floating { band, .. }) => Some(band),
+        None => None,
+    };
+    if let Some(after) = after
+        && !matches!(layout.place(after), Some(Place::Tiled(location)) if Some(location.band) == band_of(pane))
+    {
+        return Err(format!(
+            "pane {after} is not a tiled pane of the band holding pane {pane}"
+        ));
+    }
+    Ok(Dispatch::Session(SessionAction::ToggleFloating {
+        pane,
+        after,
+    }))
 }
 
 fn fields(target: &Table, allowed: &[&str], action: &str) -> Result<(), String> {
@@ -162,13 +241,9 @@ pub(crate) fn targeted(
         ));
     };
     match action {
-        Action::Session(SessionCommand::OpenPane) => {
-            fields(target, &["band", "after"], name)?;
-            let band: Value = target.get("band").map_err(|error| error.to_string())?;
-            let after: Value = target.get("after").map_err(|error| error.to_string())?;
-            let (band, after) = open_target(lua, &band, &after)?
-                .ok_or_else(|| format!("the target of `{name}` must name `band` or `after`"))?;
-            Ok(Dispatch::Session(SessionAction::open(band, after, None)))
+        Action::Session(SessionCommand::OpenPane) => open_pane_target(lua, target, name),
+        Action::Session(SessionCommand::ToggleFloating) => {
+            toggle_floating_target(lua, target, name)
         }
         Action::Session(command) => {
             let pane = pane_target(lua, target, name)?;
@@ -242,6 +317,20 @@ fn layout(lua: &Lua, (): ()) -> mlua::Result<Table> {
             columns.push(described)?;
         }
         entry.set("columns", columns)?;
+        let floating = lua.create_table()?;
+        for record in &band.floating {
+            let placed = placed(record, state.area);
+            let item = lua.create_table()?;
+            item.set("id", record.pane.0)?;
+            item.set("width", fraction(record.width))?;
+            item.set("full_width", record.full_width)?;
+            item.set("rows", record.rows)?;
+            item.set("col", placed.x)?;
+            item.set("row", placed.y)?;
+            item.set("window", windows::pane_window(lua, record.pane)?)?;
+            floating.push(item)?;
+        }
+        entry.set("floating", floating)?;
         bands.push(entry)?;
     }
     table.set("bands", bands)?;
@@ -254,6 +343,10 @@ fn view(lua: &Lua, (): ()) -> mlua::Result<Table> {
     let table = lua.create_table()?;
     table.set("band", state.band.number)?;
     table.set("pane", state.pane)?;
+    let floating = state
+        .pane
+        .is_some_and(|pane| state.layout.floating(PaneId(pane)).is_some());
+    table.set("floating", floating)?;
     table.set("window", windows::focused(lua)?)?;
     table.set("table", state.table)?;
     table.set("cols", state.ribbon.cols)?;
@@ -343,6 +436,45 @@ fn set_height(lua: &Lua, (target, value): (Value, Value)) -> mlua::Result<()> {
     api::queue(
         lua,
         Dispatch::Session(SessionAction::SetHeight { pane, height }),
+        what,
+    )
+}
+
+fn position(value: &Value) -> Result<(u16, u16), String> {
+    let Value::Table(table) = value else {
+        return Err(format!(
+            "expected a table holding `col` and `row`, found {}",
+            value.type_name()
+        ));
+    };
+    fields(table, &["col", "row"], "the position")
+        .map_err(|_| "the position takes only `col` and `row`".to_owned())?;
+    let coordinate = |field: &str| -> Result<u16, String> {
+        match get(table, field)? {
+            Value::Nil => Err(format!("the position must hold `{field}`")),
+            value => match whole(&value) {
+                Some(cells) if cells >= 0 => Ok(cells.min(i64::from(u16::MAX)) as u16),
+                _ => Err(format!("`{field}` must be an integer of at least 0")),
+            },
+        }
+    };
+    Ok((coordinate("col")?, coordinate("row")?))
+}
+
+fn set_position(lua: &Lua, (target, value): (Value, Value)) -> mlua::Result<()> {
+    let what = "gband.pane.set_position";
+    dispatching(lua, what)?;
+    let pane = checked(lua, what, pane(lua, &target))?;
+    if ui::current_state(lua).layout.floating(pane).is_none() {
+        return Err(ConfigError::raise(
+            lua,
+            format!("{what}: pane {pane} is not a floating pane"),
+        ));
+    }
+    let (col, row) = checked(lua, what, position(&value))?;
+    api::queue(
+        lua,
+        Dispatch::Session(SessionAction::SetPosition { pane, col, row }),
         what,
     )
 }

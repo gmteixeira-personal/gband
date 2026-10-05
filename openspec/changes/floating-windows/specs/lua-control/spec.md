@@ -63,7 +63,7 @@ A target passed to a view action or to `detach` SHALL be an error. Each of these
 - A target that is not a table.
 - A field the action does not take.
 - A pane or band number not in the client's layout.
-- An `after` pane not in `band`, or, for `toggle_pane_floating`, not a tiled pane of `pane`'s band.
+- An `after` pane not in `band`, or a floating `after` pane for `open_pane` or `gband.spawn`, or, for `toggle_pane_floating`, an `after` that is not a tiled pane of `pane`'s band.
 
 Calling an action value with no target SHALL resolve it against the view, as the actions capability defines.
 

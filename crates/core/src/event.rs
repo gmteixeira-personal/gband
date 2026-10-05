@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::layout::{BandId, PaneHeight, PaneId, Proportion};
+use crate::layout::{BandId, FloatingPane, PaneHeight, PaneId, Proportion};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LayoutEvent {
@@ -28,6 +28,28 @@ pub enum LayoutEvent {
         band: BandId,
         column: usize,
         heights: Vec<PaneHeight>,
+    },
+    ColumnMoved {
+        band: BandId,
+        from: usize,
+        to: usize,
+    },
+    PaneFloated {
+        pane: PaneId,
+        band: BandId,
+        record: FloatingPane,
+    },
+    PaneTiled {
+        pane: PaneId,
+        band: BandId,
+        column: usize,
+        width: Proportion,
+        full_width: bool,
+    },
+    FloatingBoxChanged {
+        pane: PaneId,
+        band: BandId,
+        record: FloatingPane,
     },
     BandAdded {
         band: BandId,

@@ -225,7 +225,7 @@ A binding to an action SHALL dispatch it. A binding to a Lua function SHALL run 
 
 #### Scenario: Float the focused pane
 - **WHEN** the client's 80×24 terminal sets the screen area, the status line is off, the only pane sits in a column of width 1/2, and the user presses Ctrl+Space then `v`
-- **THEN** the pane is drawn in a box spanning columns 20 to 59 and rows 0 to 23, and stays focused
+- **THEN** the pane is drawn in a box spanning columns 20 to 59 and rows 2 to 21, and stays focused
 
 #### Scenario: Switch to the tiled layer and back
 - **WHEN** two panes are open, the second floats and is focused, and the user presses Ctrl+Space then `V`, then types `echo tiled` and Enter

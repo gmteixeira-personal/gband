@@ -244,6 +244,29 @@ fn layout_change_without_a_pane_change() {
 }
 
 #[test]
+fn moving_a_floating_box_is_a_layout_change() {
+    let (_scratch, mut client) = recording("layout-floating", "");
+    let (mut layout, panes) = layout_of(2);
+    let options = LayoutOptions::default();
+    let pane = panes[1];
+    layout.apply(
+        SessionAction::ToggleFloating { pane, after: None },
+        Size::new(80, 24),
+        &options,
+    );
+    client.receive([shown(&layout)]);
+    client.clear();
+    let direction = Direction::Right;
+    layout.apply(
+        SessionAction::MoveColumn { pane, direction },
+        Size::new(80, 24),
+        &options,
+    );
+    client.receive([shown(&layout)]);
+    assert_eq!(client.log(), ["LayoutChanged "]);
+}
+
+#[test]
 fn heights_alone_are_no_layout_change() {
     let (_scratch, mut client) = recording("layout-heights", "");
     let (mut layout, panes) = layout_of(2);

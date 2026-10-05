@@ -1,7 +1,10 @@
-use gband_core::geometry::{Size, Span, Tile, column_spans, column_width, pane_heights, tiles};
+use gband_core::geometry::{
+    PaneBox, Size, Span, Tile, boxes, column_spans, column_width, height_step, pane_heights,
+    placed, tiles, width_step,
+};
 use gband_core::layout::{
-    Band, BandId, Column, Direction, Layout, LayoutOptions, PaneHeight, PaneId, Proportion,
-    SessionAction, Weight,
+    Band, BandId, Column, Direction, FloatingPane, Layout, LayoutOptions, PaneHeight, PaneId,
+    Proportion, SessionAction, Weight,
 };
 
 const AREA: Size = Size::new(80, 24);
@@ -184,6 +187,7 @@ fn band_of(columns: Vec<Column>) -> Band {
     Band {
         id: BandId(1),
         columns,
+        floating: Vec::new(),
     }
 }
 
@@ -267,4 +271,89 @@ fn column_width_stops_at_the_cell_limit() {
     assert_eq!(column_width(&column, AREA), u16::MAX);
     let spans = column_spans(&band_of(vec![column.clone(), column]), AREA);
     assert_eq!((spans[1].x, spans[1].end()), (65535, 131070));
+}
+
+fn floating(col: u16, row: u16, width: Proportion, rows: u16) -> FloatingPane {
+    FloatingPane {
+        pane: PaneId(1),
+        col,
+        row,
+        width,
+        full_width: false,
+        rows,
+    }
+}
+
+fn cells(placed: PaneBox) -> ((u16, u16), (u16, u16)) {
+    (
+        (placed.x, placed.x + placed.width - 1),
+        (placed.y, placed.y + placed.height - 1),
+    )
+}
+
+#[test]
+fn box_in_an_80_by_24_area() {
+    let placed = placed(&floating(10, 4, Proportion::ONE_HALF, 12), AREA);
+    assert_eq!(cells(placed), ((10, 49), (4, 15)));
+    assert_eq!(placed.terminal_size(), Size::new(38, 10));
+}
+
+#[test]
+fn box_pushed_back_inside_a_smaller_area() {
+    let placed = placed(&floating(50, 4, Proportion::ONE_HALF, 12), AREA);
+    assert_eq!(cells(placed).0, (40, 79));
+}
+
+#[test]
+fn box_taller_than_the_area() {
+    let placed = placed(&floating(0, 5, Proportion::ONE_HALF, 30), AREA);
+    assert_eq!(cells(placed).1, (0, 23));
+}
+
+#[test]
+fn box_returns_when_the_area_grows_back() {
+    let record = floating(50, 0, Proportion::ONE_HALF, 10);
+    assert_eq!(placed(&record, Size::new(120, 40)).x, 50);
+    assert_eq!(placed(&record, AREA).x, 40);
+    assert_eq!(placed(&record, Size::new(120, 40)).x, 50);
+}
+
+#[test]
+fn full_width_box_fills_the_area() {
+    let mut record = floating(10, 0, Proportion::ONE_THIRD, 10);
+    record.full_width = true;
+    assert_eq!(cells(placed(&record, AREA)).0, (0, 79));
+}
+
+#[test]
+fn box_is_at_least_three_cells_wide() {
+    let placed = placed(&floating(0, 0, Proportion::new(0, 1), 3), AREA);
+    assert_eq!(placed.width, 3);
+    assert_eq!(placed.terminal_size(), Size::new(1, 1));
+}
+
+#[test]
+fn steps_are_a_tenth_rounded_half_up() {
+    assert_eq!(height_step(Size::new(80, 24)), 2);
+    assert_eq!(height_step(Size::new(80, 25)), 3);
+    assert_eq!(height_step(Size::new(80, 4)), 1);
+    assert_eq!(width_step(Size::new(80, 24)), 8);
+    assert_eq!(width_step(Size::new(85, 24)), 9);
+}
+
+#[test]
+fn band_boxes_follow_the_floating_list() {
+    let mut band = band_of(Vec::new());
+    band.floating = vec![
+        floating(0, 0, Proportion::ONE_HALF, 5),
+        FloatingPane {
+            pane: PaneId(2),
+            ..floating(30, 2, Proportion::ONE_THIRD, 5)
+        },
+    ];
+    let placed: Vec<_> = boxes(&band, AREA)
+        .iter()
+        .map(|placed| placed.pane)
+        .collect();
+    assert_eq!(placed, [PaneId(1), PaneId(2)]);
 }

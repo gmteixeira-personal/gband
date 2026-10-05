@@ -1,11 +1,11 @@
 use std::collections::HashSet;
 
 use gband_core::event::LayoutEvent;
-use gband_core::geometry::{Size, pane_heights};
+use gband_core::geometry::{Size, pane_heights, placed};
 use gband_core::layout::Step::{Grow, Shrink};
 use gband_core::layout::{
-    BandId, Column, Direction, Layout, LayoutOptions, Location, PaneHeight, PaneId, Proportion,
-    SessionAction, Weight,
+    BandId, Column, Direction, FloatingPane, Layout, LayoutOptions, Location, PaneHeight, PaneId,
+    Place, Proportion, SessionAction, Vertical, Weight,
 };
 
 const AREA: Size = Size::new(80, 24);
@@ -1166,4 +1166,522 @@ fn set_a_weight_keeps_the_others() {
     assert!(!set_height(&mut layout, panes[0], auto(2, 1)).is_empty());
     assert_eq!(heights_of(&layout, panes[0]), [auto(2, 1), auto(1, 1)]);
     assert!(set_height(&mut layout, panes[0], auto(4, 2)).is_empty());
+}
+
+fn act(layout: &mut Layout, action: SessionAction, area: Size) -> Vec<LayoutEvent> {
+    let events = layout.apply(action, area, &LayoutOptions::default());
+    assert_invariants(layout);
+    events
+}
+
+fn toggle(layout: &mut Layout, pane: PaneId, after: Option<PaneId>) -> Vec<LayoutEvent> {
+    act(layout, SessionAction::ToggleFloating { pane, after }, AREA)
+}
+
+fn record(layout: &Layout, pane: PaneId) -> FloatingPane {
+    *layout.floating(pane).expect("a floating pane")
+}
+
+fn floating_list(layout: &Layout, band: usize) -> Vec<PaneId> {
+    layout.bands()[band]
+        .floating
+        .iter()
+        .map(|floating| floating.pane)
+        .collect()
+}
+
+fn box_at(layout: &mut Layout, pane: PaneId, col: u16, row: u16, width: Proportion, rows: u16) {
+    let large = Size::new(1000, 1000);
+    act(layout, SessionAction::SetWidth { pane, width }, large);
+    let height = PaneHeight::Fixed(rows);
+    act(layout, SessionAction::SetHeight { pane, height }, large);
+    act(layout, SessionAction::SetPosition { pane, col, row }, large);
+    let placed = record(layout, pane);
+    assert_eq!(
+        (placed.col, placed.row, placed.width, placed.rows),
+        (col, row, width, rows)
+    );
+}
+
+fn floated(columns: usize) -> (Layout, Vec<PaneId>) {
+    let (mut layout, panes) = row_of_columns(columns);
+    let last = *panes.last().unwrap();
+    toggle(&mut layout, last, None);
+    (layout, panes)
+}
+
+#[test]
+fn float_the_only_pane_of_a_band() {
+    let (mut layout, first) = started();
+    toggle(&mut layout, first, None);
+    assert!(layout.bands()[0].columns.is_empty());
+    assert_eq!(floating_list(&layout, 0), [first]);
+    assert_eq!(layout.bands().len(), 2);
+}
+
+#[test]
+fn pane_in_one_place_only() {
+    let (mut layout, panes) = row_of_columns(2);
+    toggle(&mut layout, panes[1], None);
+    assert_eq!(layout.panes().filter(|&pane| pane == panes[1]).count(), 1);
+    assert_eq!(
+        layout.place(panes[1]),
+        Some(Place::Floating { band: 0, index: 0 })
+    );
+    toggle(&mut layout, panes[1], Some(panes[0]));
+    assert_eq!(layout.panes().filter(|&pane| pane == panes[1]).count(), 1);
+    assert!(matches!(layout.place(panes[1]), Some(Place::Tiled(_))));
+}
+
+#[test]
+fn column_removed_when_its_last_pane_floats() {
+    let (mut layout, panes) = row_of_columns(3);
+    toggle(&mut layout, panes[1], None);
+    assert_eq!(columns(&layout, 0), vec![vec![panes[0]], vec![panes[2]]]);
+    assert_eq!(floating_list(&layout, 0), [panes[1]]);
+}
+
+#[test]
+fn floating_pane_keeps_its_band() {
+    let (mut layout, first) = started();
+    open(&mut layout, 1, None);
+    toggle(&mut layout, first, None);
+    assert_eq!(layout.bands().len(), 3);
+    assert!(!layout.bands()[0].is_empty());
+    let kept = band_id(&layout, 1);
+    layout.remove(first);
+    assert_invariants(&layout);
+    assert_eq!(layout.bands().len(), 2);
+    assert_eq!(band_id(&layout, 0), kept);
+    assert!(!layout.contains(first));
+}
+
+#[test]
+fn floating_pane_opened_in_the_empty_band() {
+    let (mut layout, _) = started();
+    let pane = layout.allocate_pane();
+    let empty = band_id(&layout, 1);
+    let events = layout.open_floating(pane, empty, None, AREA, &LayoutOptions::default());
+    assert_invariants(&layout);
+    assert!(!events.is_empty());
+    assert_eq!(layout.bands().len(), 3);
+    assert_eq!(floating_list(&layout, 1), [pane]);
+    assert!(layout.bands()[2].is_empty());
+}
+
+#[test]
+fn open_a_floating_pane() {
+    let (mut layout, panes) = row_of_columns(2);
+    let pane = layout.allocate_pane();
+    let band = band_id(&layout, 0);
+    layout.open_floating(pane, band, None, AREA, &LayoutOptions::default());
+    assert_eq!(columns(&layout, 0), vec![vec![panes[0]], vec![panes[1]]]);
+    assert_eq!(floating_list(&layout, 0).last(), Some(&pane));
+    assert_eq!(
+        record(&layout, pane),
+        FloatingPane {
+            pane,
+            col: 20,
+            row: 2,
+            width: Proportion::ONE_HALF,
+            full_width: false,
+            rows: 20,
+        }
+    );
+}
+
+#[test]
+fn open_a_floating_pane_with_a_width() {
+    let (mut layout, _) = started();
+    let pane = layout.allocate_pane();
+    let band = band_id(&layout, 0);
+    let width = Some(Proportion::new(1, 4));
+    layout.open_floating(pane, band, width, AREA, &LayoutOptions::default());
+    let floating = record(&layout, pane);
+    assert_eq!(
+        (floating.width, floating.col, floating.rows),
+        (Proportion::new(1, 4), 30, 20)
+    );
+}
+
+#[test]
+fn open_floating_in_a_missing_band() {
+    let (mut layout, _) = started();
+    let pane = layout.allocate_pane();
+    let before = layout.clone();
+    let events = layout.open_floating(pane, BandId(99), None, AREA, &LayoutOptions::default());
+    assert!(events.is_empty());
+    assert_eq!(layout, before);
+}
+
+#[test]
+fn floating_pane_exits() {
+    let (mut layout, panes) = row_of_columns(3);
+    toggle(&mut layout, panes[1], None);
+    toggle(&mut layout, panes[2], None);
+    layout.remove(panes[1]);
+    assert_invariants(&layout);
+    assert_eq!(floating_list(&layout, 0), [panes[2]]);
+}
+
+#[test]
+fn first_float_opens_a_new_box() {
+    let (mut layout, panes) = row_of_columns(2);
+    toggle(&mut layout, panes[1], None);
+    assert_eq!(
+        record(&layout, panes[1]),
+        FloatingPane {
+            pane: panes[1],
+            col: 20,
+            row: 2,
+            width: Proportion::ONE_HALF,
+            full_width: false,
+            rows: 20,
+        }
+    );
+    let placed = placed(&record(&layout, panes[1]), AREA);
+    assert_eq!(
+        (placed.x, placed.y, placed.width, placed.height),
+        (20, 2, 40, 20)
+    );
+}
+
+#[test]
+fn first_float_takes_the_default_width() {
+    let (mut layout, panes) = row_of_columns(2);
+    act(&mut layout, SessionAction::ToggleFullWidth(panes[1]), AREA);
+    let options = LayoutOptions {
+        default_width: Proportion::ONE_THIRD,
+        ..LayoutOptions::default()
+    };
+    let (pane, after) = (panes[1], None);
+    layout.apply(
+        SessionAction::ToggleFloating { pane, after },
+        AREA,
+        &options,
+    );
+    let floating = record(&layout, panes[1]);
+    assert_eq!(
+        (
+            floating.width,
+            floating.full_width,
+            floating.col,
+            floating.row
+        ),
+        (Proportion::ONE_THIRD, false, 27, 2)
+    );
+}
+
+#[test]
+fn float_from_a_stack() {
+    let (mut layout, panes) = stacked(2);
+    set_width(&mut layout, panes[0], Proportion::ONE_THIRD);
+    toggle(&mut layout, panes[1], None);
+    assert_eq!(columns(&layout, 0), vec![vec![panes[0]]]);
+    assert_eq!(heights_of(&layout, panes[0]), [auto(1, 1)]);
+    let floating = record(&layout, panes[1]);
+    assert_eq!(
+        (floating.width, floating.rows, floating.col, floating.row),
+        (Proportion::ONE_HALF, 20, 20, 2)
+    );
+}
+
+#[test]
+fn new_box_in_a_tall_area() {
+    let (mut layout, panes) = row_of_columns(2);
+    let area = Size::new(120, 67);
+    let (pane, after) = (panes[1], None);
+    layout.apply(
+        SessionAction::ToggleFloating { pane, after },
+        area,
+        &LayoutOptions::default(),
+    );
+    let floating = record(&layout, panes[1]);
+    assert_eq!((floating.rows, floating.row, floating.col), (53, 7, 30));
+}
+
+#[test]
+fn float_again_returns_to_the_last_box() {
+    let (mut layout, panes) = floated(2);
+    box_at(&mut layout, panes[1], 5, 3, Proportion::ONE_THIRD, 10);
+    let kept = record(&layout, panes[1]);
+    toggle(&mut layout, panes[1], Some(panes[0]));
+    toggle(&mut layout, panes[1], None);
+    assert_eq!(record(&layout, panes[1]), kept);
+}
+
+#[test]
+fn tile_right_of_the_named_pane() {
+    let (mut layout, panes) = row_of_columns(3);
+    toggle(&mut layout, panes[2], None);
+    set_width(&mut layout, panes[2], Proportion::ONE_THIRD);
+    toggle(&mut layout, panes[2], Some(panes[0]));
+    assert_eq!(
+        columns(&layout, 0),
+        vec![vec![panes[0]], vec![panes[2]], vec![panes[1]]]
+    );
+    assert_eq!(width_of(&layout, panes[2]), (Proportion::ONE_THIRD, false));
+    assert!(layout.bands()[0].floating.is_empty());
+}
+
+#[test]
+fn tile_with_no_pane_named() {
+    let (mut layout, panes) = floated(2);
+    toggle(&mut layout, panes[1], None);
+    assert_eq!(columns(&layout, 0), vec![vec![panes[1]], vec![panes[0]]]);
+    assert_eq!(heights_of(&layout, panes[1]), [PaneHeight::DEFAULT]);
+}
+
+#[test]
+fn tile_after_a_pane_of_another_band_goes_first() {
+    let (mut layout, panes) = floated(2);
+    let other = open(&mut layout, 1, None);
+    toggle(&mut layout, panes[1], Some(other));
+    assert_eq!(columns(&layout, 0), vec![vec![panes[1]], vec![panes[0]]]);
+}
+
+#[test]
+fn tiled_full_width_is_kept() {
+    let (mut layout, panes) = floated(2);
+    act(&mut layout, SessionAction::ToggleFullWidth(panes[1]), AREA);
+    assert!(record(&layout, panes[1]).full_width);
+    toggle(&mut layout, panes[1], Some(panes[0]));
+    assert_eq!(width_of(&layout, panes[1]), (Proportion::ONE_HALF, true));
+}
+
+#[test]
+fn cycle_a_floating_width() {
+    let (mut layout, panes) = floated(2);
+    act(&mut layout, SessionAction::CycleWidth(panes[1]), AREA);
+    assert_eq!(record(&layout, panes[1]).width, Proportion::TWO_THIRDS);
+}
+
+#[test]
+fn floating_width_follows_the_column_rules() {
+    let (mut layout, panes) = floated(2);
+    let before = record(&layout, panes[1]);
+    act(&mut layout, SessionAction::ToggleFullWidth(panes[1]), AREA);
+    assert!(record(&layout, panes[1]).full_width);
+    let step = Shrink;
+    act(
+        &mut layout,
+        SessionAction::StepWidth {
+            pane: panes[1],
+            step,
+        },
+        AREA,
+    );
+    let floating = record(&layout, panes[1]);
+    assert_eq!(
+        (floating.width, floating.full_width),
+        (Proportion::new(9, 10), false)
+    );
+    set_width(&mut layout, panes[1], Proportion::new(4, 10));
+    let floating = record(&layout, panes[1]);
+    assert_eq!(
+        (floating.width, floating.full_width),
+        (Proportion::new(2, 5), false)
+    );
+    assert_eq!((floating.col, floating.row), (before.col, before.row));
+}
+
+#[test]
+fn grow_a_floating_height() {
+    let (mut layout, panes) = floated(2);
+    box_at(&mut layout, panes[1], 0, 0, Proportion::ONE_HALF, 12);
+    step_height(&mut layout, panes[1], Grow, AREA);
+    assert_eq!(record(&layout, panes[1]).rows, 14);
+    step_height(&mut layout, panes[1], Shrink, AREA);
+    assert_eq!(record(&layout, panes[1]).rows, 12);
+}
+
+#[test]
+fn floating_height_limit() {
+    let (mut layout, panes) = floated(2);
+    set_height(&mut layout, panes[1], PaneHeight::Fixed(24));
+    assert_eq!(record(&layout, panes[1]).rows, 24);
+    let before = layout.clone();
+
+    assert!(step_height(&mut layout, panes[1], Grow, AREA).is_empty());
+    assert_eq!(layout, before);
+    set_height(&mut layout, panes[1], PaneHeight::Fixed(1));
+    assert_eq!(record(&layout, panes[1]).rows, 3);
+}
+
+#[test]
+fn reset_a_floating_height() {
+    let (mut layout, panes) = floated(2);
+    set_height(&mut layout, panes[1], PaneHeight::Fixed(6));
+    act(
+        &mut layout,
+        SessionAction::ResetHeight(panes[1]),
+        Size::new(80, 25),
+    );
+    assert_eq!(record(&layout, panes[1]).rows, 19);
+}
+
+#[test]
+fn weight_leaves_a_floating_pane_unchanged() {
+    let (mut layout, panes) = floated(2);
+    assert!(set_height(&mut layout, panes[1], auto(2, 1)).is_empty());
+}
+
+#[test]
+fn consume_or_expel_a_floating_pane() {
+    let (mut layout, panes) = floated(2);
+    let before = layout.clone();
+    assert!(shift(&mut layout, panes[1], Direction::Left).is_empty());
+    assert!(shift(&mut layout, panes[1], Direction::Right).is_empty());
+    assert_eq!(layout, before);
+}
+
+fn move_column(
+    layout: &mut Layout,
+    pane: PaneId,
+    direction: Direction,
+    area: Size,
+) -> Vec<LayoutEvent> {
+    act(layout, SessionAction::MoveColumn { pane, direction }, area)
+}
+
+fn move_pane(
+    layout: &mut Layout,
+    pane: PaneId,
+    direction: Vertical,
+    area: Size,
+) -> Vec<LayoutEvent> {
+    act(layout, SessionAction::MovePane { pane, direction }, area)
+}
+
+#[test]
+fn move_a_column_right() {
+    let (mut layout, panes) = row_of_columns(3);
+    set_width(&mut layout, panes[0], Proportion::ONE_THIRD);
+    move_column(&mut layout, panes[0], Direction::Right, AREA);
+    assert_eq!(
+        columns(&layout, 0),
+        vec![vec![panes[1]], vec![panes[0]], vec![panes[2]]]
+    );
+    assert_eq!(width_of(&layout, panes[0]), (Proportion::ONE_THIRD, false));
+    assert_eq!(width_of(&layout, panes[1]), (Proportion::ONE_HALF, false));
+}
+
+#[test]
+fn move_a_column_at_the_edge() {
+    let (mut layout, panes) = row_of_columns(2);
+    let before = layout.clone();
+    assert!(move_column(&mut layout, panes[0], Direction::Left, AREA).is_empty());
+    assert!(move_column(&mut layout, panes[1], Direction::Right, AREA).is_empty());
+    assert_eq!(layout, before);
+}
+
+#[test]
+fn move_a_pane_down() {
+    let (mut layout, panes) = stacked(2);
+    set_height(&mut layout, panes[0], PaneHeight::Fixed(16));
+    let below = heights_of(&layout, panes[0])[1];
+    move_pane(&mut layout, panes[0], Vertical::Down, AREA);
+    assert_eq!(columns(&layout, 0), vec![vec![panes[1], panes[0]]]);
+    assert_eq!(
+        heights_of(&layout, panes[0]),
+        [below, PaneHeight::Fixed(16)]
+    );
+}
+
+#[test]
+fn move_a_pane_at_the_bottom() {
+    let (mut layout, panes) = stacked(2);
+    let before = layout.clone();
+    assert!(move_pane(&mut layout, panes[1], Vertical::Down, AREA).is_empty());
+    assert!(move_pane(&mut layout, panes[0], Vertical::Up, AREA).is_empty());
+    assert_eq!(layout, before);
+}
+
+#[test]
+fn move_a_lone_pane_up() {
+    let (mut layout, panes) = row_of_columns(2);
+    let before = layout.clone();
+    assert!(move_pane(&mut layout, panes[0], Vertical::Up, AREA).is_empty());
+    assert_eq!(layout, before);
+}
+
+#[test]
+fn move_a_floating_pane_right() {
+    let (mut layout, panes) = floated(2);
+    assert_eq!(record(&layout, panes[1]).col, 20);
+    move_column(&mut layout, panes[1], Direction::Right, AREA);
+    assert_eq!(record(&layout, panes[1]).col, 28);
+    move_column(&mut layout, panes[1], Direction::Left, AREA);
+    assert_eq!(record(&layout, panes[1]).col, 20);
+}
+
+#[test]
+fn move_a_floating_pane_against_the_edge() {
+    let (mut layout, panes) = floated(2);
+    box_at(&mut layout, panes[1], 36, 0, Proportion::ONE_HALF, 12);
+    move_column(&mut layout, panes[1], Direction::Right, AREA);
+    assert_eq!(record(&layout, panes[1]).col, 40);
+    let before = layout.clone();
+    assert!(move_column(&mut layout, panes[1], Direction::Right, AREA).is_empty());
+    assert_eq!(layout, before);
+}
+
+#[test]
+fn move_a_floating_pane_down() {
+    let (mut layout, panes) = floated(2);
+    box_at(&mut layout, panes[1], 20, 2, Proportion::ONE_HALF, 12);
+    move_pane(&mut layout, panes[1], Vertical::Down, Size::new(80, 25));
+    assert_eq!(record(&layout, panes[1]).row, 5);
+    move_pane(&mut layout, panes[1], Vertical::Up, Size::new(80, 25));
+    assert_eq!(record(&layout, panes[1]).row, 2);
+}
+
+#[test]
+fn moving_starts_from_the_placed_box() {
+    let (mut layout, panes) = floated(2);
+    box_at(&mut layout, panes[1], 70, 20, Proportion::ONE_HALF, 12);
+    move_pane(&mut layout, panes[1], Vertical::Up, AREA);
+    let floating = record(&layout, panes[1]);
+    assert_eq!((floating.col, floating.row), (40, 10));
+}
+
+#[test]
+fn place_exactly() {
+    let (mut layout, panes) = floated(2);
+    box_at(&mut layout, panes[1], 0, 0, Proportion::ONE_HALF, 12);
+    let (pane, col, row) = (panes[1], 70, 3);
+    act(
+        &mut layout,
+        SessionAction::SetPosition { pane, col, row },
+        AREA,
+    );
+    let floating = record(&layout, panes[1]);
+    assert_eq!((floating.col, floating.row), (40, 3));
+}
+
+#[test]
+fn set_position_on_a_tiled_pane() {
+    let (mut layout, panes) = row_of_columns(2);
+    let before = layout.clone();
+    let (pane, col, row) = (panes[0], 4, 4);
+    assert!(
+        act(
+            &mut layout,
+            SessionAction::SetPosition { pane, col, row },
+            AREA
+        )
+        .is_empty()
+    );
+    assert_eq!(layout, before);
+}
+
+#[test]
+fn identifier_survives_floating() {
+    let (mut layout, panes) = row_of_columns(2);
+    toggle(&mut layout, panes[1], None);
+    assert!(layout.contains(panes[1]));
+    move_column(&mut layout, panes[1], Direction::Right, AREA);
+    assert!(layout.contains(panes[1]));
+    toggle(&mut layout, panes[1], Some(panes[0]));
+    assert_eq!(layout.panes().collect::<Vec<_>>(), panes);
 }

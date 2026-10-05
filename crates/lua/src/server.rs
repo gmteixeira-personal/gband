@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use gband_core::geometry::{Size, placed};
 use gband_core::layout::{BandId, Layout, PaneId};
 use gband_protocol::{Key, Value as Data};
 use mlua::{Function, Lua, MultiValue, Table, Value};
@@ -20,6 +21,7 @@ pub fn state_size(state: &BTreeMap<String, Data>) -> usize {
 
 pub struct SessionView {
     pub layout: Layout,
+    pub area: Size,
     pub clients: Vec<u64>,
 }
 
@@ -246,6 +248,22 @@ fn session(lua: &Lua, name: Value) -> mlua::Result<Option<Table>> {
             columns.push(described)?;
         }
         entry.set("columns", columns)?;
+        let floating = lua.create_table()?;
+        for record in &band.floating {
+            let placed = placed(record, view.area);
+            let item = lua.create_table()?;
+            item.set("pane", record.pane.0)?;
+            item.set(
+                "width",
+                f64::from(record.width.num) / f64::from(record.width.den),
+            )?;
+            item.set("full_width", record.full_width)?;
+            item.set("rows", record.rows)?;
+            item.set("col", placed.x)?;
+            item.set("row", placed.y)?;
+            floating.push(item)?;
+        }
+        entry.set("floating", floating)?;
         bands.push(entry)?;
     }
     table.set("bands", bands)?;

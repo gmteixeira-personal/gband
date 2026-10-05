@@ -52,20 +52,28 @@ A box record SHALL keep its values when the area shrinks, so the box returns to 
 ### Requirement: Float a pane
 Toggling floating on a tiled pane SHALL remove it from its column, as closing removes a pane from a column, and append it to its band's floating list. The column rule and the dynamic band rule SHALL then apply.
 
-When the pane has been floating before, it SHALL take the box record it had when it was last tiled. Otherwise its box record SHALL be:
-- `width` and full width: its column's width and full-width flag.
-- `rows`: its tile height for the session's current screen area.
-- `col` and `row`: the box centred in the current screen area, each half the room left beside the box, rounded down.
+When the pane has been floating before, it SHALL take the box record it had when it was last tiled. Otherwise it SHALL take a new box, whose record SHALL be:
+- `width` and full width: the configuration's `default_column_width`, and full width off.
+- `rows`: the screen area's height less twice the height step "Size a floating pane" defines, and at least 3, so that the box is two steps shorter than the area.
+- `col` and `row`: the box centred in the current screen area, each half the room left beside the box, rounded down, so that one height step stays free above the box and one below.
 
-#### Scenario: First float keeps the tile size
-- **WHEN** the screen area is 80×24, pane P2 is alone in a column of width 1/2, and P2 is floated
-- **THEN** P2's box record has width 1/2, full width off, `rows` 24, `col` 20 and `row` 0
-- **AND** its box spans columns 20 to 59 and rows 0 to 23
+#### Scenario: First float opens a new box
+- **WHEN** the screen area is 80×24, the default column width is 1/2, pane P2 is alone in a column, and P2 is floated
+- **THEN** P2's box record has width 1/2, full width off, `rows` 20, `col` 20 and `row` 2
+- **AND** its box spans columns 20 to 59 and rows 2 to 21
+
+#### Scenario: New box takes the default width
+- **WHEN** the screen area is 80×24, the default column width is 1/3, and a pane in a full-width column is floated for the first time
+- **THEN** its box record has width 1/3, full width off, `col` 27 and `row` 2
 
 #### Scenario: Float from a stack
-- **WHEN** the screen area is 80×24, a column of width 1/3 holds P1 and P2, both with automatic heights of weight 1, and P2 is floated
+- **WHEN** the screen area is 80×24, the default column width is 1/2, a column of width 1/3 holds P1 and P2, both with automatic heights of weight 1, and P2 is floated
 - **THEN** the column holds P1 alone, with weight 1
-- **AND** P2's box record has width 1/3, `rows` 12, `col` 27 and `row` 6
+- **AND** P2's box record has width 1/2, `rows` 20, `col` 20 and `row` 2
+
+#### Scenario: New box in a tall area
+- **WHEN** the screen area is 120×67, the default column width is 1/2, and a pane is floated for the first time
+- **THEN** its box record has `rows` 53, `col` 30 and `row` 7
 
 #### Scenario: Float again returns to the last box
 - **WHEN** a floating pane with `col` 5, `row` 3, width 1/3 and `rows` 10 is tiled and then floated again
@@ -87,7 +95,7 @@ The width actions SHALL change a floating pane's box width and full-width flag e
 
 The height actions SHALL change a floating pane's `rows`. Let `h` be its box height as placed in the session's current screen area, and the step the area's height divided by 10, rounded to the nearest whole number with halves rounded up, and at least 1:
 - Growing SHALL set `rows` to `h` plus the step, and shrinking to `h` less the step.
-- Resetting SHALL set `rows` to half the area's height, rounded down.
+- Resetting SHALL set `rows` to the height of a new box, as "Float a pane" defines.
 - Setting a number of rows SHALL set `rows` to that number.
 - Setting a weight SHALL leave the pane unchanged.
 
@@ -107,7 +115,8 @@ The new `rows` SHALL be kept between 3 and the area's height. When the result eq
 
 #### Scenario: Reset a floating height
 - **WHEN** the area is 80×25 and a floating pane's height is reset
-- **THEN** its `rows` is 12
+- **THEN** its `rows` is 19
+
 
 #### Scenario: Consume or expel a floating pane
 - **WHEN** a floating pane is consumed or expelled to the left

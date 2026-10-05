@@ -49,7 +49,7 @@ fn resolved(config: &Config, group: &str) -> Vec<String> {
     )
 }
 
-const PREFIX_HINTS: &str = "h left  l right  j down  k up  u band down  i band up  enter new  q close  [ stack left  ] stack right  r width  f full  - narrower  = wider  _ shorter  + taller  R reset height  D detach  C-space send prefix";
+const PREFIX_HINTS: &str = "h left  l right  j down  k up  u band down  i band up  enter new  q close  [ stack left  ] stack right  r width  f full  - narrower  = wider  _ shorter  + taller  R reset height  v float  V layer  C-h move left  C-l move right  C-j move down  C-k move up  C-left move left  C-right move right  C-down move down  C-up move up  D detach  C-space send prefix";
 
 #[test]
 fn component_entry() {
@@ -193,7 +193,7 @@ fn root_with_the_defaults() {
 fn prefix_table_with_the_defaults() {
     let config = gband_lua::defaults(gband_lua::Side::Client);
     assert_eq!(
-        shown(&config, "prefix", 240),
+        shown(&config, "prefix", 400),
         format!("band 1 │ prefix │ {PREFIX_HINTS}")
     );
 }
@@ -270,7 +270,7 @@ fn separators_and_ellipsis_in_the_label_group() {
 #[test]
 fn default_description_gives_the_short_label() {
     let config = gband_lua::defaults(gband_lua::Side::Client);
-    assert!(shown(&config, "prefix", 240).contains("  r width  "));
+    assert!(shown(&config, "prefix", 400).contains("  r width  "));
 }
 
 #[test]
@@ -285,16 +285,25 @@ fn own_description() {
 }
 
 #[test]
+fn floating_keys() {
+    let config = gband_lua::defaults(gband_lua::Side::Client);
+    let shown = shown(&config, "prefix", 400);
+    for hint in ["v float", "V layer", "C-h move left", "C-left move left"] {
+        assert!(shown.contains(&format!("  {hint}  ")), "{hint}: {shown}");
+    }
+}
+
+#[test]
 fn label_option() {
     let (_scratch, config) = defaults_with("label", "{ labels = { close_pane = 'kill' } }");
-    let shown = shown(&config, "prefix", 240);
+    let shown = shown(&config, "prefix", 400);
     assert!(shown.contains("  q kill  "), "{shown}");
 }
 
 #[test]
 fn label_option_hides_an_action() {
     let (_scratch, config) = defaults_with("label-hide", "{ labels = { send_prefix = false } }");
-    let shown = shown(&config, "prefix", 240);
+    let shown = shown(&config, "prefix", 400);
     assert!(!shown.contains("send prefix"), "{shown}");
     assert!(shown.ends_with("D detach"), "{shown}");
 }

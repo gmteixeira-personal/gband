@@ -23,7 +23,9 @@ use crossterm::execute;
 use gband_core::action::{Action, ClientAction, SessionCommand};
 use gband_core::geometry::Size;
 use gband_core::input::Key;
-use gband_core::layout::{BandId, Layout, PaneId, Program, Proportion, SessionAction};
+use gband_core::layout::{
+    BandId, FloatingPane, Layout, PaneId, Program, Proportion, SessionAction,
+};
 use gband_core::view::{CenterFocusedColumn, Scene, View, ViewAction};
 use gband_emulator::{Emulator, Grid};
 use gband_lua::{
@@ -276,6 +278,11 @@ impl Display {
         self.set_size(self.terminal, placement)
     }
 
+    fn tiled_beside(&self, pane: PaneId) -> Option<PaneId> {
+        let band = self.layout.bands().iter().find(|band| band.holds(pane))?;
+        self.view.as_ref()?.tiled_in(band)
+    }
+
     pub fn view_state(&self, table: &str) -> ViewState {
         let bands = self.layout.bands();
         let viewed = match &self.view {
@@ -354,7 +361,7 @@ impl Display {
                         .iter()
                         .map(|column| (column.panes.clone(), column.width, column.full_width))
                         .collect();
-                    (band.id, columns)
+                    (band.id, columns, band.floating.clone())
                 })
                 .collect(),
         })
@@ -502,7 +509,7 @@ pub struct Observed {
     band: BandId,
     panes: BTreeMap<PaneId, BandId>,
     size: Size,
-    shape: Vec<(BandId, Vec<ColumnShape>)>,
+    shape: Vec<(BandId, Vec<ColumnShape>, Vec<FloatingPane>)>,
 }
 
 type ColumnShape = (Vec<PaneId>, Proportion, bool);
@@ -980,6 +987,11 @@ impl Controls {
                 Dispatch::Action(action) => steps.push(dispatch(display, action)),
                 Dispatch::Spawn(program) => steps.push(spawn(display, program)),
                 Dispatch::Enter(table) => self.leader.enter(table),
+                Dispatch::Session(SessionAction::ToggleFloating { pane, after: None }) => {
+                    let after = display.tiled_beside(pane);
+                    let action = SessionAction::ToggleFloating { pane, after };
+                    steps.push(Step::Send(ClientMessage::Action(action)));
+                }
                 Dispatch::Session(action) => {
                     steps.push(Step::Send(ClientMessage::Action(action)));
                 }

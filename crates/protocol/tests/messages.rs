@@ -4,8 +4,8 @@ use std::path::PathBuf;
 use gband_core::geometry::Size;
 use gband_core::input::{Key, KeyCode, Modifiers};
 use gband_core::layout::{
-    Direction, Layout, LayoutOptions, PaneContent, PaneHeight, PaneId, Program, Proportion,
-    SessionAction, Step, Weight,
+    Direction, FloatingPane, Layout, LayoutOptions, PaneContent, PaneHeight, PaneId, Program,
+    Proportion, SessionAction, Step, Vertical, Weight,
 };
 use gband_protocol::test::{FromProcess, Role, ToProcess};
 use gband_protocol::{
@@ -29,8 +29,8 @@ fn session(name: &str) -> SessionName {
 }
 
 #[test]
-fn protocol_version_is_six() {
-    assert_eq!(PROTOCOL_VERSION, 6);
+fn protocol_version_is_seven() {
+    assert_eq!(PROTOCOL_VERSION, 7);
 }
 
 #[test]
@@ -206,8 +206,38 @@ fn session_actions_round_trip() {
             band,
             after: Some(PaneId(2)),
             width: Some(Proportion::new(1, 4)),
+            floating: false,
             focus: false,
             content: PaneContent::Plugin { request: 7 },
+        },
+        SessionAction::OpenPane {
+            band,
+            after: None,
+            width: Some(Proportion::ONE_THIRD),
+            floating: true,
+            focus: true,
+            content: PaneContent::Program(None),
+        },
+        SessionAction::ToggleFloating {
+            pane: PaneId(3),
+            after: Some(PaneId(1)),
+        },
+        SessionAction::ToggleFloating {
+            pane: PaneId(3),
+            after: None,
+        },
+        SessionAction::MoveColumn {
+            pane: PaneId(2),
+            direction: Direction::Right,
+        },
+        SessionAction::MovePane {
+            pane: PaneId(2),
+            direction: Vertical::Up,
+        },
+        SessionAction::SetPosition {
+            pane: PaneId(4),
+            col: 12,
+            row: 3,
         },
         SessionAction::SetWidth {
             pane: PaneId(1),
@@ -264,6 +294,68 @@ fn layout_round_trips() {
     round_trip(ServerMessage::Layout {
         cols: 120,
         rows: 40,
+        layout,
+    });
+}
+
+#[test]
+fn floating_panes_in_the_layout_round_trip() {
+    let mut layout = Layout::new();
+    let options = LayoutOptions::default();
+    let panes: Vec<PaneId> = (0..3).map(|_| layout.allocate_pane()).collect();
+    let band = layout.bands()[0].id;
+    layout.open(panes[0], band, None, None, &options);
+    layout.open(panes[1], band, Some(panes[0]), None, &options);
+    layout.open_floating(panes[2], band, None, AREA, &options);
+    for action in [
+        SessionAction::ToggleFloating {
+            pane: panes[1],
+            after: None,
+        },
+        SessionAction::SetWidth {
+            pane: panes[1],
+            width: Proportion::ONE_THIRD,
+        },
+        SessionAction::SetHeight {
+            pane: panes[1],
+            height: PaneHeight::Fixed(10),
+        },
+        SessionAction::SetPosition {
+            pane: panes[1],
+            col: 5,
+            row: 3,
+        },
+        SessionAction::ToggleFloating {
+            pane: panes[2],
+            after: Some(panes[0]),
+        },
+        SessionAction::ToggleFloating {
+            pane: panes[2],
+            after: None,
+        },
+    ] {
+        layout.apply(action, AREA, &options);
+    }
+    let floating: Vec<_> = layout.bands()[0]
+        .floating
+        .iter()
+        .map(|floating| floating.pane)
+        .collect();
+    assert_eq!(floating, [panes[1], panes[2]]);
+    assert_eq!(
+        *layout.floating(panes[1]).unwrap(),
+        FloatingPane {
+            pane: panes[1],
+            col: 5,
+            row: 3,
+            width: Proportion::ONE_THIRD,
+            full_width: false,
+            rows: 10,
+        }
+    );
+    round_trip(ServerMessage::Layout {
+        cols: 80,
+        rows: 24,
         layout,
     });
 }
