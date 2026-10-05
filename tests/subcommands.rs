@@ -185,7 +185,9 @@ fn help_lists_subcommands() {
                 "attach",
                 "list-sessions",
                 "kill-session",
-                "kill-server"
+                "kill-server",
+                "completions",
+                "install-completions"
             ],
             "{flag}"
         );

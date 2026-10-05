@@ -41,6 +41,30 @@ cargo build --release
 
 The binary is `target/release/gband`.
 
+## Shell completions
+
+gband completes its subcommands and options in fish, bash and zsh.
+Install the script where your shell loads it:
+
+```sh
+gband install-completions fish   # or bash, zsh
+```
+
+The command prints the path it wrote.
+fish and bash load the script in new shells.
+zsh searches no per-user directory by default, so add the printed directory to `fpath` in `~/.zshrc` before `compinit` runs:
+
+```zsh
+fpath=(~/.local/share/zsh/site-functions $fpath)
+autoload -Uz compinit && compinit
+```
+
+To put the script somewhere else, for example where a zsh framework expects it, print it instead:
+
+```sh
+gband completions zsh > ~/.oh-my-zsh/completions/_gband
+```
+
 ## Branches
 
 - `dev` is the default branch.
