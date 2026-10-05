@@ -250,7 +250,7 @@ Each session SHALL have its own screen area. A session's screen area SHALL be th
 - **THEN** that pane's PTY becomes 58 columns by 28 rows
 
 ### Requirement: Session actions
-The server SHALL own the session's layout, as the layout capability defines it, and change it only through session actions. It SHALL apply the session actions of every client in the order it receives them, and send the resulting layout to every attached client. An action that names a pane or a workspace no longer in the layout SHALL be ignored. The session actions SHALL be:
+The server SHALL own the session's layout, as the layout capability defines it, and change it only through session actions. It SHALL apply the session actions of every client in the order it receives them, and send the resulting layout to every attached client. An action that names a pane or a band no longer in the layout SHALL be ignored. The session actions SHALL be:
 
 | action | effect |
 |---|---|
@@ -466,7 +466,7 @@ The server SHALL resize PTYs only when the session has settled: 100 ms have pass
 - **AND** the pane's program receives exactly one SIGWINCH, after the last action
 
 #### Scenario: Offscreen pane keeps its size
-- **WHEN** a client with an 80×24 terminal views a workspace holding columns A, B and C, all of width 1/2, shows A and B, and resizes its terminal to 100×30
+- **WHEN** a client with an 80×24 terminal views a band holding columns A, B and C, all of width 1/2, shows A and B, and resizes its terminal to 100×30
 - **THEN** the PTYs of A and B become 48 columns by 28 rows
 - **AND** C's PTY stays 38 columns by 22 rows, and C's program receives no SIGWINCH
 

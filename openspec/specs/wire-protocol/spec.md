@@ -60,10 +60,10 @@ After an attach request, a client SHALL send only these messages:
 | paste | a pane identifier and the pasted text |
 | resize | the client terminal's columns and rows |
 | shown | the identifiers of every pane the client shows, as the layout-view capability defines; it replaces the set the client reported before |
-| action | one session action, as the session-server capability defines it, with the pane or workspace it names |
+| action | one session action, as the session-server capability defines it, with the pane or band it names |
 | detach | nothing |
 
-Pane and workspace identifiers SHALL name panes and workspaces of the client's session. The server SHALL ignore a pane identifier in a shown message that names no pane of the client's session. The open pane action SHALL name a workspace, optionally the pane whose column the new column follows, and optionally the program to run, either as a command line or as an argument list. Every other action SHALL name a pane, and consume or expel SHALL also name its direction. A client that detaches SHALL send detach, then close the connection.
+Pane and band identifiers SHALL name panes and bands of the client's session. The server SHALL ignore a pane identifier in a shown message that names no pane of the client's session. The open pane action SHALL name a band, optionally the pane whose column the new column follows, and optionally the program to run, either as a command line or as an argument list. Every other action SHALL name a pane, and consume or expel SHALL also name its direction. A client that detaches SHALL send detach, then close the connection.
 
 #### Scenario: Detach message
 - **WHEN** a client sends detach
@@ -83,12 +83,12 @@ Pane and workspace identifiers SHALL name panes and workspaces of the client's s
 - **THEN** the server decodes the same action and pane
 
 #### Scenario: Open pane with a program round trip
-- **WHEN** a client sends open pane naming workspace 1, pane 2 and the argument list `htop`, `-d`, `10`
-- **THEN** the server decodes the same workspace, pane and argument list
+- **WHEN** a client sends open pane naming band 1, pane 2 and the argument list `htop`, `-d`, `10`
+- **THEN** the server decodes the same band, pane and argument list
 
 #### Scenario: Open pane without a program round trip
-- **WHEN** a client sends open pane naming workspace 1 and no pane or program
-- **THEN** the server decodes open pane naming workspace 1 with no pane and no program
+- **WHEN** a client sends open pane naming band 1 and no pane or program
+- **THEN** the server decodes open pane naming band 1 with no pane and no program
 
 ### Requirement: Server messages
 After the handshake, a server SHALL send only these messages:
@@ -96,7 +96,7 @@ After the handshake, a server SHALL send only these messages:
 | message | content |
 |---|---|
 | info | the server's process id and the identity of the executable it runs from |
-| layout | the screen area's columns and rows, and the layout: its workspaces in order with their identifiers, each workspace's columns in order with their widths and full-width flags, and each column's panes in order with their identifiers and heights, each either automatic with its weight or fixed with its rows |
+| layout | the screen area's columns and rows, and the layout: its bands in order with their identifiers, each band's columns in order with their widths and full-width flags, and each column's panes in order with their identifiers and heights, each either automatic with its weight or fixed with its rows |
 | snapshot | a pane identifier, the pane's columns and rows, and terminal output that, fed into an empty terminal grid of that size, reproduces that pane's screen on the server |
 | update | a pane identifier, and terminal output that, fed into the grid the client built for that pane from every earlier snapshot and update of it, reproduces that pane's current screen on the server |
 | focus | a pane identifier: the pane the client asked to open, which the client focuses |
@@ -123,7 +123,7 @@ A client SHALL keep one grid per pane. It SHALL build a pane's grid by replacing
 - **THEN** its grid of that pane has the same visible cells, cursor and input modes as the server's
 
 #### Scenario: Layout round trip
-- **WHEN** a layout of two workspaces, one holding a full-width column of width 1/3 with two panes, is framed and decoded
+- **WHEN** a layout of two bands, one holding a full-width column of width 1/3 with two panes, is framed and decoded
 - **THEN** the decoded layout equals the original
 
 #### Scenario: Sessions round trip

@@ -10,7 +10,7 @@ Every action SHALL be exactly one of three kinds:
 
 | kind | runs in | examples |
 |---|---|---|
-| view | the client alone, with no message to the server | focus a neighbouring pane, view another workspace |
+| view | the client alone, with no message to the server | focus a neighbouring pane, view another band |
 | session | the server, which applies it to the shared layout | open, close, consume or expel a pane, change a column's width |
 | client | the client alone, outside the view | detach, send the prefix key to the focused pane |
 
@@ -25,19 +25,19 @@ A key binding SHALL name exactly one action or one Lua function. Pressing a key 
 - **THEN** the second pane closes, as it does when the user presses Ctrl+Space then `q`
 
 ### Requirement: Session actions resolve against the view
-A session action from a binding SHALL name no pane. Before sending it, the client SHALL resolve it against its view: the pane is the focused pane, and open pane also takes the viewed workspace. A session action that needs a pane SHALL be dropped when no pane is focused. Open pane SHALL be sent with no pane to open after when no pane is focused.
+A session action from a binding SHALL name no pane. Before sending it, the client SHALL resolve it against its view: the pane is the focused pane, and open pane also takes the viewed band. A session action that needs a pane SHALL be dropped when no pane is focused. Open pane SHALL be sent with no pane to open after when no pane is focused.
 
 #### Scenario: Resolve to the focused pane
 - **WHEN** a view focuses pane 3 and resolves cycle width
 - **THEN** the result is cycle width naming pane 3
 
 #### Scenario: Nothing focused
-- **WHEN** a view on the empty workspace resolves close pane
+- **WHEN** a view on the empty band resolves close pane
 - **THEN** there is nothing to send
 
 #### Scenario: Open pane on the empty band
-- **WHEN** a view on the empty workspace resolves open pane
-- **THEN** the result is open pane naming that workspace and no pane to open after
+- **WHEN** a view on the empty band resolves open pane
+- **THEN** the result is open pane naming that band and no pane to open after
 
 ### Requirement: Lua names of actions
 Every action SHALL have one Lua name, under which `gband.action` holds it:
@@ -48,8 +48,8 @@ Every action SHALL have one Lua name, under which `gband.action` holds it:
 | `focus_column_right` | focus the column to the right | view |
 | `focus_pane_down` | focus the pane below | view |
 | `focus_pane_up` | focus the pane above | view |
-| `focus_workspace_down` | view the workspace below | view |
-| `focus_workspace_up` | view the workspace above | view |
+| `focus_band_down` | view the band below | view |
+| `focus_band_up` | view the band above | view |
 | `open_pane` | open a pane running the user's shell | session |
 | `close_pane` | close the pane | session |
 | `consume_or_expel_left` | consume or expel the pane to the left | session |
