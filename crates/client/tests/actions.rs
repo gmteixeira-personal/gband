@@ -265,10 +265,10 @@ fn send_prefix_follows_the_prefix_option() {
         })]
     );
     assert_eq!(
-        controls.press(&mut display, key("ctrl+a")),
+        controls.press(&mut display, key("ctrl+space")),
         [Step::Send(ClientMessage::Key {
             pane: panes[0],
-            key: key("ctrl+a"),
+            key: key("ctrl+space"),
         })]
     );
 }
@@ -278,7 +278,7 @@ fn reload_replaces_the_bindings_and_ends_a_prefix_sequence() {
     let scratch = Scratch::new("reload");
     let (mut display, panes) = three_columns();
     let mut controls = Controls::new(scratch.load(DEFAULTS).unwrap(), &mut display);
-    assert_eq!(controls.press(&mut display, key("ctrl+a")), []);
+    assert_eq!(controls.press(&mut display, key("ctrl+space")), []);
     controls.reload(
         &mut display,
         scratch.load("gband.bind('alt+l', gband.action.focus_column_right)"),
@@ -335,7 +335,7 @@ fn camera_policy_follows_the_configuration() {
             .unwrap(),
         &mut display,
     );
-    controls.press(&mut display, key("ctrl+a"));
+    controls.press(&mut display, key("ctrl+space"));
     controls.press(&mut display, key("l"));
     let shown = display.report_shown();
     assert_eq!(

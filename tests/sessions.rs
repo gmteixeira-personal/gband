@@ -50,7 +50,7 @@ fn named_sessions_share_one_server() {
 
     work.run("sleep 100");
     thread::sleep(Duration::from_millis(300));
-    work.send(b"\x01D");
+    work.send(b"\x00D");
     assert_eq!(work.wait_exit(), 0);
     work.wait_for_text("[detached]");
     assert_eq!(list(&env), "play\t1\t1\nwork\t1\t0\n");

@@ -153,7 +153,7 @@ fn defaults_reproduce_the_built_in_behaviour() {
     let config = gband_lua::defaults();
     assert_eq!(
         config.options.prefix,
-        Key::new(KeyCode::Char('a'), Modifiers::CTRL)
+        Key::new(KeyCode::Char(' '), Modifiers::CTRL)
     );
     assert_eq!(config.options.layout.default_width, Proportion::ONE_HALF);
     assert_eq!(
@@ -363,11 +363,25 @@ fn direct_binding() {
 }
 
 #[test]
+fn default_prefix() {
+    let config = loaded(
+        "default-prefix",
+        "gband.bind('prefix q', gband.action.close_pane)",
+    );
+    assert_eq!(config.options.prefix, key("ctrl+space"));
+    assert_eq!(
+        actions(&config),
+        [(prefixed("q"), Action::Session(SessionCommand::ClosePane))]
+    );
+}
+
+#[test]
 fn override_a_default() {
     let config = loaded(
         "override",
         &format!("{DEFAULTS}\ngband.bind('prefix q', gband.action.detach)"),
     );
+    assert_eq!(config.options.prefix, key("ctrl+space"));
     assert_eq!(
         action_of(&config, prefixed("q")),
         Some(Action::Client(ClientAction::Detach))
@@ -384,6 +398,7 @@ fn unbind_a_default() {
         "unbind",
         &format!("{DEFAULTS}\ngband.unbind('prefix q')\ngband.unbind('alt+z')"),
     );
+    assert_eq!(config.options.prefix, key("ctrl+space"));
     assert!(binding(&config, prefixed("q")).is_none());
     assert_eq!(
         config.bindings.len(),
@@ -408,7 +423,7 @@ fn prefix_changed_after_binding() {
 fn direct_binding_of_the_prefix_key() {
     let (path, error) = failure(
         "prefix-direct",
-        "\n\n\ngband.bind('ctrl+a', gband.action.detach)\n",
+        "\n\n\ngband.bind('ctrl+space', gband.action.detach)\n",
     );
     assert_error_at(&error, &path, 4, "prefix");
 }

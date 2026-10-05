@@ -92,7 +92,7 @@ fn matches(bound: Key, key: Key) -> bool {
 #[cfg(test)]
 mod tests {
     use gband_core::action::{Action, ClientAction, SessionCommand};
-    use gband_core::input::Modifiers;
+    use gband_core::input::{Modes, Modifiers, encode_key};
     use gband_core::layout::{Direction, Step};
     use gband_core::view::ViewAction;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -228,6 +228,8 @@ mod tests {
     #[test]
     fn prefix_twice_sends_one_prefix() {
         let keymap = defaults();
+        assert_eq!(keymap.prefix, key("ctrl+space"));
+        assert_eq!(encode_key(keymap.prefix, Modes::default()), b"\x00");
         let mut leader = Leader::default();
         assert_eq!(leader.handle(&keymap, keymap.prefix), Command::Discard);
         assert_eq!(
@@ -263,7 +265,12 @@ mod tests {
     fn keys_without_the_prefix_pass_through() {
         let keymap = defaults();
         let mut leader = Leader::default();
-        for pressed in [char_key('h'), Key::plain(KeyCode::Up), key("ctrl+b")] {
+        for pressed in [
+            char_key('h'),
+            Key::plain(KeyCode::Up),
+            key("ctrl+a"),
+            key("ctrl+b"),
+        ] {
             assert_eq!(leader.handle(&keymap, pressed), Command::Send(pressed));
         }
     }
@@ -301,8 +308,8 @@ mod tests {
             Some(Action::Session(SessionCommand::ClosePane))
         );
         assert_eq!(
-            leader.handle(&keymap, key("ctrl+a")),
-            Command::Send(key("ctrl+a"))
+            leader.handle(&keymap, key("ctrl+space")),
+            Command::Send(key("ctrl+space"))
         );
         assert_eq!(leader.handle(&keymap, key("ctrl+b")), Command::Discard);
         assert_eq!(
@@ -317,8 +324,8 @@ mod tests {
         assert!(keymap.prefixed.is_empty());
         let mut leader = Leader::default();
         assert_eq!(
-            leader.handle(&keymap, key("ctrl+a")),
-            Command::Send(key("ctrl+a"))
+            leader.handle(&keymap, key("ctrl+space")),
+            Command::Send(key("ctrl+space"))
         );
         assert_eq!(
             leader.handle(&keymap, char_key('h')),
