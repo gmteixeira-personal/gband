@@ -123,9 +123,17 @@ pub(crate) enum LuaAction {
 
 impl UserData for LuaAction {
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
-        methods.add_meta_method(MetaMethod::Call, |lua, this, ()| match this {
-            LuaAction::Builtin { action, .. } => {
+        methods.add_meta_method(MetaMethod::Call, |lua, this, target: Value| match this {
+            LuaAction::Builtin { action, .. } if target.is_nil() => {
                 api::queue(lua, Dispatch::Action(*action), "an action")
+            }
+            LuaAction::Builtin { name, action } => {
+                if !api::in_callback(lua) {
+                    return Err(api::outside_callback(lua, "an action"));
+                }
+                let entry = crate::control::targeted(lua, name, *action, &target)
+                    .map_err(|message| ConfigError::raise(lua, message))?;
+                api::queue(lua, entry, "an action")
             }
             LuaAction::Registered { callback, .. } => {
                 if !api::in_callback(lua) {

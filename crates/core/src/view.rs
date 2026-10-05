@@ -14,6 +14,8 @@ pub enum ViewAction {
     FocusUp,
     BandDown,
     BandUp,
+    FocusPane(PaneId),
+    ViewBand(BandId),
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -88,29 +90,10 @@ impl View {
 
     pub fn resolve(&self, command: SessionCommand) -> Option<SessionAction> {
         let focused = self.focused();
-        Some(match command {
-            SessionCommand::OpenPane => SessionAction::OpenPane {
-                band: self.band,
-                after: focused,
-                program: None,
-            },
-            SessionCommand::ClosePane => SessionAction::ClosePane(focused?),
-            SessionCommand::ConsumeOrExpel(direction) => SessionAction::ConsumeOrExpel {
-                pane: focused?,
-                direction,
-            },
-            SessionCommand::CycleWidth => SessionAction::CycleWidth(focused?),
-            SessionCommand::ToggleFullWidth => SessionAction::ToggleFullWidth(focused?),
-            SessionCommand::StepWidth(step) => SessionAction::StepWidth {
-                pane: focused?,
-                step,
-            },
-            SessionCommand::StepHeight(step) => SessionAction::StepHeight {
-                pane: focused?,
-                step,
-            },
-            SessionCommand::ResetHeight => SessionAction::ResetHeight(focused?),
-        })
+        match command {
+            SessionCommand::OpenPane => Some(SessionAction::open(self.band, focused, None)),
+            command => command.on_pane(focused?),
+        }
     }
 
     pub fn shown(&self, scene: Scene<'_>) -> Vec<PaneId> {
@@ -133,6 +116,11 @@ impl View {
     }
 
     pub fn apply(&mut self, action: ViewAction, scene: Scene<'_>) {
+        match action {
+            ViewAction::FocusPane(pane) => return self.focus_pane(pane, scene),
+            ViewAction::ViewBand(band) => return self.view_band(band, scene),
+            _ => {}
+        }
         let previous = self.focused();
         let Some(index) = scene.layout.band_index(self.band) else {
             self.sync(scene);
@@ -164,7 +152,20 @@ impl View {
                 };
                 self.enter(target);
             }
+            ViewAction::FocusPane(_) | ViewAction::ViewBand(_) => {}
         }
+        self.settle(scene, previous);
+    }
+
+    pub fn view_band(&mut self, band: BandId, scene: Scene<'_>) {
+        if band == self.band {
+            return;
+        }
+        let Some(target) = scene.layout.band(band) else {
+            return;
+        };
+        let previous = self.focused();
+        self.enter(target);
         self.settle(scene, previous);
     }
 

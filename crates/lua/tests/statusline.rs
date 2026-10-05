@@ -296,6 +296,7 @@ fn context_values() {
         width: 100,
         drawn: true,
         error: None,
+        ..ViewState::default()
     };
     presented(&config, state);
     let seen: Vec<String> = eval(

@@ -3,7 +3,8 @@
 A gband plugin is a directory of Lua files.
 gband finds it on the runtimepath, runs its startup files, and lets your configuration set it up.
 Plugins run in the client.
-They can add actions, commands, options, key bindings, event handlers, status line components, highlight groups and colorschemes.
+They can add actions, commands, options, key bindings, event handlers, status line components, windows, highlight groups and colorschemes.
+They can read the layout and act on any pane or band.
 
 The [sample plugin](../examples/plugins/hello) uses most of what this guide describes.
 The [status line sample](../examples/plugins/pane) adds a component, a highlight group and a colorscheme.
@@ -283,6 +284,151 @@ gband.keymap.set("prefix", "m", function() gband.keymap.enter("move") end, { des
 
 Bindings are made only while the configuration loads.
 
+## Layout and view: `gband.layout`, `gband.view`
+
+`gband.layout()` returns a new table describing the layout the client holds:
+
+- `cols` and `rows`: the size of the screen area.
+- `bands`: one table per band, in order, each with `id` and `columns`.
+- `columns`: one table per column, left to right, each with `width` as a number, `full_width` and `panes`.
+- `panes`: one table per pane, top to bottom, each with `id` and either `rows`, a fixed height, or `weight`, an automatic height's weight. A plugin pane of a window this client opened also has `window`.
+
+`gband.view()` returns `band`, the viewed band, `pane`, the focused pane or nil, `window`, the focused window or nil, `table`, the active key table, and `cols` and `rows`, the size of the ribbon.
+
+Both can be called from any code that runs after loading.
+They describe the state when they are called: an action the running callback dispatched takes effect only after it returns.
+
+```lua
+gband.keymap.set("prefix", "o", function()
+  local view = gband.view()
+  local count = 0
+  for _, band in ipairs(gband.layout().bands) do
+    for _, column in ipairs(band.columns) do
+      count = count + #column.panes
+    end
+  end
+  print(("band %d, pane %s, %d panes"):format(view.band, tostring(view.pane), count))
+end, { desc = "describe the layout" })
+```
+
+## Action targets
+
+A built-in action that acts on the focused pane also takes a target, a table naming the pane: `close_pane`, `consume_or_expel_left`, `consume_or_expel_right`, `cycle_column_width`, `toggle_full_width`, `grow_column_width`, `shrink_column_width`, `grow_pane_height`, `shrink_pane_height` and `reset_pane_height`.
+`gband.action.close_pane({ pane = 3 })` closes pane 3, whichever pane is focused.
+
+`open_pane` takes `band`, `after` or both: the new column follows `after`'s column, or is `band`'s first column when only `band` is given.
+`send_prefix` takes `pane` and sends the prefix key to it.
+`gband.spawn` takes `band` and `after` beside `cmd`.
+
+A target on a view action or on `detach`, a field the action does not take, or a pane or band not in the layout is an error at the line of the call.
+
+```lua
+gband.keymap.set("prefix", "N", function()
+  local view = gband.view()
+  gband.action.open_pane({ band = view.band })
+end, { desc = "open a pane as the band's first column" })
+```
+
+## Panes and bands: `gband.pane`, `gband.band`
+
+These dispatch like actions, in the order they are called together with the callback's actions, and are errors outside a callback.
+A pane or band number not in the layout is an error at the line of the call.
+
+- `gband.pane.focus(pane)` views the pane's band and focuses it.
+- `gband.band.view(band)` views a band, focusing the pane last focused there.
+- `gband.pane.set_width(pane, width)` sets the column's width, a number greater than 0 and at most 10000, and turns full width off.
+- `gband.pane.set_height(pane, { rows = n })` gives a fixed height; `gband.pane.set_height(pane, { weight = w })` gives an automatic height of weight `w`.
+- `gband.pane.send_keys(pane, keys)` sends a key name, or a list of them, as key presses.
+- `gband.pane.send_text(pane, text)` sends each character as a key press, a line feed or carriage return as Enter and a tab as Tab. Other control characters are an error.
+- `gband.pane.paste(pane, text)` sends `text` as a paste.
+
+Keys sent this way run no binding and leave the active key table alone.
+
+```lua
+gband.keymap.set("prefix", "e", function()
+  local view = gband.view()
+  local first = gband.layout().bands[1].columns[1].panes[1].id
+  if first ~= view.pane then
+    gband.pane.send_text(first, "make\n")
+  end
+end, { desc = "run make in the first pane" })
+```
+
+## Windows: `gband.win`
+
+A window shows lines of styled text that Lua writes.
+It is one of two kinds:
+
+- a **float**, drawn by this client only, over the ribbon, at a position and size in cells. Floats change no layout, view or pane, and other clients never see them.
+- a **pane**, a plugin pane in the shared layout. It has no program. It is placed, resized, moved, focused and closed like any pane, and every client sees its contents. The server drops keys and pastes sent to it, and it closes when the client that opened it detaches, disconnects or reloads.
+
+`gband.win.open(opts)` opens a window and returns its number, which is never reused.
+`info` and `list` can be called from any code that runs after loading; every other function only inside a callback.
+
+| option | kinds | value | default |
+|---|---|---|---|
+| `kind` | both | `"float"` or `"pane"` | `"float"` |
+| `lines` | both | the lines | none |
+| `focus` | both | boolean | `true` |
+| `cursorline` | both | boolean | `false` |
+| `keys` | both | key names to functions | none |
+| `on_close`, `on_resize` | both | function | none |
+| `row`, `col` | float | integer of at least 0, or `"center"` | `"center"` |
+| `width`, `height` | float | integer of at least 1 | half the ribbon |
+| `border` | float | boolean | `true` |
+| `title` | float | string | none |
+| `band`, `after` | pane | as the `open_pane` target takes them | the viewed band and focused pane |
+| `column_width` | pane | a width | `default_column_width` |
+
+A line is a string or a list of spans; a span is a string or `{ text = ..., hl = "Group" }`.
+Spans without `hl` use `Window`, and a span's style is its group's resolved style over `Window`'s.
+Control characters are removed, and a line longer than the window is cut.
+
+- `gband.win.set_lines(win, lines)` replaces the lines.
+- `gband.win.scroll(win, count)` moves the first shown line, and `gband.win.set_cursor(win, line)` the cursor line. With `cursorline`, the window scrolls just enough to keep the cursor line shown and draws it in `WindowCursorLine`.
+- `gband.win.focus(win)` focuses a float, or focuses a pane window's pane.
+- `gband.win.set_config(win, config)` changes a float's `row`, `col`, `width`, `height`, `border` or `title`.
+- `gband.win.close(win)` closes a window, and its pane for a pane window. Closing a window that is not open does nothing.
+- `gband.win.info(win)` returns `id`, `kind`, `focused`, `pane`, `top`, `cursor`, `line_count`, `cols` and `rows`, and for a float `row`, `col`, `width` and `height`.
+- `gband.win.list()` returns the open windows' numbers in ascending order.
+
+The focused window is the focused float, otherwise the window of the focused pane.
+A newly opened float with `focus` takes focus; moving focus or viewing another band leaves no float focused.
+The exception is a focus change caused by the float's own `keys` function: the float stays focused until the next key press, whether the change happens at once or arrives later from the server, as an opened pane's focus does.
+So a list can run actions on Enter and stay open for the next choice.
+While a window is focused, every key the bindings leave unused goes to it and never to a pane, and pastes are discarded.
+A key in `keys` runs its function with the window's number.
+Without an entry, Up or `k` and Down or `j` move the cursor line or scroll, PageUp and PageDown scroll a page, Home and End show the first or last line, and Escape closes a float.
+
+`on_close` runs once with the window's number when the window closes, but not when a reload closes it.
+`on_resize` runs with the number and the new columns and rows when the window's content area changes size, including when a pane window's size first becomes known.
+A window closes when its plugin is marked failed.
+
+```lua
+gband.keymap.set("prefix", "?", function()
+  local lines = {}
+  for _, binding in ipairs(gband.keymap.list("prefix")) do
+    lines[#lines + 1] = {
+      { text = ("%-10s"):format(binding.key), hl = "KeyHintKey" },
+      binding.desc or binding.action or "function",
+    }
+  end
+  local win
+  win = gband.win.open({
+    title = "prefix keys",
+    width = 50,
+    height = 15,
+    cursorline = true,
+    lines = lines,
+    keys = { q = function() gband.win.close(win) end },
+  })
+end, { desc = "list the prefix keys" })
+
+gband.keymap.set("prefix", "P", function()
+  gband.win.open({ kind = "pane", column_width = 1/3, lines = { "notes", "", "- write the tests" } })
+end, { desc = "open a notes pane" })
+```
+
 ## Status line: `gband.ui.statusline`
 
 The status line takes `statusline_height` rows of the client's terminal, 1 by default.
@@ -534,6 +680,17 @@ The status line defines these groups, as defaults:
 
 The hints segment adds `KeyHintKey`, `{ link = "StatusLineAccent" }`, and `KeyHintLabel`, `{ link = "StatusLineSegment" }`, when its module is first required.
 
+The window API defines these groups, as defaults:
+
+| group | default | use |
+|---|---|---|
+| `Window` | `{}` | every window cell |
+| `WindowBorder` | `{ fg = 8 }` | a float's border |
+| `WindowTitle` | `{ bold = true }` | a float's title, over `WindowBorder` |
+| `WindowCursorLine` | `{ reverse = true }` | the cursor line |
+
+A change of any group redraws every window.
+
 A span's style is its group's resolved style over `StatusLine`'s, field by field.
 
 ### Colors in the terminal
@@ -541,6 +698,8 @@ A span's style is its group's resolved style over `StatusLine`'s, field by field
 The client draws 24-bit colors when its own `COLORTERM` is `truecolor` or `24bit`.
 Otherwise it draws each `"#rrggbb"` color as the nearest of the palette indexes 16 to 255.
 Index and named colors are drawn as their palette index either way.
+Floats follow these rules.
+A plugin pane's contents are sent to the server as 24-bit colors, and every client shows them as its terminal does, as it shows a program's colors.
 
 ## Colorschemes: `gband.colorscheme`
 
@@ -574,5 +733,5 @@ gband.hl.set("PaneSegment", { fg = "#f6c177", bold = true })
 Later changes will add their own extension points, each with its own API:
 
 - a server-side runtime, which will source `plugin/server/`
-- overlays and a command palette, which will read `gband.cmd.list()` and `gband.action.list()`
+- a command palette, which will read `gband.cmd.list()` and `gband.action.list()`
 - notifications

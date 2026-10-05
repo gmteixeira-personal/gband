@@ -6,7 +6,9 @@ use std::time::Duration;
 
 use anyhow::{Result, bail};
 use gband_core::geometry::{Size, tiles};
-use gband_core::layout::{BandId, Layout, LayoutOptions, PaneId, Program, SessionAction};
+use gband_core::layout::{
+    BandId, Layout, LayoutOptions, PaneContent, PaneId, Program, Proportion, SessionAction,
+};
 use gband_protocol::SessionName;
 use portable_pty::{ChildKiller, ExitStatus};
 use rustix::process::{Pid, Signal};
@@ -33,14 +35,35 @@ pub enum Command {
         applied: Option<oneshot::Sender<()>>,
     },
     Action {
+        client: u64,
         action: SessionAction,
-        focus: Option<mpsc::UnboundedSender<PaneId>>,
+        reply: Option<mpsc::UnboundedSender<Reply>>,
     },
     Shown {
         client: u64,
         panes: Vec<PaneId>,
     },
+    Content {
+        client: u64,
+        pane: PaneId,
+        output: Vec<u8>,
+    },
+    Leave {
+        client: u64,
+    },
     CloseAll,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Reply {
+    Focus(PaneId),
+    Opened { request: u32, pane: Option<PaneId> },
+}
+
+struct Placement {
+    band: BandId,
+    after: Option<PaneId>,
+    width: Option<Proportion>,
 }
 
 pub struct SessionConfig {
@@ -60,11 +83,17 @@ struct Live {
     exit: watch::Receiver<Option<ExitStatus>>,
 }
 
+struct PluginPane {
+    owner: u64,
+    entry: PaneEntry,
+}
+
 pub struct Session {
     config: SessionConfig,
     layout: Layout,
     area: Size,
     panes: HashMap<PaneId, Live>,
+    plugins: HashMap<PaneId, PluginPane>,
     state: watch::Sender<Arc<State>>,
     changed: Arc<watch::Sender<u64>>,
     exits: mpsc::UnboundedSender<PaneExit>,
@@ -81,6 +110,7 @@ impl Session {
             layout: Layout::new(),
             area,
             panes: HashMap::new(),
+            plugins: HashMap::new(),
             state: watch::Sender::new(Arc::new(State {
                 layout: Layout::new(),
                 area,
@@ -93,7 +123,12 @@ impl Session {
             settle_at: None,
         };
         let band = session.layout.bands()[0].id;
-        session.open(band, None, None)?;
+        let placement = Placement {
+            band,
+            after: None,
+            width: None,
+        };
+        session.open(placement, None)?;
         session.publish();
         Ok(session)
     }
@@ -111,7 +146,7 @@ impl Session {
     }
 
     pub fn is_over(&self) -> bool {
-        self.layout.is_empty()
+        self.panes.is_empty()
     }
 
     pub fn handle(&mut self, command: Command) {
@@ -125,8 +160,33 @@ impl Session {
                     let _ = applied.send(());
                 }
             }
-            Command::Action { action, focus } => self.act(action, focus),
+            Command::Action {
+                client,
+                action,
+                reply,
+            } => self.act(client, action, reply),
             Command::Shown { client, panes } => self.show(client, panes),
+            Command::Content {
+                client,
+                pane,
+                output,
+            } => match self.plugins.get(&pane) {
+                Some(plugin) if plugin.owner == client => plugin.entry.pane.replace(&output),
+                _ => {
+                    tracing::debug!(pane = %pane, "ignoring content for a pane the client does not own")
+                }
+            },
+            Command::Leave { client } => {
+                let owned: Vec<PaneId> = self
+                    .plugins
+                    .iter()
+                    .filter(|(_, plugin)| plugin.owner == client)
+                    .map(|(&pane, _)| pane)
+                    .collect();
+                for pane in owned {
+                    self.close(pane);
+                }
+            }
             Command::CloseAll => self.terminate(),
         }
     }
@@ -158,8 +218,8 @@ impl Session {
                 if !shown.contains(&tile.pane) {
                     continue;
                 }
-                if let Some(live) = self.panes.get(&tile.pane) {
-                    live.entry.pane.resize(tile.terminal_size());
+                if let Some(entry) = self.entry(tile.pane) {
+                    entry.pane.resize(tile.terminal_size());
                 }
             }
         }
@@ -173,7 +233,12 @@ impl Session {
         });
         self.last_status = Some(exit.status);
         self.panes.remove(&exit.pane);
-        let events = self.layout.remove(exit.pane);
+        let mut events = self.layout.remove(exit.pane);
+        if self.panes.is_empty() {
+            for (pane, _) in self.plugins.drain() {
+                events.extend(self.layout.remove(pane));
+            }
+        }
         if !events.is_empty() {
             self.config.events.layout(events);
             self.publish();
@@ -187,22 +252,49 @@ impl Session {
         }
     }
 
-    fn act(&mut self, action: SessionAction, focus: Option<mpsc::UnboundedSender<PaneId>>) {
+    fn act(
+        &mut self,
+        client: u64,
+        action: SessionAction,
+        reply: Option<mpsc::UnboundedSender<Reply>>,
+    ) {
+        let respond = |message: Reply| {
+            if let Some(reply) = &reply {
+                let _ = reply.send(message);
+            }
+        };
         match action {
             SessionAction::OpenPane {
                 band,
                 after,
-                program,
-            } => match self.open(band, after, program.as_ref()) {
-                Ok(Some(pane)) => {
+                width,
+                focus,
+                content,
+            } => {
+                let placement = Placement { band, after, width };
+                let opened = match content {
+                    PaneContent::Program(ref program) => self.open(placement, program.as_ref()),
+                    PaneContent::Plugin { .. } => Ok(self.open_plugin(client, placement)),
+                };
+                if let Ok(Some(_)) = opened {
                     self.publish();
-                    if let Some(focus) = focus {
-                        let _ = focus.send(pane);
-                    }
                 }
-                Ok(None) => tracing::debug!("ignoring an open pane action on a stale target"),
-                Err(error) => tracing::warn!("cannot open a pane: {error:#}"),
-            },
+                if let (PaneContent::Plugin { request }, Ok(pane)) = (&content, &opened) {
+                    respond(Reply::Opened {
+                        request: *request,
+                        pane: *pane,
+                    });
+                }
+                match opened {
+                    Ok(Some(pane)) => {
+                        if focus {
+                            respond(Reply::Focus(pane));
+                        }
+                    }
+                    Ok(None) => tracing::debug!("ignoring an open pane action on a stale target"),
+                    Err(error) => tracing::warn!("cannot open a pane: {error:#}"),
+                }
+            }
             SessionAction::ClosePane(pane) => self.close(pane),
             other => {
                 let options = self.config.options.borrow().clone();
@@ -215,13 +307,40 @@ impl Session {
         }
     }
 
-    fn open(
-        &mut self,
-        band: BandId,
-        after: Option<PaneId>,
-        program: Option<&Program>,
-    ) -> Result<Option<PaneId>> {
-        if !self.layout.can_open(band, after) {
+    fn place(&mut self, placement: &Placement) -> Option<PaneId> {
+        if !self.layout.can_open(placement.band, placement.after) {
+            return None;
+        }
+        let id = self.layout.allocate_pane();
+        let options = self.config.options.borrow().clone();
+        let events = self.layout.open(
+            id,
+            placement.band,
+            placement.after,
+            placement.width,
+            &options,
+        );
+        self.config.events.layout(events);
+        Some(id)
+    }
+
+    fn open_plugin(&mut self, client: u64, placement: Placement) -> Option<PaneId> {
+        let id = self.place(&placement)?;
+        let size = self.terminal_size(id).expect("an opened pane has a tile");
+        let entry = Pane::blank(size, &self.changed);
+        self.plugins.insert(
+            id,
+            PluginPane {
+                owner: client,
+                entry,
+            },
+        );
+        tracing::info!(pane = %id, client, "opened a plugin pane");
+        Some(id)
+    }
+
+    fn open(&mut self, placement: Placement, program: Option<&Program>) -> Result<Option<PaneId>> {
+        if !self.layout.can_open(placement.band, placement.after) {
             return Ok(None);
         }
         let argv = match program {
@@ -232,10 +351,7 @@ impl Session {
             Some(Program::Argv(argv)) if argv.is_empty() => bail!("the argument list is empty"),
             Some(Program::Argv(argv)) => argv.iter().map(OsString::from).collect(),
         };
-        let id = self.layout.allocate_pane();
-        let options = self.config.options.borrow().clone();
-        let events = self.layout.open(id, band, after, &options);
-        self.config.events.layout(events);
+        let id = self.place(&placement).expect("checked by can_open");
         let size = self.terminal_size(id).expect("an opened pane has a tile");
         let request = SpawnRequest {
             id,
@@ -267,6 +383,13 @@ impl Session {
     }
 
     fn close(&mut self, pane: PaneId) {
+        if self.plugins.remove(&pane).is_some() {
+            tracing::info!(pane = %pane, "closing a plugin pane");
+            let events = self.layout.remove(pane);
+            self.config.events.layout(events);
+            self.publish();
+            return;
+        }
         let Some(live) = self.panes.get_mut(&pane) else {
             return;
         };
@@ -278,6 +401,13 @@ impl Session {
             kill_if_running(live.exit.clone(), Arc::clone(&live.entry.pane), live.pid)
                 .in_current_span(),
         );
+    }
+
+    fn entry(&self, pane: PaneId) -> Option<&PaneEntry> {
+        self.panes
+            .get(&pane)
+            .map(|live| &live.entry)
+            .or_else(|| self.plugins.get(&pane).map(|plugin| &plugin.entry))
     }
 
     fn terminal_size(&self, pane: PaneId) -> Option<Size> {
@@ -295,6 +425,11 @@ impl Session {
             .panes
             .iter()
             .map(|(&id, live)| (id, live.entry.clone()))
+            .chain(
+                self.plugins
+                    .iter()
+                    .map(|(&id, plugin)| (id, plugin.entry.clone())),
+            )
             .collect();
         self.state.send_replace(Arc::new(State {
             layout: self.layout.clone(),

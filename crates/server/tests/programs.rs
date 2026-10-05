@@ -76,11 +76,7 @@ async fn open_running(client: &mut TestClient, program: Program) -> PaneId {
     let first = client.first();
     let band = client.layout.bands()[0].id;
     client
-        .act(SessionAction::OpenPane {
-            band,
-            after: Some(first),
-            program: Some(program),
-        })
+        .act(SessionAction::open(band, Some(first), Some(program)))
         .await;
     client.wait_until(|client| !client.focus.is_empty()).await;
     client.focus[0]
@@ -119,11 +115,11 @@ async fn program_that_cannot_start_leaves_the_layout() {
     let before = client.layout.clone();
     let band = before.bands()[0].id;
     client
-        .act(SessionAction::OpenPane {
+        .act(SessionAction::open(
             band,
-            after: Some(client.first()),
-            program: Some(Program::Argv(vec!["/nonexistent".to_owned()])),
-        })
+            Some(client.first()),
+            Some(Program::Argv(vec!["/nonexistent".to_owned()])),
+        ))
         .await;
     assert!(client.pump(Duration::from_millis(500)).await);
     assert_eq!(client.layout, before);

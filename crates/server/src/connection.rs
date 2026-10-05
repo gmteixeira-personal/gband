@@ -18,7 +18,7 @@ use tokio::sync::{mpsc, oneshot};
 use crate::event::SessionEvent;
 use crate::pane::{Contents, Input, Seen};
 use crate::registry::{Request, SessionHandle};
-use crate::session::{Command, INITIAL_AREA, State};
+use crate::session::{Command, INITIAL_AREA, Reply, State};
 
 pub struct Context {
     pub registry: mpsc::UnboundedSender<Request>,
@@ -48,6 +48,9 @@ impl Deref for Attachment {
 
 impl Drop for Attachment {
     fn drop(&mut self) {
+        self.handle.command(Command::Leave {
+            client: self.client,
+        });
         self.handle.command(Command::Shown {
             client: self.client,
             panes: Vec::new(),
@@ -201,10 +204,10 @@ async fn attach(
     let mut sent = Sent::default();
     sync(&mut link.writer, &session, &mut sent).await?;
 
-    let (focus_tx, mut focus) = mpsc::unbounded_channel();
+    let (reply_tx, mut replies) = mpsc::unbounded_channel();
     let mut ended = session.ended.clone();
     loop {
-        if dispatch(&mut link.reader, &session, client, &focus_tx)? {
+        if dispatch(&mut link.reader, &session, client, &reply_tx)? {
             return Ok(());
         }
         tokio::select! {
@@ -212,9 +215,13 @@ async fn attach(
                 changed.borrow_and_update();
                 sync(&mut link.writer, &session, &mut sent).await?;
             }
-            Some(pane) = focus.recv() => {
+            Some(reply) = replies.recv() => {
                 sync(&mut link.writer, &session, &mut sent).await?;
-                link.send(&ServerMessage::Focus(pane)).await?;
+                let message = match reply {
+                    Reply::Focus(pane) => ServerMessage::Focus(pane),
+                    Reply::Opened { request, pane } => ServerMessage::Opened { request, pane },
+                };
+                link.send(&message).await?;
             }
             _ = async { ended.wait_for(|ended| *ended).await.is_ok() } => {
                 sync(&mut link.writer, &session, &mut sent).await?;
@@ -234,7 +241,7 @@ fn dispatch(
     reader: &mut MessageReader<impl AsyncRead + Unpin>,
     session: &SessionHandle,
     client: u64,
-    focus_tx: &mpsc::UnboundedSender<PaneId>,
+    reply_tx: &mpsc::UnboundedSender<Reply>,
 ) -> Result<bool> {
     while let Some(message) = reader.try_recv::<ClientMessage>()? {
         match message {
@@ -245,10 +252,19 @@ fn dispatch(
                 applied: None,
             }),
             ClientMessage::Action(action) => {
-                let focus =
-                    matches!(action, SessionAction::OpenPane { .. }).then(|| focus_tx.clone());
-                session.command(Command::Action { action, focus });
+                let reply =
+                    matches!(action, SessionAction::OpenPane { .. }).then(|| reply_tx.clone());
+                session.command(Command::Action {
+                    client,
+                    action,
+                    reply,
+                });
             }
+            ClientMessage::Content { pane, output } => session.command(Command::Content {
+                client,
+                pane,
+                output,
+            }),
             ClientMessage::Shown(panes) => session.command(Command::Shown { client, panes }),
             ClientMessage::Detach => return Ok(true),
             ClientMessage::Attach { .. }

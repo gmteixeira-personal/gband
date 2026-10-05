@@ -7,7 +7,8 @@ use gband_core::action::{Action, SessionCommand};
 use gband_core::geometry::Size;
 use gband_core::input::Key;
 use gband_core::layout::{
-    BandId, Direction, Layout, LayoutOptions, PaneId, Program, SessionAction,
+    BandId, Direction, Layout, LayoutOptions, PaneContent, PaneHeight, PaneId, Program, Proportion,
+    SessionAction,
 };
 use gband_core::view::ViewAction;
 use gband_lua::keys::parse_key;
@@ -174,7 +175,13 @@ fn three_columns() -> (Display, Vec<PaneId>) {
     let mut panes = Vec::new();
     for _ in 0..3 {
         let pane = layout.allocate_pane();
-        layout.open(pane, band, panes.last().copied(), &LayoutOptions::default());
+        layout.open(
+            pane,
+            band,
+            panes.last().copied(),
+            None,
+            &LayoutOptions::default(),
+        );
         panes.push(pane);
     }
     let mut display = Display::new(Size::new(80, 24), Animations::Off);
@@ -218,11 +225,11 @@ fn spawn_a_command_line_sends_open_pane_with_the_program() {
     let mut controls = Controls::new(config, &mut display);
     assert_eq!(
         controls.press(&mut display, key("alt+n")),
-        [Step::Send(ClientMessage::Action(SessionAction::OpenPane {
-            band: BandId(1),
-            after: Some(panes[0]),
-            program: Some(Program::CommandLine("fish".to_owned())),
-        }))]
+        [Step::Send(ClientMessage::Action(SessionAction::open(
+            BandId(1),
+            Some(panes[0]),
+            Some(Program::CommandLine("fish".to_owned()))
+        )))]
     );
 }
 
@@ -340,5 +347,97 @@ fn camera_policy_follows_the_configuration() {
     assert_eq!(
         shown,
         Some(ClientMessage::Shown(vec![PaneId(1), PaneId(2), PaneId(3)]))
+    );
+}
+
+fn bound(name: &str, source: &str) -> (Scratch, Display, Controls, Vec<PaneId>) {
+    let scratch = Scratch::new(name);
+    let config = scratch
+        .load(&format!("gband.bind('alt+x', function()\n{source}\nend)"))
+        .unwrap();
+    let (mut display, panes) = three_columns();
+    let controls = Controls::new(config, &mut display);
+    (scratch, display, controls, panes)
+}
+
+#[test]
+fn targeted_session_actions_send_their_target() {
+    let (_scratch, mut display, mut controls, panes) = bound(
+        "targeted",
+        "gband.action.close_pane({ pane = 3 })\ngband.pane.set_width(2, 0.4)\ngband.pane.set_height(1, { rows = 8 })",
+    );
+    assert_eq!(
+        controls.press(&mut display, key("alt+x")),
+        [
+            Step::Send(ClientMessage::Action(SessionAction::ClosePane(panes[2]))),
+            Step::Send(ClientMessage::Action(SessionAction::SetWidth {
+                pane: panes[1],
+                width: Proportion::new(2, 5),
+            })),
+            Step::Send(ClientMessage::Action(SessionAction::SetHeight {
+                pane: panes[0],
+                height: PaneHeight::Fixed(8),
+            })),
+        ]
+    );
+    assert_eq!(display.focused(), Some(panes[0]));
+}
+
+#[test]
+fn input_to_a_named_pane_is_sent_as_keys_and_pastes() {
+    let (_scratch, mut display, mut controls, panes) = bound(
+        "input",
+        "gband.pane.send_text(2, 'a\\n')\ngband.pane.paste(3, 'b c')",
+    );
+    assert_eq!(
+        controls.press(&mut display, key("alt+x")),
+        [
+            Step::Send(ClientMessage::Key {
+                pane: panes[1],
+                key: key("a"),
+            }),
+            Step::Send(ClientMessage::Key {
+                pane: panes[1],
+                key: key("enter"),
+            }),
+            Step::Send(ClientMessage::Paste {
+                pane: panes[2],
+                text: "b c".to_owned(),
+            }),
+        ]
+    );
+    assert_eq!(controls.active_table(), "root");
+}
+
+#[test]
+fn focus_and_view_by_number_change_the_view() {
+    let (_scratch, mut display, mut controls, panes) = bound(
+        "focus-view",
+        "gband.pane.focus(3)\ngband.band.view(2)\ngband.band.view(1)",
+    );
+    assert_eq!(
+        controls.press(&mut display, key("alt+x")),
+        [Step::Nothing, Step::Nothing, Step::Nothing]
+    );
+    assert_eq!(display.focused(), Some(panes[2]));
+}
+
+#[test]
+fn pane_window_sends_open_pane_with_plugin_content() {
+    let (_scratch, mut display, mut controls, panes) = bound(
+        "pane-window",
+        "win = gband.win.open({ kind = 'pane', after = 2, focus = false })",
+    );
+    let steps = controls.press(&mut display, key("alt+x"));
+    let window: u32 = controls.runtime().lua().globals().get("win").unwrap();
+    assert_eq!(
+        steps,
+        [Step::Send(ClientMessage::Action(SessionAction::OpenPane {
+            band: BandId(1),
+            after: Some(panes[1]),
+            width: None,
+            focus: false,
+            content: PaneContent::Plugin { request: window },
+        }))]
     );
 }

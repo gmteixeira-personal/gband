@@ -252,6 +252,7 @@ pub struct TestClient {
     pub layout: Layout,
     pub area: Size,
     pub focus: Vec<PaneId>,
+    pub opened: Vec<(u32, Option<PaneId>)>,
     pub info: ServerMessage,
     pub exited: bool,
 }
@@ -309,6 +310,7 @@ impl TestClient {
             layout: Layout::new(),
             area: Size::new(0, 0),
             focus: Vec::new(),
+            opened: Vec::new(),
             info,
             exited: false,
         };
@@ -393,12 +395,7 @@ impl TestClient {
     pub async fn open_after(&mut self, after: PaneId) -> PaneId {
         let band = self.layout.bands()[self.layout.locate(after).unwrap().band].id;
         let seen = self.focus.len();
-        self.act(SessionAction::OpenPane {
-            band,
-            after: Some(after),
-            program: None,
-        })
-        .await;
+        self.act(SessionAction::open(band, Some(after), None)).await;
         self.wait_until(|client| client.focus.len() > seen).await;
         let opened = self.focus[seen];
         self.wait_for_prompt(opened).await;
@@ -437,6 +434,12 @@ impl TestClient {
             ServerMessage::Focus(pane) => {
                 assert!(self.grids.contains_key(pane), "focus before a snapshot");
                 self.focus.push(*pane);
+            }
+            ServerMessage::Opened { request, pane } => {
+                if let Some(pane) = pane {
+                    assert!(self.grids.contains_key(pane), "opened before a snapshot");
+                }
+                self.opened.push((*request, *pane));
             }
             ServerMessage::Exited => self.exited = true,
             ServerMessage::Info { .. }

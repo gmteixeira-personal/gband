@@ -5,6 +5,7 @@ use gband_core::layout::{Layout, PaneId};
 use gband_core::view::View;
 use gband_emulator::{Emulator, Grid};
 use gband_lua::StatusLine;
+use gband_lua::windows::FloatFrame;
 use ratatui::Frame;
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Position, Rect};
@@ -32,19 +33,87 @@ pub struct Ribbon<'a> {
     pub grids: &'a HashMap<PaneId, Grid>,
     pub drawn: &'a Drawn,
     pub region: Rect,
+    pub floats: Vec<&'a FloatFrame>,
+    pub float_focused: bool,
+    pub colors: ColorSupport,
     pub banner: Option<&'a str>,
     pub status: Option<StatusArea<'a>>,
 }
 
 pub fn draw_frame(frame: &mut Frame<'_>, ribbon: &Ribbon<'_>) {
     let cursor = render(ribbon, frame.buffer_mut());
+    for float in &ribbon.floats {
+        draw_float(frame.buffer_mut(), ribbon.region, float, ribbon.colors);
+    }
     match (&ribbon.status, ribbon.banner) {
         (Some(status), _) => draw_status(frame.buffer_mut(), status),
         (None, Some(banner)) => draw_banner(frame.buffer_mut(), ribbon.region, banner),
         (None, None) => {}
     }
-    if let Some(cursor) = cursor {
+    if let Some(cursor) = cursor.filter(|_| !ribbon.float_focused) {
         frame.set_cursor_position(cursor);
+    }
+}
+
+fn draw_float(buffer: &mut Buffer, region: Rect, float: &FloatFrame, colors: ColorSupport) {
+    let placed = Rect::new(
+        region.x.saturating_add(float.col),
+        region.y.saturating_add(float.row),
+        float.width,
+        float.height,
+    );
+    let area = placed.intersection(region).intersection(buffer.area);
+    if area.is_empty() {
+        return;
+    }
+    Clear.render(area, buffer);
+    buffer.set_style(area, colors.style(&float.base));
+    let inner = if float.border {
+        Block::bordered()
+            .border_style(colors.style(&float.border_style))
+            .render(area, buffer);
+        if let Some(title) = &float.title {
+            let room = area.width.saturating_sub(2);
+            let cells = (gband_lua::ui::width(title) as u16).min(room);
+            let x = area.x + 1;
+            buffer.set_style(Rect::new(x, area.y, cells, 1), Style::reset());
+            buffer.set_stringn(
+                x,
+                area.y,
+                title,
+                usize::from(cells),
+                colors.style(&float.title_style),
+            );
+        }
+        Block::bordered().inner(area)
+    } else {
+        area
+    };
+    for (row, runs) in float.lines.iter().enumerate() {
+        let Some(y) = u16::try_from(row)
+            .ok()
+            .map(|row| inner.y + row)
+            .filter(|&y| y < inner.bottom())
+        else {
+            break;
+        };
+        let mut x = inner.x;
+        for run in runs {
+            let room = inner.right().saturating_sub(x);
+            if room == 0 {
+                break;
+            }
+            let cells = (gband_lua::ui::width(&run.text) as u16).min(room);
+            buffer.set_style(Rect::new(x, y, cells, 1), Style::reset());
+            buffer.set_stringn(
+                x,
+                y,
+                &run.text,
+                usize::from(cells),
+                colors.style(&run.style),
+            );
+            x += cells;
+        }
     }
 }
 

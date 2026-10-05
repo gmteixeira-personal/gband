@@ -2,11 +2,14 @@ use std::collections::HashMap;
 use std::time::Instant;
 
 use gband_client::animation::{Animations, Drawn, DrawnBand, Presentation, Targets};
+use gband_client::color::ColorSupport;
 use gband_client::render::{Ribbon, draw_frame};
 use gband_core::geometry::{Size, tiles};
 use gband_core::layout::{Direction, Layout, LayoutOptions, PaneId, SessionAction, Step};
 use gband_core::view::{CenterFocusedColumn, Scene, View, ViewAction};
 use gband_emulator::{Emulator, Grid};
+use gband_lua::windows::{FloatFrame, Run};
+use gband_lua::{Color, Style};
 use insta::assert_snapshot;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
@@ -18,6 +21,8 @@ struct Fixture {
     view: View,
     grids: HashMap<PaneId, Grid>,
     banner: Option<String>,
+    floats: Vec<FloatFrame>,
+    float_focused: bool,
 }
 
 impl Fixture {
@@ -27,7 +32,13 @@ impl Fixture {
         let mut panes = Vec::new();
         for _ in 0..columns {
             let pane = layout.allocate_pane();
-            layout.open(pane, band, panes.last().copied(), &LayoutOptions::default());
+            layout.open(
+                pane,
+                band,
+                panes.last().copied(),
+                None,
+                &LayoutOptions::default(),
+            );
             panes.push(pane);
         }
         let view = View::new(Scene {
@@ -41,6 +52,8 @@ impl Fixture {
             view,
             grids: HashMap::new(),
             banner: None,
+            floats: Vec::new(),
+            float_focused: false,
         };
         fixture.reset_grids();
         (fixture, panes)
@@ -105,6 +118,9 @@ impl Fixture {
             grids: &self.grids,
             drawn,
             region: Rect::new(0, 0, terminal_area.width, terminal_area.height),
+            floats: self.floats.iter().collect(),
+            float_focused: self.float_focused,
+            colors: ColorSupport::Indexed,
             banner: self.banner.as_deref(),
             status: None,
         };
@@ -283,7 +299,7 @@ fn band_switch_mid_slide() {
     let pane = fixture.layout.allocate_pane();
     fixture
         .layout
-        .open(pane, below, None, &LayoutOptions::default());
+        .open(pane, below, None, None, &LayoutOptions::default());
     fixture.reset_grids();
     fixture.write(panes[0], b"upper");
     fixture.write(pane, b"lower");
@@ -342,4 +358,96 @@ fn configuration_error_banner_covers_the_bottom_row() {
         "/home/u/.config/gband/init.lua:12: unexpected symbol near 'x'\nstack traceback".to_owned(),
     );
     assert_snapshot!(fixture.render(Size::new(40, 6)));
+}
+
+fn float(row: u16, col: u16, width: u16, height: u16, lines: &[&str]) -> FloatFrame {
+    let base = Style::default();
+    let inner = usize::from(width.saturating_sub(2));
+    FloatFrame {
+        row,
+        col,
+        width,
+        height,
+        border: true,
+        title: Some("Keys".to_owned()),
+        base,
+        border_style: Style {
+            fg: Some(Color::Index(8)),
+            ..base
+        },
+        title_style: Style {
+            fg: Some(Color::Index(8)),
+            bold: true,
+            ..base
+        },
+        lines: (0..height.saturating_sub(2))
+            .map(|row| {
+                let text = lines.get(usize::from(row)).copied().unwrap_or("");
+                vec![Run {
+                    text: format!("{text:<inner$}"),
+                    style: base,
+                }]
+            })
+            .collect(),
+        z: 1,
+        focused: true,
+    }
+}
+
+#[test]
+fn float_over_two_tiles() {
+    let (mut fixture, panes) = Fixture::new(Size::new(80, 24), 2, 80);
+    fixture.write(panes[0], b"left side of the screen");
+    fixture.write(panes[1], b"right side of the screen");
+    fixture.floats.push(float(
+        6,
+        20,
+        40,
+        11,
+        &["C-h  focus left", "C-l  focus right"],
+    ));
+    fixture.float_focused = true;
+    assert_snapshot!(fixture.render(Size::new(80, 24)));
+}
+
+#[test]
+fn cursor_returns_when_no_float_is_focused() {
+    let (mut fixture, panes) = Fixture::new(Size::new(80, 24), 2, 80);
+    fixture.write(panes[0], b"$ ");
+    fixture.floats.push(float(6, 20, 40, 11, &[]));
+    assert!(
+        fixture
+            .render(Size::new(80, 24))
+            .ends_with("cursor: Some(Position { x: 3, y: 1 })")
+    );
+    fixture.float_focused = true;
+    assert!(fixture.render(Size::new(80, 24)).ends_with("cursor: None"));
+}
+
+#[test]
+fn error_banner_over_a_float() {
+    let (mut fixture, panes) = Fixture::new(Size::new(40, 8), 1, 40);
+    fixture.write(panes[0], b"$ ");
+    fixture.floats.push(float(4, 5, 30, 4, &["covered"]));
+    fixture.banner = Some("init.lua:3: broken".to_owned());
+    assert_snapshot!(fixture.render(Size::new(40, 8)));
+}
+
+#[test]
+fn centered_float() {
+    let (fixture, _) = Fixture::new(Size::new(80, 23), 1, 80);
+    let mut fixture = fixture;
+    fixture.floats.push(float(6, 20, 40, 11, &["a", "b", "c"]));
+    assert_snapshot!(fixture.render(Size::new(80, 23)));
+}
+
+#[test]
+fn later_float_is_drawn_on_top() {
+    let (mut fixture, _) = Fixture::new(Size::new(40, 10), 1, 40);
+    let mut lower = float(1, 1, 20, 6, &["lower"]);
+    lower.z = 1;
+    let mut upper = float(3, 10, 20, 6, &["upper"]);
+    upper.z = 2;
+    fixture.floats = vec![lower, upper];
+    assert_snapshot!(fixture.render(Size::new(40, 10)));
 }

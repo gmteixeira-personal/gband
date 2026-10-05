@@ -3,6 +3,7 @@ mod api;
 mod bundled;
 mod callbacks;
 mod commands;
+mod control;
 mod directory;
 mod error;
 mod events;
@@ -14,6 +15,7 @@ mod owner;
 mod runtime;
 pub mod ui;
 mod watch;
+pub mod windows;
 
 use std::collections::BTreeMap;
 use std::io::ErrorKind;
@@ -22,7 +24,7 @@ use std::path::Path;
 pub use mlua::Lua;
 
 pub use crate::actions::{ACTIONS, BuiltinAction};
-pub use crate::api::{Binding, Chord, Dispatch};
+pub use crate::api::{Binding, Chord, Dispatch, PaneInput, WindowRequest};
 pub use crate::callbacks::CallbackId;
 pub use crate::directory::{
     Locations, config_dir, config_dir_from, defaults_file, plugins_dir, plugins_dir_from, prepare,

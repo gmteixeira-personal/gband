@@ -66,7 +66,13 @@ fn layout_of(count: usize) -> (Layout, Vec<PaneId>) {
     let mut panes = Vec::new();
     for _ in 0..count {
         let pane = layout.allocate_pane();
-        layout.open(pane, band, panes.last().copied(), &LayoutOptions::default());
+        layout.open(
+            pane,
+            band,
+            panes.last().copied(),
+            None,
+            &LayoutOptions::default(),
+        );
         panes.push(pane);
     }
     (layout, panes)

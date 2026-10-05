@@ -20,7 +20,7 @@ fn open(layout: &mut Layout, band: usize, after: Option<PaneId>) -> PaneId {
     let id = layout.bands()[band].id;
     assert!(
         !layout
-            .open(pane, id, after, &LayoutOptions::default())
+            .open(pane, id, after, None, &LayoutOptions::default())
             .is_empty()
     );
     pane
@@ -386,7 +386,7 @@ fn columns_of(width: Proportion, count: usize) -> (Layout, Vec<PaneId>) {
     for _ in 0..count {
         let pane = layout.allocate_pane();
         let id = layout.bands()[0].id;
-        layout.open(pane, id, panes.last().copied(), &options);
+        layout.open(pane, id, panes.last().copied(), None, &options);
         panes.push(pane);
     }
     (layout, panes)
@@ -461,7 +461,7 @@ fn on_overflow_centres_a_new_column_that_does_not_fit_beside_the_focus() {
         default_width: Proportion::TWO_THIRDS,
         ..LayoutOptions::default()
     };
-    layout.open(opened, layout.bands()[0].id, Some(panes[0]), &options);
+    layout.open(opened, layout.bands()[0].id, Some(panes[0]), None, &options);
     view.sync(scene(&layout));
     view.focus_pane(opened, scene(&layout));
     assert_eq!(view.camera(), 40);
@@ -532,11 +532,7 @@ fn session_commands_resolve_to_the_focused_pane() {
         ),
         (
             SessionCommand::OpenPane,
-            SessionAction::OpenPane {
-                band,
-                after: Some(panes[2]),
-                program: None,
-            },
+            SessionAction::open(band, Some(panes[2]), None),
         ),
         (
             SessionCommand::StepWidth(Step::Grow),
@@ -604,11 +600,7 @@ fn open_pane_on_the_empty_band_names_it_and_no_pane() {
     assert_eq!(view.band(), empty);
     assert_eq!(
         view.resolve(SessionCommand::OpenPane),
-        Some(SessionAction::OpenPane {
-            band: empty,
-            after: None,
-            program: None,
-        })
+        Some(SessionAction::open(empty, None, None))
     );
 }
 
@@ -658,4 +650,74 @@ fn panes_of_other_bands_are_not_shown() {
     assert_eq!(view.shown(scene(&layout)), [other]);
     act(&mut view, &layout, &[ViewAction::BandDown]);
     assert_eq!(view.shown(scene(&layout)), []);
+}
+
+#[test]
+fn focusing_a_named_pane_in_the_viewed_band() {
+    let (layout, panes) = row_of_columns(3);
+    let mut view = View::new(scene(&layout));
+    act(&mut view, &layout, &[ViewAction::FocusPane(panes[2])]);
+    assert_eq!(view.focused(), Some(panes[2]));
+    act(&mut view, &layout, &[ViewAction::FocusLeft]);
+    assert_eq!(view.focused(), Some(panes[1]));
+}
+
+#[test]
+fn focusing_a_named_pane_in_another_band() {
+    let (mut layout, _) = row_of_columns(1);
+    let mut view = View::new(scene(&layout));
+    let pane = open(&mut layout, 1, None);
+    act(&mut view, &layout, &[ViewAction::FocusPane(pane)]);
+    assert_eq!(view.band(), layout.bands()[1].id);
+    assert_eq!(view.focused(), Some(pane));
+}
+
+#[test]
+fn viewing_a_named_band_two_bands_down() {
+    let (mut layout, _) = row_of_columns(1);
+    open(&mut layout, 1, None);
+    let mut view = View::new(scene(&layout));
+    let empty = layout.bands()[2].id;
+    act(&mut view, &layout, &[ViewAction::ViewBand(empty)]);
+    assert_eq!(view.band(), empty);
+    assert_eq!(view.focused(), None);
+}
+
+#[test]
+fn viewing_a_named_band_returns_to_the_remembered_focus() {
+    let (mut layout, _) = row_of_columns(1);
+    let first = open(&mut layout, 1, None);
+    let second = open(&mut layout, 1, Some(first));
+    let mut view = View::new(scene(&layout));
+    let (b1, b2) = (layout.bands()[0].id, layout.bands()[1].id);
+    act(
+        &mut view,
+        &layout,
+        &[
+            ViewAction::BandDown,
+            ViewAction::FocusRight,
+            ViewAction::ViewBand(b1),
+            ViewAction::ViewBand(b2),
+        ],
+    );
+    assert_eq!(view.band(), b2);
+    assert_eq!(view.focused(), Some(second));
+}
+
+#[test]
+fn viewing_the_viewed_or_an_unknown_band_changes_nothing() {
+    let (layout, panes) = row_of_columns(2);
+    let mut view = View::new(scene(&layout));
+    act(&mut view, &layout, &[ViewAction::FocusRight]);
+    let band = view.band();
+    act(
+        &mut view,
+        &layout,
+        &[
+            ViewAction::ViewBand(band),
+            ViewAction::ViewBand(gband_core::layout::BandId(99)),
+        ],
+    );
+    assert_eq!(view.band(), band);
+    assert_eq!(view.focused(), Some(panes[1]));
 }

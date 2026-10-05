@@ -10,14 +10,14 @@ fn single() -> (Layout, PaneId) {
     let mut layout = Layout::new();
     let pane = layout.allocate_pane();
     let band = layout.bands()[0].id;
-    layout.open(pane, band, None, &LayoutOptions::default());
+    layout.open(pane, band, None, None, &LayoutOptions::default());
     (layout, pane)
 }
 
 fn open_after(layout: &mut Layout, after: PaneId) -> PaneId {
     let pane = layout.allocate_pane();
     let band = layout.bands()[0].id;
-    layout.open(pane, band, Some(after), &LayoutOptions::default());
+    layout.open(pane, band, Some(after), None, &LayoutOptions::default());
     pane
 }
 
@@ -194,7 +194,7 @@ fn rows(heights: &[PaneHeight]) -> Vec<(u16, u16)> {
         .collect()
 }
 
-fn auto(num: u16, den: u16) -> PaneHeight {
+fn auto(num: u32, den: u32) -> PaneHeight {
     PaneHeight::Auto(Weight::new(num, den))
 }
 
