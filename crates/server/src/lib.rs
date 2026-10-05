@@ -1,3 +1,4 @@
+mod channel;
 mod connection;
 mod event;
 mod hub;
@@ -20,7 +21,7 @@ use portable_pty::CommandBuilder;
 use rustix::fs::Mode;
 use tokio::net::UnixListener;
 use tokio::signal::unix::{SignalKind, signal};
-use tokio::sync::{broadcast, mpsc, watch};
+use tokio::sync::{broadcast, mpsc, oneshot, watch};
 use tokio::task::JoinSet;
 use tracing::Instrument;
 
@@ -30,6 +31,7 @@ use crate::registry::{Registry, Shared};
 use crate::scripting::Taps;
 use crate::session::INITIAL_AREA;
 
+pub use crate::channel::{Loader, TestChannel};
 pub use crate::event::{CAPACITY, Published, SessionEvent};
 pub use crate::hub::QUEUE_LIMIT;
 pub use crate::lock::kill;
@@ -47,6 +49,7 @@ pub struct ServerConfig {
     pub executable: ExecutableId,
     pub options: watch::Receiver<LayoutOptions>,
     pub scripting: Option<Scripting>,
+    pub channel: Option<TestChannel>,
 }
 
 pub fn user_shell() -> OsString {
@@ -75,6 +78,21 @@ pub async fn run_with_events(
     let taps = match config.scripting {
         Some(scripting) => scripting::start(scripting, Arc::clone(&hub), &events),
         None => Taps::idle(),
+    };
+    let mut closed = match config.channel {
+        Some(channel) => {
+            let (closed_tx, closed) = oneshot::channel();
+            let serving = channel::serve(channel, Arc::clone(&hub), Arc::clone(&taps));
+            tokio::spawn(
+                async move {
+                    serving.await;
+                    let _ = closed_tx.send(());
+                }
+                .in_current_span(),
+            );
+            Some(closed)
+        }
+        None => None,
     };
     let (requests_tx, mut requests) = mpsc::unbounded_channel();
     let mut registry = Registry::new(
@@ -116,6 +134,11 @@ pub async fn run_with_events(
             Some(request) = requests.recv() => registry.handle(request),
             Some(()) = terminate.recv() => {
                 tracing::info!("received SIGTERM, hanging up every pane of every session");
+                registry.terminate();
+            }
+            _ = async { closed.as_mut().expect("guarded by is_some").await }, if closed.is_some() => {
+                closed = None;
+                tracing::info!("the test channel closed, hanging up every pane of every session");
                 registry.terminate();
             }
             Some(_) = clients.join_next(), if !clients.is_empty() => {}

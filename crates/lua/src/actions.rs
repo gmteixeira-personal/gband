@@ -280,7 +280,7 @@ pub(crate) fn install(lua: &Lua, gband: &Table, side: Side) -> mlua::Result<()> 
             (Side::Server, Action::Session(command)) => {
                 actions.set(name, LuaAction::Targeted { name, command })?
             }
-            (Side::Server, _) => {}
+            (Side::Server | Side::Test, _) => {}
         }
     }
     actions.set("register", lua.create_function(register)?)?;

@@ -33,3 +33,8 @@ The right of the status line then shows `pane 1`, in the colors `dusk` gives `Pa
 
 `dusk` uses 24-bit colors.
 gband draws them as such when the client's `COLORTERM` is `truecolor` or `24bit`, and as the nearest of the 256 palette colors otherwise.
+
+## Tests
+
+`tests/pane_spec.lua` opens and focuses panes and compares the status line with the references in `tests/screenshots/`, with the default colors and with `dusk`.
+Run it with `gband test` in this directory; [the testing guide](../../../docs/testing.md) walks through it.

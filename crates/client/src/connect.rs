@@ -18,10 +18,12 @@ pub struct Connection {
     pub pid: u32,
     pub executable: ExecutableId,
     pub stale_server: bool,
+    pub sent: u64,
 }
 
 impl Connection {
     pub async fn send(&mut self, message: &ClientMessage) -> Result<()> {
+        self.sent += 1;
         write_frame(&mut self.writer, message).await
     }
 
@@ -111,6 +113,7 @@ async fn handshake(
         pid,
         executable,
         stale_server,
+        sent: 0,
     }))
 }
 

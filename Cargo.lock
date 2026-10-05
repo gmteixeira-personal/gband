@@ -925,6 +925,7 @@ dependencies = [
  "gband-client",
  "gband-core",
  "gband-emulator",
+ "gband-harness",
  "gband-lua",
  "gband-protocol",
  "gband-server",
@@ -980,6 +981,20 @@ dependencies = [
  "ratatui",
  "tracing",
  "tui-term",
+ "vt100",
+]
+
+[[package]]
+name = "gband-harness"
+version = "0.1.0"
+dependencies = [
+ "gband-core",
+ "gband-emulator",
+ "gband-lua",
+ "gband-protocol",
+ "mlua",
+ "portable-pty",
+ "rustix",
  "vt100",
 ]
 

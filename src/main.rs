@@ -1,10 +1,12 @@
 use std::io::{IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::sync::Arc;
 
 use anyhow::{Context, Result, bail};
 use clap::error::ErrorKind;
 use clap::{Args, CommandFactory, Parser, Subcommand};
+use gband::channel;
 use gband::completions::{self, Shell};
 use gband::executable;
 use gband::logging::{self, Role};
@@ -12,7 +14,8 @@ use gband::paths::{self, ServerName};
 use gband_client::{ClientConfig, Configuration, Outcome, UnixTransport};
 use gband_lua::{Config, ConfigError, LoadOptions, Locations, Side};
 use gband_protocol::SessionName;
-use gband_server::{SUN_PATH_MAX, Scripting, ServerConfig};
+use gband_protocol::test;
+use gband_server::{SUN_PATH_MAX, Scripting, ServerConfig, TestChannel};
 use tokio::sync::watch;
 
 #[derive(Parser)]
@@ -106,6 +109,33 @@ enum Command {
         #[arg(value_name = "SHELL")]
         shell: Shell,
     },
+    #[command(about = "Run Lua test files against real gband clients and servers")]
+    Test(TestArgs),
+}
+
+#[derive(Args)]
+struct TestArgs {
+    #[arg(
+        value_name = "FILE",
+        help = "Run these test files, or - to read one from standard input [default: tests/**/*_spec.lua]"
+    )]
+    files: Vec<PathBuf>,
+    #[arg(long, help = "Write every screenshot reference the run compares")]
+    update: bool,
+    #[arg(long, help = "Print every screenshot the run takes")]
+    show: bool,
+    #[arg(
+        long,
+        value_name = "PATTERN",
+        help = "Run only the cases whose name holds PATTERN"
+    )]
+    filter: Option<String>,
+    #[arg(
+        long = "plugin",
+        value_name = "PATH",
+        help = "Install the plugin at PATH in every case"
+    )]
+    plugins: Vec<PathBuf>,
 }
 
 impl Command {
@@ -116,7 +146,9 @@ impl Command {
             | Command::ListSessions
             | Command::KillSession
             | Command::KillServer => Some(Role::Client),
-            Command::Completions { .. } | Command::InstallCompletions { .. } => None,
+            Command::Completions { .. } | Command::InstallCompletions { .. } | Command::Test(_) => {
+                None
+            }
         }
     }
 
@@ -128,7 +160,8 @@ impl Command {
             | Command::Attach
             | Command::KillSession
             | Command::Completions { .. }
-            | Command::InstallCompletions { .. } => None,
+            | Command::InstallCompletions { .. }
+            | Command::Test(_) => None,
         }
     }
 
@@ -136,6 +169,7 @@ impl Command {
         match self {
             Command::Completions { .. } => Some("completions"),
             Command::InstallCompletions { .. } => Some("install-completions"),
+            Command::Test(_) => Some("test"),
             Command::Server
             | Command::Attach
             | Command::ListSessions
@@ -222,7 +256,7 @@ fn main() -> ExitCode {
         Command::ListSessions => list_sessions(socket, &cli.selection),
         Command::KillSession => kill_session(socket, session, &cli.selection),
         Command::KillServer => kill_server(&socket),
-        Command::Completions { .. } | Command::InstallCompletions { .. } => {
+        Command::Completions { .. } | Command::InstallCompletions { .. } | Command::Test(_) => {
             unreachable!("standalone subcommands return before logging starts")
         }
     });
@@ -237,8 +271,21 @@ fn standalone(command: Command) -> Result<ExitCode> {
     match command {
         Command::Completions { shell } => print_completions(shell),
         Command::InstallCompletions { shell } => install_completions(shell),
+        Command::Test(args) => test(args),
         _ => unreachable!("only standalone subcommands have no role"),
     }
+}
+
+fn test(args: TestArgs) -> Result<ExitCode> {
+    let options = gband_harness::runner::Options {
+        executable: std::env::current_exe().context("cannot locate the gband executable")?,
+        files: args.files,
+        update: args.update,
+        show: args.show,
+        filter: args.filter,
+        plugins: args.plugins,
+    };
+    Ok(ExitCode::from(gband_harness::runner::run(options)))
 }
 
 fn print_completions(shell: Shell) -> Result<ExitCode> {
@@ -273,9 +320,27 @@ fn server(socket: PathBuf, session: SessionName, runtime_dir: &Path) -> Result<E
         }
         _ => {}
     }
+    let joined = channel::requested()
+        .map(|path| channel::join(&path, test::Role::Server))
+        .transpose()?;
     let loaded = configuration(Side::Server);
     let (options_tx, options) = watch::channel(loaded.config.options.layout.clone());
+    let options_tx = Arc::new(options_tx);
     let (scripting, reloader) = Scripting::new(loaded.config, loaded.error);
+    let channel = joined.map(|stream| {
+        let locations = loaded.locations.clone();
+        let options_tx = Arc::clone(&options_tx);
+        TestChannel {
+            stream,
+            reload: Box::new(move || {
+                let result = reload(locations.as_ref(), Side::Server);
+                if let Ok(config) = &result {
+                    options_tx.send_replace(config.options.layout.clone());
+                }
+                result
+            }),
+        }
+    });
     let _watcher = loaded.locations.map(|locations| {
         gband_lua::watch(
             locations,
@@ -297,11 +362,19 @@ fn server(socket: PathBuf, session: SessionName, runtime_dir: &Path) -> Result<E
         executable: executable::identity().context("cannot identify the gband executable")?,
         options,
         scripting: Some(scripting),
+        channel,
     };
     tokio::runtime::Runtime::new()
         .context("cannot start the async runtime")?
         .block_on(gband_server::run(config))?;
     Ok(ExitCode::SUCCESS)
+}
+
+fn reload(locations: Option<&Locations>, side: Side) -> Result<Config, ConfigError> {
+    match locations {
+        Some(locations) => gband_lua::load(locations, side, &LoadOptions::default()),
+        None => Ok(gband_lua::defaults(side)),
+    }
 }
 
 struct Loaded {
@@ -383,10 +456,20 @@ fn attach(socket: PathBuf, session: SessionName, selection: &Selection) -> Resul
     if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
         bail!("gband attach needs a terminal on standard input and standard output");
     }
+    let joined = channel::requested()
+        .map(|path| channel::join(&path, test::Role::Client))
+        .transpose()?;
     let (config, transport) = client(socket, session, selection, true)?;
     let kill_command = config.kill_command.clone();
     let loaded = configuration(Side::Client);
     log_errors(&loaded);
+    let channel = joined.map(|stream| {
+        let locations = loaded.locations.clone();
+        gband_client::TestChannel {
+            stream,
+            reload: Box::new(move || reload(locations.as_ref(), Side::Client)),
+        }
+    });
     let (reloads_tx, reloads) = tokio::sync::mpsc::unbounded_channel();
     let _watcher = loaded.locations.map(|locations| {
         gband_lua::watch(
@@ -402,6 +485,7 @@ fn attach(socket: PathBuf, session: SessionName, selection: &Selection) -> Resul
         config: loaded.config,
         error: loaded.error,
         reloads,
+        channel,
     };
     let report = gband_client::run(config, transport, configuration)?;
     let (line, status) = match report.outcome {

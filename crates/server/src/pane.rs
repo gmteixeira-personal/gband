@@ -12,6 +12,7 @@ use gband_core::input::{Key, Modes, encode_key, encode_paste};
 use gband_core::layout::PaneId;
 use gband_emulator::{Emulator, Grid};
 use gband_protocol::SessionName;
+use gband_protocol::test::SOCKET_VARIABLE;
 use portable_pty::{
     ChildKiller, CommandBuilder, ExitStatus, MasterPty, PtySize, native_pty_system,
 };
@@ -207,6 +208,7 @@ pub fn spawn(
     command.env("GBAND", socket);
     command.env("GBAND_SESSION", session.as_str());
     command.env("GBAND_PANE", id.to_string());
+    command.env_remove(SOCKET_VARIABLE);
     command.cwd(cwd);
     let mut child = pair
         .slave

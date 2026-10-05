@@ -7,8 +7,8 @@ use gband_core::layout::PaneId;
 use gband_lua::server::{Caller, Event};
 use gband_lua::{Config, ConfigError, Dispatch, Outcome};
 use gband_protocol::{Requirement, SessionName, Value};
-use tokio::sync::mpsc::UnboundedSender;
-use tokio::sync::{Semaphore, broadcast};
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+use tokio::sync::{Semaphore, broadcast, oneshot};
 
 use crate::event::{Published, SessionEvent};
 use crate::hub::{Hub, HubHost};
@@ -39,6 +39,12 @@ pub(crate) enum Input {
         replies: UnboundedSender<Reply>,
     },
     Reload(Result<Config, ConfigError>),
+    Eval {
+        source: String,
+        args: Vec<Value>,
+        reply: oneshot::Sender<Result<Vec<Value>, String>>,
+    },
+    Barrier(oneshot::Sender<()>),
 }
 
 pub struct Scripting {
@@ -173,7 +179,14 @@ pub(crate) fn start(
     } = scripting;
     let taps = Arc::new(Taps::with(Some(sender.clone())));
     let gate = Arc::new(Semaphore::new(1));
-    tokio::spawn(forward(bus.subscribe(), sender, Arc::clone(&gate)));
+    let (barriers_tx, barriers) = tokio::sync::mpsc::unbounded_channel();
+    hub.settling.set_forward(barriers_tx);
+    tokio::spawn(forward(
+        bus.subscribe(),
+        sender,
+        Arc::clone(&gate),
+        barriers,
+    ));
     let worker = Worker {
         config,
         hub,
@@ -193,25 +206,68 @@ async fn forward(
     mut bus: broadcast::Receiver<Published>,
     sender: mpsc::Sender<Input>,
     gate: Arc<Semaphore>,
+    mut barriers: UnboundedReceiver<oneshot::Sender<()>>,
 ) {
     loop {
         let Ok(permit) = gate.acquire().await else {
             return;
         };
         permit.forget();
-        match bus.recv().await {
-            Ok(published) => {
-                if sender.send(Input::Bus(published)).is_err() {
+        tokio::select! {
+            received = bus.recv() => match received {
+                Ok(published) => {
+                    if sender.send(Input::Bus(published)).is_err() {
+                        return;
+                    }
+                }
+                Err(broadcast::error::RecvError::Lagged(missed)) => {
+                    tracing::warn!("the Lua handlers fell behind and dropped {missed} session events");
+                    gate.add_permits(1);
+                }
+                Err(broadcast::error::RecvError::Closed) => return,
+            },
+            Some(reached) = barriers.recv() => {
+                if !drain(&mut bus, &sender, &gate).await
+                    || sender.send(Input::Barrier(reached)).is_err()
+                {
                     return;
                 }
             }
-            Err(broadcast::error::RecvError::Lagged(missed)) => {
-                tracing::warn!("the Lua handlers fell behind and dropped {missed} session events");
-                gate.add_permits(1);
-            }
-            Err(broadcast::error::RecvError::Closed) => return,
         }
     }
+}
+
+async fn drain(
+    bus: &mut broadcast::Receiver<Published>,
+    sender: &mpsc::Sender<Input>,
+    gate: &Semaphore,
+) -> bool {
+    let mut held = true;
+    loop {
+        match bus.try_recv() {
+            Ok(published) => {
+                if !held {
+                    let Ok(permit) = gate.acquire().await else {
+                        return false;
+                    };
+                    permit.forget();
+                }
+                held = false;
+                if sender.send(Input::Bus(published)).is_err() {
+                    return false;
+                }
+            }
+            Err(broadcast::error::TryRecvError::Lagged(missed)) => {
+                tracing::warn!("the Lua handlers fell behind and dropped {missed} session events");
+            }
+            Err(broadcast::error::TryRecvError::Empty) => break,
+            Err(broadcast::error::TryRecvError::Closed) => return false,
+        }
+    }
+    if held {
+        gate.add_permits(1);
+    }
+    true
 }
 
 struct Worker {
@@ -382,6 +438,18 @@ impl Worker {
                 self.emit(&Event::ConfigReloaded);
             }
             Input::Reload(Err(error)) => self.report(&[error]),
+            Input::Eval {
+                source,
+                args,
+                reply,
+            } => {
+                let (answer, outcome) = self.config.runtime.eval(&source, &args);
+                self.apply(outcome);
+                let _ = reply.send(answer);
+            }
+            Input::Barrier(reached) => {
+                let _ = reached.send(());
+            }
         }
     }
 
@@ -438,11 +506,14 @@ impl Worker {
         for entry in outcome.dispatched {
             match entry {
                 Dispatch::Targeted { session, action } => match self.hub.session(&session) {
-                    Some(handle) => handle.command(Command::Action {
-                        client: LUA_CLIENT,
-                        action,
-                        reply: None,
-                    }),
+                    Some(handle) => {
+                        self.hub.settling.count();
+                        handle.command(Command::Action {
+                            client: LUA_CLIENT,
+                            action,
+                            reply: None,
+                        })
+                    }
                     None => {
                         tracing::debug!("ignoring an action for the absent session `{session}`")
                     }

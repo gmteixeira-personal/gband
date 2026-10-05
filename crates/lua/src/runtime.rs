@@ -26,8 +26,8 @@ use crate::ui::{self, StatusLine, ViewState};
 use crate::version::{Requirement, Version};
 use crate::windows::{self, Frame};
 use crate::{
-    Config, Locations, PluginManifest, Side, actions, bridge, bundled, commands, control, keymap,
-    options, sides, user_dir,
+    Config, Locations, PluginManifest, Side, actions, bridge, bundled, clock, commands, control,
+    keymap, options, sides, user_dir, value,
 };
 
 pub const API_VERSION: i64 = 1;
@@ -96,9 +96,11 @@ pub(crate) fn install(
             server::install(lua, &gband)?;
             None
         }
+        Side::Test => None,
     };
     lua.globals().set("gband", gband.clone())?;
     lua.globals().set("print", lua.create_function(print)?)?;
+    clock::install(lua)?;
     let searchers: Table = lua.globals().get::<Table>("package")?.get("searchers")?;
     let insert: Function = lua.globals().get::<Table>("table")?.get("insert")?;
     insert.call::<()>((searchers, 2, lua.create_function(search)?))?;
@@ -491,7 +493,7 @@ pub(crate) fn finish(lua: Lua) -> Result<Config, ConfigError> {
     let side = side(&lua);
     let keymap = match side {
         Side::Client => keymap::finish(&lua, options.prefix)?,
-        Side::Server => Default::default(),
+        Side::Server | Side::Test => Default::default(),
     };
     lua.set_app_data(Phase { loading: false });
     let errors = guard::drain(&lua);
@@ -622,6 +624,32 @@ impl Runtime {
         (answer, outcome)
     }
 
+    pub fn eval(&self, source: &str, args: &[Data]) -> (Result<Vec<Data>, String>, Outcome) {
+        let mut answer = Err("the chunk did not run".to_owned());
+        let outcome = self.within_callback(|lua| {
+            let ran = guard::run(lua, None, || {
+                let chunk = lua.load(source).set_name("=chunk").into_function()?;
+                let args = args
+                    .iter()
+                    .map(|arg| value::into_lua(lua, arg))
+                    .collect::<mlua::Result<MultiValue>>()?;
+                chunk.call::<MultiValue>(args)
+            })?;
+            answer = match ran {
+                Ok(results) => results
+                    .iter()
+                    .enumerate()
+                    .map(|(index, result)| {
+                        value::from_lua(result, &format!("result {}", index + 1))
+                    })
+                    .collect(),
+                Err(failure) => Err(failure.error.to_string()),
+            };
+            Ok(false)
+        });
+        (answer, outcome)
+    }
+
     pub fn answer(&self, call: u64, result: Result<Data, String>) -> Outcome {
         self.within_callback(|lua| bridge::answer(lua, call, result).map(|()| false))
     }
@@ -641,7 +669,7 @@ impl Runtime {
             .0 = Some(Vec::new());
         let result = run(lua).and_then(|disabled| match side(lua) {
             Side::Client => windows::flush(lua).map(|()| disabled),
-            Side::Server => Ok(disabled),
+            Side::Server | Side::Test => Ok(disabled),
         });
         let dispatched = lua
             .app_data_mut::<Queue>()

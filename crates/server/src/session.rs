@@ -53,6 +53,7 @@ pub enum Command {
         client: u64,
     },
     CloseAll,
+    Barrier(oneshot::Sender<()>),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -197,6 +198,9 @@ impl Session {
                 }
             }
             Command::CloseAll => self.terminate(),
+            Command::Barrier(reached) => {
+                let _ = reached.send(());
+            }
         }
     }
 

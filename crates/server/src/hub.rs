@@ -7,6 +7,7 @@ use gband_lua::server::{Host, SessionView};
 use gband_protocol::{Requirement, ServerMessage, SessionName, Value};
 use tokio::sync::mpsc;
 
+use crate::channel::Settling;
 use crate::registry::SessionHandle;
 
 pub const QUEUE_LIMIT: usize = 256;
@@ -38,6 +39,7 @@ struct Inner {
 #[derive(Default)]
 pub struct Hub {
     inner: Mutex<Inner>,
+    pub settling: Settling,
 }
 
 pub struct Attached {

@@ -67,6 +67,7 @@ async fn start_in(runtime_dir: PathBuf, source: &str) -> Scripted {
     let (scripting, reloader) = Scripting::new(loaded, error);
     let config = ServerConfig {
         scripting: Some(scripting),
+        channel: None,
         ..config(&runtime_dir, &["/bin/sh"])
     };
     let server = TestServer::start_with(runtime_dir, config).await;

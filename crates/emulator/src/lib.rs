@@ -4,6 +4,7 @@ use gband_core::geometry::Size;
 use gband_core::input::Modes;
 
 use crate::callbacks::Callbacks;
+pub use crate::callbacks::{Record, decode_base64};
 
 pub trait Emulator: Send + 'static {
     type Checkpoint: Clone + Send + Sync + 'static;
@@ -28,6 +29,24 @@ pub type Grid = Vt100;
 
 pub struct Vt100 {
     parser: vt100::Parser<Callbacks>,
+}
+
+impl Vt100 {
+    pub fn record(&mut self) {
+        self.parser
+            .callbacks_mut()
+            .records
+            .get_or_insert_with(Vec::new);
+    }
+
+    pub fn take_records(&mut self) -> Vec<Record> {
+        self.parser
+            .callbacks_mut()
+            .records
+            .as_mut()
+            .map(std::mem::take)
+            .unwrap_or_default()
+    }
 }
 
 impl Emulator for Vt100 {

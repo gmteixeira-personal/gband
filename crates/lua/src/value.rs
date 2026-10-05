@@ -6,7 +6,7 @@ use mlua::{Lua, Table};
 
 pub const MAX_ENCODED: usize = 1024 * 1024;
 
-pub(crate) fn from_lua(value: &mlua::Value, root: &str) -> Result<Value, String> {
+pub fn from_lua(value: &mlua::Value, root: &str) -> Result<Value, String> {
     let mut walk = Walk {
         path: vec![root.to_owned()],
         open: HashSet::new(),
@@ -98,7 +98,7 @@ fn segment(name: &str) -> String {
     }
 }
 
-pub(crate) fn into_lua(lua: &Lua, value: &Value) -> mlua::Result<mlua::Value> {
+pub fn into_lua(lua: &Lua, value: &Value) -> mlua::Result<mlua::Value> {
     Ok(match value {
         Value::Nil => mlua::Value::Nil,
         Value::Bool(flag) => mlua::Value::Boolean(*flag),

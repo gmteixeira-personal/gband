@@ -86,6 +86,7 @@ fn names(side: Side) -> &'static [&'static str] {
     match side {
         Side::Client => &NAMES,
         Side::Server => &server::NAMES,
+        Side::Test => &[],
     }
 }
 
@@ -204,6 +205,7 @@ pub(crate) fn install(lua: &Lua, gband: &Table, side: Side) -> mlua::Result<()> 
     match side {
         Side::Client => gband.set("emit", lua.create_function(emit)?)?,
         Side::Server => gband.set("emit", lua.create_function(server::emit)?)?,
+        Side::Test => {}
     }
     Ok(())
 }

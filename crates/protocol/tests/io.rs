@@ -89,3 +89,25 @@ async fn writer_output_reads_back() {
     assert_eq!(message, paste(&"x".repeat(1000)));
     sending.await.unwrap();
 }
+
+#[tokio::test]
+async fn fill_ready_takes_what_is_readable_without_waiting() {
+    let (mut near, far) = tokio::io::duplex(4096);
+    let mut reader = MessageReader::new(far);
+    assert!(reader.fill_ready().await.unwrap());
+    assert!(reader.try_recv::<ClientMessage>().unwrap().is_none());
+    let mut writer = MessageWriter::new(&mut near);
+    writer.send(&paste("a")).await.unwrap();
+    writer.send(&paste("b")).await.unwrap();
+    assert!(reader.fill_ready().await.unwrap());
+    assert_eq!(
+        reader.try_recv::<ClientMessage>().unwrap(),
+        Some(paste("a"))
+    );
+    assert_eq!(
+        reader.try_recv::<ClientMessage>().unwrap(),
+        Some(paste("b"))
+    );
+    drop(near);
+    assert!(!reader.fill_ready().await.unwrap());
+}
