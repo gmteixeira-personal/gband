@@ -45,7 +45,7 @@ Opening a pane SHALL name a band and, optionally, a pane in that band, a column 
 
 When the pane does not float, it SHALL be placed alone in a new column, whose width is as "Column widths" defines. The new column SHALL be inserted immediately to the right of the named pane's column, or as the band's first column when no pane is named. No other column's width SHALL change.
 
-When the pane floats, it SHALL be appended to the band's floating list, and the named pane SHALL be ignored. Its box record SHALL have the width the action names, or the configuration's `default_column_width` when it names none, and full width off. Its `rows` SHALL be half the screen area's height, rounded down, and at least 3. Its `col` and `row` SHALL centre its box in the current screen area, as floating a pane for the first time does.
+When the pane floats, it SHALL be appended to the band's floating list, and the named pane SHALL be ignored. It SHALL take a new box, as the floating-panes capability's "Float a pane" defines, with the width the action names in place of the configuration's `default_column_width` when the action names one.
 
 #### Scenario: Open right of the focused column
 - **WHEN** a band holds columns A and B, and a pane opens next to a pane in A
@@ -59,7 +59,12 @@ When the pane floats, it SHALL be appended to the band's floating list, and the 
 #### Scenario: Open a floating pane
 - **WHEN** the screen area is 80×24, the default column width is 1/2, and a floating pane opens in a band holding columns A and B
 - **THEN** the band still holds A and B, and its floating list ends with the new pane
-- **AND** the new pane's box record has width 1/2, `rows` 12, `col` 20 and `row` 6
+- **AND** the new pane's box record has width 1/2, `rows` 20, `col` 20 and `row` 2
+
+#### Scenario: Open a floating pane with a width
+- **WHEN** the screen area is 80×24 and a floating pane opens with the width 1/4
+- **THEN** the new pane's box record has width 1/4, `rows` 20, `col` 30 and `row` 2
+
 
 ### Requirement: Close a pane
 A pane SHALL leave the layout when its program exits, whether the program exited by itself or because the pane was closed. A plugin pane, as the session-server capability defines it, SHALL leave the layout when it is closed. A tiled pane's column and band SHALL then follow the column rule and the dynamic band rule. A floating pane SHALL leave its band's floating list, and its band SHALL then follow the dynamic band rule.

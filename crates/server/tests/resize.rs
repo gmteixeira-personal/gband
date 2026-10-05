@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use gband_core::geometry::Size;
-use gband_core::layout::{Direction, PaneId, Proportion, SessionAction, Step};
+use gband_core::layout::{Direction, PaneHeight, PaneId, Proportion, SessionAction, Step};
 use gband_protocol::{ClientMessage, ServerMessage};
 use gband_test_support::*;
 
@@ -218,4 +218,44 @@ async fn pane_left_alone_while_detached_keeps_its_size_until_shown() {
         winches.settled(&mut client, top, Size::new(38, 22)).await,
         2
     );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn floating_pane_takes_its_box_size() {
+    let winches = Winches::new("winch-floating");
+    let server = winches.server().await;
+    let mut client = server.attach(80, 24).await;
+    let first = client.first();
+    ready(&mut client, first).await;
+    let pane = open(&mut client, first).await;
+    for action in [
+        SessionAction::ToggleFloating { pane, after: None },
+        SessionAction::SetWidth {
+            pane,
+            width: Proportion::ONE_THIRD,
+        },
+        SessionAction::SetHeight {
+            pane,
+            height: PaneHeight::Fixed(12),
+        },
+    ] {
+        client.act(action).await;
+    }
+    client
+        .wait_until(|client| {
+            client
+                .layout
+                .floating(pane)
+                .is_some_and(|floating| floating.rows == 12)
+        })
+        .await;
+    client.show_all().await;
+    winches.settled(&mut client, pane, Size::new(24, 10)).await;
+    client
+        .act(SessionAction::StepHeight {
+            pane,
+            step: Step::Grow,
+        })
+        .await;
+    winches.settled(&mut client, pane, Size::new(24, 12)).await;
 }

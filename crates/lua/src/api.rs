@@ -232,6 +232,7 @@ fn spawn(lua: &Lua, request: Value) -> mlua::Result<()> {
             band,
             after,
             width: None,
+            floating: false,
             focus: true,
             content: PaneContent::Program(program),
         }),

@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use gband_core::geometry::Size;
 use gband_core::input::{Key, KeyCode};
-use gband_core::layout::{LayoutOptions, PaneId, Proportion, SessionAction};
+use gband_core::layout::{LayoutOptions, PaneContent, PaneId, Proportion, SessionAction};
 use gband_protocol::ClientMessage;
 use gband_test_support::*;
 use tokio::time::Instant;
@@ -295,4 +295,67 @@ async fn new_default_width_applies_to_columns_opened_after_it() {
     };
     assert_eq!(width(&client, first), Proportion::ONE_HALF);
     assert_eq!(width(&client, second), Proportion::ONE_THIRD);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn float_a_pane_for_every_client() {
+    let server = TestServer::start("float-all", &["/bin/sh"]).await;
+    let mut first = server.attach(80, 24).await;
+    let mut second = server.attach(80, 24).await;
+    let a = first.first();
+    let b = first.open_after(a).await;
+    first
+        .act(SessionAction::ToggleFloating {
+            pane: b,
+            after: None,
+        })
+        .await;
+    for client in [&mut first, &mut second] {
+        client
+            .wait_until(|client| client.layout.floating(b).is_some())
+            .await;
+        let floating: Vec<_> = client.layout.bands()[0]
+            .floating
+            .iter()
+            .map(|floating| floating.pane)
+            .collect();
+        assert_eq!(floating, [b]);
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn open_a_floating_pane_with_focus() {
+    let server = TestServer::start("open-floating", &["/bin/sh"]).await;
+    let mut requester = server.attach(80, 24).await;
+    let mut other = server.attach(80, 24).await;
+    let band = requester.layout.bands()[0].id;
+    requester
+        .act(SessionAction::OpenPane {
+            band,
+            after: None,
+            width: None,
+            floating: true,
+            focus: true,
+            content: PaneContent::Program(None),
+        })
+        .await;
+    requester
+        .wait_until(|client| !client.focus.is_empty())
+        .await;
+    let opened = requester.focus[0];
+    for client in [&mut requester, &mut other] {
+        client
+            .wait_until(|client| {
+                client.layout.bands()[0]
+                    .floating
+                    .last()
+                    .map(|floating| floating.pane)
+                    == Some(opened)
+            })
+            .await;
+    }
+    requester.wait_for_prompt(opened).await;
+    stty_size(&mut requester, opened, "18 38").await;
+    assert!(other.pump(Duration::from_millis(200)).await);
+    assert!(other.focus.is_empty());
 }

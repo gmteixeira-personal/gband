@@ -249,9 +249,13 @@ impl Host for HubHost {
 
     fn session(&self, name: &str) -> Option<SessionView> {
         let handle = self.0.session(name)?;
-        let layout = handle.state.borrow().layout.clone();
+        let (layout, area) = {
+            let state = handle.state.borrow();
+            (state.layout.clone(), state.area)
+        };
         Some(SessionView {
             layout,
+            area,
             clients: self.0.clients_of(&handle.name),
         })
     }

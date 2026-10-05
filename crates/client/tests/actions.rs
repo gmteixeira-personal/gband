@@ -8,7 +8,7 @@ use gband_core::geometry::Size;
 use gband_core::input::Key;
 use gband_core::layout::{
     BandId, Direction, Layout, LayoutOptions, PaneContent, PaneHeight, PaneId, Program, Proportion,
-    SessionAction,
+    SessionAction, Vertical,
 };
 use gband_core::view::ViewAction;
 use gband_lua::keys::parse_key;
@@ -191,6 +191,74 @@ fn three_columns() -> (Display, Vec<PaneId>) {
         layout,
     });
     (display, panes)
+}
+
+#[test]
+fn new_actions_resolve_against_the_view() {
+    let mut layout = Layout::new();
+    let band = layout.bands()[0].id;
+    let panes: Vec<PaneId> = (0..2).map(|_| layout.allocate_pane()).collect();
+    layout.open(panes[0], band, None, None, &LayoutOptions::default());
+    layout.open(
+        panes[1],
+        band,
+        Some(panes[0]),
+        None,
+        &LayoutOptions::default(),
+    );
+    layout.apply(
+        SessionAction::ToggleFloating {
+            pane: panes[1],
+            after: None,
+        },
+        Size::new(80, 24),
+        &LayoutOptions::default(),
+    );
+    let mut display = Display::new(Size::new(80, 24), Animations::Off);
+    display.apply(ServerMessage::Layout {
+        cols: 80,
+        rows: 24,
+        layout,
+    });
+    assert_eq!(display.focused(), Some(panes[0]));
+    let sent = |display: &mut Display, command: SessionCommand| {
+        dispatch(display, Action::Session(command))
+    };
+    assert_eq!(
+        sent(&mut display, SessionCommand::MoveColumn(Direction::Right)),
+        Step::Send(ClientMessage::Action(SessionAction::MoveColumn {
+            pane: panes[0],
+            direction: Direction::Right,
+        }))
+    );
+    assert_eq!(
+        dispatch(&mut display, Action::View(ViewAction::SwitchLayer)),
+        Step::Nothing
+    );
+    assert_eq!(display.focused(), Some(panes[1]));
+    assert_eq!(display.view_state("root").column, None);
+    assert_eq!(
+        sent(&mut display, SessionCommand::MovePane(Vertical::Down)),
+        Step::Send(ClientMessage::Action(SessionAction::MovePane {
+            pane: panes[1],
+            direction: Vertical::Down,
+        }))
+    );
+    assert_eq!(
+        sent(&mut display, SessionCommand::ToggleFloating),
+        Step::Send(ClientMessage::Action(SessionAction::ToggleFloating {
+            pane: panes[1],
+            after: Some(panes[0]),
+        }))
+    );
+    assert_eq!(
+        sent(&mut display, SessionCommand::OpenPane),
+        Step::Send(ClientMessage::Action(SessionAction::open(
+            band,
+            Some(panes[0]),
+            None
+        )))
+    );
 }
 
 fn key(name: &str) -> Key {
@@ -439,6 +507,7 @@ fn pane_window_sends_open_pane_with_plugin_content() {
             band: BandId(1),
             after: Some(panes[1]),
             width: None,
+            floating: false,
             focus: false,
             content: PaneContent::Plugin { request: window },
         }))]

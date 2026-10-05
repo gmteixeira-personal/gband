@@ -322,7 +322,7 @@ The built-in events of the client:
 | `BandChanged` | `band`, `previous`: band numbers | the viewed band changes |
 | `PaneOpened` | `pane`, `band` | a window appears in the layout |
 | `PaneClosed` | `pane`, `band` | a window leaves the layout |
-| `LayoutChanged` | empty | the bands, columns, windows or column widths change |
+| `LayoutChanged` | empty | the bands, columns, windows, column widths or floating boxes change |
 | `TerminalResized` | `cols`, `rows` | the client's terminal changes size |
 | `ConfigReloaded` | empty | a reload succeeded, to the new configuration's handlers |
 | `KeyTableChanged` | `table`, `previous` | the active key table changes |
@@ -381,11 +381,12 @@ Bindings are made only while the configuration loads.
 `gband.layout()` returns a new table describing the layout the client holds:
 
 - `cols` and `rows`: the size of the screen area.
-- `bands`: one table per band, in order, each with `id` and `columns`.
+- `bands`: one table per band, in order, each with `id`, `columns` and `floating`.
 - `columns`: one table per column, left to right, each with `width` as a number, `full_width` and `panes`.
 - `panes`: one table per window, top to bottom, each with `id` and either `rows`, a fixed height, or `weight`, an automatic height's weight. A window that shows a tiled plugin window this client opened also has `window`.
+- `floating`: one table per floating window, in the band's floating order, each with `id`, `width` and `full_width` as a column has them, `rows`, the box's height, and `col` and `row`, the box's top-left cell as placed in the screen area. A window that shows a plugin window this client opened also has `window`.
 
-`gband.view()` returns `band`, the viewed band, `pane`, the focused window or nil, `window`, the focused plugin window or nil, `table`, the active key table, and `cols` and `rows`, the size of the ribbon.
+`gband.view()` returns `band`, the viewed band, `pane`, the focused window or nil, `floating`, true while the band's floating layer has focus, `window`, the focused plugin window or nil, `table`, the active key table, and `cols` and `rows`, the size of the ribbon.
 
 Both can be called from any code that runs after loading.
 They describe the state when they are called: an action the running callback dispatched takes effect only after it returns.
@@ -405,10 +406,16 @@ end, { desc = "describe the layout" })
 
 ## Action targets
 
-A built-in action that acts on the focused window also takes a target, a table naming the window: `close_pane`, `consume_or_expel_left`, `consume_or_expel_right`, `cycle_column_width`, `toggle_full_width`, `grow_column_width`, `shrink_column_width`, `grow_pane_height`, `shrink_pane_height` and `reset_pane_height`.
+A built-in action that acts on the focused window also takes a target, a table naming the window: `close_pane`, `consume_or_expel_left`, `consume_or_expel_right`, `move_column_left`, `move_column_right`, `move_pane_down`, `move_pane_up`, `cycle_column_width`, `toggle_full_width`, `grow_column_width`, `shrink_column_width`, `grow_pane_height`, `shrink_pane_height` and `reset_pane_height`.
 `gband.action.close_pane({ pane = 3 })` closes window 3, whichever window is focused.
 
 `open_pane` takes `band`, `after` or both: the new column follows `after`'s column, or is `band`'s first column when only `band` is given.
+`after` must be a tiled window.
+`floating = true` opens the window floating instead, in `band` or in the viewed band, centred at the default width and two height steps shorter than the screen; it cannot be given with `after`.
+
+`toggle_pane_floating` takes `pane` and an optional `after`, a tiled window of the same band.
+A floating window is tiled again as a new column after `after`, or, without it, after the tiled window this client focused last in that band, or as the band's first column.
+`after` is ignored when `pane` is tiled.
 `send_prefix` takes `pane` and sends the prefix key to it.
 `gband.spawn` takes `band` and `after` beside `cmd`.
 
@@ -428,8 +435,9 @@ A window or band number not in the layout is an error at the line of the call.
 
 - `gband.pane.focus(pane)` views the window's band and focuses the window.
 - `gband.band.view(band)` views a band, focusing the window last focused there.
-- `gband.pane.set_width(pane, width)` sets the column's width, a number greater than 0 and at most 10000, and turns full width off.
+- `gband.pane.set_width(pane, width)` sets the width of the window's column, or of its box when it floats, a number greater than 0 and at most 10000, and turns full width off.
 - `gband.pane.set_height(pane, { rows = n })` gives a fixed height; `gband.pane.set_height(pane, { weight = w })` gives an automatic height of weight `w`.
+- `gband.pane.set_position(pane, { col = c, row = r })` places a floating window's box with its top-left cell at `c` and `r`, kept inside the screen area. A window that is not floating is an error.
 - `gband.pane.send_keys(pane, keys)` sends a key name, or a list of them, as key presses.
 - `gband.pane.send_text(pane, text)` sends each character as a key press, a line feed or carriage return as Enter and a tab as Tab. Other control characters are an error.
 - `gband.pane.paste(pane, text)` sends `text` as a paste.
@@ -579,9 +587,9 @@ gband removes control characters from the text, so a component cannot write esca
 | `width` | the cells left for this component, given the other components' latest output, separators and gaps; a hint, at least 0 |
 | `table` | the active key table |
 | `band` | `{ number, index, count }`: the viewed band's number, its position from the top counting from 1, and the number of bands |
-| `column` | `{ index, count }`: the focused column's position counting from 1, and the band's column count; nil when the band is empty |
+| `column` | `{ index, count }`: the focused column's position counting from 1, and the band's column count; nil when the band is empty or a floating window is focused |
 | `pane` | the focused window's number, or nil |
-| `panes` | every window of the layout, bands from the top, columns from the left and windows from the top, each `{ pane, band, state }`, `state` a copy of its window state |
+| `panes` | every window of the layout, bands from the top, columns from the left and windows from the top, then within each band its floating windows, each `{ pane, band, state }`, `state` a copy of its window state |
 
 `gband.ui.width(text)` returns the cells `text` takes: two for a wide character, zero for a zero-width one.
 `gband.ui.truncate(text, width)` returns `text` when it fits in `width` cells, and otherwise the longest prefix that fits in `width - 1` cells followed by `…`.
@@ -637,7 +645,7 @@ gband bundles five segment plugins:
 | `gband.statusline.band` | `band` | `band ` and the viewed band's index | `BandChanged`, `LayoutChanged` | left | 20 | 10 | `StatusLineSegment` |
 | `gband.statusline.mode` | `mode` | the active key table; hidden in `root` | `KeyTableChanged` | left | 30 | 20 | `StatusLineAccent` |
 | `gband.statusline.hints` | `hints` | the keys of the active key table and what each does, below | `KeyTableChanged`, and as a fill component | left | 0 | 30 | `KeyHintLabel` |
-| `gband.statusline.position` | `position` | the focused column and the column count, such as `3/7`; hidden in an empty band | `FocusChanged`, `BandChanged`, `LayoutChanged` | right | 10 | 10 | `StatusLineMuted` |
+| `gband.statusline.position` | `position` | the focused column and the column count, such as `3/7`; hidden in an empty band and while a floating window is focused | `FocusChanged`, `BandChanged`, `LayoutChanged` | right | 10 | 10 | `StatusLineMuted` |
 | `gband.statusline.clock` | `clock` | the local time, `os.date(opts.format)`, `"%H:%M"` by default | every `opts.interval` milliseconds, 1000 by default | right | 5 | 20 | `StatusLineMuted` |
 
 Each takes the options `align`, `priority` and `order`, and each but `hints` takes `hl`.
@@ -686,7 +694,11 @@ A binding to a function shows its `desc`, and takes no hint without one.
 | `open_pane` | `new` | `shrink_pane_height` | `shorter` |
 | `close_pane` | `close` | `reset_pane_height` | `reset height` |
 | `consume_or_expel_left` | `stack left` | `detach` | `detach` |
-| | | `send_prefix` | `send prefix` |
+| `move_column_left` | `move left` | `send_prefix` | `send prefix` |
+| `move_column_right` | `move right` | `toggle_pane_floating` | `float` |
+| `move_pane_down` | `move down` | `switch_focus_floating_tiled` | `layer` |
+| `move_pane_up` | `move up` | | |
+
 
 The segment fits itself to its `ctx.width`: it shows the leading hints that fit, followed by ` …` when some are left out, and hides itself when not even the first fits.
 It is a fill component, so that width follows the other segments of the same render.
@@ -943,14 +955,16 @@ end)
 
 ### Session actions in the server
 
-The server's `gband.action` holds the session actions: `open_pane`, `close_pane`, `consume_or_expel_left`, `consume_or_expel_right`, `cycle_column_width`, `toggle_full_width`, `grow_column_width`, `shrink_column_width`, `grow_pane_height`, `shrink_pane_height` and `reset_pane_height`.
+The server's `gband.action` holds the session actions: `open_pane`, `close_pane`, `consume_or_expel_left`, `consume_or_expel_right`, `move_column_left`, `move_column_right`, `move_pane_down`, `move_pane_up`, `toggle_pane_floating`, `cycle_column_width`, `toggle_full_width`, `grow_column_width`, `shrink_column_width`, `grow_pane_height`, `shrink_pane_height` and `reset_pane_height`.
 Each takes one target table naming `session` and, in `pane`, the window it acts on:
 
 ```lua
 gband.action.close_pane({ session = ev.session, pane = ev.pane })
 ```
 
-`open_pane` takes `session`, `band`, an optional `after` window, and an optional `program`: a command line string or a list of argument strings.
+`open_pane` takes `session`, `band`, an optional `after` window, an optional `program`, a command line string or a list of argument strings, and an optional `floating`.
+`floating = true` opens the window floating in `band`, and cannot be given with `after`.
+`toggle_pane_floating` also takes an optional `after` window: a floating window is tiled after it, or as the band's first column without it, since the server knows no client's focus.
 
 ```lua
 gband.action.open_pane({ session = "work", band = 1, after = 2, program = { "htop", "-d", "10" } })
@@ -966,9 +980,10 @@ They can be called only in a callback.
 `gband.sessions()` returns the session names in ascending byte order.
 `gband.session(name)` returns `{ name, bands, clients }`, or nil for an unknown session:
 
-- `bands` lists the bands from the top, each `{ band, columns }`
+- `bands` lists the bands from the top, each `{ band, columns, floating }`
 - each column is `{ width, full_width, panes }`, from the left
 - each window is `{ pane }`, from the top
+- each floating window is `{ pane, width, full_width, rows, col, row }`, in the band's floating order, with `col` and `row` the box's top-left cell as placed in the session's screen area
 - `clients` lists the numbers of the attached clients, ascending
 
 Each call returns new tables.

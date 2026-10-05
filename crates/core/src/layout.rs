@@ -1,9 +1,13 @@
+use std::collections::BTreeMap;
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
 use crate::event::LayoutEvent;
-use crate::geometry::{MIN_TILE_HEIGHT, Size, fixed_height_limit, pane_heights};
+use crate::geometry::{
+    MIN_TILE_HEIGHT, PaneBox, Size, fixed_height_limit, height_step, pane_heights, placed,
+    width_step,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct PaneId(pub u32);
@@ -80,6 +84,44 @@ impl Proportion {
     fn exceeds(self, other: Self) -> bool {
         u64::from(self.num) * u64::from(other.den) > u64::from(other.num) * u64::from(self.den)
     }
+}
+
+fn effective_width((width, full_width): (Proportion, bool)) -> Proportion {
+    if full_width { Proportion::WHOLE } else { width }
+}
+
+pub fn cycle_width(current: (Proportion, bool), presets: &[Proportion]) -> (Proportion, bool) {
+    let effective = effective_width(current);
+    let smallest = presets.iter().copied().reduce(|smallest, preset| {
+        if smallest.exceeds(preset) {
+            preset
+        } else {
+            smallest
+        }
+    });
+    let larger = presets
+        .iter()
+        .copied()
+        .filter(|preset| preset.exceeds(effective))
+        .reduce(|nearest, preset| {
+            if nearest.exceeds(preset) {
+                preset
+            } else {
+                nearest
+            }
+        });
+    match larger.or(smallest) {
+        Some(width) => (width, false),
+        None => current,
+    }
+}
+
+pub fn step_width(current: (Proportion, bool), step: Step) -> (Proportion, bool) {
+    (effective_width(current).step(step), false)
+}
+
+pub fn set_width(width: Proportion) -> (Proportion, bool) {
+    (width.lowest(), false)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -174,55 +216,21 @@ impl Column {
         }
     }
 
-    fn effective_width(&self) -> Proportion {
-        if self.full_width {
-            Proportion::WHOLE
-        } else {
-            self.width
-        }
-    }
-
-    fn cycle_width(&mut self, presets: &[Proportion]) {
-        let current = self.effective_width();
-        let smallest = presets.iter().copied().reduce(|smallest, preset| {
-            if smallest.exceeds(preset) {
-                preset
-            } else {
-                smallest
-            }
-        });
-        let larger = presets
-            .iter()
-            .copied()
-            .filter(|preset| preset.exceeds(current))
-            .reduce(|nearest, preset| {
-                if nearest.exceeds(preset) {
-                    preset
-                } else {
-                    nearest
-                }
-            });
-        let Some(width) = larger.or(smallest) else {
-            return;
-        };
-        self.full_width = false;
-        self.width = width;
+    fn width(&self) -> (Proportion, bool) {
+        (self.width, self.full_width)
     }
 
     pub fn step_width(&mut self, step: Step) {
-        let current = self.effective_width();
-        self.full_width = false;
-        self.width = current.step(step);
+        (self.width, self.full_width) = step_width(self.width(), step);
     }
 
     pub fn set_width(&mut self, width: Proportion) {
-        self.full_width = false;
-        self.width = width.lowest();
+        (self.width, self.full_width) = set_width(width);
     }
 
     fn step_height(&mut self, row: usize, step: Step, area: Size) {
         let rows = pane_heights(self, area.rows);
-        let step_rows = ((u32::from(area.rows) + 5) / 10).max(1) as u16;
+        let step_rows = height_step(area);
         let target = match step {
             Step::Grow => rows[row].saturating_add(step_rows),
             Step::Shrink => rows[row].saturating_sub(step_rows),
@@ -254,10 +262,48 @@ impl Column {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FloatingPane {
+    pub pane: PaneId,
+    pub col: u16,
+    pub row: u16,
+    pub width: Proportion,
+    pub full_width: bool,
+    pub rows: u16,
+}
+
+fn opening_rows(area: Size) -> u16 {
+    area.rows
+        .saturating_sub(2 * height_step(area))
+        .max(MIN_TILE_HEIGHT)
+}
+
+impl FloatingPane {
+    fn opened(pane: PaneId, width: Proportion, area: Size) -> Self {
+        let mut record = Self {
+            pane,
+            col: 0,
+            row: 0,
+            width,
+            full_width: false,
+            rows: opening_rows(area),
+        };
+        let placed = placed(&record, area);
+        record.col = area.cols.saturating_sub(placed.width) / 2;
+        record.row = area.rows.saturating_sub(placed.height) / 2;
+        record
+    }
+
+    fn width(&self) -> (Proportion, bool) {
+        (self.width, self.full_width)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Band {
     pub id: BandId,
     pub columns: Vec<Column>,
+    pub floating: Vec<FloatingPane>,
 }
 
 impl Band {
@@ -265,17 +311,29 @@ impl Band {
         Self {
             id,
             columns: Vec::new(),
+            floating: Vec::new(),
         }
     }
 
     pub fn is_empty(&self) -> bool {
-        self.columns.is_empty()
+        self.columns.is_empty() && self.floating.is_empty()
     }
 
     pub fn panes(&self) -> impl Iterator<Item = PaneId> + '_ {
         self.columns
             .iter()
             .flat_map(|column| column.panes.iter().copied())
+            .chain(self.floating.iter().map(|floating| floating.pane))
+    }
+
+    pub fn floating_index(&self, pane: PaneId) -> Option<usize> {
+        self.floating
+            .iter()
+            .position(|floating| floating.pane == pane)
+    }
+
+    pub fn holds(&self, pane: PaneId) -> bool {
+        self.locate(pane).is_some() || self.floating_index(pane).is_some()
     }
 
     pub fn locate(&self, pane: PaneId) -> Option<(usize, usize)> {
@@ -299,6 +357,12 @@ pub enum Direction {
     Right,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Vertical {
+    Up,
+    Down,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PaneContent {
     Program(Option<Program>),
@@ -311,6 +375,7 @@ pub enum SessionAction {
         band: BandId,
         after: Option<PaneId>,
         width: Option<Proportion>,
+        floating: bool,
         focus: bool,
         content: PaneContent,
     },
@@ -338,6 +403,23 @@ pub enum SessionAction {
         pane: PaneId,
         height: PaneHeight,
     },
+    ToggleFloating {
+        pane: PaneId,
+        after: Option<PaneId>,
+    },
+    MoveColumn {
+        pane: PaneId,
+        direction: Direction,
+    },
+    MovePane {
+        pane: PaneId,
+        direction: Vertical,
+    },
+    SetPosition {
+        pane: PaneId,
+        col: u16,
+        row: u16,
+    },
 }
 
 impl SessionAction {
@@ -346,6 +428,7 @@ impl SessionAction {
             band,
             after,
             width: None,
+            floating: false,
             focus: true,
             content: PaneContent::Program(program),
         }
@@ -359,9 +442,16 @@ pub struct Location {
     pub row: usize,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Place {
+    Tiled(Location),
+    Floating { band: usize, index: usize },
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Layout {
     bands: Vec<Band>,
+    boxes: BTreeMap<PaneId, FloatingPane>,
     next_pane: u32,
     next_band: u32,
 }
@@ -376,6 +466,7 @@ impl Layout {
     pub fn new() -> Self {
         let mut layout = Self {
             bands: Vec::new(),
+            boxes: BTreeMap::new(),
             next_pane: 1,
             next_band: 1,
         };
@@ -410,7 +501,26 @@ impl Layout {
     }
 
     pub fn contains(&self, pane: PaneId) -> bool {
-        self.locate(pane).is_some()
+        self.place(pane).is_some()
+    }
+
+    pub fn place(&self, pane: PaneId) -> Option<Place> {
+        self.bands
+            .iter()
+            .enumerate()
+            .find_map(|(band, candidate)| match candidate.locate(pane) {
+                Some((column, row)) => Some(Place::Tiled(Location { band, column, row })),
+                None => candidate
+                    .floating_index(pane)
+                    .map(|index| Place::Floating { band, index }),
+            })
+    }
+
+    pub fn floating(&self, pane: PaneId) -> Option<&FloatingPane> {
+        match self.place(pane)? {
+            Place::Floating { band, index } => Some(&self.bands[band].floating[index]),
+            Place::Tiled(_) => None,
+        }
     }
 
     pub fn locate(&self, pane: PaneId) -> Option<Location> {
@@ -461,16 +571,52 @@ impl Layout {
         events
     }
 
-    pub fn remove(&mut self, pane: PaneId) -> Vec<LayoutEvent> {
-        let Some(location) = self.locate(pane) else {
+    pub fn open_floating(
+        &mut self,
+        pane: PaneId,
+        band: BandId,
+        width: Option<Proportion>,
+        area: Size,
+        options: &LayoutOptions,
+    ) -> Vec<LayoutEvent> {
+        if self.contains(pane) {
+            return Vec::new();
+        }
+        let Some(target) = self.bands.iter_mut().find(|candidate| candidate.id == band) else {
             return Vec::new();
         };
-        let band = &mut self.bands[location.band];
-        let column = &mut band.columns[location.column];
-        column.remove(location.row);
-        if column.panes.is_empty() {
-            band.columns.remove(location.column);
-        }
+        let width = width.map_or(options.default_width, Proportion::lowest);
+        let record = FloatingPane::opened(pane, width, area);
+        target.floating.push(record);
+        let mut events = vec![
+            LayoutEvent::PaneOpened { pane, band },
+            LayoutEvent::PaneFloated { pane, band, record },
+        ];
+        events.extend(self.normalize());
+        events
+    }
+
+    pub fn remove(&mut self, pane: PaneId) -> Vec<LayoutEvent> {
+        let Some(place) = self.place(pane) else {
+            return Vec::new();
+        };
+        self.boxes.remove(&pane);
+        let band = match place {
+            Place::Tiled(location) => {
+                let band = &mut self.bands[location.band];
+                let column = &mut band.columns[location.column];
+                column.remove(location.row);
+                if column.panes.is_empty() {
+                    band.columns.remove(location.column);
+                }
+                band
+            }
+            Place::Floating { band, index } => {
+                let band = &mut self.bands[band];
+                band.floating.remove(index);
+                band
+            }
+        };
         let mut events = vec![LayoutEvent::PaneClosed {
             pane,
             band: band.id,
@@ -491,27 +637,234 @@ impl Layout {
                 self.consume_or_expel(pane, direction, options)
             }
             SessionAction::CycleWidth(pane) => {
-                self.with_column(pane, |column| column.cycle_width(&options.presets))
+                self.with_width(pane, area, |width| cycle_width(width, &options.presets))
             }
             SessionAction::ToggleFullWidth(pane) => {
-                self.with_column(pane, |column| column.full_width = !column.full_width)
+                self.with_width(pane, area, |(width, full_width)| (width, !full_width))
             }
             SessionAction::StepWidth { pane, step } => {
-                self.with_column(pane, |column| column.step_width(step))
+                self.with_width(pane, area, |width| step_width(width, step))
             }
-            SessionAction::StepHeight { pane, step } => {
-                self.with_heights(pane, |column, row| column.step_height(row, step, area))
-            }
-            SessionAction::ResetHeight(pane) => self.with_heights(pane, |column, row| {
-                column.heights[row] = PaneHeight::DEFAULT;
-            }),
             SessionAction::SetWidth { pane, width } => {
-                self.with_column(pane, |column| column.set_width(width))
+                self.with_width(pane, area, |_| set_width(width))
             }
-            SessionAction::SetHeight { pane, height } => {
-                self.with_heights(pane, |column, row| column.set_height(row, height, area))
+            SessionAction::StepHeight { pane, step } => self.with_height(
+                pane,
+                area,
+                |column, row| column.step_height(row, step, area),
+                |height| {
+                    Some(match step {
+                        Step::Grow => height.saturating_add(height_step(area)),
+                        Step::Shrink => height.saturating_sub(height_step(area)),
+                    })
+                },
+            ),
+            SessionAction::ResetHeight(pane) => self.with_height(
+                pane,
+                area,
+                |column, row| column.heights[row] = PaneHeight::DEFAULT,
+                |_| Some(opening_rows(area)),
+            ),
+            SessionAction::SetHeight { pane, height } => self.with_height(
+                pane,
+                area,
+                |column, row| column.set_height(row, height, area),
+                |_| match height {
+                    PaneHeight::Fixed(rows) => Some(rows),
+                    PaneHeight::Auto(_) => None,
+                },
+            ),
+            SessionAction::ToggleFloating { pane, after } => match self.place(pane) {
+                Some(Place::Tiled(location)) => self.float(pane, location, area, options),
+                Some(Place::Floating { band, index }) => self.tile(band, index, after),
+                None => Vec::new(),
+            },
+            SessionAction::MoveColumn { pane, direction } => match self.place(pane) {
+                Some(Place::Tiled(location)) => self.move_column(location, direction),
+                Some(Place::Floating { .. }) => self.with_box(pane, area, |record, placed| {
+                    let limit = area.cols - placed.width;
+                    record.col = match direction {
+                        Direction::Left => placed.x.saturating_sub(width_step(area)),
+                        Direction::Right => placed.x.saturating_add(width_step(area)).min(limit),
+                    };
+                    record.row = placed.y;
+                }),
+                None => Vec::new(),
+            },
+            SessionAction::MovePane { pane, direction } => match self.place(pane) {
+                Some(Place::Tiled(location)) => self.move_pane(pane, location, direction),
+                Some(Place::Floating { .. }) => self.with_box(pane, area, |record, placed| {
+                    let limit = area.rows - placed.height;
+                    record.row = match direction {
+                        Vertical::Up => placed.y.saturating_sub(height_step(area)),
+                        Vertical::Down => placed.y.saturating_add(height_step(area)).min(limit),
+                    };
+                    record.col = placed.x;
+                }),
+                None => Vec::new(),
+            },
+            SessionAction::SetPosition { pane, col, row } => {
+                self.with_box(pane, area, |record, placed| {
+                    record.col = col.min(area.cols - placed.width);
+                    record.row = row.min(area.rows - placed.height);
+                })
             }
         }
+    }
+
+    fn float(
+        &mut self,
+        pane: PaneId,
+        location: Location,
+        area: Size,
+        options: &LayoutOptions,
+    ) -> Vec<LayoutEvent> {
+        let band = &mut self.bands[location.band];
+        let column = &mut band.columns[location.column];
+        let record = self
+            .boxes
+            .remove(&pane)
+            .unwrap_or_else(|| FloatingPane::opened(pane, options.default_width, area));
+
+        column.remove(location.row);
+        if column.panes.is_empty() {
+            band.columns.remove(location.column);
+        }
+        band.floating.push(record);
+        let mut events = vec![LayoutEvent::PaneFloated {
+            pane,
+            band: band.id,
+            record,
+        }];
+        events.extend(self.normalize());
+        events
+    }
+
+    fn tile(&mut self, band: usize, index: usize, after: Option<PaneId>) -> Vec<LayoutEvent> {
+        let band = &mut self.bands[band];
+        let record = band.floating.remove(index);
+        let column = after
+            .and_then(|after| band.locate(after))
+            .map_or(0, |(column, _)| column + 1);
+        let mut tiled = Column::new(record.pane, record.width);
+        tiled.full_width = record.full_width;
+        band.columns.insert(column, tiled);
+        self.boxes.insert(record.pane, record);
+        vec![LayoutEvent::PaneTiled {
+            pane: record.pane,
+            band: band.id,
+            column,
+            width: record.width,
+            full_width: record.full_width,
+        }]
+    }
+
+    fn move_column(&mut self, location: Location, direction: Direction) -> Vec<LayoutEvent> {
+        let band = &mut self.bands[location.band];
+        let to = match direction {
+            Direction::Left => location.column.checked_sub(1),
+            Direction::Right => Some(location.column + 1).filter(|&to| to < band.columns.len()),
+        };
+        let Some(to) = to else {
+            return Vec::new();
+        };
+        band.columns.swap(location.column, to);
+        vec![LayoutEvent::ColumnMoved {
+            band: band.id,
+            from: location.column,
+            to,
+        }]
+    }
+
+    fn move_pane(
+        &mut self,
+        pane: PaneId,
+        location: Location,
+        direction: Vertical,
+    ) -> Vec<LayoutEvent> {
+        let band = &mut self.bands[location.band];
+        let column = &mut band.columns[location.column];
+        let to = match direction {
+            Vertical::Up => location.row.checked_sub(1),
+            Vertical::Down => Some(location.row + 1).filter(|&to| to < column.panes.len()),
+        };
+        let Some(to) = to else {
+            return Vec::new();
+        };
+        column.panes.swap(location.row, to);
+        column.heights.swap(location.row, to);
+        vec![
+            LayoutEvent::PaneMoved {
+                pane,
+                band: band.id,
+                column: location.column,
+                row: to,
+            },
+            LayoutEvent::PaneMoved {
+                pane: column.panes[location.row],
+                band: band.id,
+                column: location.column,
+                row: location.row,
+            },
+        ]
+    }
+
+    fn with_width(
+        &mut self,
+        pane: PaneId,
+        area: Size,
+        change: impl FnOnce((Proportion, bool)) -> (Proportion, bool),
+    ) -> Vec<LayoutEvent> {
+        match self.place(pane) {
+            Some(Place::Tiled(_)) => self.with_column(pane, |column| {
+                (column.width, column.full_width) = change(column.width());
+            }),
+            Some(Place::Floating { .. }) => self.with_box(pane, area, |record, _| {
+                (record.width, record.full_width) = change(record.width());
+            }),
+            None => Vec::new(),
+        }
+    }
+
+    fn with_height(
+        &mut self,
+        pane: PaneId,
+        area: Size,
+        tiled: impl FnOnce(&mut Column, usize),
+        floating: impl FnOnce(u16) -> Option<u16>,
+    ) -> Vec<LayoutEvent> {
+        match self.place(pane) {
+            Some(Place::Tiled(_)) => self.with_heights(pane, tiled),
+            Some(Place::Floating { .. }) => self.with_box(pane, area, |record, placed| {
+                if let Some(rows) = floating(placed.height) {
+                    record.rows = rows.min(area.rows).max(MIN_TILE_HEIGHT);
+                }
+            }),
+            None => Vec::new(),
+        }
+    }
+
+    fn with_box(
+        &mut self,
+        pane: PaneId,
+        area: Size,
+        change: impl FnOnce(&mut FloatingPane, PaneBox),
+    ) -> Vec<LayoutEvent> {
+        let Some(Place::Floating { band, index }) = self.place(pane) else {
+            return Vec::new();
+        };
+        let band = &mut self.bands[band];
+        let record = &mut band.floating[index];
+        let before = *record;
+        change(record, placed(&before, area));
+        if *record == before {
+            return Vec::new();
+        }
+        vec![LayoutEvent::FloatingBoxChanged {
+            pane,
+            band: band.id,
+            record: *record,
+        }]
     }
 
     fn with_heights(

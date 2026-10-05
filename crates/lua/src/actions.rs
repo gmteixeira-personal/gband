@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use gband_core::action::{Action, ClientAction, SessionCommand};
-use gband_core::layout::{BandId, Direction, PaneContent, PaneId, SessionAction, Step};
+use gband_core::layout::{BandId, Direction, PaneContent, PaneId, SessionAction, Step, Vertical};
 use gband_core::view::ViewAction;
 use mlua::{Lua, MetaMethod, Table, UserData, UserDataMethods, Value};
 
@@ -21,7 +21,7 @@ const fn builtin(name: &'static str, action: Action, desc: &'static str) -> Buil
     BuiltinAction { name, action, desc }
 }
 
-pub const ACTIONS: [BuiltinAction; 19] = [
+pub const ACTIONS: [BuiltinAction; 25] = [
     builtin(
         "focus_column_left",
         Action::View(ViewAction::FocusLeft),
@@ -53,6 +53,11 @@ pub const ACTIONS: [BuiltinAction; 19] = [
         "view the band above",
     ),
     builtin(
+        "switch_focus_floating_tiled",
+        Action::View(ViewAction::SwitchLayer),
+        "switch focus between floating and tiled panes",
+    ),
+    builtin(
         "open_pane",
         Action::Session(SessionCommand::OpenPane),
         "open a pane running the user's shell",
@@ -71,6 +76,31 @@ pub const ACTIONS: [BuiltinAction; 19] = [
         "consume_or_expel_right",
         Action::Session(SessionCommand::ConsumeOrExpel(Direction::Right)),
         "consume or expel the pane to the right",
+    ),
+    builtin(
+        "move_column_left",
+        Action::Session(SessionCommand::MoveColumn(Direction::Left)),
+        "move the column or floating pane to the left",
+    ),
+    builtin(
+        "move_column_right",
+        Action::Session(SessionCommand::MoveColumn(Direction::Right)),
+        "move the column or floating pane to the right",
+    ),
+    builtin(
+        "move_pane_down",
+        Action::Session(SessionCommand::MovePane(Vertical::Down)),
+        "move the pane down",
+    ),
+    builtin(
+        "move_pane_up",
+        Action::Session(SessionCommand::MovePane(Vertical::Up)),
+        "move the pane up",
+    ),
+    builtin(
+        "toggle_pane_floating",
+        Action::Session(SessionCommand::ToggleFloating),
+        "float or tile the pane",
     ),
     builtin(
         "cycle_column_width",
@@ -186,10 +216,10 @@ fn session_target(name: &str, command: SessionCommand, target: &Value) -> Result
         ));
     };
     let opening = command == SessionCommand::OpenPane;
-    let allowed: &[&str] = if opening {
-        &["session", "band", "after", "program"]
-    } else {
-        &["session", "pane"]
+    let allowed: &[&str] = match command {
+        SessionCommand::OpenPane => &["session", "band", "after", "program", "floating"],
+        SessionCommand::ToggleFloating => &["session", "pane", "after"],
+        _ => &["session", "pane"],
     };
     for pair in target.pairs::<Value, Value>() {
         let (field, _) = pair.map_err(|error| error.to_string())?;
@@ -231,6 +261,21 @@ fn session_target(name: &str, command: SessionCommand, target: &Value) -> Result
     let action = if opening {
         let band = BandId(number("band", true)?.expect("required"));
         let after = number("after", false)?.map(PaneId);
+        let floating = match get("floating")? {
+            Value::Nil => false,
+            Value::Boolean(floating) => floating,
+            other => {
+                return Err(format!(
+                    "the `floating` of `{name}` must be a boolean, found {}",
+                    other.type_name()
+                ));
+            }
+        };
+        if floating && after.is_some() {
+            return Err(format!(
+                "the target of `{name}` cannot hold `after` with `floating = true`"
+            ));
+        }
         let program = match get("program")? {
             Value::Nil => None,
             Value::String(line) => Some(gband_core::layout::Program::CommandLine(
@@ -255,8 +300,14 @@ fn session_target(name: &str, command: SessionCommand, target: &Value) -> Result
             band,
             after,
             width: None,
+            floating,
             focus: false,
             content: PaneContent::Program(program),
+        }
+    } else if command == SessionCommand::ToggleFloating {
+        SessionAction::ToggleFloating {
+            pane: PaneId(number("pane", true)?.expect("required")),
+            after: number("after", false)?.map(PaneId),
         }
     } else {
         let pane = PaneId(number("pane", true)?.expect("required"));

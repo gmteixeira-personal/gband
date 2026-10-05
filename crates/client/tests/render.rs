@@ -4,8 +4,10 @@ use std::time::Instant;
 use gband_client::animation::{Animations, Drawn, DrawnBand, Presentation, Targets};
 use gband_client::color::ColorSupport;
 use gband_client::render::{Ribbon, draw_frame};
-use gband_core::geometry::{Size, tiles};
-use gband_core::layout::{Direction, Layout, LayoutOptions, PaneId, SessionAction, Step};
+use gband_core::geometry::{Size, boxes, tiles};
+use gband_core::layout::{
+    Direction, Layout, LayoutOptions, PaneHeight, PaneId, Proportion, SessionAction, Step,
+};
 use gband_core::view::{CenterFocusedColumn, Scene, View, ViewAction};
 use gband_emulator::{Emulator, Grid};
 use gband_lua::windows::{FloatFrame, Run};
@@ -65,6 +67,10 @@ impl Fixture {
             for tile in tiles(band, self.area) {
                 self.grids
                     .insert(tile.pane, Grid::new(tile.terminal_size()));
+            }
+            for placed in boxes(band, self.area) {
+                self.grids
+                    .insert(placed.pane, Grid::new(placed.terminal_size()));
             }
         }
     }
@@ -450,4 +456,100 @@ fn later_float_is_drawn_on_top() {
     upper.z = 2;
     fixture.floats = vec![lower, upper];
     assert_snapshot!(fixture.render(Size::new(40, 10)));
+}
+
+fn floating_at(fixture: &mut Fixture, pane: PaneId, col: u16, row: u16, viewport_cols: u16) {
+    let height = PaneHeight::Fixed(12);
+    for action in [
+        SessionAction::ToggleFloating { pane, after: None },
+        SessionAction::SetWidth {
+            pane,
+            width: Proportion::ONE_HALF,
+        },
+        SessionAction::SetHeight { pane, height },
+        SessionAction::SetPosition { pane, col, row },
+    ] {
+        fixture.change(action, viewport_cols);
+    }
+}
+
+#[test]
+fn floating_pane_over_two_tiles() {
+    let (mut fixture, panes) = Fixture::new(Size::new(80, 24), 3, 80);
+    floating_at(&mut fixture, panes[2], 20, 6, 80);
+    fixture.write(panes[0], b"left side of the screen");
+    fixture.write(panes[1], b"right side of the screen");
+    fixture.write(panes[2], b"floating");
+    assert_eq!(fixture.view.focused(), Some(panes[0]));
+    assert_snapshot!(fixture.render(Size::new(80, 24)));
+}
+
+#[test]
+fn floating_pane_ignores_the_camera() {
+    let (mut fixture, panes) = Fixture::new(Size::new(80, 24), 4, 80);
+    floating_at(&mut fixture, panes[3], 20, 6, 80);
+    for (index, &pane) in panes.iter().enumerate() {
+        fixture.write(pane, format!("pane {index}").as_bytes());
+    }
+    let at_zero = fixture.render(Size::new(80, 24));
+    fixture.act(ViewAction::FocusRight, 80);
+    fixture.act(ViewAction::FocusRight, 80);
+    assert_eq!(fixture.view.camera(), 40);
+    let at_forty = fixture.render(Size::new(80, 24));
+    let rows = |screen: &str| -> Vec<String> {
+        screen
+            .lines()
+            .skip(7)
+            .take(12)
+            .map(|line| line.chars().skip(21).take(40).collect())
+            .collect()
+    };
+    assert_eq!(rows(&at_zero), rows(&at_forty));
+    assert_snapshot!(at_forty);
+}
+
+#[test]
+fn float_over_a_floating_pane() {
+    let (mut fixture, panes) = Fixture::new(Size::new(80, 24), 2, 80);
+    floating_at(&mut fixture, panes[1], 20, 6, 80);
+    fixture.write(panes[1], b"floating pane under the float");
+    fixture.floats.push(float(8, 30, 30, 6, &["on top"]));
+    fixture.float_focused = true;
+    assert_snapshot!(fixture.render(Size::new(80, 24)));
+}
+
+#[test]
+fn focused_floating_pane_holds_the_cursor() {
+    let (mut fixture, panes) = Fixture::new(Size::new(80, 24), 2, 80);
+    floating_at(&mut fixture, panes[1], 20, 6, 80);
+    fixture.act(ViewAction::SwitchLayer, 80);
+    fixture.write(panes[1], b"$ ");
+    assert!(
+        fixture
+            .render(Size::new(80, 24))
+            .ends_with("cursor: Some(Position { x: 23, y: 7 })")
+    );
+}
+
+#[test]
+fn cursor_under_a_floating_pane() {
+    let (mut fixture, panes) = Fixture::new(Size::new(80, 24), 2, 80);
+    floating_at(&mut fixture, panes[1], 0, 0, 80);
+    fixture.write(panes[0], b"$ ");
+    assert_eq!(fixture.view.focused(), Some(panes[0]));
+    assert!(fixture.render(Size::new(80, 24)).ends_with("cursor: None"));
+    fixture.change(
+        SessionAction::SetPosition {
+            pane: panes[1],
+            col: 40,
+            row: 0,
+        },
+        80,
+    );
+    fixture.write(panes[0], b"$ ");
+    assert!(
+        fixture
+            .render(Size::new(80, 24))
+            .ends_with("cursor: Some(Position { x: 3, y: 1 })")
+    );
 }

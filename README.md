@@ -72,6 +72,10 @@ The default key bindings all follow the prefix key, Ctrl+Space:
 | `-`, `=` | narrow or widen the column |
 | `_`, `+` | shorten or heighten the window |
 | `R` | reset the window's height |
+| `v` | float the window, or tile it again |
+| `V` | move focus between the floating and the tiled windows |
+| Ctrl+`h`, Ctrl+`l`, or Ctrl with the left or right arrow | move the column, or the floating window, to the left or right |
+| Ctrl+`j`, Ctrl+`k`, or Ctrl with the down or up arrow | move the window, or the floating window, down or up |
 | `D` | detach |
 | Ctrl+Space | send Ctrl+Space to the window |
 
@@ -194,9 +198,13 @@ The actions in `gband.action`:
 | `focus_column_left`, `focus_column_right` | focus the column to the left or right |
 | `focus_pane_down`, `focus_pane_up` | focus the window below or above |
 | `focus_band_down`, `focus_band_up` | view the band below or above |
+| `switch_focus_floating_tiled` | move focus between the band's floating windows and its tiled windows |
 | `open_pane` | open a window running your shell right of the focused column |
 | `close_pane` | close the focused window |
 | `consume_or_expel_left`, `consume_or_expel_right` | move the focused window into or out of the neighbouring column |
+| `move_column_left`, `move_column_right` | swap the column with its neighbour, or move a floating window left or right |
+| `move_pane_down`, `move_pane_up` | swap the window with its neighbour in the column, or move a floating window down or up |
+| `toggle_pane_floating` | float the focused window over the band, or tile it again |
 | `cycle_column_width` | step the column's width through the presets |
 | `toggle_full_width` | toggle full width of the column |
 | `grow_column_width`, `shrink_column_width` | widen or narrow the column by a tenth of the screen |
@@ -205,6 +213,21 @@ The actions in `gband.action`:
 | `send_prefix` | send the prefix key to the focused window |
 
 `gband.action.list()` lists every action with its description.
+
+### Floating windows
+
+Each band has a floating layer drawn over its columns, as niri's floating windows are.
+A floating window is a full window with its own program, placed in a box that stays where it is while the band scrolls.
+Ctrl+Space then `v` floats the focused window in a box centred on the screen, as wide as `default_column_width` and two height steps shorter than the screen, and the same keys tile it again as a new column right of the tiled window you focused last.
+A window floated again returns to the box it had.
+Ctrl+Space then `V` moves focus between the floating windows and the tiled windows of the band.
+
+The other actions work on a floating window too.
+The focus keys move between floating windows while the floating layer has focus.
+The width keys change the box's width by the same steps as a column's, and the height keys change its height.
+Ctrl+Space then Ctrl with `h`, `l`, `j` or `k`, or with an arrow key, moves the box a tenth of the screen; on a tiled window the same keys swap its column with the next column, or the window with the next window in its column.
+
+Each client stacks floating windows in its own order, with the one it focused last on top, and draws its floating plugin windows above them.
 
 ### Status line
 

@@ -1,5 +1,5 @@
 use gband_core::event::LayoutEvent;
-use gband_core::layout::{PaneId, SessionAction};
+use gband_core::layout::{Direction, PaneId, SessionAction};
 use gband_protocol::{ClientMessage, socket_path};
 use gband_server::{CAPACITY, Published, SessionEvent};
 use gband_test_support::*;
@@ -127,4 +127,61 @@ async fn lagging_subscriber_is_told_and_blocks_nothing() {
         next(&mut events).await,
         SessionEvent::Layout(LayoutEvent::ColumnWidthChanged { .. })
     ));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn subscriber_sees_floating_and_moves() {
+    let (server, mut events) = start("ev-floating").await;
+    let mut client = server.attach(80, 24).await;
+    let first = client.first();
+    let second = client.open_after(first).await;
+    until(&mut events, |event| opened(event) == Some(second)).await;
+    for action in [
+        SessionAction::MoveColumn {
+            pane: second,
+            direction: Direction::Left,
+        },
+        SessionAction::ToggleFloating {
+            pane: second,
+            after: None,
+        },
+        SessionAction::MoveColumn {
+            pane: second,
+            direction: Direction::Right,
+        },
+        SessionAction::ToggleFloating {
+            pane: second,
+            after: Some(first),
+        },
+    ] {
+        client.act(action).await;
+    }
+    let band = client.layout.bands()[0].id;
+    let SessionEvent::Layout(LayoutEvent::ColumnMoved { from, to, .. }) = next(&mut events).await
+    else {
+        panic!("expected a column moved event");
+    };
+    assert_eq!((from, to), (1, 0));
+    let SessionEvent::Layout(LayoutEvent::PaneFloated { pane, record, .. }) =
+        next(&mut events).await
+    else {
+        panic!("expected a pane floated event");
+    };
+    assert_eq!((pane, record.col), (second, 20));
+    let SessionEvent::Layout(LayoutEvent::FloatingBoxChanged { record, .. }) =
+        next(&mut events).await
+    else {
+        panic!("expected a floating box changed event");
+    };
+    assert_eq!(record.col, 28);
+    assert_eq!(
+        next(&mut events).await,
+        SessionEvent::Layout(LayoutEvent::PaneTiled {
+            pane: second,
+            band,
+            column: 1,
+            width: record.width,
+            full_width: false,
+        })
+    );
 }

@@ -13,6 +13,7 @@ fn open_plugin(band: BandId, after: Option<PaneId>, request: u32, focus: bool) -
         band,
         after,
         width: None,
+        floating: false,
         focus,
         content: PaneContent::Plugin { request },
     }
@@ -117,6 +118,7 @@ async fn open_with_a_width() {
             band,
             after: Some(first),
             width: Some(Proportion::new(1, 4)),
+            floating: false,
             focus: false,
             content: PaneContent::Plugin { request: 3 },
         })

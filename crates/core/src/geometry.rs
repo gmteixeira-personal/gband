@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::layout::{Band, Column, PaneHeight, PaneId, Weight, gcd};
+use crate::layout::{Band, Column, FloatingPane, PaneHeight, PaneId, Weight, gcd};
 
 pub const MIN_COLUMN_WIDTH: u16 = 3;
 pub const MIN_TILE_HEIGHT: u16 = 3;
@@ -55,6 +55,64 @@ impl Tile {
             rows: self.height.saturating_sub(2 * BORDER).max(1),
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PaneBox {
+    pub pane: PaneId,
+    pub x: u16,
+    pub y: u16,
+    pub width: u16,
+    pub height: u16,
+}
+
+impl PaneBox {
+    pub fn terminal_size(&self) -> Size {
+        Size {
+            cols: self.width.saturating_sub(2 * BORDER).max(1),
+            rows: self.height.saturating_sub(2 * BORDER).max(1),
+        }
+    }
+
+    pub fn contains(&self, x: u16, y: u16) -> bool {
+        (self.x..self.x + self.width).contains(&x) && (self.y..self.y + self.height).contains(&y)
+    }
+}
+
+pub fn placed(floating: &FloatingPane, area: Size) -> PaneBox {
+    let width = if floating.full_width {
+        area.cols
+    } else {
+        floating.width.of(area.cols)
+    };
+    let width = width.max(MIN_COLUMN_WIDTH).min(area.cols);
+    let height = floating.rows.min(area.rows);
+    PaneBox {
+        pane: floating.pane,
+        x: floating.col.min(area.cols - width),
+        y: floating.row.min(area.rows - height),
+        width,
+        height,
+    }
+}
+
+pub fn boxes(band: &Band, area: Size) -> Vec<PaneBox> {
+    band.floating
+        .iter()
+        .map(|floating| placed(floating, area))
+        .collect()
+}
+
+fn tenth(cells: u16) -> u16 {
+    ((u32::from(cells) + 5) / 10).max(1) as u16
+}
+
+pub fn height_step(area: Size) -> u16 {
+    tenth(area.rows)
+}
+
+pub fn width_step(area: Size) -> u16 {
+    tenth(area.cols)
 }
 
 pub fn column_width(column: &Column, area: Size) -> u16 {

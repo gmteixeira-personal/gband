@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
-use gband_core::geometry::{BORDER, Size, Tile, tiles};
+use gband_core::geometry::{BORDER, PaneBox, Size, Tile, placed, tiles};
 use gband_core::layout::{Layout, PaneId};
-use gband_core::view::View;
+use gband_core::view::{Scene, View};
 use gband_emulator::{Emulator, Grid};
 use gband_lua::StatusLine;
 use gband_lua::windows::FloatFrame;
@@ -13,7 +13,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::{Block, Clear, Widget};
 use tui_term::widget::{Cursor, PseudoTerminal, Screen};
 
-use crate::animation::{Drawn, DrawnBand, DrawnTile};
+use crate::animation::{Drawn, DrawnTile};
 use crate::color::ColorSupport;
 
 pub const FOCUSED_BORDER: Style = Style::new().add_modifier(Modifier::BOLD);
@@ -173,27 +173,79 @@ pub fn render(ribbon: &Ribbon<'_>, buffer: &mut Buffer) -> Option<Position> {
             .collect();
         placed.sort_by_key(|&(pane, _)| focused == Some(pane));
         for (pane, tile) in placed {
-            let Some(placement) = Placement::new(&tile, drawn, target) else {
+            let Some(placement) = Placement::new(&tile, drawn.camera, drawn.top, target) else {
                 continue;
             };
             let is_focused = focused == Some(pane);
             let grid = ribbon.grids.get(&pane);
-            let (scratch, shift) = draw_tile(&tile, grid, is_focused, &placement.window);
-            let window = &placement.window;
-            for row in window.top..window.bottom {
-                for column in window.start..window.end {
-                    let x = (placement.left + i64::from(column)) as u16;
-                    let y = (placement.top + i64::from(row)) as u16;
-                    buffer[(target.x + x, target.y + y)] =
-                        scratch[(column - shift.cols, row - shift.rows)].clone();
-                }
-            }
+            paint(buffer, target, &tile, &placement, grid, is_focused);
             if is_focused && ribbon.drawn.settled {
                 cursor = grid.and_then(|grid| cursor_position(&tile, &placement, grid, target));
             }
         }
     }
+    let scene = Scene {
+        layout: ribbon.layout,
+        area: ribbon.area,
+        viewport: Size::new(target.width, target.height),
+    };
+    for pane in ribbon.view.stacking(scene) {
+        let Some(floating) = ribbon.layout.floating(pane) else {
+            continue;
+        };
+        let placed = placed(floating, ribbon.area);
+        let tile = DrawnTile::from(&placed);
+        let Some(placement) = Placement::new(&tile, 0, 0, target) else {
+            continue;
+        };
+        if cursor.is_some_and(|cursor| covers(&placed, target, cursor)) {
+            cursor = None;
+        }
+        let is_focused = focused == Some(pane);
+        let grid = ribbon.grids.get(&pane);
+        paint(buffer, target, &tile, &placement, grid, is_focused);
+        if is_focused && ribbon.drawn.settled {
+            cursor = grid.and_then(|grid| cursor_position(&tile, &placement, grid, target));
+        }
+    }
     cursor
+}
+
+fn covers(placed: &PaneBox, target: Rect, cursor: Position) -> bool {
+    let x = cursor.x.checked_sub(target.x);
+    let y = cursor.y.checked_sub(target.y);
+    x.zip(y).is_some_and(|(x, y)| placed.contains(x, y))
+}
+
+fn paint(
+    buffer: &mut Buffer,
+    target: Rect,
+    tile: &DrawnTile,
+    placement: &Placement,
+    grid: Option<&Grid>,
+    focused: bool,
+) {
+    let (scratch, shift) = draw_tile(tile, grid, focused, &placement.window);
+    let window = &placement.window;
+    for row in window.top..window.bottom {
+        for column in window.start..window.end {
+            let x = (placement.left + i64::from(column)) as u16;
+            let y = (placement.top + i64::from(row)) as u16;
+            buffer[(target.x + x, target.y + y)] =
+                scratch[(column - shift.cols, row - shift.rows)].clone();
+        }
+    }
+}
+
+impl From<&PaneBox> for DrawnTile {
+    fn from(placed: &PaneBox) -> Self {
+        Self {
+            x: i64::from(placed.x),
+            y: i64::from(placed.y),
+            width: placed.width,
+            height: placed.height,
+        }
+    }
 }
 
 impl From<&Tile> for DrawnTile {
@@ -214,12 +266,13 @@ struct Placement {
 }
 
 impl Placement {
-    fn new(tile: &DrawnTile, band: &DrawnBand, target: Rect) -> Option<Self> {
+    fn new(tile: &DrawnTile, camera: i64, band_top: i64, target: Rect) -> Option<Self> {
         let height = i64::from(target.height);
-        let left = tile.x - band.camera;
-        let top = band.top + tile.y;
-        let clip_top = band.top.max(0);
-        let clip_bottom = (band.top + height).min(height);
+        let left = tile.x - camera;
+        let top = band_top + tile.y;
+        let clip_top = band_top.max(0);
+        let clip_bottom = (band_top + height).min(height);
+
         let width = i64::from(tile.width);
         let rows = i64::from(tile.height);
         let window = Window {

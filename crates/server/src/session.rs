@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Result, bail};
-use gband_core::geometry::{Size, tiles};
+use gband_core::geometry::{Size, boxes, tiles};
 use gband_core::layout::{
     BandId, Layout, LayoutOptions, PaneContent, PaneId, Program, Proportion, SessionAction,
 };
@@ -73,6 +73,7 @@ struct Placement {
     band: BandId,
     after: Option<PaneId>,
     width: Option<Proportion>,
+    floating: bool,
 }
 
 pub struct SessionConfig {
@@ -137,6 +138,7 @@ impl Session {
             band,
             after: None,
             width: None,
+            floating: false,
         };
         session.open(placement, None)?;
         session.publish();
@@ -227,12 +229,18 @@ impl Session {
         self.settle_at = None;
         let shown: HashSet<PaneId> = self.shown.values().flatten().copied().collect();
         for band in self.layout.bands() {
-            for tile in tiles(band, self.area) {
-                if !shown.contains(&tile.pane) {
+            let tiled = tiles(band, self.area)
+                .into_iter()
+                .map(|tile| (tile.pane, tile.terminal_size()));
+            let floating = boxes(band, self.area)
+                .into_iter()
+                .map(|placed| (placed.pane, placed.terminal_size()));
+            for (pane, size) in tiled.chain(floating) {
+                if !shown.contains(&pane) {
                     continue;
                 }
-                if let Some(entry) = self.entry(tile.pane) {
-                    entry.pane.resize(tile.terminal_size());
+                if let Some(entry) = self.entry(pane) {
+                    entry.pane.resize(size);
                 }
             }
         }
@@ -286,10 +294,16 @@ impl Session {
                 band,
                 after,
                 width,
+                floating,
                 focus,
                 content,
             } => {
-                let placement = Placement { band, after, width };
+                let placement = Placement {
+                    band,
+                    after,
+                    width,
+                    floating,
+                };
                 let opened = match content {
                     PaneContent::Program(ref program) => self.open(placement, program.as_ref()),
                     PaneContent::Plugin { .. } => Ok(self.open_plugin(client, placement)),
@@ -325,19 +339,29 @@ impl Session {
         }
     }
 
+    fn placeable(&self, placement: &Placement) -> bool {
+        let after = placement.after.filter(|_| !placement.floating);
+        self.layout.can_open(placement.band, after)
+    }
+
     fn place(&mut self, placement: &Placement) -> Option<PaneId> {
-        if !self.layout.can_open(placement.band, placement.after) {
+        if !self.placeable(placement) {
             return None;
         }
         let id = self.layout.allocate_pane();
         let options = self.config.options.borrow().clone();
-        let events = self.layout.open(
-            id,
-            placement.band,
-            placement.after,
-            placement.width,
-            &options,
-        );
+        let events = if placement.floating {
+            self.layout
+                .open_floating(id, placement.band, placement.width, self.area, &options)
+        } else {
+            self.layout.open(
+                id,
+                placement.band,
+                placement.after,
+                placement.width,
+                &options,
+            )
+        };
         self.config.events.layout(events);
         Some(id)
     }
@@ -358,7 +382,7 @@ impl Session {
     }
 
     fn open(&mut self, placement: Placement, program: Option<&Program>) -> Result<Option<PaneId>> {
-        if !self.layout.can_open(placement.band, placement.after) {
+        if !self.placeable(&placement) {
             return Ok(None);
         }
         let argv = match program {
@@ -431,10 +455,16 @@ impl Session {
 
     fn terminal_size(&self, pane: PaneId) -> Option<Size> {
         self.layout.bands().iter().find_map(|band| {
-            tiles(band, self.area)
+            let tiled = tiles(band, self.area)
                 .into_iter()
                 .find(|tile| tile.pane == pane)
-                .map(|tile| tile.terminal_size())
+                .map(|tile| tile.terminal_size());
+            tiled.or_else(|| {
+                boxes(band, self.area)
+                    .into_iter()
+                    .find(|placed| placed.pane == pane)
+                    .map(|placed| placed.terminal_size())
+            })
         })
     }
 
