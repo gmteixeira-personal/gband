@@ -60,9 +60,9 @@ The context SHALL be a new table for each call, holding:
 | `width` | `total_width` less the cells that the other shown components take, by their latest output, with the separators and region gaps "Layout" puts between components; at least 0 |
 | `table` | the name of the active key table |
 | `band` | `{ number, index, count }`: the viewed band's number, its position from the top, counting from 1, and the number of bands |
-| `column` | `{ index, count }`: the focused window's column position in the viewed band, counting from 1, and the number of columns in that band; nil when the viewed band is empty |
+| `column` | `{ index, count }`: the focused window's column position in the viewed band, counting from 1, and the number of columns in that band; nil when the viewed band is empty or a floating window is focused |
 | `window` | the focused window's number, or nil when no window is focused |
-| `windows` | a list of every window in the client's layout, bands from the top, columns from the left and windows from the top, each `{ window, band, state }`: its number, its band's number, and a copy of its state as the plugin-bridge capability defines |
+| `windows` | a list of every window in the client's layout, bands from the top, and within each band its columns from the left and their windows from the top, then the band's floating windows in its floating list order, each `{ window, band, state }`: its number, its band's number, and a copy of its state as the plugin-bridge capability defines |
 
 #### Scenario: Context values
 - **WHEN** the client's terminal is 100 columns wide, the viewed band is the second of three bands and holds five columns, the third column holds focused window 7, the `prefix` table is active, and a component renders
@@ -75,6 +75,11 @@ The context SHALL be a new table for each call, holding:
 #### Scenario: Waiting agents counted
 - **WHEN** windows 1, 2 and 3 are open, the server has set `agent` to `"waiting"` in the states of windows 1 and 3, and a component with `redraw_on = { "WindowStateChanged" }` counts the entries of `ctx.windows` whose `state.agent` is `"waiting"`
 - **THEN** it counts 2
+
+#### Scenario: Floating focus has no column
+- **WHEN** the client focuses a floating window of a band that also holds columns, and a component renders
+- **THEN** `ctx.column` is nil
+- **AND** `ctx.windows` lists the floating window after the windows of that band's columns
 
 ### Requirement: Render errors
 Each call of a component's `render` SHALL run protected, as a callback that belongs to the component's plugin, with its own instruction budget of the size the plugins capability defines. A run that exceeds the budget SHALL stop only that call. The code that triggered the render and the other components SHALL continue. When a call raises an error, returns a value "Render output" does not allow, or is stopped by the instruction limit, the component SHALL be disabled and hidden until the configuration next loads, and the error SHALL be reported as a plugin error, as the configuration capability defines. A call stopped by the instruction limit SHALL also mark the component's plugin failed, as the plugins capability defines. Components of a failed plugin SHALL NOT render and SHALL be hidden.
@@ -89,3 +94,31 @@ Each call of a component's `render` SHALL run protected, as a callback that belo
 - **WHEN** a component's `render` runs `while true do end`
 - **THEN** the client handles the next key
 - **AND** the error item names the plugin and the instruction limit
+
+### Requirement: Bundled segment plugins
+gband SHALL bundle these plugin modules, each set up with `gband.plugin` and each adding one component under its plugin's name with `gband.ui.statusline.add`:
+
+| module | plugin | output | redraw on | align | priority | order | group |
+|---|---|---|---|---|---|---|---|
+| `gband.statusline.band` | `band` | `band ` and the viewed band's index | `BandChanged`, `LayoutChanged` | left | 20 | 10 | `StatusLineSegment` |
+| `gband.statusline.mode` | `mode` | the active key table's name; hidden while `root` is active | `KeyTableChanged` | left | 30 | 20 | `StatusLineAccent` |
+| `gband.statusline.position` | `position` | the focused column's index, `/`, and the band's column count; hidden while the viewed band is empty or a floating window is focused | `FocusChanged`, `BandChanged`, `LayoutChanged` | right | 10 | 10 | `StatusLineMuted` |
+| `gband.statusline.clock` | `clock` | the local time, formatted by `os.date` with `opts.format`, `"%H:%M"` by default | every `opts.interval` milliseconds, 1000 by default | right | 5 | 20 | `StatusLineMuted` |
+
+Each SHALL take the options `align`, `priority`, `order` and `hl`, which replace the defaults in the table. An option of the wrong type or value SHALL make its `setup` raise an error. The default configuration SHALL set up `band`, `mode` and `position`, and SHALL NOT set up `clock`.
+
+#### Scenario: Reorder a segment
+- **WHEN** `user/init.lua` calls `gband.plugin("gband.statusline.mode", { align = "right", order = 1 })` and `gband.plugin("gband.statusline.position")`, and the user presses Ctrl+Space
+- **THEN** the right region shows `prefix`, the separator, then the position
+
+#### Scenario: Clock
+- **WHEN** `user/init.lua` calls `gband.plugin("gband.statusline.clock", { format = "%H:%M:%S" })`
+- **THEN** the right region shows the local time, and it changes every second
+
+#### Scenario: User file without segments
+- **WHEN** `user/init.lua` sets up no segment plugin and adds no component
+- **THEN** the status line is drawn in `StatusLine` with no text
+
+#### Scenario: Position hidden on floating focus
+- **WHEN** the default configuration is in use and the client focuses a floating window
+- **THEN** the status line shows no position segment

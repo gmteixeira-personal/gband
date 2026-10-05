@@ -39,7 +39,7 @@ The client SHALL emit these events, and no other built-in events:
 | `BandChanged` | `band`, `previous`: band numbers | the viewed band differs from before a server message, a dispatched action or a resize was handled |
 | `WindowOpened` | `window`, `band` | a layout holds a window the client's previous layout did not |
 | `WindowClosed` | `window`, `band`: the band the window was in | the client's previous layout held a window a new layout does not |
-| `LayoutChanged` | empty | a layout the client receives differs from the client's previous layout in its bands, columns, windows or widths |
+| `LayoutChanged` | empty | a layout the client receives differs from the client's previous layout in its bands, columns, windows, widths or floating windows and their boxes |
 | `TerminalResized` | `cols`, `rows` | the client's terminal changes size |
 | `ConfigReloaded` | empty | a reload succeeded and the new configuration is in use, to the handlers of the new configuration |
 | `KeyTableChanged` | `table`, `previous`: key table names | the active key table changes, as the client-attach capability defines |
@@ -77,6 +77,10 @@ The first layout after attaching SHALL emit no `WindowOpened` and no `LayoutChan
 #### Scenario: State change
 - **WHEN** the server sets window 1's `agent` to `"waiting"`
 - **THEN** `WindowStateChanged` runs once with `window` 1, `key` `"agent"`, `value` `"waiting"` and `previous` nil
+
+#### Scenario: Floating box moved
+- **WHEN** a floating window's box moves one step right and the client receives the new layout
+- **THEN** `LayoutChanged` runs once
 
 ### Requirement: Actions from handlers
 A handler MAY call action values, `gband.spawn` and `gband.keymap.enter` as a binding function does. The actions it dispatches SHALL run after it returns, in the order dispatched. Events that those actions cause SHALL be emitted in turn. An event emitted while ten events are already being delivered, each caused by the one before, SHALL NOT be delivered, and the process SHALL record a warning in its log.

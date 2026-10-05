@@ -41,7 +41,7 @@ With no configuration file, the bindings SHALL be those the default configuratio
 | Ctrl+Space | `prefix prefix` | send the prefix key to the focused pane | client |
 | any other key | — | discard both keys | — |
 
-A binding to an action SHALL dispatch it. A binding to a Lua function SHALL run the function, as the configuration capability defines. A view action SHALL change this client's view as the layout-view capability defines, and SHALL send nothing to the server. A session action SHALL be sent to the server as an action naming the focused pane, resolved as the actions capability defines, except close pane while a float is focused, which closes that float in the client. Open pane SHALL name the viewed band and the tiled pane this client focused most recently there, or no pane when there is none. Any other session action, and sending the prefix key, SHALL do nothing when no pane is focused. A character key SHALL match a binding by its character, Ctrl and Alt, so a `D` matches whether or not the terminal reports Shift with it.
+A binding to an action SHALL dispatch it. A binding to a Lua function SHALL run the function, as the configuration capability defines. A view action SHALL change this client's view as the layout-view capability defines, and SHALL send nothing to the server. A session action SHALL be sent to the server as an action naming the focused pane, resolved as the actions capability defines, except close pane while a float is focused, which closes that float in the client. Open pane SHALL name the viewed band and the tiled pane this client focused most recently there, or no pane when there is none. Any other session action, and sending the prefix key, SHALL do nothing when no pane is focused, except close pane while a float is focused. A character key SHALL match a binding by its character, Ctrl and Alt, so a `D` matches whether or not the terminal reports Shift with it.
 
 #### Scenario: Detach
 - **WHEN** the user presses Ctrl+Space then Shift+D
@@ -81,6 +81,10 @@ A binding to an action SHALL dispatch it. A binding to a Lua function SHALL run 
 #### Scenario: Prefix q closes the focused float
 - **WHEN** two panes are open, a float is focused, and the user presses Ctrl+Space then `q`
 - **THEN** the float closes and both tiles stay
+
+#### Scenario: Prefix q closes a float on the empty band
+- **WHEN** the viewed band holds no pane, a float is focused, and the user presses Ctrl+Space then `q`
+- **THEN** the float closes
 
 #### Scenario: Another band
 - **WHEN** the user presses Ctrl+Space then `u`, then Ctrl+Space then Enter, then Ctrl+Space then `i`

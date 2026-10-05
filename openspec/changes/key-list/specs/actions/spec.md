@@ -5,7 +5,7 @@ A session action from a binding SHALL name no pane. Before sending it, the clien
 
 Open pane SHALL be sent naming, as the pane to open after, the tiled pane this client focused most recently in the viewed band, when it is still tiled there, and no pane otherwise. Toggling floating SHALL be sent naming the same tiled pane, as the pane the toggled pane is tiled after.
 
-Close pane resolved against the view SHALL close the focused float when one is focused, as the plugin-windows capability defines: it SHALL close that float as `gband.win.close` does, and SHALL send nothing to the server. Otherwise it SHALL resolve to the focused pane, tiled or floating. A floating pane is a pane, not a float.
+Close pane resolved against the view SHALL close the focused float when one is focused, as the plugin-windows capability defines, even when no pane is focused: it SHALL close that float as `gband.win.close` does, and SHALL send nothing to the server. Otherwise it SHALL resolve to the focused pane, tiled or floating. A floating pane is a pane, not a float.
 
 A session action dispatched with a target, as the lua-control capability defines, SHALL NOT be resolved against the view: it SHALL name the pane, band or pane to open after that its target names, whichever pane or float is focused.
 
@@ -40,6 +40,10 @@ A session action dispatched with a target, as the lua-control capability defines
 #### Scenario: Close the focused float
 - **WHEN** pane 3 is focused, a float is focused, and close pane is dispatched with no target
 - **THEN** the float closes, nothing is sent to the server, and pane 3 stays open and focused
+
+#### Scenario: Close the focused float on the empty band
+- **WHEN** a view on the empty band has a float focused and resolves close pane
+- **THEN** the float closes and there is nothing to send
 
 #### Scenario: Close a focused floating pane
 - **WHEN** floating pane 3 is focused, no float is focused, and close pane is dispatched with no target

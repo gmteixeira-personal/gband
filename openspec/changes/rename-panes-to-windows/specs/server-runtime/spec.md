@@ -129,7 +129,7 @@ The server SHALL publish every change of a window's state to the clients of its 
 - **THEN** the command runs with `ctx.client` nil and `gband.cmd.run` returns `true`
 
 ### Requirement: Server session actions
-The server's `gband.action` SHALL hold one function for each session action the actions capability names, under its Lua name. Each SHALL take one target table naming `session` and the window the action acts on as `window`; `open_window` SHALL instead take `session`, `band`, an optional `after` window and an optional `program`, a command line string or a list of argument strings. A missing session, a wrong type or an unknown field SHALL be an error at the line of the call. The actions SHALL be applied to their sessions after the callback returns, in the order called, as the session-server capability's "Session actions" defines, and SHALL tell no client to focus. An action naming a session, window or band that no longer exists SHALL change nothing. `gband.action` SHALL be callable only in a callback.
+The server's `gband.action` SHALL hold one function for each session action the actions capability names, under its Lua name. Each SHALL take one target table naming `session` and the window the action acts on as `window`; `open_window` SHALL instead take `session`, `band`, an optional `after` window, an optional `program`, a command line string or a list of argument strings, and an optional `floating`, a boolean. `floating = true` SHALL open the window floating in `band`, as the layout capability's "Open a window" defines, and SHALL be an error together with `after`. `toggle_window_floating` SHALL also take an optional `after` window: a floating window SHALL be tiled after `after`, as the floating-windows capability's "Tile a window" defines, and as the band's first column without it. A missing session, a wrong type or an unknown field SHALL be an error at the line of the call. The actions SHALL be applied to their sessions after the callback returns, in the order called, as the session-server capability's "Session actions" defines, and SHALL tell no client to focus. An action naming a session, window or band that no longer exists SHALL change nothing. `gband.action` SHALL be callable only in a callback.
 
 #### Scenario: Close from a handler
 - **WHEN** a `WindowOutput` handler calls `gband.action.close_window({ session = ev.session, window = ev.window })` on seeing `bye`, and the window prints `bye`
@@ -140,13 +140,29 @@ The server's `gband.action` SHALL hold one function for each session action the 
 - **THEN** every client receives a layout holding the new window
 - **AND** the client's focus stays on window 1
 
+#### Scenario: Float from a handler
+- **WHEN** a `WindowOpened` handler calls `gband.action.toggle_window_floating({ session = ev.session, window = ev.window })` for tiled window 2, then `gband.action.open_window({ session = ev.session, band = ev.band, floating = true })`
+- **THEN** every client receives a layout whose band's floating list holds window 2 and then the new window
+
+#### Scenario: Tile from the server
+- **WHEN** band 1 of `work` holds columns with windows 1 and 2 and floating window 3, and a server command calls `gband.action.toggle_window_floating({ session = "work", window = 3, after = 1 })`
+- **THEN** band 1 holds the columns of window 1, window 3 and window 2, in that order
+
+#### Scenario: Floating with after
+- **WHEN** a handler calls `gband.action.open_window({ session = "work", band = 1, after = 1, floating = true })`
+- **THEN** the call raises an error naming `after`
+
 ### Requirement: Reading structure
-`gband.sessions()` SHALL return the names of the sessions in ascending byte order. `gband.session(name)` SHALL return `{ name, bands, clients }` for the session `name`, or nil for an unknown session. `bands` SHALL list its bands from the top, each `{ band, columns }`, each column `{ width, full_width, windows }` from the left, and each window `{ window }` from the top. `clients` SHALL list the numbers of the clients attached to it in ascending order. Each call SHALL return new tables.
+`gband.sessions()` SHALL return the names of the sessions in ascending byte order. `gband.session(name)` SHALL return `{ name, bands, clients }` for the session `name`, or nil for an unknown session. `bands` SHALL list its bands from the top, each `{ band, columns, floating }`, each column `{ width, full_width, windows }` from the left, and each window `{ window }` from the top. `floating` SHALL list the band's floating windows in its floating list order, each `{ window, width, full_width, rows, col, row }`, where `width` and `full_width` are its box record's, `rows` is its box record's height, and `col` and `row` are its box's top-left cell as the floating-windows capability places it in the session's screen area. `clients` SHALL list the numbers of the clients attached to it in ascending order. Each call SHALL return new tables.
 
 #### Scenario: Layout of a session
 - **WHEN** the session `work` holds one band with two columns, holding windows 1 and 2, and one client is attached
 - **THEN** `gband.session("work").bands[1].columns[2].windows[1].window` is 2
 - **AND** `gband.session("work").clients` holds one number
+
+#### Scenario: Floating pane in the structure
+- **WHEN** the screen area of `work` is 80×24, and band 1 holds a column with window 1 and floating window 2 with `col` 70, `row` 3, width 1/2, full width off and `rows` 24
+- **THEN** `gband.session("work").bands[1].floating` is `{ { window = 2, width = 0.5, full_width = false, rows = 24, col = 40, row = 0 } }`
 
 ### Requirement: Server reload
 The server SHALL watch the `user` directory and every directory beneath it, as the configuration capability's "Reload on change" defines, and load the server configuration again in a new Lua state on a change. When loading succeeds, the server SHALL stop running the old state's handlers and commands, use the new state from then on, and emit `ConfigReloaded` to the new handlers. Window states, queued events and the sessions SHALL be unchanged by a reload.

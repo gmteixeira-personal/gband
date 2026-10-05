@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Handshake
-The first frame a client sends SHALL be a hello. The hello's payload SHALL begin with the client's protocol version, encoded the same way in every protocol version, followed by the client's terminal size. The first frame the server sends SHALL answer it. The server SHALL decode the leading version on its own, and compare it with its own version before it decodes anything that follows it. When the versions differ, the answer SHALL reject the client and carry the server's protocol version, whatever bytes follow the version, and the server SHALL then close the connection. When the versions are equal and the rest of the hello decodes, the answer SHALL accept the client and carry the server's protocol version. The leading version and the answer SHALL keep the same encoding in every later protocol version, so that two versions can always detect each other. The fields after the leading version MAY change in a later protocol version. The current protocol version SHALL be 6.
+The first frame a client sends SHALL be a hello. The hello's payload SHALL begin with the client's protocol version, encoded the same way in every protocol version, followed by the client's terminal size. The first frame the server sends SHALL answer it. The server SHALL decode the leading version on its own, and compare it with its own version before it decodes anything that follows it. When the versions differ, the answer SHALL reject the client and carry the server's protocol version, whatever bytes follow the version, and the server SHALL then close the connection. When the versions are equal and the rest of the hello decodes, the answer SHALL accept the client and carry the server's protocol version. The leading version and the answer SHALL keep the same encoding in every later protocol version, so that two versions can always detect each other. The fields after the leading version MAY change in a later protocol version. The current protocol version SHALL be 7.
 
 #### Scenario: Matching versions
 - **WHEN** a version 2 client sends its hello to a version 2 server
@@ -37,6 +37,10 @@ The first frame a client sends SHALL be a hello. The hello's payload SHALL begin
 - **WHEN** a client speaking protocol version 5 sends its hello to a server speaking version 6
 - **THEN** the server rejects it with version 6 and closes the connection
 
+#### Scenario: Version 6 client meets a version 7 server
+- **WHEN** a client speaking protocol version 6 sends its hello to a server speaking version 7
+- **THEN** the server rejects it with version 7 and closes the connection
+
 ### Requirement: Client messages
 After an attach request, a client SHALL send only these messages:
 
@@ -51,7 +55,7 @@ After an attach request, a client SHALL send only these messages:
 | command | a call number chosen by the client, a server command's full name, and its arguments as a plain data value |
 | detach | nothing |
 
-Window and band identifiers SHALL name windows and bands of the client's session. The server SHALL ignore a window identifier in a shown message that names no window of the client's session. The open window action SHALL name a band, optionally the window whose column the new column follows, optionally the new column's width, whether the client asks to focus the new window, and what the window holds: either a program, which is optionally named as a command line or as an argument list, or plugin content with a request number. Every other action SHALL name a window. Consume or expel SHALL also name its direction. Set width SHALL also name a width. Set height SHALL also name either a number of rows or a weight. A width and a weight SHALL each be a fraction in lowest terms. A client SHALL NOT reuse a call number while its call is unanswered. A client that detaches SHALL send detach, then close the connection.
+Window and band identifiers SHALL name windows and bands of the client's session. The server SHALL ignore a window identifier in a shown message that names no window of the client's session. The open window action SHALL name a band, optionally the window whose column the new column follows, optionally the new column's width, whether the window floats, whether the client asks to focus the new window, and what the window holds: either a program, which is optionally named as a command line or as an argument list, or plugin content with a request number. Every other action SHALL name a window. Consume or expel and move column SHALL also name their direction, left or right. Move window SHALL also name its direction, down or up. Toggle floating SHALL also name optionally the tiled window to tile after. Set position SHALL also name a column and a row. Set width SHALL also name a width. Set height SHALL also name either a number of rows or a weight. A width and a weight SHALL each be a fraction in lowest terms. A client SHALL NOT reuse a call number while its call is unanswered. A client that detaches SHALL send detach, then close the connection.
 
 #### Scenario: Detach message
 - **WHEN** a client sends detach
@@ -94,13 +98,29 @@ Window and band identifiers SHALL name windows and bands of the client's session
 - **WHEN** a client sends command number 7 naming `agents.next_waiting` with the arguments `{ state = "agent" }`
 - **THEN** the server decodes the same number, name and arguments
 
+#### Scenario: Toggle floating round trip
+- **WHEN** a client sends toggle floating naming window 3 and window 1 as the window to tile after
+- **THEN** the server decodes toggle floating naming window 3 and window 1
+
+#### Scenario: Move round trip
+- **WHEN** a client sends move column naming window 2 and the direction right, and move window naming window 2 and the direction up
+- **THEN** the server decodes the same actions, window and directions
+
+#### Scenario: Set position round trip
+- **WHEN** a client sends set position naming window 4, column 12 and row 3
+- **THEN** the server decodes set position naming window 4, column 12 and row 3
+
+#### Scenario: Open floating pane round trip
+- **WHEN** a client sends open window naming band 1, no window, the width 1/3, floating, and no program
+- **THEN** the server decodes the same band, width and floating flag
+
 ### Requirement: Server messages
 After the handshake, a server SHALL send only these messages:
 
 | message | content |
 |---|---|
 | info | the server's process id and the identity of the executable it runs from |
-| layout | the screen area's columns and rows, and the layout: its bands in order with their identifiers, each band's columns in order with their widths and full-width flags, and each column's windows in order with their identifiers and heights, each either automatic with its weight or fixed with its rows |
+| layout | the screen area's columns and rows, and the layout: its bands in order with their identifiers, each band's columns in order with their widths and full-width flags, and each column's windows in order with their identifiers and heights, each either automatic with its weight or fixed with its rows, and each band's floating windows in order with their identifiers and box records |
 | snapshot | a window identifier, the window's columns and rows, and terminal output that, fed into an empty terminal grid of that size, reproduces that window's screen on the server |
 | update | a window identifier, and terminal output that, fed into the grid the client built for that window from every earlier snapshot and update of it, reproduces that window's current screen on the server |
 | focus | a window identifier: the window the client asked to open, or the window a server command focused for it, which the client focuses |
@@ -159,6 +179,10 @@ A client SHALL keep one grid per window. It SHALL build a window's grid by repla
 #### Scenario: Result round trip
 - **WHEN** a result message for call 7 holding the error `unknown command absent` is framed and decoded
 - **THEN** the decoded message equals the original
+
+#### Scenario: Floating panes in the layout
+- **WHEN** band 1 holds a column with window 1 and floating windows 2 and 3, window 2 with column 5, row 3, width 1/3, full width off and 10 rows, and the server sends the layout
+- **THEN** the client decodes band 1 with that column and floating windows 2 and 3 in that order, window 2 with the same box record
 
 ### Requirement: Requests
 After the server's info, the first message a client sends SHALL be one request:

@@ -143,15 +143,17 @@ The reported size SHALL change when the terminal changes size, and when a succes
 - **AND** the ribbon is drawn from row 1, and the status line on row 0
 
 ### Requirement: Present the ribbon
-After the handshake, the client SHALL take the terminal full screen in raw mode with bracketed paste enabled. It SHALL keep its own grid of every window, as the wire-protocol capability defines, and its own view, as the layout-view capability defines. It SHALL draw only the viewed band, except during a band switch, when it SHALL draw the bands the animations capability places on screen. It SHALL draw the ribbon in the ribbon area and the status line in the rows the status-line capability gives it. It SHALL draw the floats it opened over the tiles, as the plugin-windows capability defines. While the configuration capability shows a configuration error and no status line is drawn, the client SHALL draw that error over the ribbon area's bottom row, after the tiles and the floats.
+After the handshake, the client SHALL take the terminal full screen in raw mode with bracketed paste enabled. It SHALL keep its own grid of every window, as the wire-protocol capability defines, and its own view, as the layout-view capability defines. It SHALL draw only the viewed band, except during a band switch, when it SHALL draw the bands the animations capability places on screen. It SHALL draw the ribbon in the ribbon area and the status line in the rows the status-line capability gives it. It SHALL draw the viewed band's floating windows over the tiles, in its stacking order, as the floating-windows capability defines. It SHALL draw the floats it opened over the floating windows, as the plugin-windows capability defines. While the configuration capability shows a configuration error and no status line is drawn, the client SHALL draw that error over the ribbon area's bottom row, after the tiles, the floating windows and the floats.
 
 Each window SHALL be drawn in its tile, as the layout capability's tile geometry gives it for the screen area in the latest layout. A tile SHALL be drawn at its strip position less the viewed band's camera position, from the ribbon area's top row. While an animation runs, the tile's position and size, the camera and the band's top row SHALL be the drawn values the animations capability defines. At rest they equal the values above. Each tile SHALL show a one-cell border around the window's grid, which is drawn from its top-left corner. The focused window's border SHALL be drawn in a style distinct from the other borders.
 
+Each floating window SHALL be drawn in its box, as the floating-windows capability places it for the screen area in the latest layout, from the ribbon area's top-left cell, whatever the camera. Its box SHALL show the same border as a tile, in the focused style when it is the focused window, and its grid SHALL be drawn, cut and blanked inside the border as a tile's is. A box that crosses the ribbon area's edge SHALL be cut there, as a tile is.
+
 A window's grid MAY differ in size from its tile's interior while the server has not yet resized the window. The border SHALL still follow the tile, at its drawn size while an animation runs. A grid larger than the interior SHALL be cut at the interior's right and bottom edges, and interior cells the grid does not cover SHALL be blank.
 
-A tile that crosses the ribbon area's left, right, top or bottom edge SHALL be cut at that edge, and the part of the tile inside the ribbon area SHALL be drawn unchanged, except where a float or a configuration error covers it. No tile SHALL be resized to fit the ribbon area. A tile wholly outside the ribbon area SHALL NOT be drawn, no tile SHALL be drawn over the status line, and cells of the ribbon area that no tile, float or configuration error covers SHALL be blank.
+A tile that crosses the ribbon area's left, right, top or bottom edge SHALL be cut at that edge, and the part of the tile inside the ribbon area SHALL be drawn unchanged, except where a floating window, a float or a configuration error covers it. No tile SHALL be resized to fit the ribbon area. A tile wholly outside the ribbon area SHALL NOT be drawn, no tile SHALL be drawn over the status line, and cells of the ribbon area that no tile, floating window, float or configuration error covers SHALL be blank.
 
-The terminal's cursor SHALL sit where the focused window's cursor is. It SHALL be hidden when the focused window hides its cursor, when that cell lies outside the ribbon area or outside the tile's interior, when no window is focused, while a float is focused, or while the animations capability hides it during motion.
+The terminal's cursor SHALL sit where the focused window's cursor is. It SHALL be hidden when the focused window hides its cursor, when that cell lies outside the ribbon area or outside the interior of the focused window's tile or box, when a floating window drawn over the focused window covers that cell, when no window is focused, while a float is focused, or while the animations capability hides it during motion.
 
 #### Scenario: Two columns side by side
 - **WHEN** the client's 80×24 terminal sets the screen area, the status line is off, and the viewed band holds two columns of width 1/2 with the second focused
@@ -211,6 +213,23 @@ The terminal's cursor SHALL sit where the focused window's cursor is. It SHALL b
 - **WHEN** the status line is off, a float covers the ribbon area's bottom row, and the client shows a configuration error
 - **THEN** the bottom row shows the error
 
+
+#### Scenario: Floating pane over two tiles
+- **WHEN** the client's 80×24 terminal sets the screen area, the status line is off, the viewed band holds two columns of width 1/2 and a floating window whose box spans columns 20 to 59 and rows 6 to 17
+- **THEN** those cells show the floating window with its border, and the tiles show around it
+
+#### Scenario: Floating pane ignores the camera
+- **WHEN** the floating window's box starts at column 20 and the camera scrolls from 0 to 40
+- **THEN** the box is still drawn from screen column 20
+
+#### Scenario: Float over a floating pane
+- **WHEN** a float the client opened and a floating window cover the same cell
+- **THEN** that cell shows the float
+
+#### Scenario: Cursor under a floating pane
+- **WHEN** a tiled window is focused and its cursor sits in a cell that a floating window covers
+- **THEN** the cursor is hidden
+
 ### Requirement: Key bindings
 The client SHALL take its key tables and its prefix key from the configuration, as the configuration capability defines them. The client SHALL keep one active key table, which SHALL be `root` outside a key sequence. While `root` is active, a key bound in `root` SHALL run its binding, and the prefix key SHALL make `prefix` the active table. The client SHALL send neither to the server. Any other key while `root` is active SHALL go to the focused plugin window when there is one, as the plugin-windows capability defines, and SHALL otherwise be sent to the focused window. While another table is active, the next key SHALL end the sequence: a key bound in that table SHALL run its binding, and any other key SHALL be discarded together with the keys that began the sequence. When the sequence ends, the active table SHALL become the table its binding entered with `gband.keymap.enter`, or `root` when it entered none. A binding run while `root` is active MAY also enter a table, which then becomes active. Entering a table with no binding SHALL be an error raised by `gband.keymap.enter`. When `prefix` holds no binding, the prefix key SHALL be handled like any other key. A reload SHALL make `root` the active table.
 
@@ -237,11 +256,21 @@ With no configuration file, the bindings SHALL be those the default configuratio
 | `_` | `prefix _` | shrink the height of the focused window | session |
 | `+` | `prefix +` | grow the height of the focused window | session |
 | `R` | `prefix R` | reset the height of the focused window | session |
+| `v` | `prefix v` | float or tile the focused window | session |
+| `V` | `prefix V` | switch focus between floating and tiled windows | view |
+| Ctrl+H | `prefix ctrl+h` | move the focused window's column, or its floating box, to the left | session |
+| Ctrl+L | `prefix ctrl+l` | move the focused window's column, or its floating box, to the right | session |
+| Ctrl+J | `prefix ctrl+j` | move the focused window, or its floating box, down | session |
+| Ctrl+K | `prefix ctrl+k` | move the focused window, or its floating box, up | session |
+| Ctrl+Left | `prefix ctrl+left` | move the focused window's column, or its floating box, to the left | session |
+| Ctrl+Right | `prefix ctrl+right` | move the focused window's column, or its floating box, to the right | session |
+| Ctrl+Down | `prefix ctrl+down` | move the focused window, or its floating box, down | session |
+| Ctrl+Up | `prefix ctrl+up` | move the focused window, or its floating box, up | session |
 | `D` | `prefix D` | detach | client |
 | Ctrl+Space | `prefix prefix` | send the prefix key to the focused window | client |
 | any other key | — | discard both keys | — |
 
-A binding to an action SHALL dispatch it. A binding to a Lua function SHALL run the function, as the configuration capability defines. A view action SHALL change this client's view as the layout-view capability defines, and SHALL send nothing to the server. A session action SHALL be sent to the server as an action naming the focused window. Open window SHALL name the viewed band and the focused window, or no window when none is focused. Any other session action, and sending the prefix key, SHALL do nothing when no window is focused. A character key SHALL match a binding by its character, Ctrl and Alt, so a `D` matches whether or not the terminal reports Shift with it.
+A binding to an action SHALL dispatch it. A binding to a Lua function SHALL run the function, as the configuration capability defines. A view action SHALL change this client's view as the layout-view capability defines, and SHALL send nothing to the server. A session action SHALL be sent to the server as an action naming the focused window, resolved as the actions capability defines. Open window SHALL name the viewed band and the tiled window this client focused most recently there, or no window when there is none. Any other session action, and sending the prefix key, SHALL do nothing when no window is focused. A character key SHALL match a binding by its character, Ctrl and Alt, so a `D` matches whether or not the terminal reports Shift with it.
 
 #### Scenario: Detach
 - **WHEN** the user presses Ctrl+Space then Shift+D
@@ -334,6 +363,29 @@ A binding to an action SHALL dispatch it. A binding to a Lua function SHALL run 
 #### Scenario: Root binding before the window
 - **WHEN** `user/init.lua` binds `alt+h` in `root` to `gband.action.focus_column_left`, a float binding `alt+h` in its `keys` is focused, and the user presses Alt+H
 - **THEN** the root binding runs and the float's function does not
+
+
+#### Scenario: Float the focused pane
+- **WHEN** the client's 80×24 terminal sets the screen area, the status line is off, the only window sits in a column of width 1/2, and the user presses Ctrl+Space then `v`
+- **THEN** the window is drawn in a box spanning columns 20 to 59 and rows 2 to 21, and stays focused
+
+#### Scenario: Switch to the tiled layer and back
+- **WHEN** two windows are open, the second floats and is focused, and the user presses Ctrl+Space then `V`, then types `echo tiled` and Enter
+- **THEN** `tiled` appears in the first window only
+- **AND** pressing Ctrl+Space then `V` again focuses the floating window
+
+#### Scenario: Move a column with Ctrl+H and Ctrl+Right
+- **WHEN** the viewed band holds columns A and B with B focused, and the user presses Ctrl+Space then Ctrl+H
+- **THEN** the band holds B and A, in that order, and B stays focused, and neither window receives a key
+- **AND** pressing Ctrl+Space then Ctrl+Right restores A and B
+
+#### Scenario: Move a pane with Ctrl+J
+- **WHEN** a column holds P1 above P2 with P1 focused, and the user presses Ctrl+Space then Ctrl+J
+- **THEN** the column holds P2 above P1, and P1 stays focused
+
+#### Scenario: Move a floating pane
+- **WHEN** the client's 80×24 terminal sets the screen area, a floating window is focused with its box starting at column 20, and the user presses Ctrl+Space then Ctrl+L
+- **THEN** the box is drawn from column 28
 
 ### Requirement: Report shown windows
 The client SHALL send the server a shown message naming its shown windows, as the layout-view capability defines them, once it has received the first layout after attaching. It SHALL send a new shown message whenever its shown windows change, whether a layout, a focus message, a view action or a change of its terminal's size changed them. It SHALL NOT send a shown message that names the same windows as the last one it sent.
