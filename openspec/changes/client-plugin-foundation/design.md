@@ -4,7 +4,7 @@
 
 Both processes call `load`. `src/main.rs` gives the server `config.options.layout` through a `tokio::sync::watch` channel, and the client gets the whole `Config` plus a reload channel. `gband_lua::watch` watches `user/init.lua` only, with a fallback to the configuration directory while `user/` is missing.
 
-The client's `Controls` owns the Lua state, a `Keymap` (direct and prefixed bindings plus the prefix key) and a `Leader` (one `after_prefix` flag). `Display` owns the view, the layout and the grids, and already knows the focused pane, the viewed workspace (`View::workspace`), the panes of the last layout, and the terminal size. The server's `SessionEvent` bus never reaches the client. The only user-facing error surface is the bottom-row banner.
+The client's `Controls` owns the Lua state, a `Keymap` (direct and prefixed bindings plus the prefix key) and a `Leader` (one `after_prefix` flag). `Display` owns the view, the layout and the grids, and already knows the focused pane, the viewed band (`View::band`), the panes of the last layout, and the terminal size. The server's `SessionEvent` bus never reaches the client. The only user-facing error surface is the bottom-row banner.
 
 This change depends on `rename-workspaces-to-bands`. It is written against the band vocabulary that change introduces: `BandId`, `View::band` and `focus_band_down`/`focus_band_up`.
 

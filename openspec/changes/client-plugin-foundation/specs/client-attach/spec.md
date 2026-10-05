@@ -67,7 +67,7 @@ A binding to an action SHALL dispatch it. A binding to a Lua function SHALL run 
 - **WHEN** two panes are open with the second focused and the user presses Ctrl+Space then `q`
 - **THEN** the second tile disappears and the first pane is focused
 
-#### Scenario: Another workspace
+#### Scenario: Another band
 - **WHEN** the user presses Ctrl+Space then `u`, then Ctrl+Space then Enter, then Ctrl+Space then `i`
 - **THEN** the client shows the first band with its original pane focused
 - **AND** the second band holds the new pane
