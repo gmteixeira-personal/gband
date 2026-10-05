@@ -162,27 +162,43 @@ fn server_refuses_a_runtime_directory_open_to_others() {
 #[test]
 fn help_lists_subcommands() {
     let state = state_home("help");
-    let output = gband(&state, None, &["--help"]);
-    assert_eq!(output.status.code(), Some(0));
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    let commands: Vec<&str> = stdout
-        .lines()
-        .skip_while(|line| *line != "Commands:")
-        .skip(1)
-        .take_while(|line| !line.is_empty())
-        .filter_map(|line| line.split_whitespace().next())
-        .collect();
-    assert_eq!(
-        commands,
-        [
-            "server",
-            "attach",
-            "list-sessions",
-            "kill-session",
-            "kill-server"
-        ]
-    );
-    assert!(stdout.contains("-s, --session <NAME>"), "{stdout}");
+    let mut listings = Vec::new();
+    for flag in ["-h", "--help"] {
+        let output = gband(&state, None, &[flag]);
+        assert_eq!(output.status.code(), Some(0), "{flag}");
+        let stdout = String::from_utf8(output.stdout).unwrap();
+        let commands: Vec<String> = stdout
+            .lines()
+            .skip_while(|line| *line != "Commands:")
+            .skip(1)
+            .take_while(|line| !line.is_empty())
+            .map(str::to_owned)
+            .collect();
+        let names: Vec<&str> = commands
+            .iter()
+            .filter_map(|line| line.split_whitespace().next())
+            .collect();
+        assert_eq!(
+            names,
+            [
+                "server",
+                "attach",
+                "list-sessions",
+                "kill-session",
+                "kill-server"
+            ],
+            "{flag}"
+        );
+        let attach = commands
+            .iter()
+            .find(|line| line.trim_start().starts_with("attach "))
+            .unwrap();
+        assert!(attach.contains("when no command is given"), "{attach}");
+        assert!(stdout.contains("-s, --session <NAME>"), "{flag}: {stdout}");
+        listings.push(commands);
+    }
+    assert_eq!(listings[0], listings[1]);
+    assert!(!state.join("gband").exists());
 }
 
 #[test]
@@ -308,14 +324,34 @@ fn version_names_the_package_version() {
 }
 
 #[test]
-fn no_subcommand_prints_usage() {
+fn no_subcommand_runs_attach() {
     let state = state_home("no_subcommand");
     let output = gband(&state, None, &[]);
+    let stderr = assert_one_line_failure(&output);
+    assert!(stderr.contains("needs a terminal"), "{stderr}");
+    assert!(log_text(&state, "client").contains("client started"));
+    assert!(!runtime_home(&state).exists());
+}
+
+#[test]
+fn global_options_reach_the_default_attach() {
+    let state = state_home("no_subcommand_options");
+    let output = gband(&state, None, &["-s", "a/b"]);
     assert_eq!(output.status.code(), Some(2));
     let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(stderr.contains("Usage"));
-    assert!(stderr.contains("server"));
-    assert!(stderr.contains("attach"));
+    assert!(stderr.contains("'a/b'"), "{stderr}");
+    assert!(stderr.contains("session name"), "{stderr}");
+    assert!(stderr.contains("ASCII letters, digits"), "{stderr}");
+    assert!(!state.join("gband").exists());
+}
+
+#[test]
+fn unknown_option_without_a_subcommand_is_rejected_without_a_log() {
+    let state = state_home("unknown_option");
+    let output = gband(&state, None, &["--frobnicate"]);
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("--frobnicate"), "{stderr}");
     assert!(!state.join("gband").exists());
 }
 
