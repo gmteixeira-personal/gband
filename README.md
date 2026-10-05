@@ -48,7 +48,7 @@ cp ~/.config/gband/defaults/init.lua ~/.config/gband/user/init.lua
 
 Without `user/init.lua`, the defaults apply.
 Saving `user/init.lua`, or any other `.lua` file under `user/`, reloads the configuration while gband runs, and deleting `user/init.lua` returns to the defaults.
-An error in the file shows on the bottom row with its line number, and gband keeps the last configuration that loaded.
+An error in the file shows in the status line with its line number, and gband keeps the last configuration that loaded.
 
 ```lua
 -- Set options one at a time through gband.opt.
@@ -90,6 +90,9 @@ The options and their defaults:
 | `default_column_width` | the width of a new column, as a fraction of the screen | `1/2` |
 | `width_presets` | the widths that cycling the column width steps through | `{ 1/3, 1/2, 2/3 }` |
 | `center_focused_column` | `"never"`, `"always"` or `"on-overflow"` | `"never"` |
+| `statusline_position` | `"bottom"`, `"top"` or `"off"` | `"bottom"` |
+| `statusline_height` | the rows the status line takes, from 1 to 8 | `1` |
+| `statusline_separator` | the text between two status line segments | `" │ "` |
 
 To keep the old Ctrl+A prefix, or if your desktop takes Ctrl+Space for itself, put `gband.opt.prefix = "ctrl+a"` in `user/init.lua`.
 
@@ -127,11 +130,36 @@ The actions in `gband.action`:
 
 `gband.action.list()` lists every action with its description.
 
+### Status line
+
+The status line takes the bottom row of the terminal, and the panes get the rows above it.
+By default it shows the viewed band on the left, such as `band 1`, the active key table after the prefix key, such as `prefix`, and the focused column on the right, such as `2/3`.
+The latest configuration or plugin error shows first, in red.
+
+`statusline_position = "top"` moves it to the top row, and `"off"` removes it, so the panes get the whole terminal.
+`statusline_height` gives it more rows.
+Both apply on the next reload, and the panes are resized to match.
+
+Each segment is a plugin bundled with gband, set up by the default configuration.
+A `user/init.lua` replaces the defaults, so it sets the segments up itself with the same calls; a copy of `defaults/init.lua` already holds them:
+
+```lua
+gband.plugin("gband.statusline.band")
+gband.plugin("gband.statusline.mode")
+gband.plugin("gband.statusline.position")
+```
+
+Without these calls the status line is drawn empty.
+Each takes the options `align`, `priority`, `order` and `hl`, and `gband.plugin("gband.statusline.clock")` adds a clock.
+`gband.colorscheme(name)` loads a colorscheme, and `gband.hl.set` styles any part of the line.
+[docs/plugins.md](docs/plugins.md) describes the segments, highlight groups, colorschemes and writing your own segment.
+
 ### Plugins
 
 gband loads plugins from `$XDG_DATA_HOME/gband/plugins/`, or `~/.local/share/gband/plugins/`.
-A plugin can add actions, commands, options, key bindings and event handlers.
-[docs/plugins.md](docs/plugins.md) explains how to write one, and [examples/plugins/hello](examples/plugins/hello) is a sample to start from.
+A plugin can add actions, commands, options, key bindings, event handlers, status line segments and colorschemes.
+[docs/plugins.md](docs/plugins.md) explains how to write one.
+[examples/plugins/hello](examples/plugins/hello) is a sample to start from, and [examples/plugins/pane](examples/plugins/pane) adds a status line segment and a colorscheme.
 
 ## Building
 

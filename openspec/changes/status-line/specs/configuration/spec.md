@@ -144,9 +144,9 @@ A configuration error SHALL be reported as the file's path, a colon, the line, a
 - **WHEN** `XDG_DATA_HOME` is `/tmp/data`, line 3 of `/tmp/data/gband/plugins/hello/plugin/hello.lua` raises `boom`, and a client attaches
 - **THEN** the status line's error item shows `hello: /tmp/data/gband/plugins/hello/plugin/hello.lua:3: boom`
 
-#### Scenario: Banner without a status line
-- **WHEN** `statusline_position` is `"off"`, line 3 of a plugin's `plugin/hello.lua` raises `boom`, and a client attaches
-- **THEN** the client's bottom row shows the error over the ribbon
+#### Scenario: Plugin error on the banner
+- **WHEN** `statusline_position` is `"off"`, `XDG_DATA_HOME` is `/tmp/data`, line 3 of `/tmp/data/gband/plugins/hello/plugin/hello.lua` raises `boom`, and a client attaches
+- **THEN** the client's bottom row shows `hello: /tmp/data/gband/plugins/hello/plugin/hello.lua:3: boom` over the ribbon
 
 #### Scenario: Banner cleared by a good load
 - **WHEN** the client shows a configuration error and the user fixes `user/init.lua`

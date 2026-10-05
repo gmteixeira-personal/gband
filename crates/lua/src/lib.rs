@@ -1,5 +1,6 @@
 mod actions;
 mod api;
+mod bundled;
 mod callbacks;
 mod commands;
 mod directory;
@@ -11,6 +12,7 @@ pub mod keys;
 mod options;
 mod owner;
 mod runtime;
+pub mod ui;
 mod watch;
 
 use std::collections::BTreeMap;
@@ -28,8 +30,9 @@ pub use crate::directory::{
 };
 pub use crate::error::ConfigError;
 pub use crate::events::Event;
-pub use crate::options::{OptValue, Options};
+pub use crate::options::{OptValue, Options, StatusLineOptions, StatusLinePosition};
 pub use crate::runtime::{API_VERSION, Outcome, Runtime};
+pub use crate::ui::{BandState, Color, ColumnState, Span, StatusLine, Style, ViewState};
 pub use crate::watch::{Watcher, watch};
 
 pub const DEFAULTS: &str = include_str!("defaults.lua");

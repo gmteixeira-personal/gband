@@ -6,6 +6,7 @@ use mlua::{Lua, Table, Value};
 use crate::api;
 use crate::callbacks::{self, CallbackId};
 use crate::error::ConfigError;
+use crate::ui;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Event {
@@ -28,6 +29,7 @@ pub enum Event {
         pane: PaneId,
         band: BandId,
     },
+    LayoutChanged,
     TerminalResized {
         cols: u16,
         rows: u16,
@@ -37,19 +39,29 @@ pub enum Event {
         table: String,
         previous: String,
     },
+    HighlightChanged {
+        group: String,
+    },
+    ColorschemeChanged {
+        name: String,
+        previous: String,
+    },
 }
 
 const USER: &str = "User";
 
-const BUILTIN: [&str; 8] = [
+pub(crate) const NAMES: [&str; 11] = [
     "Attached",
     "FocusChanged",
     "BandChanged",
     "PaneOpened",
     "PaneClosed",
+    "LayoutChanged",
     "TerminalResized",
     "ConfigReloaded",
     "KeyTableChanged",
+    "HighlightChanged",
+    "ColorschemeChanged",
 ];
 
 impl Event {
@@ -60,9 +72,12 @@ impl Event {
             Event::BandChanged { .. } => "BandChanged",
             Event::PaneOpened { .. } => "PaneOpened",
             Event::PaneClosed { .. } => "PaneClosed",
+            Event::LayoutChanged => "LayoutChanged",
             Event::TerminalResized { .. } => "TerminalResized",
             Event::ConfigReloaded => "ConfigReloaded",
             Event::KeyTableChanged { .. } => "KeyTableChanged",
+            Event::HighlightChanged { .. } => "HighlightChanged",
+            Event::ColorschemeChanged { .. } => "ColorschemeChanged",
         }
     }
 
@@ -86,9 +101,14 @@ impl Event {
                 payload.set("cols", *cols)?;
                 payload.set("rows", *rows)?;
             }
-            Event::ConfigReloaded => {}
+            Event::LayoutChanged | Event::ConfigReloaded => {}
             Event::KeyTableChanged { table, previous } => {
                 payload.set("table", table.as_str())?;
+                payload.set("previous", previous.as_str())?;
+            }
+            Event::HighlightChanged { group } => payload.set("group", group.as_str())?,
+            Event::ColorschemeChanged { name, previous } => {
+                payload.set("name", name.as_str())?;
                 payload.set("previous", previous.as_str())?;
             }
         }
@@ -135,7 +155,7 @@ fn on(lua: &Lua, (event, function, opts): (Value, Value, Value)) -> mlua::Result
             ));
         }
     };
-    if event != USER && !BUILTIN.contains(&event.as_str()) {
+    if event != USER && !NAMES.contains(&event.as_str()) {
         return Err(ConfigError::raise(lua, format!("unknown event `{event}`")));
     }
     let Value::Function(function) = function else {
@@ -262,11 +282,23 @@ fn emit(lua: &Lua, (name, data): (Value, Value)) -> mlua::Result<()> {
         payload.set("name", name.as_str())?;
         payload.set("data", data.clone())?;
         Ok(payload)
-    })
+    })?;
+    ui::after_event(lua, Some(USER))
 }
 
 pub(crate) fn emit_event(lua: &Lua, event: &Event) -> mlua::Result<()> {
     deliver(lua, event.name(), None, |lua| event.payload(lua))
+}
+
+pub(crate) fn deliver_table(lua: &Lua, event: &str, payload: &Table) -> mlua::Result<()> {
+    deliver(lua, event, None, |lua| {
+        let copy = lua.create_table()?;
+        for pair in payload.pairs::<Value, Value>() {
+            let (key, value) = pair?;
+            copy.set(key, value)?;
+        }
+        Ok(copy)
+    })
 }
 
 fn deliver(

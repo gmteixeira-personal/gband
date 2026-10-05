@@ -504,3 +504,39 @@ gband.keymap.set('prefix', 'g', gband.action['hello.greet'], { desc = 'Greet' })
     }));
     assert_eq!(global::<Vec<String>>(&config, "log"), ["focused pane 2"]);
 }
+
+#[test]
+fn bundled_module() {
+    let scratch = Scratch::new("bundled");
+    scratch.write("name = require('gband.statusline.band').name");
+    let config = scratch.loaded();
+    assert_eq!(global::<String>(&config, "name"), "band");
+}
+
+#[test]
+fn bundled_module_shadowed() {
+    let scratch = Scratch::new("bundled-shadowed");
+    scratch.user_file("lua/gband/statusline/band.lua", "return { name = 'mine' }");
+    scratch.write("name = require('gband.statusline.band').name");
+    let config = scratch.loaded();
+    assert_eq!(global::<String>(&config, "name"), "mine");
+}
+
+#[test]
+fn api_chunks_are_not_modules() {
+    let scratch = Scratch::new("bundled-api");
+    scratch.write("found = pcall(require, 'gband.hl')");
+    let config = scratch.loaded();
+    assert!(!global::<bool>(&config, "found"));
+}
+
+#[test]
+fn errors_in_a_bundled_module_name_its_path() {
+    let scratch = Scratch::new("bundled-error");
+    scratch.write("gband.plugin('gband.statusline.band', { align = 'middle' })");
+    let config = scratch.loaded();
+    let error = plugin_error(&config.errors, "band");
+    let (path, _) = error.location.clone().unwrap();
+    assert_eq!(path, PathBuf::from("gband/statusline/band.lua"));
+    assert!(error.message.contains("align"), "{error}");
+}

@@ -3,6 +3,7 @@ use std::ffi::OsString;
 use std::fs;
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 
 use mlua::{Function, IntoLuaMulti, Lua, MultiValue, Table, Value};
 
@@ -12,7 +13,8 @@ use crate::error::{ConfigError, caller};
 use crate::events::{self, Event};
 use crate::guard::{self, Failure};
 use crate::owner::{self, Owners};
-use crate::{Config, Locations, actions, commands, keymap, options, user_dir};
+use crate::ui::{self, StatusLine, ViewState};
+use crate::{Config, Locations, actions, bundled, commands, keymap, options, user_dir};
 
 pub const API_VERSION: i64 = 1;
 const SIDE: &str = "client";
@@ -42,6 +44,7 @@ pub(crate) fn install(lua: &Lua, locations: Option<&Locations>, budget: u64) -> 
     events::install(lua, &gband)?;
     keymap::install(lua, &gband)?;
     options::install(lua, &gband)?;
+    let host = ui::install(lua, &gband)?;
     gband.set("side", SIDE)?;
     gband.set("api_version", API_VERSION)?;
     gband.set(
@@ -53,12 +56,21 @@ pub(crate) fn install(lua: &Lua, locations: Option<&Locations>, budget: u64) -> 
         )?,
     )?;
     gband.set("plugin", lua.create_function(plugin)?)?;
-    lua.globals().set("gband", gband)?;
+    lua.globals().set("gband", gband.clone())?;
     lua.globals().set("print", lua.create_function(print)?)?;
     let searchers: Table = lua.globals().get::<Table>("package")?.get("searchers")?;
     let insert: Function = lua.globals().get::<Table>("table")?.get("insert")?;
-    insert.call::<()>((searchers, 2, lua.create_function(search)?))
+    insert.call::<()>((searchers, 2, lua.create_function(search)?))?;
+    bundled::install_searcher(lua, 3)?;
+    for (path, source) in bundled::API {
+        bundled::chunk(lua, path, source)?.call::<()>(host.clone())?;
+    }
+    gband
+        .get::<Function>("colorscheme")?
+        .call::<()>(DEFAULT_COLORSCHEME)
 }
+
+const DEFAULT_COLORSCHEME: &str = "default";
 
 fn runtimepath(locations: Option<&Locations>) -> Vec<PathBuf> {
     let Some(locations) = locations else {
@@ -93,7 +105,7 @@ fn current_runtimepath(lua: &Lua) -> mlua::Result<Vec<PathBuf>> {
         .collect())
 }
 
-fn load_file(lua: &Lua, path: &Path) -> mlua::Result<Function> {
+pub(crate) fn load_file(lua: &Lua, path: &Path) -> mlua::Result<Function> {
     let source = fs::read(path).map_err(|error| {
         mlua::Error::runtime(format!("cannot read {}: {error}", path.display()))
     })?;
@@ -331,7 +343,31 @@ impl Runtime {
     }
 
     pub fn emit(&self, event: &Event) -> Outcome {
-        self.within_callback(|lua| events::emit_event(lua, event).map(|()| false))
+        self.within_callback(|lua| {
+            events::emit_event(lua, event)?;
+            ui::after_event(lua, Some(event.name()))?;
+            Ok(false)
+        })
+    }
+
+    pub fn set_state(&self, state: ViewState) -> Outcome {
+        self.within_callback(|lua| ui::set_state(lua, state).map(|()| false))
+    }
+
+    pub fn refresh_statusline(&self) -> Outcome {
+        self.within_callback(|lua| ui::after_event(lua, None).map(|()| false))
+    }
+
+    pub fn take_line(&self) -> Option<StatusLine> {
+        ui::take_line(&self.lua)
+    }
+
+    pub fn next_timer(&self) -> Option<Instant> {
+        ui::next_timer(&self.lua)
+    }
+
+    pub fn fire_timers(&self, now: Instant) -> Outcome {
+        self.within_callback(|lua| ui::fire_timers(lua, now).map(|()| false))
     }
 
     pub fn active_table(&self) -> String {

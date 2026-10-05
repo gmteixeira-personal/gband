@@ -1,0 +1,6 @@
+gband.hl.set("StatusLine", { fg = "#c0caf5", bg = "#24283b" })
+gband.hl.set("StatusLineSegment", {})
+gband.hl.set("StatusLineSeparator", { fg = "#565f89" })
+gband.hl.set("StatusLineMuted", { fg = "#9aa5ce" })
+gband.hl.set("StatusLineAccent", { fg = "#7aa2f7", bold = true })
+gband.hl.set("StatusLineError", { fg = "#f7768e", bold = true })

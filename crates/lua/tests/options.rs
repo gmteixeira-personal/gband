@@ -3,7 +3,7 @@ mod common;
 use common::*;
 use gband_core::layout::Proportion;
 use gband_core::view::CenterFocusedColumn;
-use gband_lua::{Binding, ConfigError};
+use gband_lua::{Binding, ConfigError, StatusLineOptions, StatusLinePosition};
 
 fn error_naming<'a>(errors: &'a [ConfigError], name: &str) -> &'a ConfigError {
     errors
@@ -213,6 +213,9 @@ fn list_holds_built_in_and_declared_options() {
             "default_column_width",
             "greeting",
             "prefix",
+            "statusline_height",
+            "statusline_position",
+            "statusline_separator",
             "width_presets"
         ]
     );
@@ -270,4 +273,57 @@ fn plugin_option_errors_name_the_plugin() {
     assert_eq!(error.plugin.as_deref(), Some("hello"));
     assert_error_at(error, &file, 2, "default_column_width");
     assert!(global::<bool>(&config, "after"));
+}
+
+#[test]
+fn status_line_option_defaults() {
+    let scratch = Scratch::new("statusline-defaults");
+    scratch.write(
+        "position = gband.opt.statusline_position\nheight = gband.opt.statusline_height\nseparator = gband.opt.statusline_separator\nkind = math.type(height)",
+    );
+    let config = scratch.loaded();
+    assert_eq!(global::<String>(&config, "position"), "bottom");
+    assert_eq!(global::<i64>(&config, "height"), 1);
+    assert_eq!(global::<String>(&config, "kind"), "integer");
+    assert_eq!(global::<String>(&config, "separator"), " │ ");
+    assert_eq!(config.options.statusline, StatusLineOptions::default());
+}
+
+#[test]
+fn status_line_options_are_set() {
+    let scratch = Scratch::new("statusline-set");
+    scratch.write(
+        "gband.opt.statusline_position = 'top'\ngband.set { statusline_height = 2, statusline_separator = ' | ' }",
+    );
+    let config = scratch.loaded();
+    assert_eq!(
+        config.options.statusline,
+        StatusLineOptions {
+            position: StatusLinePosition::Top,
+            height: 2,
+            separator: " | ".to_owned(),
+        }
+    );
+}
+
+#[test]
+fn invalid_status_line_height() {
+    let scratch = Scratch::new("statusline-height");
+    let path = scratch.write("\ngband.opt.statusline_height = 0");
+    let config = scratch.loaded();
+    assert_eq!(config.options.statusline.height, 1);
+    let error = error_naming(&config.errors, "statusline_height");
+    assert_error_at(error, &path, 2, "statusline_height");
+}
+
+#[test]
+fn invalid_status_line_position() {
+    let scratch = Scratch::new("statusline-position");
+    scratch.write("gband.opt.statusline_position = 'top'\ngband.opt.statusline_position = 'left'");
+    let config = scratch.loaded();
+    assert_eq!(
+        config.options.statusline.position,
+        StatusLinePosition::Bottom
+    );
+    error_naming(&config.errors, "statusline_position");
 }

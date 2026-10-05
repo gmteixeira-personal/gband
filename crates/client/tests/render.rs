@@ -10,6 +10,7 @@ use gband_emulator::{Emulator, Grid};
 use insta::assert_snapshot;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
+use ratatui::layout::Rect;
 
 struct Fixture {
     layout: Layout,
@@ -96,13 +97,16 @@ impl Fixture {
 
     fn render_drawn(&self, terminal: Size, drawn: &Drawn) -> String {
         let mut terminal = Terminal::new(TestBackend::new(terminal.cols, terminal.rows)).unwrap();
+        let terminal_area = terminal.size().unwrap();
         let ribbon = Ribbon {
             layout: &self.layout,
             area: self.area,
             view: &self.view,
             grids: &self.grids,
             drawn,
+            region: Rect::new(0, 0, terminal_area.width, terminal_area.height),
             banner: self.banner.as_deref(),
+            status: None,
         };
         terminal.draw(|frame| draw_frame(frame, &ribbon)).unwrap();
         let backend = terminal.backend();
