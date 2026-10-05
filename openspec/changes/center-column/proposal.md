@@ -12,7 +12,7 @@ The camera only moves on its own, by the `center_focused_column` policy. Under t
 - **Key hints**: the short label `center`.
 
 Out of scope:
-- niri's `center-visible-columns` and `center-window`. Floating panes are a separate change.
+- niri's `center-visible-columns` and `center-window`. Floating windows are a separate change.
 - Centring a column other than the focused one through a Lua target. View actions take no target.
 - Any change to the `center_focused_column` policies.
 
@@ -45,7 +45,7 @@ None.
 - gmteixeira
 
 ### Depends On
-- none
+- rename-panes-to-windows
 
 ### Expected Files
 - crates/core/src/view.rs

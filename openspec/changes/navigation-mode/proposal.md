@@ -7,14 +7,14 @@ Every layout key today costs two presses: Ctrl+Space, then the key, after which 
 - **Modes**: a key table can be declared a mode with `gband.keymap.mode(table, opts)`, while the configuration loads. `opts.label` is an optional display name. While a mode is active, a bound key runs its binding and the mode stays active. An unbound key is discarded and the mode stays active. The mode ends only when a binding enters another table with `gband.keymap.enter`. A table that is not a mode keeps today's one-key behaviour.
 - **Leaving to root**: `gband.keymap.enter("root")` is always allowed, even when `root` holds no binding. It is how a Lua binding returns to interactive mode.
 - **Labels**: `gband.keymap.label(table)` returns a mode's label, or the table's name when it has none. The bundled mode segment shows the label of the active table. The hints segment labels the prefix key's root hint with the `prefix` table's label.
-- **Running a binding from Lua**: `gband.keymap.run(table, key)` runs a key's binding as if the key were pressed in that table, function bindings included, and sends nothing to any pane.
+- **Running a binding from Lua**: `gband.keymap.run(table, key)` runs a key's binding as if the key were pressed in that table, function bindings included, and sends nothing to any window.
 - **Key list**:
   - Enter runs every binding through `gband.keymap.run`, so function bindings run too and are no longer muted. Only the list's own `?` line stays muted.
   - Opening the list enters `root`, so its keys reach the list and not navigation mode.
   - Its title uses the `prefix` table's label: `navigation keys`.
 - **Default configuration**: the `prefix` table becomes a mode labelled `navigation`. Ctrl+Space enters it and the status line shows `navigation`. Every existing `prefix` binding stays in it and keeps the mode active, so `h`, `j`, `k`, `l`, `-`, `=`, `_`, `+` and the rest repeat. The new and changed keys, each a plain Lua function in the configuration where it leaves the mode:
   - Escape and Enter call `gband.keymap.enter("root")`, returning to interactive mode.
-  - `n` dispatches `open_pane`, then enters `root`.
+  - `n` dispatches `open_window`, then enters `root`.
   - Ctrl+Space dispatches `send_prefix`, then enters `root`.
   - The arrow keys focus left, right, down and up beside `h`, `l`, `j` and `k`.
   - `i` keeps viewing the band above and does not leave the mode.
@@ -59,6 +59,7 @@ None.
 ### Depends On
 - floating-windows
 - key-list
+- rename-panes-to-windows
 
 ### Expected Files
 - crates/lua/src/keymap.rs
@@ -75,7 +76,7 @@ None.
 - tests/attach.rs
 - tests/config.rs
 - tests/statusline.rs
-- tests/windows.rs
+- tests/plugin_windows.rs
 - tests/navigation.rs
 - README.md
 - docs/plugins.md

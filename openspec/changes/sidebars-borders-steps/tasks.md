@@ -1,6 +1,10 @@
+## 0. Specs
+
+- [ ] 0.1 For each MODIFIED requirement in this change's delta specs, compare the block with the current `openspec/specs/<capability>/spec.md` block of the same requirement, as rename-panes-to-windows and the changes archived before this one left it, and fold in every requirement text and scenario this change did not write. Verify that the only differences left are this change's own and that `openspec validate sidebars-borders-steps --strict` passes
+
 ## 1. Resize steps
 
-- [ ] 1.1 Give `Action::StepWidth`, `Action::StepHeight` and their `SessionAction` forms a `by: Proportion` in `crates/core/src/action.rs`. Make `Column::step_width` add or subtract `by` and `Column::step_height` move by `round_half_up(rows × by).max(1)` rows in `crates/core/src/layout.rs`. Pass `by` to the floating-pane width and height sizing. Verify with `crates/core/tests/layout.rs` cases for "Grow by another step", "Height step from the request", "Grow a floating width by another step" and the existing 1/10 cases.
+- [ ] 1.1 Give `Action::StepWidth`, `Action::StepHeight` and their `SessionAction` forms a `by: Proportion` in `crates/core/src/action.rs`. Make `Column::step_width` add or subtract `by` and `Column::step_height` move by `round_half_up(rows × by).max(1)` rows in `crates/core/src/layout.rs`. Pass `by` to the floating-window width and height sizing. Verify with `crates/core/tests/layout.rs` cases for "Grow by another step", "Height step from the request", "Grow a floating width by another step" and the existing 1/10 cases.
 - [ ] 1.2 Carry the step in the grow and shrink messages and raise `PROTOCOL_VERSION` in `crates/protocol/src/message.rs` to one above dev's. Verify the "Grow height round trip" and the version-mismatch cases in `crates/protocol/tests/messages.rs`.
 - [ ] 1.3 Apply the received step in `crates/server/src/session.rs`. Verify with a `crates/server/tests/resize.rs` case where a client grows a column of width 1/2 with the step 1/4 and every client receives width 3/4.
 - [ ] 1.4 Add the client options `width_step` and `height_step` to `crates/lua/src/options.rs`, with their ranges and fraction reading. Verify "Invalid step" in `crates/lua/tests/options.rs`.
@@ -9,9 +13,9 @@
 ## 2. Borders
 
 - [ ] 2.1 Add `tile_border_sides`, `tile_border_chars`, `floating_border_sides` and `floating_border_chars` to `crates/lua/src/options.rs`. Sides are held in order with duplicates removed. Characters are the four named sets or eight one-cell strings. Verify "Sides are held in order", "Custom characters" read back, and "Wide character rejected" in `crates/lua/tests/options.rs`.
-- [ ] 2.2 Add `draw_border` to `crates/client/src/render.rs`, following the borders spec. Draw tiles with the tile border and floating panes with the floating border, always insetting the interior by one cell. Drop `Block::bordered()` for panes. Verify with snapshots in `crates/client/tests/render.rs` for "Only the left side", "Top and left sides", "No sides", "Tiles without side borders" and "Floating panes differ from tiles".
-- [ ] 2.3 Accept a border table in `gband.win.open` and `set_config` in `crates/lua/src/runtime/gband/win.lua`, carried as `Option<Border>` in `FloatFrame` in `crates/lua/src/windows.rs`. Draw it with `draw_border`. Verify "Invalid border table" in `crates/lua/tests/windows.rs`, and "Float with a rounded top only" and "Title over an undrawn top side" as snapshots in `crates/client/tests/render.rs`.
-- [ ] 2.4 Verify "Two clients with different borders" in `tests/windows.rs`: two attached clients with the same terminal size and different `tile_border_sides` show the same grid, and only one draws border characters.
+- [ ] 2.2 Add `draw_border` to `crates/client/src/render.rs`, following the borders spec. Draw tiles with the tile border and floating windows with the floating border, always insetting the interior by one cell. Drop `Block::bordered()` for windows. Verify with snapshots in `crates/client/tests/render.rs` for "Only the left side", "Top and left sides", "No sides", "Tiles without side borders" and "Floating windows differ from tiles".
+- [ ] 2.3 Accept a border table in `gband.win.open` and `set_config` in `crates/lua/src/runtime/gband/win.lua`, carried as `Option<Border>` in `FloatFrame` in `crates/lua/src/plugin_windows.rs`. Draw it with `draw_border`. Verify "Invalid border table" in `crates/lua/tests/plugin_windows.rs`, and "Floating plugin window with a rounded top only" and "Title over an undrawn top side" as snapshots in `crates/client/tests/render.rs`.
+- [ ] 2.4 Verify "Two clients with different borders" in `tests/plugin_windows.rs`: two attached clients with the same terminal size and different `tile_border_sides` show the same grid, and only one draws border characters.
 
 ## 3. Side bars
 
@@ -41,7 +45,7 @@
 - [ ] 5.1 Keep the ordered error list beside the latest error in `crates/client/src/lib.rs`. Push it to Lua through `crates/lua/src/ui.rs`, and expose `gband.errors()` in `crates/lua/src/api.rs`. Verify "Errors kept in order", "Syntax error" and "Plugin error in the status line" in `crates/lua/tests/config.rs`.
 - [ ] 5.2 Add the bundled plugin `crates/lua/src/runtime/gband/errors.lua`:
   - the `kind` option, the action and command `errors.open`, and the command's `kind` argument;
-  - the float or pane window, entering `root`, and wrapping by display width, again on resize;
+  - the floating or tiled plugin window, entering `root`, and wrapping by display width, again on resize;
   - `no errors`, focusing an open list, and closing with `q`.
 
   Register it in `crates/lua/src/bundled.rs`. Verify every error-list scenario in a new `crates/lua/tests/errors.rs`.
@@ -56,7 +60,7 @@
   - the border options and the step options.
 
   Verify `rg 'statusline_(position|height|separator)|align = "(left|right)"' README.md docs` prints nothing.
-- [ ] 6.2 Move `examples/plugins/agent-status/client.lua` and `examples/plugins/pane/lua/pane/init.lua` to top or bottom alignment. Verify both load in `crates/lua/tests/plugins.rs` or with their existing example tests.
+- [ ] 6.2 Move `examples/plugins/agent-status/client.lua` and `examples/plugins/window/lua/window/init.lua` to top or bottom alignment. Verify both load in `crates/lua/tests/plugins.rs` or with their existing example tests.
 
 ## 7. Gate
 

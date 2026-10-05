@@ -2,7 +2,7 @@
 """Generate this change's delta specs from the current main specs.
 
   python3 rename_specs.py delta   rewrite specs/ from openspec/specs/
-  python3 rename_specs.py main    rename scenario titles and Purpose sections in openspec/specs/
+  python3 rename_specs.py main    rename titles, scenario titles and Purpose sections in openspec/specs/
   python3 rename_specs.py check   list main-spec lines the map would still change
 
 The deltas hold every requirement whose text the map changes, and the ADDED
@@ -39,8 +39,33 @@ PLUGIN_WINDOW_TERMS = [
     (r"\bplugin panes\b", "drawn windows"),
     (r"\bplugin pane\b", "drawn window"),
     (r'kind `"pane"`', 'kind `"tiled"`'),
-    (r'`"float"` or `"pane"`', '`"float"` or `"tiled"`'),
+    (r'kind `"float"`', 'kind `"floating"`'),
+    (r'`"float"` or `"pane"`', '`"floating"` or `"tiled"`'),
+    (r'`"float"`', '`"floating"`'),
     (r'kind = "pane"', 'kind = "tiled"'),
+    (r'kind = "float"', 'kind = "floating"'),
+]
+
+CAPABILITY_TERMS = {
+    "plugin-windows": [
+        (r"\| float \|", "| floating |"),
+        (r"\| pane \|", "| tiled |"),
+    ],
+}
+
+ALL_FLOATS = {"plugin-windows"}
+
+FLOAT_NOUNS = [
+    (r"\bFloats\b", "Floating plugin \x02s"),
+    (r"\bFloat\b", "Floating plugin \x02"),
+    (r"\bfloats\b", "floating plugin \x02s"),
+    (r"\bfloat\b", "floating plugin \x02"),
+]
+
+DETERMINED_FLOATS = [
+    (r"\b([Aa]|[Tt]he|[Nn]o|[Ee]very|[Oo]ne|[Ee]ach|[Tt]hat|[Aa]ny|[Ii]ts)( focused| newly opened)? float(s|'s)?\b", "\\1\\2 floating plugin \x02\\3"),
+    (r"\bFloat over\b", "Floating plugin \x02 over"),
+    (r", float or\b", ", floating plugin \x02 or"),
 ]
 
 PLUGIN_WINDOW_NAMES = [
@@ -103,7 +128,7 @@ def rename(text, capability):
         held[token] = phrase
         text = text.replace(phrase, token)
     marks = {}
-    for index, (pattern, replacement) in enumerate(PLUGIN_WINDOW_TERMS):
+    for index, (pattern, replacement) in enumerate(PLUGIN_WINDOW_TERMS + CAPABILITY_TERMS.get(capability, [])):
         token = f"\x01{index}\x01"
         marks[token] = replacement
         text = re.sub(pattern, token, text)
@@ -119,6 +144,8 @@ def rename(text, capability):
             return token
 
         text = re.sub(r"`[^`\n]*`", hold, text)
+        for pattern, replacement in FLOAT_NOUNS if capability in ALL_FLOATS else DETERMINED_FLOATS:
+            text = re.sub(pattern, replacement, text)
         for pattern, replacement in BARE_PLUGIN_WINDOW:
             text = re.sub(pattern, replacement, text)
         for token, span in spans.items():
@@ -202,7 +229,8 @@ def rename_main():
         for line in path.read_text().splitlines(keepends=True):
             if line.startswith("## "):
                 in_purpose = line.startswith("## Purpose")
-            if line.startswith("#### Scenario:") or (in_purpose and not line.startswith("#")):
+            title = line.startswith("# ") and line.rstrip().endswith(" Specification")
+            if title or line.startswith("#### Scenario:") or (in_purpose and not line.startswith("#")):
                 line = rename(line, capability)
             out.append(line)
         path.write_text("".join(out))

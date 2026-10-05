@@ -90,11 +90,11 @@ The client SHALL send each key press and repeat that the key bindings do not con
 - **THEN** the window prints `21`
 
 #### Scenario: Typing into a focused float
-- **WHEN** a float is focused and the user types `ls`
+- **WHEN** a floating plugin window is focused and the user types `ls`
 - **THEN** nothing is sent to the server
 
 #### Scenario: Paste into a focused float
-- **WHEN** a float is focused and the user pastes `hello`
+- **WHEN** a floating plugin window is focused and the user pastes `hello`
 - **THEN** the paste is discarded and nothing is sent to the server
 
 ### Requirement: Leaving the client
@@ -143,7 +143,7 @@ The reported size SHALL change when the terminal changes size, and when a succes
 - **AND** the ribbon is drawn from row 1, and the status line on row 0
 
 ### Requirement: Present the ribbon
-After the handshake, the client SHALL take the terminal full screen in raw mode with bracketed paste enabled. It SHALL keep its own grid of every window, as the wire-protocol capability defines, and its own view, as the layout-view capability defines. It SHALL draw only the viewed band, except during a band switch, when it SHALL draw the bands the animations capability places on screen. It SHALL draw the ribbon in the ribbon area and the status line in the rows the status-line capability gives it. It SHALL draw the viewed band's floating windows over the tiles, in its stacking order, as the floating-windows capability defines. It SHALL draw the floats it opened over the floating windows, as the plugin-windows capability defines. While the configuration capability shows a configuration error and no status line is drawn, the client SHALL draw that error over the ribbon area's bottom row, after the tiles, the floating windows and the floats.
+After the handshake, the client SHALL take the terminal full screen in raw mode with bracketed paste enabled. It SHALL keep its own grid of every window, as the wire-protocol capability defines, and its own view, as the layout-view capability defines. It SHALL draw only the viewed band, except during a band switch, when it SHALL draw the bands the animations capability places on screen. It SHALL draw the ribbon in the ribbon area and the status line in the rows the status-line capability gives it. It SHALL draw the viewed band's floating windows over the tiles, in its stacking order, as the floating-windows capability defines. It SHALL draw the floating plugin windows it opened over the floating windows, as the plugin-windows capability defines. While the configuration capability shows a configuration error and no status line is drawn, the client SHALL draw that error over the ribbon area's bottom row, after the tiles, the floating windows and the floating plugin windows.
 
 Each window SHALL be drawn in its tile, as the layout capability's tile geometry gives it for the screen area in the latest layout. A tile SHALL be drawn at its strip position less the viewed band's camera position, from the ribbon area's top row. While an animation runs, the tile's position and size, the camera and the band's top row SHALL be the drawn values the animations capability defines. At rest they equal the values above. Each tile SHALL show a one-cell border around the window's grid, which is drawn from its top-left corner. The focused window's border SHALL be drawn in a style distinct from the other borders.
 
@@ -151,9 +151,9 @@ Each floating window SHALL be drawn in its box, as the floating-windows capabili
 
 A window's grid MAY differ in size from its tile's interior while the server has not yet resized the window. The border SHALL still follow the tile, at its drawn size while an animation runs. A grid larger than the interior SHALL be cut at the interior's right and bottom edges, and interior cells the grid does not cover SHALL be blank.
 
-A tile that crosses the ribbon area's left, right, top or bottom edge SHALL be cut at that edge, and the part of the tile inside the ribbon area SHALL be drawn unchanged, except where a floating window, a float or a configuration error covers it. No tile SHALL be resized to fit the ribbon area. A tile wholly outside the ribbon area SHALL NOT be drawn, no tile SHALL be drawn over the status line, and cells of the ribbon area that no tile, floating window, float or configuration error covers SHALL be blank.
+A tile that crosses the ribbon area's left, right, top or bottom edge SHALL be cut at that edge, and the part of the tile inside the ribbon area SHALL be drawn unchanged, except where a floating window, a floating plugin window or a configuration error covers it. No tile SHALL be resized to fit the ribbon area. A tile wholly outside the ribbon area SHALL NOT be drawn, no tile SHALL be drawn over the status line, and cells of the ribbon area that no tile, floating window, floating plugin window or configuration error covers SHALL be blank.
 
-The terminal's cursor SHALL sit where the focused window's cursor is. It SHALL be hidden when the focused window hides its cursor, when that cell lies outside the ribbon area or outside the interior of the focused window's tile or box, when a floating window drawn over the focused window covers that cell, when no window is focused, while a float is focused, or while the animations capability hides it during motion.
+The terminal's cursor SHALL sit where the focused window's cursor is. It SHALL be hidden when the focused window hides its cursor, when that cell lies outside the ribbon area or outside the interior of the focused window's tile or box, when a floating window drawn over the focused window covers that cell, when no window is focused, while a floating plugin window is focused, or while the animations capability hides it during motion.
 
 #### Scenario: Two columns side by side
 - **WHEN** the client's 80×24 terminal sets the screen area, the status line is off, and the viewed band holds two columns of width 1/2 with the second focused
@@ -205,12 +205,12 @@ The terminal's cursor SHALL sit where the focused window's cursor is. It SHALL b
 - **AND** the rows above it show the tile unchanged
 
 #### Scenario: Float over two tiles
-- **WHEN** the client's 80×24 terminal sets the screen area, the status line is off, the viewed band holds two columns of width 1/2, and a float with a border spans columns 20 to 59 and rows 6 to 16
-- **THEN** those cells show the float, and the tiles show around it
-- **AND** the cursor is hidden while the float is focused
+- **WHEN** the client's 80×24 terminal sets the screen area, the status line is off, the viewed band holds two columns of width 1/2, and a floating plugin window with a border spans columns 20 to 59 and rows 6 to 16
+- **THEN** those cells show the floating plugin window, and the tiles show around it
+- **AND** the cursor is hidden while the floating plugin window is focused
 
 #### Scenario: Error banner over a float
-- **WHEN** the status line is off, a float covers the ribbon area's bottom row, and the client shows a configuration error
+- **WHEN** the status line is off, a floating plugin window covers the ribbon area's bottom row, and the client shows a configuration error
 - **THEN** the bottom row shows the error
 
 
@@ -223,8 +223,8 @@ The terminal's cursor SHALL sit where the focused window's cursor is. It SHALL b
 - **THEN** the box is still drawn from screen column 20
 
 #### Scenario: Float over a floating pane
-- **WHEN** a float the client opened and a floating window cover the same cell
-- **THEN** that cell shows the float
+- **WHEN** a floating plugin window the client opened and a floating window cover the same cell
+- **THEN** that cell shows the floating plugin window
 
 #### Scenario: Cursor under a floating pane
 - **WHEN** a tiled window is focused and its cursor sits in a cell that a floating window covers
@@ -357,12 +357,12 @@ A binding to an action SHALL dispatch it. A binding to a Lua function SHALL run 
 - **THEN** it returns `prefix`
 
 #### Scenario: Unbound key goes to the focused window
-- **WHEN** a float with `keys = { j = fn }` is focused and the user presses `j`
+- **WHEN** a floating plugin window with `keys = { j = fn }` is focused and the user presses `j`
 - **THEN** `fn` runs and the focused window receives nothing
 
 #### Scenario: Root binding before the window
-- **WHEN** `user/init.lua` binds `alt+h` in `root` to `gband.action.focus_column_left`, a float binding `alt+h` in its `keys` is focused, and the user presses Alt+H
-- **THEN** the root binding runs and the float's function does not
+- **WHEN** `user/init.lua` binds `alt+h` in `root` to `gband.action.focus_column_left`, a floating plugin window binding `alt+h` in its `keys` is focused, and the user presses Alt+H
+- **THEN** the root binding runs and the floating plugin window's function does not
 
 
 #### Scenario: Float the focused pane

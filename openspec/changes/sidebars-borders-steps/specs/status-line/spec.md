@@ -71,12 +71,12 @@ A component added by code that belongs to a plugin SHALL belong to that plugin, 
 `gband.ui.statusline.remove(id)` SHALL remove the component whose full id is `id` and return `true`, or return `false` when no component has that id. `gband.ui.statusline.list()` SHALL return one table per component, in ascending byte order of full ids, each holding `id`, `align`, `priority`, `order`, `hl`, `fill`, `plugin` (the owner's name, or nil) and `enabled`. Changing a returned table SHALL NOT change the component. All three functions SHALL be callable while the configuration loads and in any callback.
 
 #### Scenario: Plugin component without an id
-- **WHEN** the plugin `pane` calls `gband.ui.statusline.add({ render = fn })`
-- **THEN** the call returns `"pane"`
+- **WHEN** the plugin `window` calls `gband.ui.statusline.add({ render = fn })`
+- **THEN** the call returns `"window"`
 
 #### Scenario: Plugin component with an id
-- **WHEN** the plugin `pane` calls `gband.ui.statusline.add({ id = "count", render = fn })`
-- **THEN** the call returns `"pane.count"`
+- **WHEN** the plugin `window` calls `gband.ui.statusline.add({ id = "count", render = fn })`
+- **THEN** the call returns `"window.count"`
 
 #### Scenario: User component
 - **WHEN** `user/init.lua` calls `gband.ui.statusline.add({ id = "host", render = fn })`
@@ -134,13 +134,13 @@ The context SHALL be a new table for each call, holding:
 | `height` | for a fill component, `total_height` less the rows that the error item and the other shown components take, by their latest outputs, with the gaps "Layout" puts between regions, and at least 0; for any other component, `total_height` |
 | `table` | the name of the active key table |
 | `band` | `{ number, index, count }`: the viewed band's number, its position from the top, counting from 1, and the number of bands |
-| `column` | `{ index, count }`: the focused pane's column position in the viewed band, counting from 1, and the number of columns in that band; nil when the viewed band is empty |
-| `pane` | the focused pane's number, or nil when no pane is focused |
-| `panes` | a list of every pane in the client's layout, bands from the top, columns from the left and panes from the top, each `{ pane, band, state }`: its number, its band's number, and a copy of its state as the plugin-bridge capability defines |
+| `column` | `{ index, count }`: the focused window's column position in the viewed band, counting from 1, and the number of columns in that band; nil when the viewed band is empty |
+| `window` | the focused window's number, or nil when no window is focused |
+| `windows` | a list of every window in the client's layout, bands from the top, columns from the left and windows from the top, each `{ window, band, state }`: its number, its band's number, and a copy of its state as the plugin-bridge capability defines |
 
 #### Scenario: Context values
-- **WHEN** the status line has `max_width` 40, the client's terminal is 100×30, the viewed band is the second of three bands and holds five columns, the third column holds focused pane 7, the `prefix` table is active, and a component renders
-- **THEN** its context has `total_width` 40, `total_height` 30, `table` `"prefix"`, `band.index` 2, `band.count` 3, `column.index` 3, `column.count` 5 and `pane` 7
+- **WHEN** the status line has `max_width` 40, the client's terminal is 100×30, the viewed band is the second of three bands and holds five columns, the third column holds focused window 7, the `prefix` table is active, and a component renders
+- **THEN** its context has `total_width` 40, `total_height` 30, `table` `"prefix"`, `band.index` 2, `band.count` 3, `column.index` 3, `column.count` 5 and `window` 7
 
 #### Scenario: Available width
 - **WHEN** the status line has `min_width` 10 and `max_width` 40, the widest line of the other shown components is 14 cells wide, and a fill component renders
@@ -151,7 +151,7 @@ The context SHALL be a new table for each call, holding:
 - **THEN** its context's `height` is 21
 
 #### Scenario: Waiting agents counted
-- **WHEN** panes 1, 2 and 3 are open, the server has set `agent` to `"waiting"` in the states of panes 1 and 3, and a component with `redraw_on = { "PaneStateChanged" }` counts the entries of `ctx.panes` whose `state.agent` is `"waiting"`
+- **WHEN** windows 1, 2 and 3 are open, the server has set `agent` to `"waiting"` in the states of windows 1 and 3, and a component with `redraw_on = { "WindowStateChanged" }` counts the entries of `ctx.windows` whose `state.agent` is `"waiting"`
 - **THEN** it counts 2
 
 ### Requirement: Render triggers
@@ -233,9 +233,9 @@ The top region SHALL start at the status line's first row, and the bottom region
 Each call of a component's `render` SHALL run protected, as a callback that belongs to the component's plugin, with its own instruction budget of the size the plugins capability defines. A run that exceeds the budget SHALL stop only that call. The code that triggered the render and the other components SHALL continue. When a call raises an error, returns a value "Render output" does not allow, or is stopped by the instruction limit, the component SHALL be disabled and hidden until the configuration next loads, and the error SHALL be reported as a plugin error, as the configuration capability defines. A call stopped by the instruction limit SHALL also mark the component's plugin failed, as the plugins capability defines.
 
 #### Scenario: Failing component
-- **WHEN** the plugin `pane`'s component raises `boom` on line 9 of its file, and another component returns `ok`
+- **WHEN** the plugin `window`'s component raises `boom` on line 9 of its file, and another component returns `ok`
 - **THEN** the client keeps running and `ok` is drawn
-- **AND** the error item shows `error`, and the last entry of `gband.errors()` is `pane: <path>:9: boom`
+- **AND** the error item shows `error`, and the last entry of `gband.errors()` is `window: <path>:9: boom`
 - **AND** `gband.ui.statusline.list()` gives the component `enabled` false
 
 #### Scenario: Looping render

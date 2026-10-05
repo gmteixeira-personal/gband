@@ -1,6 +1,6 @@
 ## Purpose
 
-Defines side bars: the columns that Lua code reserves at the left or right of a client's terminal and writes styled lines in. It covers the bar API, how bars are placed and narrow the ribbon area without changing any pane's size, their contents and drawing, their callbacks, reloads, plugin ownership and their highlight group.
+Defines side bars: the columns that Lua code reserves at the left or right of a client's terminal and writes styled lines in. It covers the bar API, how bars are placed and narrow the ribbon area without changing any window's size, their contents and drawing, their callbacks, reloads, plugin ownership and their highlight group.
 
 ## ADDED Requirements
 
@@ -78,12 +78,12 @@ The client SHALL place its bars against its terminal each time it draws, one bar
 - **WHEN** the client's terminal is 10×24 and a left bar of size 10 is the only bar
 - **THEN** the bar is not shown and the ribbon area is the whole terminal
 
-### Requirement: Bars keep pane sizes
-Bars SHALL change only the ribbon area. They SHALL NOT change the client's reported size, the session's screen area, or any pane's terminal size. A change of the ribbon area that the bars cause SHALL be handled by the client's view and drawn state as the layout-view and animations capabilities handle a change of the client's terminal size, and SHALL NOT be reported to the server. Changing a bar's lines or `hl` SHALL NOT change the ribbon area. Several changes made by one callback or one load SHALL be handled as one change.
+### Requirement: Bars keep window sizes
+Bars SHALL change only the ribbon area. They SHALL NOT change the client's reported size, the session's screen area, or any window's terminal size. A change of the ribbon area that the bars cause SHALL be handled by the client's view and drawn state as the layout-view and animations capabilities handle a change of the client's terminal size, and SHALL NOT be reported to the server. Changing a bar's lines or `hl` SHALL NOT change the ribbon area. Several changes made by one callback or one load SHALL be handled as one change.
 
 #### Scenario: Bar added by a key
-- **WHEN** the client's 80×24 terminal sets the screen area, the only pane sits in a column of width 1/2, and a binding function adds a left bar of size 20
-- **THEN** the client reports no resize, `tput cols` in the pane still prints `38`, and the tile is drawn on screen columns 20 to 59
+- **WHEN** the client's 80×24 terminal sets the screen area, the only window sits in a column of width 1/2, and a binding function adds a left bar of size 20
+- **THEN** the client reports no resize, `tput cols` in the window still prints `38`, and the tile is drawn on screen columns 20 to 59
 
 #### Scenario: Camera follows the narrower ribbon
 - **WHEN** the client's 80×24 terminal sets the screen area, the viewed band holds two columns of width 1/2 with the second focused and fully shown, and a binding function adds a left bar of size 20

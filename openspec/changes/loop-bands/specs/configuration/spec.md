@@ -31,9 +31,9 @@ Reading `gband.opt.<name>` SHALL return the option's current value: a key name f
 Options SHALL be set and declared only while the configuration loads. Setting or declaring an option later SHALL be an error. Each process SHALL use the options as they stand when loading finishes, whichever of `gband.set` and `gband.opt` set them.
 
 #### Scenario: Default prefix
-- **WHEN** `user/init.lua` binds `prefix q` to `gband.action.close_pane` and does not set `prefix`, and two panes are open
-- **THEN** Ctrl+Space then `q` closes the focused pane
-- **AND** Ctrl+A reaches the focused pane as `\x01`
+- **WHEN** `user/init.lua` binds `prefix q` to `gband.action.close_window` and does not set `prefix`, and two windows are open
+- **THEN** Ctrl+Space then `q` closes the focused window
+- **AND** Ctrl+A reaches the focused window as `\x01`
 
 #### Scenario: Partial update
 - **WHEN** `user/server.lua` calls `gband.set { default_column_width = 1/3 }`

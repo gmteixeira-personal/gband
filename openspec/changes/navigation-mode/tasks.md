@@ -1,3 +1,7 @@
+## 0. Specs
+
+- [ ] 0.1 For each MODIFIED requirement in this change's delta specs, compare the block with the current `openspec/specs/<capability>/spec.md` block of the same requirement, as rename-panes-to-windows and the changes archived before this one left it, and fold in every requirement text and scenario this change did not write. Verify that the only differences left are this change's own and that `openspec validate navigation-mode --strict` passes
+
 ## 1. Modes in the Lua keymap
 
 - [ ] 1.1 Add a `modes` map (table name to optional label) to `Keymaps` in `crates/lua/src/keymap.rs`, and add `gband.keymap.mode(table, opts)` with the load-only rule and the errors for `root`, a bad table name, a bad `opts` and a bad `label`; verify with new cases in `crates/lua/tests/keymap.rs` for each scenario of the configuration "Modes" requirement
@@ -18,7 +22,7 @@
 
 ## 4. Default configuration
 
-- [ ] 4.1 In `crates/lua/src/defaults.lua`, declare `gband.keymap.mode("prefix", { label = "navigation" })`. Rebind `enter` and `escape` to a function entering `root` with description `interactive mode`, add `n` as a function that calls `gband.action.open_pane()` and then enters `root` with description `open a window`, and rebind `prefix prefix` to a function that calls `gband.action.send_prefix()` and then enters `root` with description `send the prefix key`. Add `left`, `right`, `down` and `up` for the focus actions, in the order of the client-attach default table. Verify the `default_keys_follow_the_spec` test in `bindings.rs`, updated to the new table, passes
+- [ ] 4.1 In `crates/lua/src/defaults.lua`, declare `gband.keymap.mode("prefix", { label = "navigation" })`. Rebind `enter` and `escape` to a function entering `root` with description `interactive mode`, add `n` as a function that calls `gband.action.open_window()` and then enters `root` with description `open a window`, and rebind `prefix prefix` to a function that calls `gband.action.send_prefix()` and then enters `root` with description `send the prefix key`. Add `left`, `right`, `down` and `up` for the focus actions, in the order of the client-attach default table. Verify the `default_keys_follow_the_spec` test in `bindings.rs`, updated to the new table, passes
 - [ ] 4.2 Update `crates/lua/tests/config.rs` so the defaults test checks the descriptions of action and function bindings, the `navigation` label, and `?` bound to `keylist.open`; verify `cargo test -p gband-lua`
 
 ## 5. Bundled Lua modules
@@ -29,8 +33,8 @@
 
 ## 6. Existing tests and end-to-end coverage
 
-- [ ] 6.1 Update the client tests in `crates/client/tests/` (`actions.rs`, `events.rs`, `statusline.rs`, `windows.rs`) and their snapshots for navigation mode: leave the mode before typing, and open windows with `n`; verify `cargo test -p gband-client`
-- [ ] 6.2 Update the end-to-end tests in `tests/attach.rs`, `tests/config.rs`, `tests/statusline.rs` and `tests/windows.rs`: replace `\x00\r` with `\x00n`, and leave navigation mode with `\r` before typing into a pane; verify `cargo test --test attach --test config --test statusline --test windows`
+- [ ] 6.1 Update the client tests in `crates/client/tests/` (`actions.rs`, `events.rs`, `statusline.rs`, `plugin_windows.rs`) and their snapshots for navigation mode: leave the mode before typing, and open windows with `n`; verify `cargo test -p gband-client`
+- [ ] 6.2 Update the end-to-end tests in `tests/attach.rs`, `tests/config.rs`, `tests/statusline.rs` and `tests/plugin_windows.rs`: replace `\x00\r` with `\x00n`, and leave navigation mode with `\r` before typing into a window; verify `cargo test --test attach --test config --test statusline --test windows`
 - [ ] 6.3 Add `tests/navigation.rs` with end-to-end cases for repeated focus moves, repeated resize followed by Escape and `tput cols` printing `54`, Enter not opening a window, `n` opening one and returning to interactive mode, and `?` opening the key list with `j` moving its cursor line; verify `cargo test --test navigation`
 
 ## 7. Documentation and final checks

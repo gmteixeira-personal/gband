@@ -1,6 +1,6 @@
 ## 1. Reconcile the specs
 
-- [ ] 1.1 Once `floating-windows` is archived, compare this change's "Focus across columns", "Camera" and "Shown panes" deltas with those requirements in `openspec/specs/layout-view/spec.md` on `<base>`, carry over any wording `floating-windows` changed after this proposal, and verify with `openspec validate loop-bands --strict`
+- [ ] 1.1 Once `floating-windows` is archived, compare this change's "Focus across columns", "Camera" and "Shown windows" deltas with those requirements in `openspec/specs/layout-view/spec.md` on `<base>`, carry over any wording `floating-windows` changed after this proposal, and verify with `openspec validate loop-bands --strict`
 - [ ] 1.2 Compare this change's "Options" delta with `openspec/specs/configuration/spec.md` on `<base>`, keep every option row and type phrase that has landed since, such as those of `sidebars-borders-steps`, and verify with `openspec validate loop-bands --strict`
 
 ## 2. Option
@@ -31,4 +31,4 @@
 
 - [ ] 6.1 Add `loop_bands` to the client options table in `README.md` and to the client option list in `docs/plugins.md`, and verify both name the default `true`
 - [ ] 6.2 Run `cargo test --workspace` and `cargo clippy --workspace --all-targets -- -D warnings`, and verify both pass
-- [ ] 6.3 Attach a client to a session with three panes, press Ctrl+Space then `l` repeatedly from the last column and Ctrl+Space then `h` from the first, and verify the strip scrolls without end in each direction with no pane drawn twice
+- [ ] 6.3 Attach a client to a session with three windows, press Ctrl+Space then `l` repeatedly from the last column and Ctrl+Space then `h` from the first, and verify the strip scrolls without end in each direction with no window drawn twice

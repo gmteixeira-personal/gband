@@ -14,7 +14,7 @@ Each client keeps a `View` (`crates/core/src/view.rs`) with one `BandView { focu
 ## Decisions
 
 ### `ViewAction::CenterColumn` sets the camera, then settles as usual
-`apply` gains a `CenterColumn` arm. It locates the focused pane's column in the viewed band, takes its span from `column_spans(band, scene.area)`, and sets the band's camera to `centred(span, viewport)`. The usual `settle` runs after it. Under `"never"`, and under `"on-overflow"` when focus did not change column, `follow` falls to `revealed`, which keeps a camera whose column lies wholly inside the view. A centred column always does, or the camera already sits at the column's start when the column is at least as wide as the terminal. Under `"always"`, `follow` computes the same value. So `settle` never undoes the move, and every later change returns to the policy with no extra state.
+`apply` gains a `CenterColumn` arm. It locates the focused window's column in the viewed band, takes its span from `column_spans(band, scene.area)`, and sets the band's camera to `centred(span, viewport)`. The usual `settle` runs after it. Under `"never"`, and under `"on-overflow"` when focus did not change column, `follow` falls to `revealed`, which keeps a camera whose column lies wholly inside the view. A centred column always does, or the camera already sits at the column's start when the column is at least as wide as the terminal. Under `"always"`, `follow` computes the same value. So `settle` never undoes the move, and every later change returns to the policy with no extra state.
 
 - *Alternative*: a flag in `BandView` that skips `follow` once. Rejected. It adds state that the spans already make unnecessary.
 - *Alternative*: a fourth policy value. Rejected. The policy decides what happens on every change; this is a one-shot command.
@@ -28,5 +28,5 @@ The Lua name `center_column` follows niri's `center-column`, and the US spelling
 ## Risks / Trade-offs
 
 - [Open changes edit the same tables: `floating-windows`, `key-list`, `navigation-mode` and `sidebars-borders-steps` all touch `ACTIONS`, `defaults.lua` and the actions and default-binding tables in the specs] → Each addition is one row, so a merge conflict is a two-sided row insertion that keeps both rows. The `MODIFIED` requirement deltas here must be re-read against `<base>` at `/ready` so that archiving keeps the other changes' rows.
-- [After `floating-windows` lands, the focused pane may be floating] → `follow` there reads the tiled focus. `center_column` should do the same, and centre the tiled focus's column. Whichever change lands second reconciles the arm.
+- [After `floating-windows` lands, the focused window may be floating] → `follow` there reads the tiled focus. `center_column` should do the same, and centre the tiled focus's column. Whichever change lands second reconciles the arm.
 - [After `sidebars-borders-steps` lands, the viewport is the ribbon width rather than the terminal width] → `CenterColumn` uses `scene.viewport`, the same width `follow` uses, so it follows that change without edits.

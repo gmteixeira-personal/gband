@@ -7,24 +7,24 @@ Every built-in action SHALL have one Lua name, under which `gband.action` holds 
 |---|---|---|
 | `focus_column_left` | focus the column to the left | view |
 | `focus_column_right` | focus the column to the right | view |
-| `focus_pane_down` | focus the pane below | view |
-| `focus_pane_up` | focus the pane above | view |
+| `focus_window_down` | focus the window below | view |
+| `focus_window_up` | focus the window above | view |
 | `focus_band_down` | view the band below | view |
 | `focus_band_up` | view the band above | view |
 | `center_column` | center the focused column | view |
-| `open_pane` | open a pane running the user's shell | session |
-| `close_pane` | close the pane | session |
-| `consume_or_expel_left` | consume or expel the pane to the left | session |
-| `consume_or_expel_right` | consume or expel the pane to the right | session |
-| `cycle_column_width` | cycle the width of the pane's column | session |
-| `toggle_full_width` | toggle full width of the pane's column | session |
-| `grow_column_width` | grow the width of the pane's column | session |
-| `shrink_column_width` | shrink the width of the pane's column | session |
-| `grow_pane_height` | grow the height of the pane | session |
-| `shrink_pane_height` | shrink the height of the pane | session |
-| `reset_pane_height` | reset the height of the pane | session |
+| `open_window` | open a window running the user's shell | session |
+| `close_window` | close the window | session |
+| `consume_or_expel_left` | consume or expel the window to the left | session |
+| `consume_or_expel_right` | consume or expel the window to the right | session |
+| `cycle_column_width` | cycle the width of the window's column | session |
+| `toggle_full_width` | toggle full width of the window's column | session |
+| `grow_column_width` | grow the width of the window's column | session |
+| `shrink_column_width` | shrink the width of the window's column | session |
+| `grow_window_height` | grow the height of the window | session |
+| `shrink_window_height` | shrink the height of the window | session |
+| `reset_window_height` | reset the height of the window | session |
 | `detach` | detach | client |
-| `send_prefix` | send the prefix key to the focused pane | client |
+| `send_prefix` | send the prefix key to the focused window | client |
 
 Actions that the configuration capability's `gband.action.register` adds SHALL sit beside the built-in actions in `gband.action` and in `gband.action.list()`, and SHALL NOT take a built-in action's name.
 
@@ -34,8 +34,8 @@ Actions that the configuration capability's `gband.action.register` adds SHALL s
 
 #### Scenario: Built-in descriptions
 - **WHEN** `gband.action.list()` is read
-- **THEN** the entry named `cycle_column_width` has the description `cycle the width of the pane's column`
+- **THEN** the entry named `cycle_column_width` has the description `cycle the width of the window's column`
 
 #### Scenario: Name and action agree
-- **WHEN** a binding names `gband.action.cycle_column_width` and its keys are pressed with pane 3 focused
-- **THEN** the client sends cycle width naming pane 3
+- **WHEN** a binding names `gband.action.cycle_column_width` and its keys are pressed with window 3 focused
+- **THEN** the client sends cycle width naming window 3

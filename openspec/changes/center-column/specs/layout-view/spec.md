@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Center the focused column
-The `center_column` view action SHALL move the viewed band's camera so that the focused pane's column sits in the middle of the client's terminal, as niri's `center-column` does. The camera SHALL move to the column's start less half the difference between the terminal's width and the column's width, rounded down. When the column is at least as wide as the terminal, the camera SHALL move to the column's start. The action SHALL change neither the focused pane nor the viewed band, and SHALL send nothing to the server. On a band with no focused pane, it SHALL leave the view unchanged.
+The `center_column` view action SHALL move the viewed band's camera so that the focused window's column sits in the middle of the client's terminal, as niri's `center-column` does. The camera SHALL move to the column's start less half the difference between the terminal's width and the column's width, rounded down. When the column is at least as wide as the terminal, the camera SHALL move to the column's start. The action SHALL change neither the focused window nor the viewed band, and SHALL send nothing to the server. On a band with no focused window, it SHALL leave the view unchanged.
 
 After the action, every later change of focus, of the layout or of the client's terminal width SHALL move the camera by the `center_focused_column` policy, as the Camera requirement defines, starting from the centred camera.
 

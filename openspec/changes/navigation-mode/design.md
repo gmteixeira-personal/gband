@@ -2,7 +2,7 @@
 
 Key handling lives in two places. `crates/lua/src/keymap.rs` holds the bindings while the configuration loads and hands the client a `KeyTables` map (`table -> [(Chord, Binding)]`). `crates/client/src/bindings.rs` holds `Leader`, which tracks the active table. In a table other than `root`, `Leader::handle` resets the active table to `root` before it runs the binding, and a `Dispatch::Enter` queued by the binding's callback then sets it again. That callback-driven re-entry is the only mechanism for a table to outlive one key, and it works only for function bindings.
 
-The key list (from the key-list change, a dependency) is a focused float that already takes every key in `root`. It can run only action bindings, because `gband.keymap.list` exposes no handle to a function.
+The key list (from the key-list change, a dependency) is a focused floating plugin window that already takes every key in `root`. It can run only action bindings, because `gband.keymap.list` exposes no handle to a function.
 
 This change builds on floating-windows and key-list, both of which also edit `defaults.lua` and the default key table, so it starts after both are archived.
 
@@ -15,7 +15,7 @@ This change builds on floating-windows and key-list, both of which also edit `de
 
 **Non-Goals:**
 - A Rust notion of "interactive" or "navigation". Rust knows modes as sticky tables and nothing more. Interactive mode is `root`.
-- Changing how floats receive keys in `root`.
+- Changing how floating plugin windows receive keys in `root`.
 
 ## Decisions
 
@@ -28,7 +28,7 @@ Alternatives considered:
 - *Rename the `prefix` table to `navigation`.* It breaks `gband.bind("prefix x")`, every user configuration, and the key-list and key-hints specs. A label gives the display name without the break.
 
 ### Leaving a mode is `gband.keymap.enter("root")`
-`enter` currently refuses a table with no binding, and the defaults bind nothing in `root`. `root` is exempted from that check. The defaults bind Escape and Enter to `function() gband.keymap.enter("root") end`. They bind `n` to a function that calls `gband.action.open_pane()` and then `gband.keymap.enter("root")`, and Ctrl+Space likewise with `send_prefix`. The dispatch queue runs entries in order, so the action is dispatched before the table changes.
+`enter` currently refuses a table with no binding, and the defaults bind nothing in `root`. `root` is exempted from that check. The defaults bind Escape and Enter to `function() gband.keymap.enter("root") end`. They bind `n` to a function that calls `gband.action.open_window()` and then `gband.keymap.enter("root")`, and Ctrl+Space likewise with `send_prefix`. The dispatch queue runs entries in order, so the action is dispatched before the table changes.
 
 ### `gband.keymap.run(table, key)` runs a binding, and the key list uses it
 `run` parses `key` with the same chord rules as `gband.keymap.set`, `prefix` included. It finds the binding in `Keymaps.bound` by `(table, chord)` and runs it in the calling callback's context:
@@ -40,10 +40,10 @@ Nothing goes through `Leader`, so the active table changes only through a queued
 Alternative considered: *`gband.keymap.list` returns a callable per entry.* Callables in plain data tables leak function identity to plugins and complicate the list's shape. `run` keeps `list` as plain data.
 
 ### The key list enters `root` when it opens
-Without this, `?` pressed in navigation mode would open the list, and the following `j`, `k` and Enter would still be read by the `prefix` mode, never reaching the float. `keylist.open` calls `gband.keymap.enter("root")` in its own callback. The decision stays in the plugin's Lua, consistent with the rest. A general rule such as "a focused float pre-empts modes" was rejected: it would also stop navigation keys from working while any float is focused.
+Without this, `?` pressed in navigation mode would open the list, and the following `j`, `k` and Enter would still be read by the `prefix` mode, never reaching the floating plugin window. `keylist.open` calls `gband.keymap.enter("root")` in its own callback. The decision stays in the plugin's Lua, consistent with the rest. A general rule such as "a focused floating plugin window pre-empts modes" was rejected: it would also stop navigation keys from working while any float is focused.
 
 ### Labels
-`gband.keymap.label(table)` reads the `modes` map. `mode.lua` renders `gband.keymap.label(ctx.table)`, `hints.lua` labels the root prefix hint with `gband.keymap.label("prefix")`, and `keylist.lua` titles the float `label .. " keys"`. `KeyTableChanged` and the render context keep the table name, so existing handlers keep comparing against `"prefix"`.
+`gband.keymap.label(table)` reads the `modes` map. `mode.lua` renders `gband.keymap.label(ctx.table)`, `hints.lua` labels the root prefix hint with `gband.keymap.label("prefix")`, and `keylist.lua` titles the floating plugin window `label .. " keys"`. `KeyTableChanged` and the render context keep the table name, so existing handlers keep comparing against `"prefix"`.
 
 ### Default binding order
 The order is `h l j k u i n q [ ] r f - = _ + R`, then the floating-windows keys, then `? D escape enter left right down up prefix`. Escape, Enter and the arrow keys sit after the main keys. The arrows repeat hjkl, so placing them late keeps the hint bar's leading run informative. The key-list spec keeps `h` as the first line and `?` between `R` and `D`.

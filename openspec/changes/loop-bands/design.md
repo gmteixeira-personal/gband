@@ -2,7 +2,7 @@
 
 The view lives in `crates/core/src/view.rs`. `View::neighbour_column` stops at the band's ends, `View::follow` places the camera through `centred` and `revealed` on one `Span` per column from `geometry::column_spans`, and `View::shown` filters tiles against `camera..camera + viewport`. The client copies `view.camera()` into `animation::Targets`, springs a drawn camera toward it, and `render::Placement` draws each tile at `tile.x - band.camera`. Options reach the view through `Client::configure` in `crates/client/src/lib.rs`, as `center_focused_column` does.
 
-This change depends on `floating-windows`. Its layer split decides where looping applies: the floating layer keeps its boxes in terminal cells, and only the tiled strip loops. The delta specs are written over the `floating-windows` wording of "Focus across columns", "Camera" and "Shown panes".
+This change depends on `floating-windows`. Its layer split decides where looping applies: the floating layer keeps its boxes in terminal cells, and only the tiled strip loops. The delta specs are written over the `floating-windows` wording of "Focus across columns", "Camera" and "Shown windows".
 
 ## Goals / Non-Goals
 
@@ -16,7 +16,7 @@ This change depends on `floating-windows`. Its layer split decides where looping
 
 ## Decisions
 
-**Loop test.** A band loops when `loop_bands` is on and `strip_width - widest >= viewport`, where `strip_width` is the last span's end. This is exactly the condition under which no tile can have two copies inside the view at once: two copies of a column of width `w` are `strip_width` apart, so both are visible only when `strip_width - w < viewport`. Alternative considered: always loop and draw a pane twice when the strip is short. Rejected by the user: a pane and its cursor drawn twice is confusing. Focus still goes round on a short strip.
+**Loop test.** A band loops when `loop_bands` is on and `strip_width - widest >= viewport`, where `strip_width` is the last span's end. This is exactly the condition under which no tile can have two copies inside the view at once: two copies of a column of width `w` are `strip_width` apart, so both are visible only when `strip_width - w < viewport`. Alternative considered: always loop and draw a window twice when the strip is short. Rejected by the user: a window and its cursor drawn twice is confusing. Focus still goes round on a short strip.
 
 **Copies, not a modulo camera in the policies.** `follow` picks one copy of the focused column's span, `span.x + k * strip_width`, then runs `centred` or `revealed` unchanged on that shifted span. For a left or right focus move, the copy is the neighbour of the previously focused column's drawn copy on the side of the move. Picking the smallest move instead can scroll against the key: with three 40-cell columns on 80 cells and the camera at 80, moving right to the second column ties between camera 40 and camera 120. For every other change, the copy needing the smallest move is used, with the lower start on a tie. `center_column`, from the `center-column` change, goes through the same copy choice when both land.
 

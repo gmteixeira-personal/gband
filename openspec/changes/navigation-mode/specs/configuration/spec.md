@@ -38,7 +38,7 @@ A mode SHALL keep its declaration across `gband.keymap.set` and `gband.keymap.de
 - **THEN** no error is raised and `root` becomes the active table
 
 ### Requirement: Run a binding
-`gband.keymap.run(table, key)` SHALL run the binding of `key` in `table`, as pressing that key while `table` is active runs it: a binding to an action SHALL dispatch it, and a binding to a function SHALL run the function. `key` SHALL be written as `gband.keymap.set` takes it, `prefix` included. It SHALL return `true` when a binding ran and `false` when `key` is unbound in `table`. It SHALL send nothing to any pane or window, and SHALL change the active table only through the binding's own `gband.keymap.enter`. It SHALL be callable only in a callback; calling it elsewhere, a table name that is not a non-empty string, or an invalid key name SHALL be an error.
+`gband.keymap.run(table, key)` SHALL run the binding of `key` in `table`, as pressing that key while `table` is active runs it: a binding to an action SHALL dispatch it, and a binding to a function SHALL run the function. `key` SHALL be written as `gband.keymap.set` takes it, `prefix` included. It SHALL return `true` when a binding ran and `false` when `key` is unbound in `table`. It SHALL send nothing to any window or window, and SHALL change the active table only through the binding's own `gband.keymap.enter`. It SHALL be callable only in a callback; calling it elsewhere, a table name that is not a non-empty string, or an invalid key name SHALL be an error.
 
 #### Scenario: Run an action binding
 - **WHEN** the default configuration is in use, two columns are open with the second focused, `root` is active, and a binding function calls `gband.keymap.run("prefix", "h")`
