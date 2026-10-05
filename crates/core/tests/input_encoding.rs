@@ -37,6 +37,14 @@ fn check(cases: &[(KeyCode, Modifiers, Modes, &[u8])]) {
 }
 
 #[test]
+fn plain_key_has_no_modifiers() {
+    assert_eq!(
+        Key::plain(KeyCode::Enter),
+        Key::new(KeyCode::Enter, Modifiers::NONE)
+    );
+}
+
+#[test]
 fn same_input_gives_same_bytes() {
     let key = Key::new(KeyCode::Up, Modifiers::CTRL);
     assert_eq!(encode_key(key, APPLICATION), encode_key(key, APPLICATION));

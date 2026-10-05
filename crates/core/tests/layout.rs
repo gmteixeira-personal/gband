@@ -349,6 +349,117 @@ fn actions_on_a_missing_pane_change_nothing() {
     assert_eq!(layout, before);
 }
 
+#[test]
+fn opening_a_pane_the_layout_already_holds_changes_nothing() {
+    let (mut layout, first) = started();
+    let before = layout.clone();
+    let (current, empty) = (workspace_id(&layout, 0), workspace_id(&layout, 1));
+    assert!(layout.open(first, current, None).is_empty());
+    assert!(layout.open(first, empty, None).is_empty());
+    assert_eq!(layout, before);
+}
+
+#[test]
+fn opening_and_closing_are_left_to_the_server() {
+    let (mut layout, first) = started();
+    let before = layout.clone();
+    let workspace = workspace_id(&layout, 0);
+    assert!(
+        layout
+            .apply(SessionAction::OpenPane {
+                workspace,
+                after: Some(first),
+            })
+            .is_empty()
+    );
+    assert!(layout.apply(SessionAction::ClosePane(first)).is_empty());
+    assert_eq!(layout, before);
+}
+
+#[test]
+fn proportion_of_rounds_down() {
+    assert_eq!(Proportion::new(1, 3), Proportion::ONE_THIRD);
+    assert_eq!(Proportion::ONE_THIRD.of(80), 26);
+    assert_eq!(Proportion::TWO_THIRDS.of(80), 53);
+    assert_eq!(Proportion::TWO_THIRDS.of(1), 0);
+    assert_eq!(Proportion::TWO_THIRDS.of(u16::MAX), 43690);
+    assert_eq!(Proportion::WHOLE.of(u16::MAX), u16::MAX);
+}
+
+#[test]
+fn first_pane_is_the_top_of_the_leftmost_column() {
+    let (mut layout, panes) = row_of_columns(2);
+    let leftmost = open(&mut layout, 0, None);
+    layout.apply(SessionAction::ConsumeOrExpel {
+        pane: panes[0],
+        direction: Direction::Left,
+    });
+    assert_eq!(
+        columns(&layout, 0),
+        vec![vec![leftmost, panes[0]], vec![panes[1]]]
+    );
+    assert_eq!(layout.workspaces()[0].first_pane(), Some(leftmost));
+    assert_eq!(layout.workspaces()[1].first_pane(), None);
+}
+
+#[test]
+fn workspace_index_follows_removals() {
+    let (mut layout, first) = started();
+    let other = open(&mut layout, 1, None);
+    let ids = [0, 1, 2].map(|index| workspace_id(&layout, index));
+    assert_eq!(
+        ids.map(|id| layout.workspace_index(id)),
+        [0, 1, 2].map(Some)
+    );
+    layout.remove(first);
+    assert_eq!(
+        ids.map(|id| layout.workspace_index(id)),
+        [None, Some(0), Some(1)]
+    );
+    assert_eq!(columns(&layout, 0), vec![vec![other]]);
+    assert_eq!(layout.workspace_index(WorkspaceId(99)), None);
+}
+
+fn stack_of_three() -> (Layout, [PaneId; 3]) {
+    let (mut layout, panes) = row_of_columns(3);
+    for &pane in &panes[1..] {
+        layout.apply(SessionAction::ConsumeOrExpel {
+            pane,
+            direction: Direction::Left,
+        });
+    }
+    assert_eq!(columns(&layout, 0), vec![panes.clone()]);
+    (layout, [panes[0], panes[1], panes[2]])
+}
+
+#[test]
+fn expelling_the_middle_of_a_stack_keeps_the_others_stacked_in_order() {
+    let (mut layout, [a, b, c]) = stack_of_three();
+    layout.apply(SessionAction::ConsumeOrExpel {
+        pane: b,
+        direction: Direction::Left,
+    });
+    assert_eq!(columns(&layout, 0), vec![vec![b], vec![a, c]]);
+
+    let (mut layout, [a, b, c]) = stack_of_three();
+    layout.apply(SessionAction::ConsumeOrExpel {
+        pane: b,
+        direction: Direction::Right,
+    });
+    assert_eq!(columns(&layout, 0), vec![vec![a, c], vec![b]]);
+}
+
+#[test]
+fn identifiers_display_as_their_number() {
+    assert_eq!(PaneId(7).to_string(), "7");
+    assert_eq!(WorkspaceId(12).to_string(), "12");
+}
+
+#[test]
+fn default_layout_is_a_new_layout() {
+    assert_eq!(Layout::default(), Layout::new());
+}
+
 #[derive(Clone, Copy)]
 enum Step {
     Open { workspace: usize, after: usize },
