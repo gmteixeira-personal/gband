@@ -1,3 +1,4 @@
+pub mod animation;
 pub mod bindings;
 mod connect;
 pub mod input;
@@ -8,6 +9,7 @@ mod transport;
 use std::collections::HashMap;
 use std::io::stdout;
 use std::thread;
+use std::time::Instant;
 
 use anyhow::{Context, Result};
 use crossterm::cursor::Show;
@@ -23,6 +25,9 @@ use gband_protocol::{ClientMessage, ExecutableId, ServerMessage, SessionName};
 use ratatui::DefaultTerminal;
 use tokio::sync::mpsc;
 
+use crate::animation::{
+    ANIMATIONS_VARIABLE, Animations, Drawn, FRAME, Presentation, Targets, parse_animations,
+};
 use crate::bindings::{Command, Leader};
 pub use crate::connect::{Connection, connect};
 use crate::input::key_from_event;
@@ -59,6 +64,7 @@ fn runtime() -> Result<tokio::runtime::Runtime> {
 
 pub fn run(config: ClientConfig, transport: impl Transport) -> Result<Report> {
     let cwd = std::env::current_dir().context("cannot read the current directory")?;
+    let animations = parse_animations(std::env::var(ANIMATIONS_VARIABLE).ok().as_deref());
     runtime()?.block_on(async {
         let mut connection = connect(&config, &transport).await?;
         connection
@@ -72,7 +78,7 @@ pub fn run(config: ClientConfig, transport: impl Transport) -> Result<Report> {
         let outcome = {
             let _restore = TerminalGuard::enter()?;
             let mut terminal = ratatui::init();
-            attach(&mut terminal, &mut connection).await?
+            attach(&mut terminal, &mut connection, animations).await?
         };
         tracing::info!("client finished: {outcome:?}");
         Ok(Report {
@@ -106,10 +112,11 @@ pub struct Display {
     grids: HashMap<PaneId, Grid>,
     view: Option<View>,
     shown: Option<Vec<PaneId>>,
+    presentation: Presentation,
 }
 
 impl Display {
-    pub fn new(terminal: Size) -> Self {
+    pub fn new(terminal: Size, animations: Animations) -> Self {
         Self {
             layout: Layout::new(),
             area: terminal,
@@ -117,6 +124,7 @@ impl Display {
             grids: HashMap::new(),
             view: None,
             shown: None,
+            presentation: Presentation::new(animations),
         }
     }
 
@@ -138,7 +146,11 @@ impl Display {
             ServerMessage::Layout { cols, rows, layout } => {
                 self.grids.retain(|&pane, _| layout.contains(pane));
                 self.layout = layout;
-                self.area = Size::new(cols, rows);
+                let area = Size::new(cols, rows);
+                if area != self.area {
+                    self.presentation.snap();
+                }
+                self.area = area;
                 self.sync();
             }
             ServerMessage::Snapshot {
@@ -170,6 +182,7 @@ impl Display {
     fn sync(&mut self) {
         if self.view.is_none() {
             self.view = Some(View::new(self.scene()));
+            self.presentation.snap();
         } else {
             self.with_view(View::sync);
         }
@@ -181,7 +194,19 @@ impl Display {
 
     fn resize(&mut self, terminal: Size) {
         self.terminal = terminal;
+        self.presentation.snap();
         self.with_view(View::sync);
+    }
+
+    pub fn present(&mut self, now: Instant) -> Option<Drawn> {
+        let view = self.view.as_ref()?;
+        let targets = Targets::new(&self.layout, self.area, view, self.terminal);
+        self.presentation.update(now, &targets);
+        Some(self.presentation.drawn(now))
+    }
+
+    pub fn is_animating(&self, now: Instant) -> bool {
+        self.presentation.is_animating(now)
     }
 
     fn scene(&self) -> Scene<'_> {
@@ -239,21 +264,31 @@ pub fn dispatch(display: &mut Display, action: Action) -> Step {
     message.map_or(Step::Nothing, Step::Send)
 }
 
-async fn attach(terminal: &mut DefaultTerminal, connection: &mut Connection) -> Result<Outcome> {
+async fn attach(
+    terminal: &mut DefaultTerminal,
+    connection: &mut Connection,
+    animations: Animations,
+) -> Result<Outcome> {
     let mut events = spawn_events();
     let size = terminal.size()?;
-    let mut display = Display::new(Size::new(size.width, size.height));
+    let mut display = Display::new(Size::new(size.width, size.height), animations);
     let mut leader = Leader::default();
     loop {
         if let Some(outcome) = apply_messages(connection, &mut display)? {
-            draw(terminal, &display)?;
+            draw(terminal, &mut display, Instant::now())?;
             return Ok(outcome);
         }
         if let Some(message) = display.report_shown() {
             let _ = connection.send(&message).await;
         }
-        draw(terminal, &display)?;
+        let now = Instant::now();
+        draw(terminal, &mut display, now)?;
+        let frame = display
+            .is_animating(now)
+            .then(|| tokio::time::Instant::from_std(now + FRAME));
         tokio::select! {
+            () = tokio::time::sleep_until(frame.unwrap_or_else(tokio::time::Instant::now)),
+                if frame.is_some() => {}
             filled = connection.reader.fill() => match filled {
                 Ok(true) => {}
                 Ok(false) | Err(gband_protocol::IoError::Io(_)) => return Ok(Outcome::LostServer),
@@ -309,9 +344,10 @@ fn spawn_events() -> mpsc::UnboundedReceiver<Event> {
     receiver
 }
 
-fn draw(terminal: &mut DefaultTerminal, display: &Display) -> Result<()> {
+fn draw(terminal: &mut DefaultTerminal, display: &mut Display, now: Instant) -> Result<()> {
+    let drawn = display.present(now);
     terminal.draw(|frame| {
-        let Some(view) = &display.view else {
+        let (Some(view), Some(drawn)) = (&display.view, &drawn) else {
             return;
         };
         let ribbon = Ribbon {
@@ -319,6 +355,7 @@ fn draw(terminal: &mut DefaultTerminal, display: &Display) -> Result<()> {
             area: display.area,
             view,
             grids: &display.grids,
+            drawn,
         };
         draw_frame(frame, &ribbon);
     })?;

@@ -432,3 +432,34 @@ fn kill_server_ends_a_session_of_two_panes() {
     client.wait_for_text("[exited]");
     wait_until(|| !env.socket().exists(), "the socket to be removed");
 }
+
+#[test]
+fn unknown_animations_value_is_logged() {
+    let env = TestEnv::new("animations-unknown");
+    let mut client = Attached::start_with(&env, GBAND, &["attach"], 80, 24, |command| {
+        command.env("GBAND_ANIMATIONS", "fast");
+    });
+    client.wait_for_prompt();
+    client.shell_pid(&env);
+    assert!(
+        env.log_text("client")
+            .contains("GBAND_ANIMATIONS value \"fast\"")
+    );
+}
+
+#[test]
+fn animations_off_opens_a_pane_without_motion() {
+    let env = TestEnv::new("animations-off");
+    let mut client = Attached::start_with(&env, GBAND, &["attach"], 80, 24, |command| {
+        command.env("GBAND_ANIMATIONS", "off");
+    });
+    client.wait_for_prompt();
+    client.shell_pid(&env);
+    client.send(b"\x01\r");
+    client.wait_for("two tiles with the second focused", |screen| {
+        let tiles = tiles(screen);
+        tiles.len() == 2 && tiles[1].focused && tiles[1].left == 40
+    });
+    client.wait_for_prompt();
+    client.shell_pid(&env);
+}

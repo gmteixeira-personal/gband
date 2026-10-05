@@ -1,3 +1,4 @@
+use gband_client::animation::Animations;
 use gband_client::{Display, Step, dispatch};
 use gband_core::action::{Action, SessionCommand};
 use gband_core::geometry::Size;
@@ -34,7 +35,7 @@ async fn close_pane_action_closes_the_focused_second_pane() {
     let server = TestServer::start("client-actions", &["/bin/sh"]).await;
     let mut client = server.attach(80, 24).await;
     let first = client.first();
-    let mut display = Display::new(Size::new(80, 24));
+    let mut display = Display::new(Size::new(80, 24), Animations::On);
     display.apply(ServerMessage::Layout {
         cols: client.area.cols,
         rows: client.area.rows,
@@ -103,7 +104,7 @@ async fn shown_panes_follow_the_view_and_are_not_repeated() {
     client
         .wait_until(|client| client.layout.workspaces()[0].columns.len() == 3)
         .await;
-    let mut display = Display::new(Size::new(80, 24));
+    let mut display = Display::new(Size::new(80, 24), Animations::On);
     assert_eq!(display.report_shown(), None);
     display.apply(ServerMessage::Layout {
         cols: client.area.cols,

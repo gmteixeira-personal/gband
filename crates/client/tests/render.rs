@@ -1,5 +1,7 @@
 use std::collections::HashMap;
+use std::time::Instant;
 
+use gband_client::animation::{Animations, Band, Drawn, Presentation, Targets};
 use gband_client::render::{Ribbon, draw_frame};
 use gband_core::geometry::{Size, tiles};
 use gband_core::layout::{Direction, Layout, PaneId, SessionAction, Step};
@@ -75,13 +77,28 @@ impl Fixture {
         self.grids.get_mut(&pane).unwrap().process(bytes);
     }
 
+    fn at_rest(&self, terminal: Size) -> Drawn {
+        let now = Instant::now();
+        let mut presentation = Presentation::new(Animations::On);
+        presentation.update(
+            now,
+            &Targets::new(&self.layout, self.area, &self.view, terminal),
+        );
+        presentation.drawn(now)
+    }
+
     fn render(&self, terminal: Size) -> String {
+        self.render_drawn(terminal, &self.at_rest(terminal))
+    }
+
+    fn render_drawn(&self, terminal: Size, drawn: &Drawn) -> String {
         let mut terminal = Terminal::new(TestBackend::new(terminal.cols, terminal.rows)).unwrap();
         let ribbon = Ribbon {
             layout: &self.layout,
             area: self.area,
             view: &self.view,
             grids: &self.grids,
+            drawn,
         };
         terminal.draw(|frame| draw_frame(frame, &ribbon)).unwrap();
         let backend = terminal.backend();
@@ -217,4 +234,79 @@ fn grid_larger_than_its_tile() {
     }
     fixture.write(panes[0], b"\x1b[28;48H");
     assert_snapshot!(fixture.render(Size::new(80, 24)));
+}
+
+#[test]
+fn tile_morphing_wider_than_its_grid() {
+    let (mut fixture, panes) = Fixture::new(Size::new(80, 12), 2, 80);
+    fixture.write(panes[0], "w".repeat(38).as_bytes());
+    let mut drawn = fixture.at_rest(Size::new(80, 12));
+    drawn.tiles.get_mut(&panes[0]).unwrap().width = 47;
+    drawn.settled = false;
+    assert_snapshot!(fixture.render_drawn(Size::new(80, 12), &drawn));
+}
+
+#[test]
+fn tile_morphing_narrower_than_its_grid() {
+    let (mut fixture, panes) = Fixture::new(Size::new(80, 12), 2, 80);
+    fixture.write(panes[0], "0123456789".repeat(4).as_bytes());
+    let mut drawn = fixture.at_rest(Size::new(80, 12));
+    drawn.tiles.get_mut(&panes[0]).unwrap().width = 26;
+    drawn.settled = false;
+    assert_snapshot!(fixture.render_drawn(Size::new(80, 12), &drawn));
+}
+
+#[test]
+fn mid_scroll_frame() {
+    let (mut fixture, panes) = Fixture::new(Size::new(80, 12), 3, 80);
+    fixture.write(panes[1], b"second");
+    fixture.act(ViewAction::FocusRight, 80);
+    fixture.act(ViewAction::FocusRight, 80);
+    assert_eq!(fixture.view.camera(), 40);
+    let mut drawn = fixture.at_rest(Size::new(80, 12));
+    drawn.bands[0].camera = 20;
+    drawn.settled = false;
+    let screen = fixture.render_drawn(Size::new(80, 12), &drawn);
+    assert!(screen.ends_with("cursor: None"));
+    assert_snapshot!(screen);
+}
+
+#[test]
+fn workspace_switch_mid_slide() {
+    let (mut fixture, panes) = Fixture::new(Size::new(60, 12), 1, 60);
+    let below = fixture.layout.workspaces()[1].id;
+    let pane = fixture.layout.allocate_pane();
+    fixture.layout.open(pane, below, None);
+    fixture.reset_grids();
+    fixture.write(panes[0], b"upper");
+    fixture.write(pane, b"lower");
+    fixture.act(ViewAction::WorkspaceDown, 60);
+    let above = fixture.layout.workspaces()[0].id;
+    let mut drawn = fixture.at_rest(Size::new(60, 12));
+    drawn.bands = vec![
+        Band {
+            workspace: above,
+            top: -5,
+            camera: 0,
+        },
+        Band {
+            workspace: below,
+            top: 7,
+            camera: 0,
+        },
+    ];
+    drawn.settled = false;
+    assert_snapshot!(fixture.render_drawn(Size::new(60, 12), &drawn));
+}
+
+#[test]
+fn focused_tile_is_drawn_over_overlapping_tiles() {
+    let (mut fixture, panes) = Fixture::new(Size::new(80, 8), 2, 80);
+    fixture.write(panes[0], b"focused");
+    fixture.write(panes[1], b"other");
+    assert_eq!(fixture.view.focused(), Some(panes[0]));
+    let mut drawn = fixture.at_rest(Size::new(80, 8));
+    drawn.tiles.get_mut(&panes[1]).unwrap().x = 20;
+    drawn.settled = false;
+    assert_snapshot!(fixture.render_drawn(Size::new(80, 8), &drawn));
 }
