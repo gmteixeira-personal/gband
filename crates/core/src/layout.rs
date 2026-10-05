@@ -9,7 +9,7 @@ use crate::geometry::{MIN_TILE_HEIGHT, Size, fixed_height_limit, pane_heights};
 pub struct PaneId(pub u32);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct WorkspaceId(pub u32);
+pub struct BandId(pub u32);
 
 impl fmt::Display for PaneId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -17,7 +17,7 @@ impl fmt::Display for PaneId {
     }
 }
 
-impl fmt::Display for WorkspaceId {
+impl fmt::Display for BandId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.0.fmt(f)
     }
@@ -231,13 +231,13 @@ impl Column {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Workspace {
-    pub id: WorkspaceId,
+pub struct Band {
+    pub id: BandId,
     pub columns: Vec<Column>,
 }
 
-impl Workspace {
-    fn new(id: WorkspaceId) -> Self {
+impl Band {
+    fn new(id: BandId) -> Self {
         Self {
             id,
             columns: Vec::new(),
@@ -278,7 +278,7 @@ pub enum Direction {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SessionAction {
     OpenPane {
-        workspace: WorkspaceId,
+        band: BandId,
         after: Option<PaneId>,
         program: Option<Program>,
     },
@@ -302,16 +302,16 @@ pub enum SessionAction {
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Location {
-    pub workspace: usize,
+    pub band: usize,
     pub column: usize,
     pub row: usize,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Layout {
-    workspaces: Vec<Workspace>,
+    bands: Vec<Band>,
     next_pane: u32,
-    next_workspace: u32,
+    next_band: u32,
 }
 
 impl Default for Layout {
@@ -323,9 +323,9 @@ impl Default for Layout {
 impl Layout {
     pub fn new() -> Self {
         let mut layout = Self {
-            workspaces: Vec::new(),
+            bands: Vec::new(),
             next_pane: 1,
-            next_workspace: 1,
+            next_band: 1,
         };
         layout.normalize();
         layout
@@ -337,22 +337,20 @@ impl Layout {
         id
     }
 
-    pub fn workspaces(&self) -> &[Workspace] {
-        &self.workspaces
+    pub fn bands(&self) -> &[Band] {
+        &self.bands
     }
 
-    pub fn workspace(&self, id: WorkspaceId) -> Option<&Workspace> {
-        self.workspaces.iter().find(|workspace| workspace.id == id)
+    pub fn band(&self, id: BandId) -> Option<&Band> {
+        self.bands.iter().find(|band| band.id == id)
     }
 
-    pub fn workspace_index(&self, id: WorkspaceId) -> Option<usize> {
-        self.workspaces
-            .iter()
-            .position(|workspace| workspace.id == id)
+    pub fn band_index(&self, id: BandId) -> Option<usize> {
+        self.bands.iter().position(|band| band.id == id)
     }
 
     pub fn panes(&self) -> impl Iterator<Item = PaneId> + '_ {
-        self.workspaces.iter().flat_map(Workspace::panes)
+        self.bands.iter().flat_map(Band::panes)
     }
 
     pub fn is_empty(&self) -> bool {
@@ -364,20 +362,15 @@ impl Layout {
     }
 
     pub fn locate(&self, pane: PaneId) -> Option<Location> {
-        self.workspaces
-            .iter()
-            .enumerate()
-            .find_map(|(workspace, candidate)| {
-                candidate.locate(pane).map(|(column, row)| Location {
-                    workspace,
-                    column,
-                    row,
-                })
-            })
+        self.bands.iter().enumerate().find_map(|(band, candidate)| {
+            candidate
+                .locate(pane)
+                .map(|(column, row)| Location { band, column, row })
+        })
     }
 
-    pub fn can_open(&self, workspace: WorkspaceId, after: Option<PaneId>) -> bool {
-        match (self.workspace(workspace), after) {
+    pub fn can_open(&self, band: BandId, after: Option<PaneId>) -> bool {
+        match (self.band(band), after) {
             (None, _) => false,
             (Some(_), None) => true,
             (Some(target), Some(pane)) => target.locate(pane).is_some(),
@@ -387,17 +380,17 @@ impl Layout {
     pub fn open(
         &mut self,
         pane: PaneId,
-        workspace: WorkspaceId,
+        band: BandId,
         after: Option<PaneId>,
         options: &LayoutOptions,
     ) -> Vec<LayoutEvent> {
-        if !self.can_open(workspace, after) || self.contains(pane) {
+        if !self.can_open(band, after) || self.contains(pane) {
             return Vec::new();
         }
         let target = self
-            .workspaces
+            .bands
             .iter_mut()
-            .find(|candidate| candidate.id == workspace)
+            .find(|candidate| candidate.id == band)
             .expect("checked by can_open");
         let index = match after.and_then(|after| target.locate(after)) {
             Some((column, _)) => column + 1,
@@ -406,7 +399,7 @@ impl Layout {
         target
             .columns
             .insert(index, Column::new(pane, options.default_width));
-        let mut events = vec![LayoutEvent::PaneOpened { pane, workspace }];
+        let mut events = vec![LayoutEvent::PaneOpened { pane, band }];
         events.extend(self.normalize());
         events
     }
@@ -415,15 +408,15 @@ impl Layout {
         let Some(location) = self.locate(pane) else {
             return Vec::new();
         };
-        let workspace = &mut self.workspaces[location.workspace];
-        let column = &mut workspace.columns[location.column];
+        let band = &mut self.bands[location.band];
+        let column = &mut band.columns[location.column];
         column.remove(location.row);
         if column.panes.is_empty() {
-            workspace.columns.remove(location.column);
+            band.columns.remove(location.column);
         }
         let mut events = vec![LayoutEvent::PaneClosed {
             pane,
-            workspace: workspace.id,
+            band: band.id,
         }];
         events.extend(self.normalize());
         events
@@ -466,15 +459,15 @@ impl Layout {
         let Some(location) = self.locate(pane) else {
             return Vec::new();
         };
-        let workspace = &mut self.workspaces[location.workspace];
-        let column = &mut workspace.columns[location.column];
+        let band = &mut self.bands[location.band];
+        let column = &mut band.columns[location.column];
         let before = column.heights.clone();
         change(column, location.row);
         if column.heights == before {
             return Vec::new();
         }
         vec![LayoutEvent::PaneHeightsChanged {
-            workspace: workspace.id,
+            band: band.id,
             column: location.column,
             heights: column.heights.clone(),
         }]
@@ -484,15 +477,15 @@ impl Layout {
         let Some(location) = self.locate(pane) else {
             return Vec::new();
         };
-        let workspace = &mut self.workspaces[location.workspace];
-        let column = &mut workspace.columns[location.column];
+        let band = &mut self.bands[location.band];
+        let column = &mut band.columns[location.column];
         let before = (column.width, column.full_width);
         change(column);
         if (column.width, column.full_width) == before {
             return Vec::new();
         }
         vec![LayoutEvent::ColumnWidthChanged {
-            workspace: workspace.id,
+            band: band.id,
             column: location.column,
             width: column.width,
             full_width: column.full_width,
@@ -508,8 +501,8 @@ impl Layout {
         let Some(location) = self.locate(pane) else {
             return Vec::new();
         };
-        let workspace = &mut self.workspaces[location.workspace];
-        let columns = &mut workspace.columns;
+        let band = &mut self.bands[location.band];
+        let columns = &mut band.columns;
         let (column, row) = if columns[location.column].panes.len() > 1 {
             columns[location.column].remove(location.row);
             let index = match direction {
@@ -539,34 +532,32 @@ impl Layout {
         };
         vec![LayoutEvent::PaneMoved {
             pane,
-            workspace: workspace.id,
+            band: band.id,
             column,
             row,
         }]
     }
 
     fn normalize(&mut self) -> Vec<LayoutEvent> {
-        let last = self.workspaces.len().saturating_sub(1);
+        let last = self.bands.len().saturating_sub(1);
         let mut events = Vec::new();
         let mut index = 0;
-        self.workspaces.retain(|workspace| {
-            let keep = index == last || !workspace.is_empty();
+        self.bands.retain(|band| {
+            let keep = index == last || !band.is_empty();
             index += 1;
             if !keep {
-                events.push(LayoutEvent::WorkspaceRemoved {
-                    workspace: workspace.id,
-                });
+                events.push(LayoutEvent::BandRemoved { band: band.id });
             }
             keep
         });
-        if self.workspaces.last().is_none_or(|last| !last.is_empty()) {
-            let id = WorkspaceId(self.next_workspace);
-            self.next_workspace += 1;
-            events.push(LayoutEvent::WorkspaceAdded {
-                workspace: id,
-                index: self.workspaces.len(),
+        if self.bands.last().is_none_or(|last| !last.is_empty()) {
+            let id = BandId(self.next_band);
+            self.next_band += 1;
+            events.push(LayoutEvent::BandAdded {
+                band: id,
+                index: self.bands.len(),
             });
-            self.workspaces.push(Workspace::new(id));
+            self.bands.push(Band::new(id));
         }
         events
     }

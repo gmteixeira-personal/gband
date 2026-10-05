@@ -24,7 +24,7 @@ A client SHALL start by viewing the first band, with focus on the top pane of it
 ### Requirement: Switch band
 Viewing the band below or above SHALL make the adjacent band in that direction the viewed band. Focus SHALL go to the pane this client last focused in that band when it is still there, otherwise to the top pane of its first column, or to no pane when the band is empty. When no band exists in that direction, the view SHALL not change.
 
-#### Scenario: Down to the empty workspace
+#### Scenario: Down to the empty band
 - **WHEN** the layout holds B1 with panes and an empty B2, and a client viewing B1 views the band below
 - **THEN** the client views B2 with no focused pane
 
@@ -32,7 +32,7 @@ Viewing the band below or above SHALL make the adjacent band in that direction t
 - **WHEN** a client focuses the second column of B1, views the band below, then the band above
 - **THEN** the client focuses the same pane in the second column of B1
 
-#### Scenario: Top workspace
+#### Scenario: Top band
 - **WHEN** a client viewing the first band views the band above
 - **THEN** the view is unchanged
 
@@ -56,7 +56,7 @@ When the layout changes, each client's view SHALL follow it:
 - **WHEN** a client focuses P2 in a column holding P1 and P2, and P2 is expelled to the right
 - **THEN** the client still focuses P2, now alone in its new column
 
-#### Scenario: Viewed workspace removed
+#### Scenario: Viewed band removed
 - **WHEN** a client views B1 of B1, B2 and an empty B3, and the last pane of B1 exits
 - **THEN** the client views B2
 
@@ -124,6 +124,6 @@ A view's shown panes SHALL be the panes of its viewed band whose tile, as the la
 - **WHEN** the screen area is 120×60, the client's terminal is 100×30, and the viewed band holds one column of width 1/2 with two panes with automatic heights of weight 1
 - **THEN** only the top pane is shown
 
-#### Scenario: Other workspaces
+#### Scenario: Other bands
 - **WHEN** the layout holds B1 with pane P1 and B2 with pane P2, and the client views B2
 - **THEN** the only shown pane is P2

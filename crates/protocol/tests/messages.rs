@@ -154,20 +154,20 @@ fn client_messages_round_trip() {
 #[test]
 fn session_actions_round_trip() {
     let layout = Layout::new();
-    let workspace = layout.workspaces()[0].id;
+    let band = layout.bands()[0].id;
     for action in [
         SessionAction::OpenPane {
-            workspace,
+            band,
             after: None,
             program: None,
         },
         SessionAction::OpenPane {
-            workspace,
+            band,
             after: Some(PaneId(4)),
             program: None,
         },
         SessionAction::OpenPane {
-            workspace,
+            band,
             after: Some(PaneId(2)),
             program: Some(Program::Argv(vec![
                 "htop".to_owned(),
@@ -176,7 +176,7 @@ fn session_actions_round_trip() {
             ])),
         },
         SessionAction::OpenPane {
-            workspace,
+            band,
             after: None,
             program: Some(Program::CommandLine("echo $GBAND_PANE".to_owned())),
         },
@@ -215,7 +215,7 @@ fn layout_round_trips() {
     let first = layout.allocate_pane();
     let second = layout.allocate_pane();
     let third = layout.allocate_pane();
-    let w1 = layout.workspaces()[0].id;
+    let w1 = layout.bands()[0].id;
     layout.open(first, w1, None, &LayoutOptions::default());
     layout.open(second, w1, Some(first), &LayoutOptions::default());
     layout.apply(
@@ -241,9 +241,9 @@ fn layout_round_trips() {
         AREA,
         &LayoutOptions::default(),
     );
-    let w2 = layout.workspaces()[1].id;
+    let w2 = layout.bands()[1].id;
     layout.open(third, w2, None, &LayoutOptions::default());
-    assert_eq!(layout.workspaces().len(), 3);
+    assert_eq!(layout.bands().len(), 3);
     round_trip(ServerMessage::Layout {
         cols: 120,
         rows: 40,
@@ -254,11 +254,11 @@ fn layout_round_trips() {
 #[test]
 fn heights_in_the_layout_round_trip() {
     let mut layout = Layout::new();
-    let workspace = layout.workspaces()[0].id;
+    let band = layout.bands()[0].id;
     let panes: Vec<PaneId> = (0..3).map(|_| layout.allocate_pane()).collect();
-    layout.open(panes[0], workspace, None, &LayoutOptions::default());
+    layout.open(panes[0], band, None, &LayoutOptions::default());
     for pair in panes.windows(2) {
-        layout.open(pair[1], workspace, Some(pair[0]), &LayoutOptions::default());
+        layout.open(pair[1], band, Some(pair[0]), &LayoutOptions::default());
         layout.apply(
             SessionAction::ConsumeOrExpel {
                 pane: pair[1],
@@ -277,7 +277,7 @@ fn heights_in_the_layout_round_trip() {
     layout.remove(panes[2]);
     layout.apply(grow(panes[0]), Size::new(80, 50), &LayoutOptions::default());
     assert_eq!(
-        layout.workspaces()[0].columns[0].heights,
+        layout.bands()[0].columns[0].heights,
         [PaneHeight::Fixed(14), PaneHeight::Auto(Weight::new(10, 7))]
     );
     round_trip(ServerMessage::Layout {

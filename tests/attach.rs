@@ -410,35 +410,35 @@ fn leader_q_closes_the_focused_pane() {
 }
 
 #[test]
-fn leader_u_and_i_switch_workspaces() {
-    let env = TestEnv::new("workspaces");
+fn leader_u_and_i_switch_bands() {
+    let env = TestEnv::new("bands");
     let mut client = Attached::start(&env, 80, 24);
     client.wait_for_prompt();
     client.shell_pid(&env);
-    client.run("echo first-workspace");
-    client.wait_for_line("first-workspace");
+    client.run("echo first-band");
+    client.wait_for_line("first-band");
 
     client.send(b"\x00u");
-    client.wait_for("an empty workspace", |screen| tiles(screen).is_empty());
+    client.wait_for("an empty band", |screen| tiles(screen).is_empty());
     client.send(b"\x00\r");
-    client.wait_for("a pane in the second workspace", |screen| {
+    client.wait_for("a pane in the second band", |screen| {
         tiles(screen).len() == 1
     });
     client.wait_for_prompt();
     client.shell_pid(&env);
-    client.run("echo second-workspace");
-    client.wait_for_line("second-workspace");
+    client.run("echo second-band");
+    client.wait_for_line("second-band");
 
     client.send(b"\x00i");
-    client.wait_for_focused("the first workspace", |lines| {
-        lines.iter().any(|line| line == "first-workspace")
+    client.wait_for_focused("the first band", |lines| {
+        lines.iter().any(|line| line == "first-band")
     });
     client.run("echo back-on-first");
     client.wait_for_line("back-on-first");
 
     client.send(b"\x00u");
-    client.wait_for_focused("the second workspace", |lines| {
-        lines.iter().any(|line| line == "second-workspace")
+    client.wait_for_focused("the second band", |lines| {
+        lines.iter().any(|line| line == "second-band")
     });
 }
 

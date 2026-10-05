@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Defines how the client moves its drawing from one state of the layout and view to the next: the camera scroll, the workspace switch, tile movement and the resize morph, the motion they share, the cases that do not animate, and how to turn animations off.
+Defines how the client moves its drawing from one state of the layout and view to the next: the camera scroll, the band switch, tile movement and the resize morph, the motion they share, the cases that do not animate, and how to turn animations off.
 
 ## Requirements
 
@@ -60,7 +60,7 @@ When the viewed workspace changes to another workspace that is still in the layo
 - **WHEN** the client views W1 of W1, W2 and W3, views the workspace below, and views the workspace below again before the first slide ends
 - **THEN** the slide continues downward without a jump and ends showing W3
 
-#### Scenario: Old workspace removed
+#### Scenario: Old band removed
 - **WHEN** the client switches from W1 to W2 and the last pane of W1 exits before the slide ends
 - **THEN** the client shows W2 at rest from the next frame
 

@@ -15,9 +15,9 @@ fn scene(layout: &Layout) -> Scene<'_> {
     }
 }
 
-fn open(layout: &mut Layout, workspace: usize, after: Option<PaneId>) -> PaneId {
+fn open(layout: &mut Layout, band: usize, after: Option<PaneId>) -> PaneId {
     let pane = layout.allocate_pane();
-    let id = layout.workspaces()[workspace].id;
+    let id = layout.bands()[band].id;
     assert!(
         !layout
             .open(pane, id, after, &LayoutOptions::default())
@@ -57,7 +57,7 @@ fn act(view: &mut View, layout: &Layout, actions: &[ViewAction]) {
 fn initial_view_focuses_the_first_pane() {
     let (layout, panes) = row_of_columns(2);
     let view = View::new(scene(&layout));
-    assert_eq!(view.workspace(), layout.workspaces()[0].id);
+    assert_eq!(view.band(), layout.bands()[0].id);
     assert_eq!(view.focused(), Some(panes[0]));
     assert_eq!(view.camera(), 0);
 }
@@ -127,20 +127,20 @@ fn focus_moves_within_a_stack() {
 }
 
 #[test]
-fn switching_down_to_the_empty_workspace_and_back() {
+fn switching_down_to_the_empty_band_and_back() {
     let (layout, panes) = row_of_columns(2);
     let mut view = View::new(scene(&layout));
     act(&mut view, &layout, &[ViewAction::FocusRight]);
-    act(&mut view, &layout, &[ViewAction::WorkspaceDown]);
-    assert_eq!(view.workspace(), layout.workspaces()[1].id);
+    act(&mut view, &layout, &[ViewAction::BandDown]);
+    assert_eq!(view.band(), layout.bands()[1].id);
     assert_eq!(view.focused(), None);
-    act(&mut view, &layout, &[ViewAction::WorkspaceDown]);
-    assert_eq!(view.workspace(), layout.workspaces()[1].id);
-    act(&mut view, &layout, &[ViewAction::WorkspaceUp]);
-    assert_eq!(view.workspace(), layout.workspaces()[0].id);
+    act(&mut view, &layout, &[ViewAction::BandDown]);
+    assert_eq!(view.band(), layout.bands()[1].id);
+    act(&mut view, &layout, &[ViewAction::BandUp]);
+    assert_eq!(view.band(), layout.bands()[0].id);
     assert_eq!(view.focused(), Some(panes[1]));
-    act(&mut view, &layout, &[ViewAction::WorkspaceUp]);
-    assert_eq!(view.workspace(), layout.workspaces()[0].id);
+    act(&mut view, &layout, &[ViewAction::BandUp]);
+    assert_eq!(view.band(), layout.bands()[0].id);
     assert_eq!(view.focused(), Some(panes[1]));
 }
 
@@ -215,48 +215,48 @@ fn focused_pane_expelled_keeps_focus() {
 }
 
 #[test]
-fn viewed_workspace_removed_moves_to_the_one_in_its_place() {
+fn viewed_band_removed_moves_to_the_one_in_its_place() {
     let mut layout = Layout::new();
     let first = open(&mut layout, 0, None);
     let other = open(&mut layout, 1, None);
-    let w2 = layout.workspaces()[1].id;
+    let w2 = layout.bands()[1].id;
     let mut view = View::new(scene(&layout));
     layout.remove(first);
     view.sync(scene(&layout));
-    assert_eq!(view.workspace(), w2);
+    assert_eq!(view.band(), w2);
     assert_eq!(view.focused(), Some(other));
 }
 
 #[test]
-fn view_action_after_the_viewed_workspace_is_removed_only_moves_the_view() {
+fn view_action_after_the_viewed_band_is_removed_only_moves_the_view() {
     let mut layout = Layout::new();
     let first = open(&mut layout, 0, None);
     let other = open(&mut layout, 1, None);
     open(&mut layout, 1, Some(other));
-    let w2 = layout.workspaces()[1].id;
+    let w2 = layout.bands()[1].id;
     let mut view = View::new(scene(&layout));
     layout.remove(first);
     act(&mut view, &layout, &[ViewAction::FocusRight]);
-    assert_eq!(view.workspace(), w2);
+    assert_eq!(view.band(), w2);
     assert_eq!(view.focused(), Some(other));
 }
 
 #[test]
-fn last_workspace_removed_moves_to_the_new_last() {
+fn last_band_removed_moves_to_the_new_last() {
     let mut layout = Layout::new();
     open(&mut layout, 0, None);
     let other = open(&mut layout, 1, None);
     let mut view = View::new(scene(&layout));
-    act(&mut view, &layout, &[ViewAction::WorkspaceDown]);
+    act(&mut view, &layout, &[ViewAction::BandDown]);
     assert_eq!(view.focused(), Some(other));
     layout.remove(other);
     view.sync(scene(&layout));
-    assert_eq!(view.workspace(), layout.workspaces()[1].id);
+    assert_eq!(view.band(), layout.bands()[1].id);
     assert_eq!(view.focused(), None);
 }
 
 #[test]
-fn pane_opened_in_the_viewed_empty_workspace_gains_focus() {
+fn pane_opened_in_the_viewed_empty_band_gains_focus() {
     let mut layout = Layout::new();
     let mut view = View::new(scene(&layout));
     let pane = open(&mut layout, 0, None);
@@ -265,12 +265,12 @@ fn pane_opened_in_the_viewed_empty_workspace_gains_focus() {
 }
 
 #[test]
-fn focus_pane_switches_to_its_workspace() {
+fn focus_pane_switches_to_its_band() {
     let (mut layout, _) = row_of_columns(1);
     let mut view = View::new(scene(&layout));
     let pane = open(&mut layout, 1, None);
     view.focus_pane(pane, scene(&layout));
-    assert_eq!(view.workspace(), layout.workspaces()[1].id);
+    assert_eq!(view.band(), layout.bands()[1].id);
     assert_eq!(view.focused(), Some(pane));
 }
 
@@ -280,12 +280,12 @@ fn focus_pane_ignores_a_pane_the_layout_does_not_hold() {
     let mut view = View::new(scene(&layout));
     act(&mut view, &layout, &[ViewAction::FocusRight]);
     view.focus_pane(PaneId(99), scene(&layout));
-    assert_eq!(view.workspace(), layout.workspaces()[0].id);
+    assert_eq!(view.band(), layout.bands()[0].id);
     assert_eq!(view.focused(), Some(panes[1]));
 }
 
 #[test]
-fn focus_moves_on_an_empty_workspace_change_nothing() {
+fn focus_moves_on_an_empty_band_change_nothing() {
     let layout = Layout::new();
     let mut view = View::new(scene(&layout));
     act(
@@ -298,7 +298,7 @@ fn focus_moves_on_an_empty_workspace_change_nothing() {
             ViewAction::FocusDown,
         ],
     );
-    assert_eq!(view.workspace(), layout.workspaces()[0].id);
+    assert_eq!(view.band(), layout.bands()[0].id);
     assert_eq!(view.focused(), None);
 }
 
@@ -385,7 +385,7 @@ fn columns_of(width: Proportion, count: usize) -> (Layout, Vec<PaneId>) {
     let mut panes = Vec::new();
     for _ in 0..count {
         let pane = layout.allocate_pane();
-        let id = layout.workspaces()[0].id;
+        let id = layout.bands()[0].id;
         layout.open(pane, id, panes.last().copied(), &options);
         panes.push(pane);
     }
@@ -461,7 +461,7 @@ fn on_overflow_centres_a_new_column_that_does_not_fit_beside_the_focus() {
         default_width: Proportion::TWO_THIRDS,
         ..LayoutOptions::default()
     };
-    layout.open(opened, layout.workspaces()[0].id, Some(panes[0]), &options);
+    layout.open(opened, layout.bands()[0].id, Some(panes[0]), &options);
     view.sync(scene(&layout));
     view.focus_pane(opened, scene(&layout));
     assert_eq!(view.camera(), 40);
@@ -478,7 +478,7 @@ fn policy_change_applies_from_the_next_move() {
 }
 
 #[test]
-fn each_workspace_keeps_its_camera() {
+fn each_band_keeps_its_camera() {
     let mut layout = Layout::new();
     let mut last = open(&mut layout, 0, None);
     for _ in 0..2 {
@@ -492,9 +492,9 @@ fn each_workspace_keeps_its_camera() {
         &[ViewAction::FocusRight, ViewAction::FocusRight],
     );
     assert_eq!(view.camera(), 40);
-    act(&mut view, &layout, &[ViewAction::WorkspaceDown]);
+    act(&mut view, &layout, &[ViewAction::BandDown]);
     assert_eq!(view.camera(), 0);
-    act(&mut view, &layout, &[ViewAction::WorkspaceUp]);
+    act(&mut view, &layout, &[ViewAction::BandUp]);
     assert_eq!(view.camera(), 40);
     assert_eq!(view.focused(), Some(last));
 }
@@ -509,7 +509,7 @@ fn session_commands_resolve_to_the_focused_pane() {
         &[ViewAction::FocusRight, ViewAction::FocusRight],
     );
     assert_eq!(view.focused(), Some(panes[2]));
-    let workspace = layout.workspaces()[0].id;
+    let band = layout.bands()[0].id;
     let cases = [
         (
             SessionCommand::CycleWidth,
@@ -533,7 +533,7 @@ fn session_commands_resolve_to_the_focused_pane() {
         (
             SessionCommand::OpenPane,
             SessionAction::OpenPane {
-                workspace,
+                band,
                 after: Some(panes[2]),
                 program: None,
             },
@@ -596,16 +596,16 @@ fn commands_on_a_pane_resolve_to_nothing_without_focus() {
 }
 
 #[test]
-fn open_pane_on_the_empty_workspace_names_it_and_no_pane() {
+fn open_pane_on_the_empty_band_names_it_and_no_pane() {
     let (layout, _) = row_of_columns(1);
     let mut view = View::new(scene(&layout));
-    act(&mut view, &layout, &[ViewAction::WorkspaceDown]);
-    let empty = layout.workspaces()[1].id;
-    assert_eq!(view.workspace(), empty);
+    act(&mut view, &layout, &[ViewAction::BandDown]);
+    let empty = layout.bands()[1].id;
+    assert_eq!(view.band(), empty);
     assert_eq!(
         view.resolve(SessionCommand::OpenPane),
         Some(SessionAction::OpenPane {
-            workspace: empty,
+            band: empty,
             after: None,
             program: None,
         })
@@ -649,13 +649,13 @@ fn pane_below_the_bottom_edge_is_not_shown() {
 }
 
 #[test]
-fn panes_of_other_workspaces_are_not_shown() {
+fn panes_of_other_bands_are_not_shown() {
     let mut layout = Layout::new();
     open(&mut layout, 0, None);
     let other = open(&mut layout, 1, None);
     let mut view = View::new(scene(&layout));
-    act(&mut view, &layout, &[ViewAction::WorkspaceDown]);
+    act(&mut view, &layout, &[ViewAction::BandDown]);
     assert_eq!(view.shown(scene(&layout)), [other]);
-    act(&mut view, &layout, &[ViewAction::WorkspaceDown]);
+    act(&mut view, &layout, &[ViewAction::BandDown]);
     assert_eq!(view.shown(scene(&layout)), []);
 }

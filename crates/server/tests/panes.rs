@@ -113,9 +113,9 @@ async fn concurrent_opens_give_every_client_the_same_layout() {
     let mut first = server.attach(80, 24).await;
     let mut second = server.attach(80, 24).await;
     let pane = first.first();
-    let workspace = first.layout.workspaces()[0].id;
+    let band = first.layout.bands()[0].id;
     let open = SessionAction::OpenPane {
-        workspace,
+        band,
         after: Some(pane),
         program: None,
     };
@@ -295,7 +295,7 @@ async fn new_default_width_applies_to_columns_opened_after_it() {
     let second = client.open_after(first).await;
     let width = |client: &TestClient, pane: PaneId| {
         let location = client.layout.locate(pane).unwrap();
-        client.layout.workspaces()[location.workspace].columns[location.column].width
+        client.layout.bands()[location.band].columns[location.column].width
     };
     assert_eq!(width(&client, first), Proportion::ONE_HALF);
     assert_eq!(width(&client, second), Proportion::ONE_THIRD);

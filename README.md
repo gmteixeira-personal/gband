@@ -1,7 +1,7 @@
 # gband
 
 gband is a terminal multiplexer inspired by the [niri](https://github.com/YaLTeR/niri) window manager.
-It places panes on an infinitely side-scrolling strip and groups strips into workspaces.
+It places panes on an infinitely side-scrolling strip and groups strips into bands.
 It is written in Rust and scriptable with Lua.
 
 ## Status
@@ -19,8 +19,8 @@ gband follows niri's scrollable tiling model instead:
 - A new pane adds a column to the strip, and existing panes keep their size.
 - The view scrolls sideways to follow focus, so the focused pane is always on screen.
 - A column can hold several panes stacked vertically.
-- Each workspace has its own strip.
-  Workspaces stack vertically, and you move between them up and down.
+- Each band has its own strip.
+  Bands stack vertically, and you move between them up and down.
 
 ## Scripting
 
@@ -103,7 +103,7 @@ The actions in `gband.action`:
 |---|---|
 | `focus_column_left`, `focus_column_right` | focus the column to the left or right |
 | `focus_pane_down`, `focus_pane_up` | focus the pane below or above |
-| `focus_workspace_down`, `focus_workspace_up` | view the workspace below or above |
+| `focus_band_down`, `focus_band_up` | view the band below or above |
 | `open_pane` | open a pane running your shell right of the focused column |
 | `close_pane` | close the focused pane |
 | `consume_or_expel_left`, `consume_or_expel_right` | move the focused pane into or out of the neighbouring column |

@@ -1,10 +1,10 @@
 use std::time::{Duration, Instant};
 
 use gband_client::animation::{
-    Animations, Band, DrawnTile, Presentation, Spring, Targets, parse_animations,
+    Animations, DrawnBand, DrawnTile, Presentation, Spring, Targets, parse_animations,
 };
 use gband_core::geometry::Tile;
-use gband_core::layout::{PaneId, WorkspaceId};
+use gband_core::layout::{BandId, PaneId};
 
 fn ms(millis: u64) -> Duration {
     Duration::from_millis(millis)
@@ -22,23 +22,20 @@ fn tile(pane: u32, x: u32, width: u16) -> Tile {
     }
 }
 
-fn targets(workspace: u32, workspaces: &[u32], camera: i64, tiles: Vec<Tile>) -> Targets {
+fn targets(band: u32, bands: &[u32], camera: i64, tiles: Vec<Tile>) -> Targets {
     Targets {
-        workspace: WorkspaceId(workspace),
-        workspaces: workspaces.iter().copied().map(WorkspaceId).collect(),
+        band: BandId(band),
+        bands: bands.iter().copied().map(BandId).collect(),
         camera,
-        band: 24,
+        band_height: 24,
         focused: tiles.first().map(|tile| tile.pane),
         tiles,
     }
 }
 
-fn settled(workspace: u32, workspaces: &[u32], camera: i64, tiles: Vec<Tile>) -> Presentation {
+fn settled(band: u32, bands: &[u32], camera: i64, tiles: Vec<Tile>) -> Presentation {
     let mut presentation = Presentation::new(Animations::On);
-    presentation.update(
-        Instant::now(),
-        &targets(workspace, workspaces, camera, tiles),
-    );
+    presentation.update(Instant::now(), &targets(band, bands, camera, tiles));
     presentation
 }
 
@@ -50,9 +47,9 @@ fn drawn_tile(presentation: &Presentation, now: Instant, pane: u32) -> Option<Dr
     presentation.drawn(now).tiles.get(&PaneId(pane)).copied()
 }
 
-fn band(workspace: u32, top: i64) -> Band {
-    Band {
-        workspace: WorkspaceId(workspace),
+fn band(band: u32, top: i64) -> DrawnBand {
+    DrawnBand {
+        band: BandId(band),
         top,
         camera: 0,
     }
@@ -160,7 +157,7 @@ fn width_change_morphs_the_tile() {
 }
 
 #[test]
-fn switch_down_slides_both_workspaces() {
+fn switch_down_slides_both_bands() {
     let mut presentation = settled(1, &[1, 2], 0, vec![tile(1, 0, 40)]);
     let start = Instant::now();
     presentation.update(start, &targets(2, &[1, 2], 0, vec![tile(2, 0, 40)]));
@@ -175,7 +172,7 @@ fn switch_down_slides_both_workspaces() {
 }
 
 #[test]
-fn left_workspace_keeps_the_camera_it_was_drawn_with() {
+fn left_band_keeps_the_camera_it_was_drawn_with() {
     let mut presentation = settled(1, &[1, 2], 0, vec![tile(1, 0, 40), tile(2, 40, 40)]);
     let start = Instant::now();
     presentation.update(
@@ -186,24 +183,24 @@ fn left_workspace_keeps_the_camera_it_was_drawn_with() {
     let left = camera(&presentation, switch);
     presentation.update(switch, &targets(2, &[1, 2], 0, vec![tile(3, 0, 40)]));
     let bands = presentation.drawn(switch + ms(20)).bands;
-    assert_eq!(bands[0].workspace, WorkspaceId(1));
+    assert_eq!(bands[0].band, BandId(1));
     assert_eq!(bands[0].camera, left);
     assert_eq!(bands[1].camera, 0);
 }
 
 #[test]
 fn two_switches_in_a_row_continue_the_slide() {
-    let workspaces = [1, 2, 3];
-    let mut presentation = settled(1, &workspaces, 0, vec![]);
+    let bands = [1, 2, 3];
+    let mut presentation = settled(1, &bands, 0, vec![]);
     let start = Instant::now();
-    presentation.update(start, &targets(2, &workspaces, 0, vec![]));
+    presentation.update(start, &targets(2, &bands, 0, vec![]));
     let second = start + ms(50);
     let top = |presentation: &Presentation, now| presentation.drawn(now).bands.last().unwrap().top;
     let before = presentation.drawn(second).bands[0].top;
-    presentation.update(second, &targets(3, &workspaces, 0, vec![]));
-    let bands = presentation.drawn(second).bands;
-    assert_eq!(bands[0].top, before);
-    assert_eq!(bands.last().unwrap().workspace, WorkspaceId(3));
+    presentation.update(second, &targets(3, &bands, 0, vec![]));
+    let shown = presentation.drawn(second).bands;
+    assert_eq!(shown[0].top, before);
+    assert_eq!(shown.last().unwrap().band, BandId(3));
     let mut previous = top(&presentation, second);
     for millis in (50..=450).step_by(16) {
         let now = start + ms(millis);
@@ -212,12 +209,12 @@ fn two_switches_in_a_row_continue_the_slide() {
         previous = drawn;
     }
     let end = second + ms(400);
-    presentation.update(end, &targets(3, &workspaces, 0, vec![]));
+    presentation.update(end, &targets(3, &bands, 0, vec![]));
     assert_eq!(presentation.drawn(end).bands, [band(3, 0)]);
 }
 
 #[test]
-fn workspace_removed_above_the_viewed_one_does_not_move_it() {
+fn band_removed_above_the_viewed_one_does_not_move_it() {
     let mut presentation = settled(2, &[1, 2], 0, vec![tile(1, 0, 40)]);
     let now = Instant::now();
     presentation.update(now, &targets(2, &[2], 0, vec![tile(1, 0, 40)]));
@@ -226,7 +223,7 @@ fn workspace_removed_above_the_viewed_one_does_not_move_it() {
 }
 
 #[test]
-fn left_workspace_removed_mid_switch_snaps() {
+fn left_band_removed_mid_switch_snaps() {
     let mut presentation = settled(1, &[1, 2], 0, vec![tile(1, 0, 40)]);
     let start = Instant::now();
     presentation.update(start, &targets(2, &[1, 2], 0, vec![tile(2, 0, 40)]));

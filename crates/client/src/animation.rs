@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 use gband_core::geometry::{Size, Tile, tiles};
-use gband_core::layout::{Layout, PaneId, WorkspaceId};
+use gband_core::layout::{BandId, Layout, PaneId};
 use gband_core::view::View;
 
 pub const ANIMATIONS_VARIABLE: &str = "GBAND_ANIMATIONS";
@@ -119,10 +119,10 @@ impl Spring {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Targets {
-    pub workspace: WorkspaceId,
-    pub workspaces: Vec<WorkspaceId>,
+    pub band: BandId,
+    pub bands: Vec<BandId>,
     pub camera: i64,
-    pub band: u16,
+    pub band_height: u16,
     pub tiles: Vec<Tile>,
     pub focused: Option<PaneId>,
 }
@@ -130,29 +130,25 @@ pub struct Targets {
 impl Targets {
     pub fn new(layout: &Layout, area: Size, view: &View, terminal: Size) -> Self {
         Self {
-            workspace: view.workspace(),
-            workspaces: layout
-                .workspaces()
-                .iter()
-                .map(|workspace| workspace.id)
-                .collect(),
+            band: view.band(),
+            bands: layout.bands().iter().map(|band| band.id).collect(),
             camera: view.camera(),
-            band: terminal.rows,
+            band_height: terminal.rows,
             tiles: layout
-                .workspace(view.workspace())
-                .map(|workspace| tiles(workspace, area))
+                .band(view.band())
+                .map(|band| tiles(band, area))
                 .unwrap_or_default(),
             focused: view.focused(),
         }
     }
 
-    fn index_of(&self, workspace: WorkspaceId) -> Option<usize> {
-        self.workspaces.iter().position(|&id| id == workspace)
+    fn index_of(&self, band: BandId) -> Option<usize> {
+        self.bands.iter().position(|&id| id == band)
     }
 
-    fn top(&self, workspace: WorkspaceId) -> Option<f64> {
-        self.index_of(workspace)
-            .map(|index| index as f64 * f64::from(self.band))
+    fn top(&self, band: BandId) -> Option<f64> {
+        self.index_of(band)
+            .map(|index| index as f64 * f64::from(self.band_height))
     }
 }
 
@@ -204,8 +200,8 @@ fn cells(value: i64) -> u16 {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Band {
-    pub workspace: WorkspaceId,
+pub struct DrawnBand {
+    pub band: BandId,
     pub top: i64,
     pub camera: i64,
 }
@@ -220,21 +216,21 @@ pub struct DrawnTile {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Drawn {
-    pub bands: Vec<Band>,
+    pub bands: Vec<DrawnBand>,
     pub tiles: HashMap<PaneId, DrawnTile>,
     pub settled: bool,
 }
 
 #[derive(Clone, Debug)]
 struct Shown {
-    workspace: WorkspaceId,
-    workspaces: Vec<WorkspaceId>,
-    band: u16,
+    band: BandId,
+    bands: Vec<BandId>,
+    band_height: u16,
     focused: Option<PaneId>,
     camera: Spring,
     vertical: Spring,
     tiles: HashMap<PaneId, TileSprings>,
-    leaving: Vec<(WorkspaceId, i64)>,
+    leaving: Vec<(BandId, i64)>,
 }
 
 #[derive(Clone, Debug)]
@@ -294,19 +290,19 @@ impl Presentation {
             };
         };
         let vertical = shown.vertical.drawn(now);
-        let band = |workspace: WorkspaceId, camera: i64| {
-            let index = shown.workspaces.iter().position(|&id| id == workspace)?;
-            Some(Band {
-                workspace,
-                top: index as i64 * i64::from(shown.band) - vertical,
+        let drawn_band = |band: BandId, camera: i64| {
+            let index = shown.bands.iter().position(|&id| id == band)?;
+            Some(DrawnBand {
+                band,
+                top: index as i64 * i64::from(shown.band_height) - vertical,
                 camera,
             })
         };
         let bands = shown
             .leaving
             .iter()
-            .filter_map(|&(workspace, camera)| band(workspace, camera))
-            .chain(band(shown.workspace, shown.camera.drawn(now)))
+            .filter_map(|&(band, camera)| drawn_band(band, camera))
+            .chain(drawn_band(shown.band, shown.camera.drawn(now)))
             .collect();
         Drawn {
             bands,
@@ -323,12 +319,12 @@ impl Presentation {
 impl Shown {
     fn at_rest(now: Instant, targets: &Targets) -> Self {
         Self {
-            workspace: targets.workspace,
-            workspaces: targets.workspaces.clone(),
             band: targets.band,
+            bands: targets.bands.clone(),
+            band_height: targets.band_height,
             focused: targets.focused,
             camera: Spring::at_rest(targets.camera as f64, now),
-            vertical: Spring::at_rest(targets.top(targets.workspace).unwrap_or(0.0), now),
+            vertical: Spring::at_rest(targets.top(targets.band).unwrap_or(0.0), now),
             tiles: targets
                 .tiles
                 .iter()
@@ -339,25 +335,24 @@ impl Shown {
     }
 
     fn update(&mut self, now: Instant, targets: &Targets) {
-        let top = targets.top(targets.workspace).unwrap_or(0.0);
+        let top = targets.top(targets.band).unwrap_or(0.0);
         let mut snap_vertical = !self
             .leaving
             .iter()
-            .all(|&(workspace, _)| targets.index_of(workspace).is_some());
-        if let Some(previous) = targets.top(self.workspace) {
+            .all(|&(band, _)| targets.index_of(band).is_some());
+        if let Some(previous) = targets.top(self.band) {
             self.vertical.shift(previous - self.vertical.target());
         } else {
             snap_vertical = true;
         }
-        if targets.workspace == self.workspace {
+        if targets.band == self.band {
             self.camera.retarget(targets.camera as f64, now);
             self.retarget_tiles(now, targets);
         } else {
             if !snap_vertical {
-                self.leaving.push((self.workspace, self.camera.drawn(now)));
+                self.leaving.push((self.band, self.camera.drawn(now)));
             }
-            self.leaving
-                .retain(|&(workspace, _)| workspace != targets.workspace);
+            self.leaving.retain(|&(band, _)| band != targets.band);
             self.camera = Spring::at_rest(targets.camera as f64, now);
             self.tiles.clear();
             self.retarget_tiles(now, targets);
@@ -369,9 +364,9 @@ impl Shown {
         if snap_vertical || self.vertical.is_at_rest(now) {
             self.leaving.clear();
         }
-        self.workspace = targets.workspace;
-        self.workspaces.clone_from(&targets.workspaces);
         self.band = targets.band;
+        self.bands.clone_from(&targets.bands);
+        self.band_height = targets.band_height;
         self.focused = targets.focused;
     }
 

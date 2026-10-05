@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Defines the session's shared layout: workspaces, the strip of columns in each, the panes stacked in each column, column widths, the session actions that change them, and the size of every pane's tile for a given screen area.
+Defines the session's shared layout: bands, the strip of columns in each, the panes stacked in each column, column widths, the session actions that change them, and the size of every pane's tile for a given screen area.
 
 ## Requirements
 
@@ -25,11 +25,11 @@ The layout SHALL always hold at least one workspace, and its last workspace SHAL
 - **THEN** the layout holds two workspaces
 - **AND** the first holds one column with that pane, and the second is empty
 
-#### Scenario: Pane opened in the empty workspace
+#### Scenario: Pane opened in the empty band
 - **WHEN** the layout holds workspaces W1, with panes, and W2, empty, and a pane opens in W2
 - **THEN** the layout holds W1, W2 with the new pane, and a new empty workspace W3
 
-#### Scenario: Middle workspace emptied
+#### Scenario: Middle band emptied
 - **WHEN** the layout holds W1, W2 and an empty W3, and the last pane of W1 closes
 - **THEN** the layout holds W2 and W3, in that order
 
@@ -104,7 +104,7 @@ Opening a pane SHALL name a workspace and, optionally, a pane in that workspace.
 - **THEN** the workspace holds A, the new column and B, in that order
 - **AND** A and B keep their widths
 
-#### Scenario: Open in an empty workspace
+#### Scenario: Open in an empty band
 - **WHEN** a pane opens in an empty workspace with no pane named
 - **THEN** that workspace holds one column with the new pane
 

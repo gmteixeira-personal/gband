@@ -42,7 +42,7 @@ When the viewed band changes to another band that is still in the layout, the cl
 - **WHEN** the client views B1 of B1, B2 and B3, views the band below, and views the band below again before the first slide ends
 - **THEN** the slide continues downward without a jump and ends showing B3
 
-#### Scenario: Old workspace removed
+#### Scenario: Old band removed
 - **WHEN** the client switches from B1 to B2 and the last pane of B1 exits before the slide ends
 - **THEN** the client shows B2 at rest from the next frame
 

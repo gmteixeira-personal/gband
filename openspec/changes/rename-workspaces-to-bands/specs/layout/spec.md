@@ -25,11 +25,11 @@ The layout SHALL always hold at least one band, and its last band SHALL always b
 - **THEN** the layout holds two bands
 - **AND** the first holds one column with that pane, and the second is empty
 
-#### Scenario: Pane opened in the empty workspace
+#### Scenario: Pane opened in the empty band
 - **WHEN** the layout holds bands B1, with panes, and B2, empty, and a pane opens in B2
 - **THEN** the layout holds B1, B2 with the new pane, and a new empty band B3
 
-#### Scenario: Middle workspace emptied
+#### Scenario: Middle band emptied
 - **WHEN** the layout holds B1, B2 and an empty B3, and the last pane of B1 closes
 - **THEN** the layout holds B2 and B3, in that order
 
@@ -41,7 +41,7 @@ Opening a pane SHALL name a band and, optionally, a pane in that band. The new p
 - **THEN** the band holds A, the new column and B, in that order
 - **AND** A and B keep their widths
 
-#### Scenario: Open in an empty workspace
+#### Scenario: Open in an empty band
 - **WHEN** a pane opens in an empty band with no pane named
 - **THEN** that band holds one column with the new pane
 

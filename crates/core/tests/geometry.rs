@@ -1,7 +1,7 @@
 use gband_core::geometry::{Size, Span, Tile, column_spans, column_width, pane_heights, tiles};
 use gband_core::layout::{
-    Column, Direction, Layout, LayoutOptions, PaneHeight, PaneId, Proportion, SessionAction,
-    Weight, Workspace, WorkspaceId,
+    Band, BandId, Column, Direction, Layout, LayoutOptions, PaneHeight, PaneId, Proportion,
+    SessionAction, Weight,
 };
 
 const AREA: Size = Size::new(80, 24);
@@ -9,20 +9,20 @@ const AREA: Size = Size::new(80, 24);
 fn single() -> (Layout, PaneId) {
     let mut layout = Layout::new();
     let pane = layout.allocate_pane();
-    let workspace = layout.workspaces()[0].id;
-    layout.open(pane, workspace, None, &LayoutOptions::default());
+    let band = layout.bands()[0].id;
+    layout.open(pane, band, None, &LayoutOptions::default());
     (layout, pane)
 }
 
 fn open_after(layout: &mut Layout, after: PaneId) -> PaneId {
     let pane = layout.allocate_pane();
-    let workspace = layout.workspaces()[0].id;
-    layout.open(pane, workspace, Some(after), &LayoutOptions::default());
+    let band = layout.bands()[0].id;
+    layout.open(pane, band, Some(after), &LayoutOptions::default());
     pane
 }
 
 fn first_tiles(layout: &Layout, area: Size) -> Vec<Tile> {
-    tiles(&layout.workspaces()[0], area)
+    tiles(&layout.bands()[0], area)
 }
 
 #[test]
@@ -63,7 +63,7 @@ fn columns_side_by_side() {
         AREA,
         &LayoutOptions::default(),
     );
-    let spans = column_spans(&layout.workspaces()[0], Size::new(90, 30));
+    let spans = column_spans(&layout.bands()[0], Size::new(90, 30));
     assert_eq!((spans[0].x, spans[0].end()), (0, 30));
     assert_eq!((spans[1].x, spans[1].end()), (30, 90));
     let tiles = first_tiles(&layout, Size::new(90, 30));
@@ -164,16 +164,13 @@ fn tile_span_is_its_column_span() {
     let tiles = first_tiles(&layout, area);
     assert_eq!(tiles[1].pane, second);
     assert_eq!(tiles[1].span(), Span { x: 40, width: 40 });
-    assert_eq!(
-        tiles[1].span(),
-        column_spans(&layout.workspaces()[0], area)[1]
-    );
+    assert_eq!(tiles[1].span(), column_spans(&layout.bands()[0], area)[1]);
 }
 
 #[test]
-fn empty_workspace_has_no_tiles() {
+fn empty_band_has_no_tiles() {
     let (layout, _) = single();
-    assert!(tiles(&layout.workspaces()[1], Size::new(80, 24)).is_empty());
+    assert!(tiles(&layout.bands()[1], Size::new(80, 24)).is_empty());
 }
 
 fn column(heights: &[PaneHeight]) -> Column {
@@ -183,15 +180,15 @@ fn column(heights: &[PaneHeight]) -> Column {
     column
 }
 
-fn workspace_of(columns: Vec<Column>) -> Workspace {
-    Workspace {
-        id: WorkspaceId(1),
+fn band_of(columns: Vec<Column>) -> Band {
+    Band {
+        id: BandId(1),
         columns,
     }
 }
 
 fn rows(heights: &[PaneHeight]) -> Vec<(u16, u16)> {
-    tiles(&workspace_of(vec![column(heights)]), AREA)
+    tiles(&band_of(vec![column(heights)]), AREA)
         .iter()
         .map(|tile| (tile.y, tile.height))
         .collect()
@@ -252,7 +249,7 @@ fn column_of_width(width: Proportion) -> Column {
 fn column_wider_than_the_area() {
     let column = column_of_width(Proportion::new(11, 10));
     assert_eq!(column_width(&column, AREA), 88);
-    let tiles = tiles(&workspace_of(vec![column]), AREA);
+    let tiles = tiles(&band_of(vec![column]), AREA);
     assert_eq!(tiles[0].width, 88);
 }
 
@@ -268,6 +265,6 @@ fn column_of_width_zero_is_three_cells() {
 fn column_width_stops_at_the_cell_limit() {
     let column = column_of_width(Proportion::new(Proportion::MAX, 1));
     assert_eq!(column_width(&column, AREA), u16::MAX);
-    let spans = column_spans(&workspace_of(vec![column.clone(), column]), AREA);
+    let spans = column_spans(&band_of(vec![column.clone(), column]), AREA);
     assert_eq!((spans[1].x, spans[1].end()), (65535, 131070));
 }

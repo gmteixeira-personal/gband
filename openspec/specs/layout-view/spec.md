@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Defines one client's view of the session's layout: which workspace it shows, which pane has its focus, how focus moves and follows layout changes, and where its camera sits on the workspace's strip.
+Defines one client's view of the session's layout: which band it shows, which pane has its focus, how focus moves and follows layout changes, and where its camera sits on the band's strip.
 
 ## Requirements
 
@@ -46,7 +46,7 @@ Focusing the pane below or above SHALL move focus to the adjacent pane in that d
 ### Requirement: Switch workspace
 Viewing the workspace below or above SHALL make the adjacent workspace in that direction the viewed workspace. Focus SHALL go to the pane this client last focused in that workspace when it is still there, otherwise to the top pane of its first column, or to no pane when the workspace is empty. When no workspace exists in that direction, the view SHALL not change.
 
-#### Scenario: Down to the empty workspace
+#### Scenario: Down to the empty band
 - **WHEN** the layout holds W1 with panes and an empty W2, and a client viewing W1 views the workspace below
 - **THEN** the client views W2 with no focused pane
 
@@ -54,7 +54,7 @@ Viewing the workspace below or above SHALL make the adjacent workspace in that d
 - **WHEN** a client focuses the second column of W1, views the workspace below, then the workspace above
 - **THEN** the client focuses the same pane in the second column of W1
 
-#### Scenario: Top workspace
+#### Scenario: Top band
 - **WHEN** a client viewing the first workspace views the workspace above
 - **THEN** the view is unchanged
 
@@ -78,7 +78,7 @@ When the layout changes, each client's view SHALL follow it:
 - **WHEN** a client focuses P2 in a column holding P1 and P2, and P2 is expelled to the right
 - **THEN** the client still focuses P2, now alone in its new column
 
-#### Scenario: Viewed workspace removed
+#### Scenario: Viewed band removed
 - **WHEN** a client views W1 of W1, W2 and an empty W3, and the last pane of W1 exits
 - **THEN** the client views W2
 
@@ -146,6 +146,6 @@ A view's shown panes SHALL be the panes of its viewed workspace whose tile, as t
 - **WHEN** the screen area is 120×60, the client's terminal is 100×30, and the viewed workspace holds one column of width 1/2 with two panes with automatic heights of weight 1
 - **THEN** only the top pane is shown
 
-#### Scenario: Other workspaces
+#### Scenario: Other bands
 - **WHEN** the layout holds W1 with pane P1 and W2 with pane P2, and the client views W2
 - **THEN** the only shown pane is P2
