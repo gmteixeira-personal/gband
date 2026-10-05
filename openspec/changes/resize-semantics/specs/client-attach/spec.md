@@ -62,7 +62,7 @@ Ctrl+A SHALL be the prefix key, and the client SHALL NOT send it to the server w
 | `=` | grow the width of the focused pane's column | session |
 | `_` | shrink the height of the focused pane | session |
 | `+` | grow the height of the focused pane | session |
-| `R` | reset the heights of the focused pane's column | session |
+| `R` | reset the height of the focused pane | session |
 | `D` | detach | client |
 | Ctrl+A | send one Ctrl+A to the focused pane | client |
 | any other key | discard both keys | — |
@@ -110,8 +110,8 @@ A view action SHALL change this client's view as the layout-view capability defi
 - **AND** the pane prints `46`
 
 #### Scenario: Grow the pane's height
-- **WHEN** the client's 80×24 terminal sets the screen area, a column holds two panes with the top one focused, and the user presses Ctrl+A then `+`
-- **THEN** the top tile is 16 rows high and the bottom tile is 8 rows high
+- **WHEN** the client's 80×24 terminal sets the screen area, a column holds two panes with automatic heights with the top one focused, and the user presses Ctrl+A then `+`
+- **THEN** the top tile is 14 rows high and the bottom tile is 10 rows high
 
 ## ADDED Requirements
 

@@ -2,7 +2,7 @@
 
 See proposal.md for the motivation. The relevant current state:
 
-- `gband-core`'s `Column` holds `panes: Vec<PaneId>`, a `Proportion` width and a full-width flag. `geometry::tiles` splits a column's height equally. `Layout::apply` handles every session action except open and close, which the server owns. `LayoutEvent` derives `Copy`.
+- `gband-core`'s `Column` holds `panes: Vec<PaneId>`, a `Proportion` width and a full-width flag. `geometry::tiles` splits a column's height equally. `Layout::apply(action)` handles every session action except open and close, which the server owns. `LayoutEvent` derives `Copy`.
 - `gband-server`'s one session task owns the layout. `Session::publish` resizes every pane whose tile changed, then sends the new `Arc<State>` and bumps `changed`. `Pane::resize` skips a pane whose grid already has the size. `drive` selects over commands and pane exits.
 - The client keeps a `View` per attachment. `Scene` carries the layout, the screen area and `viewport_cols`. `render::render` already draws each grid through `PseudoTerminal` into the tile's interior. That cuts a larger grid and leaves blank cells around a smaller one, and `cursor_position` hides a cursor outside the interior. The "Present the ribbon" scenarios for mismatched grids already hold, and this change only pins them with tests.
 - `connection.rs` holds an `Attachment` per attached client, whose `Drop` decrements the client count and publishes `ClientDetached`.
@@ -13,7 +13,8 @@ This change depends on core-coverage-gaps, which adds tests to the same `crates/
 
 **Goals:**
 - One session-wide quiet period that covers terminal resizes, held resize keys and camera moves alike.
-- Equal weights reproduce today's geometry exactly, so every existing geometry and render test keeps passing unchanged.
+- Panes whose heights are all automatic with weight 1 get exactly today's geometry, so every existing geometry and render test keeps passing unchanged.
+- Pane heights behave as niri's window heights do, with every press moving a pane by the same number of rows.
 - The server needs no knowledge of cameras. Clients tell it what they show.
 
 **Non-Goals:**
@@ -25,23 +26,38 @@ This change depends on core-coverage-gaps, which adds tests to the same `crates/
 
 ### Width steps are exact fractions
 
-`Proportion::step(self, step: Step) -> Proportion` adds or subtracts 1/10, clamps to `[1/10, 1]`, and reduces by the greatest common divisor. Starting from the presets, denominators stay within 2, 3, 10 and 30, so `u8` fields hold every reachable value. `Step` is a new `enum Step { Grow, Shrink }` in `layout.rs`. `Column::step_width` treats full width as `Proportion::WHOLE` and turns it off, as `cycle_width` does. Changes go through the existing `with_column`, so `ColumnWidthChanged` is emitted only when the pair `(width, full_width)` changes.
+`Proportion::step(self, step: Step) -> Proportion` adds or subtracts 1/10, clamps to `[0, 10000]`, and reduces by the greatest common divisor. This ports niri's `Column::set_column_width` for `SizeChange::AdjustProportion` on a proportional column: `(current + delta / 100).clamp(0., MAX_F)`, with `MAX_F` 10000. niri then raises the resolved width to the window's minimum. gband's equivalent already exists: `geometry::column_width` keeps a column at `MIN_COLUMN_WIDTH`, so width 0 draws a 3-cell column. `Step` is a new `enum Step { Grow, Shrink }` in `layout.rs`.
 
-Alternative: store widths as a percentage (`u8` 1 to 100). Rejected. 1/3 has no exact percentage, so cycling and stepping would disagree about the presets.
+Starting from the presets, every denominator divides 30, but a numerator can reach 300000. `Proportion`'s fields widen from `u8` to `u32`. `Proportion::of` computes in `u64` and saturates at `u16::MAX`, because `Span::width` and `Tile::width` are `u16`. `exceeds` multiplies in `u64`. Strip positions are already `u32`, so a strip of very wide columns does not overflow before 65535 columns of 65535 cells.
 
-### Heights are weights, not proportions
-
-`Column` gains `weights: Vec<u8>`, kept the same length as `panes`. Every mutation of `panes` in `layout.rs` (`Column::new`, push on consume, insert and remove) goes through small `Column` methods that update both vectors together. `geometry::tiles` gives row `i` `area.rows * w_i / sum(w)`, rounded down, then hands the leftover rows one each to the first panes. With every weight 1, this is today's formula.
-
-Grow, shrink and reset follow the "Pane heights" requirement. The divide-by-GCD step runs only after a grow or shrink, never after a pane leaves, so a removal emits no extra event. `LayoutEvent::PaneHeightsChanged { workspace, column, weights: Vec<u8> }` reports a change. `LayoutEvent` loses `Copy`, and `SessionEvent` is already only `Clone`.
+A column wider than the terminal needs no new view rule. The camera already moves to the start of a focused column at least as wide as the terminal, and the renderer cuts tiles at the terminal's edge. `Column::step_width` treats full width as `Proportion::WHOLE` and turns it off, as `cycle_width` does. Changes go through the existing `with_column`, so `ColumnWidthChanged` is emitted only when the pair `(width, full_width)` changes.
 
 Alternatives:
-- niri-style fixed heights, as a proportion of the column. Rejected. An action would need the screen area to turn an auto height into a proportion, and the geometry would need an overflow rule for fixed heights that leave no room.
-- `panes: Vec<StackedPane { id, weight }>`. Rejected. Every reader of `column.panes` in the client, the server, the view and the tests would change, for no behavioural gain.
+- Store widths as a percentage (`u8` 1 to 100). Rejected. 1/3 has no exact percentage, so cycling and stepping would disagree about the presets.
+- Keep widths between 1/10 and 1, the first draft of this change. Rejected. niri lets a column grow past the screen width and shrink to its minimum width.
+
+### Heights follow niri's column model
+
+The model is a port of niri's `WindowHeight::{Auto { weight }, Fixed}` and its `Column::set_window_height`, `reset_window_height`, `convert_heights_to_auto` and `update_tile_sizes` in `src/layout/scrolling.rs`. It has no gaps, and every tile's minimum height is `MIN_TILE_HEIGHT` (3 rows: the border and one row), beside `MIN_COLUMN_WIDTH`, in place of a window's minimum size. Preset heights (`switch-preset-window-height`), tabbed columns and window size constraints are left out.
+
+`layout.rs` gains `enum PaneHeight { Auto(Weight), Fixed(u16) }` and `struct Weight { num: u16, den: u16 }`, always reduced. `Column` gains `heights: Vec<PaneHeight>`, kept the same length as `panes`. Every change to `panes` in `layout.rs` (`Column::new`, push on consume, insert and remove) goes through small `Column` methods that update both vectors together. Those methods give an entering pane `Auto(1)`, and reset the last automatic pane to weight 1, as niri's `add_tile_at` and `remove_tile_by_idx` do.
+
+`Layout::apply` takes the screen area, `apply(action, area)`, and the server passes `self.area`. Growing or shrinking an automatic pane first converts every pane of the column to `Auto(tile rows / median tile rows)`. The pane then becomes `Fixed` at its current tile height plus or minus the step, clamped as the "Pane heights" requirement says. `geometry::tiles` clamps the fixed pane, then shares the remaining rows among the automatic panes by weight, raising any share under 3 rows. It scales the weights to their least common denominator in `u64`, so the shares are exact integer divisions. `LayoutEvent::PaneHeightsChanged { workspace, column, heights: Vec<PaneHeight> }` reports any change to a column's `heights`. `LayoutEvent` loses `Copy`, and `SessionEvent` is already only `Clone`.
+
+Three deliberate differences from niri, none visible above one row:
+- niri rounds each automatic height in turn, in pixels. gband keeps its existing rule: round down, then one leftover row each to the first panes. Automatic heights of weight 1 then give exactly today's split.
+- niri measures a fixed window's step from its stored height. gband measures from the tile height the pane has now. The two differ only after the area shrank below a fixed height, and measuring the visible tile makes the first press take effect.
+- niri's floor is a window's minimum size. gband's is 3 rows.
+
+Alternatives:
+- Integer weights that each press raises by 1, the first draft of this change. Rejected. Each press moved the pane by a smaller share of the column, unlike niri's constant 10% of the height.
+- Fixed heights as a proportion of the area's height. Rejected. niri keeps a fixed window's pixels when the output changes, and gband likewise keeps a fixed pane's rows when another client changes the area. A rows-over-area fraction also does not fit `Proportion`'s `u8` fields.
+- `f64` weights, as niri has. Rejected. `Layout` derives `Eq`, the "no change, no event" rule compares layouts, and scenarios such as weight 10/7 must hold exactly.
+- `panes: Vec<StackedPane { id, height }>`. Rejected. Every reader of `column.panes` in the client, the server, the view and the tests would change, for no behavioural gain.
 
 ### New actions
 
-`SessionAction` gains `StepWidth { pane, step }`, `StepHeight { pane, step }` and `ResetHeights(PaneId)`. `SessionCommand` gains `StepWidth(Step)`, `StepHeight(Step)` and `ResetHeights`, and `View::resolve` maps them to the focused pane. `Layout::apply` handles all three, so the server's `act` needs no new arm. The bindings table adds `-`, `=`, `_`, `+` and `R`. The existing `matches` ignores Shift for character keys, so `+`, `_` and `R` match however the terminal reports Shift.
+`SessionAction` gains `StepWidth { pane, step }`, `StepHeight { pane, step }` and `ResetHeight(PaneId)`. `SessionCommand` gains `StepWidth(Step)`, `StepHeight(Step)` and `ResetHeight`, and `View::resolve` maps them to the focused pane. `Layout::apply` handles all three, so the server's `act` needs no new arm, only the area argument. The bindings table adds `-`, `=`, `_`, `+` and `R`. The existing `matches` ignores Shift for character keys, so `+`, `_` and `R` match however the terminal reports Shift.
 
 ### One quiet period in the session task
 
@@ -63,7 +79,7 @@ Alternative: clients report their viewed workspace and camera, and the server co
 
 ### Protocol version 4
 
-`PROTOCOL_VERSION` becomes 4. `ClientMessage::Shown` is appended, and `Column`'s serialised form gains `weights`. postcard has no field tags, so a version 3 peer would misread the layout. The version bump makes both sides refuse instead.
+`PROTOCOL_VERSION` becomes 4. `ClientMessage::Shown` is appended, `Column`'s serialised form gains `heights`, and `Proportion`'s fields widen to `u32`. postcard has no field tags, so a version 3 peer would misread the layout. The version bump makes both sides refuse instead.
 
 ### Test harness
 
@@ -74,7 +90,10 @@ Alternative: clients report their viewed workspace and camera, and the server co
 - [A pane is shown at its old size for at least 100 ms after every change] → This is the intent. The grid is cut or padded inside the correct border, and the size settles once.
 - [A client that never sends `Shown` leaves every pane unresized] → Only this client and the test harness speak the protocol, and both send it. A version 3 client is refused at the handshake.
 - [Bursts longer than the quiet period, such as a slow drag, still resize at each pause] → Acceptable. Each pause is a real stopping point, and the step count drops from one per event to one per pause.
-- [`weights` and `panes` drift out of step] → Both change only through `Column` methods. A core test checks the lengths after every layout operation the existing tests run.
+- [`render::draw_tile` allocates a scratch buffer the size of the whole tile, which for a column 65535 cells wide is about 1.5 million cells per frame] → The renderer draws only the part of each tile inside the terminal, so its buffer is never larger than the terminal.
+- [A very wide column's PTY and grids hold up to 65533 columns on the server and the client] → This is the cost of niri's unbounded widths. It takes about 99990 presses to reach it, and shrinking or cycling the width brings it back.
+- [`heights` and `panes` drift out of step] → Both change only through `Column` methods. A core test checks the lengths after every layout operation the existing tests run.
+- [A fixed pane keeps its rows when another client shrinks the area, so the column can look different on the larger terminal afterwards] → This matches niri on an output mode change, and geometry clamps the fixed pane so the others keep 3 rows each.
 - [SIGWINCH counting in tests is timing-sensitive] → The tests space their messages well inside 100 ms and assert on the final size before counting. Each count waits for the size, never for a fixed sleep.
 
 ## Migration Plan

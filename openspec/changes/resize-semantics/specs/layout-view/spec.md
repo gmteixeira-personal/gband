@@ -12,7 +12,7 @@ A view's shown panes SHALL be the panes of its viewed workspace whose tile, as t
 - **THEN** the panes of both columns are shown
 
 #### Scenario: Pane below the bottom edge
-- **WHEN** the screen area is 120×60, the client's terminal is 100×30, and the viewed workspace holds one column of width 1/2 with two panes of weight 1
+- **WHEN** the screen area is 120×60, the client's terminal is 100×30, and the viewed workspace holds one column of width 1/2 with two panes with automatic heights of weight 1
 - **THEN** only the top pane is shown
 
 #### Scenario: Other workspaces
