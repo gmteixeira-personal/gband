@@ -177,9 +177,11 @@ After the handshake, the client SHALL take the terminal full screen in raw mode 
 
 Each pane SHALL be drawn in its tile, as the layout capability's tile geometry gives it for the screen area in the latest layout. A tile SHALL be drawn at its strip position less the viewed workspace's camera position, from the terminal's top row. Each tile SHALL show a one-cell border around the pane's grid, which is drawn from its top-left corner. The focused pane's border SHALL be drawn in a style distinct from the other borders.
 
+A pane's grid MAY differ in size from its tile's interior while the server has not yet resized the pane. The border SHALL still follow the tile. A grid larger than the interior SHALL be cut at the interior's right and bottom edges, and interior cells the grid does not cover SHALL be blank.
+
 A tile that crosses the terminal's left, right or bottom edge SHALL be cut at that edge, and the part of the tile inside the terminal SHALL be drawn unchanged. No tile SHALL be resized to fit the terminal. A tile wholly outside the terminal SHALL NOT be drawn, and cells no tile covers SHALL be blank.
 
-The terminal's cursor SHALL sit where the focused pane's cursor is. It SHALL be hidden when the focused pane hides its cursor, when that cell lies outside the terminal, or when no pane is focused.
+The terminal's cursor SHALL sit where the focused pane's cursor is. It SHALL be hidden when the focused pane hides its cursor, when that cell lies outside the terminal or outside the tile's interior, or when no pane is focused.
 
 #### Scenario: Two columns side by side
 - **WHEN** the client's 80×24 terminal sets the screen area, and the viewed workspace holds two columns of width 1/2 with the second focused
@@ -201,6 +203,16 @@ The terminal's cursor SHALL sit where the focused pane's cursor is. It SHALL be 
 - **WHEN** the client views an empty workspace
 - **THEN** the screen is blank and the cursor is hidden
 
+#### Scenario: Grid smaller than its tile
+- **WHEN** a pane's tile is 50×30 and its grid is still 38×22
+- **THEN** the border is drawn around the 50×30 tile
+- **AND** the grid fills the top-left 38×22 cells of the interior, and the rest of the interior is blank
+
+#### Scenario: Grid larger than its tile
+- **WHEN** a pane's tile is 40×24 and its grid is still 48×28
+- **THEN** the interior shows the grid's top-left 38×22 cells
+- **AND** the border is drawn unbroken around the 40×24 tile
+
 ### Requirement: Key bindings
 Ctrl+A SHALL be the prefix key, and the client SHALL NOT send it to the server when it is pressed. The key pressed after the prefix SHALL act as the table below defines. Until a later change makes the bindings configurable, the table SHALL be fixed in the client.
 
@@ -218,6 +230,11 @@ Ctrl+A SHALL be the prefix key, and the client SHALL NOT send it to the server w
 | `]` | consume or expel the focused pane to the right | session |
 | `r` | cycle the width of the focused pane's column | session |
 | `f` | toggle full width of the focused pane's column | session |
+| `-` | shrink the width of the focused pane's column | session |
+| `=` | grow the width of the focused pane's column | session |
+| `_` | shrink the height of the focused pane | session |
+| `+` | grow the height of the focused pane | session |
+| `R` | reset the height of the focused pane | session |
 | `D` | detach | client |
 | Ctrl+A | send one Ctrl+A to the focused pane | client |
 | any other key | discard both keys | — |
@@ -258,3 +275,27 @@ A view action SHALL change this client's view as the layout-view capability defi
 - **WHEN** the user presses Ctrl+A then `u`, then Ctrl+A then Enter, then Ctrl+A then `i`
 - **THEN** the client shows the first workspace with its original pane focused
 - **AND** the second workspace holds the new pane
+
+#### Scenario: Grow the column
+- **WHEN** the client's 80×24 terminal sets the screen area, the only pane sits in a column of width 1/2, and the user presses Ctrl+A then `=`, waits, and runs `tput cols`
+- **THEN** the tile is 48 columns wide
+- **AND** the pane prints `46`
+
+#### Scenario: Grow the pane's height
+- **WHEN** the client's 80×24 terminal sets the screen area, a column holds two panes with automatic heights with the top one focused, and the user presses Ctrl+A then `+`
+- **THEN** the top tile is 14 rows high and the bottom tile is 10 rows high
+
+### Requirement: Report shown panes
+The client SHALL send the server a shown message naming its shown panes, as the layout-view capability defines them, once it has received the first layout after attaching. It SHALL send a new shown message whenever its shown panes change, whether a layout, a focus message, a view action or a change of its terminal's size changed them. It SHALL NOT send a shown message that names the same panes as the last one it sent.
+
+#### Scenario: Shown after attach
+- **WHEN** a client with an 80×24 terminal attaches to a session whose first workspace holds three columns of width 1/2
+- **THEN** the client's first shown message names the panes of the first two columns
+
+#### Scenario: Shown follows the camera
+- **WHEN** that client then focuses the third column
+- **THEN** it sends a shown message naming the panes of the second and third columns
+
+#### Scenario: No repeated report
+- **WHEN** the client focuses the pane below within a column whose panes are all shown
+- **THEN** it sends no shown message

@@ -23,7 +23,7 @@ Every message in either direction SHALL be sent as one frame. A frame is a 4-byt
 - **AND** it keeps serving its other clients
 
 ### Requirement: Handshake
-The first frame a client sends SHALL be a hello. The hello's payload SHALL begin with the client's protocol version, encoded the same way in every protocol version, followed by the client's terminal size. The first frame the server sends SHALL answer it. The server SHALL decode the leading version on its own, and compare it with its own version before it decodes anything that follows it. When the versions differ, the answer SHALL reject the client and carry the server's protocol version, whatever bytes follow the version, and the server SHALL then close the connection. When the versions are equal and the rest of the hello decodes, the answer SHALL accept the client and carry the server's protocol version. The leading version and the answer SHALL keep the same encoding in every later protocol version, so that two versions can always detect each other. The fields after the leading version MAY change in a later protocol version. This change defines protocol version 2.
+The first frame a client sends SHALL be a hello. The hello's payload SHALL begin with the client's protocol version, encoded the same way in every protocol version, followed by the client's terminal size. The first frame the server sends SHALL answer it. The server SHALL decode the leading version on its own, and compare it with its own version before it decodes anything that follows it. When the versions differ, the answer SHALL reject the client and carry the server's protocol version, whatever bytes follow the version, and the server SHALL then close the connection. When the versions are equal and the rest of the hello decodes, the answer SHALL accept the client and carry the server's protocol version. The leading version and the answer SHALL keep the same encoding in every later protocol version, so that two versions can always detect each other. The fields after the leading version MAY change in a later protocol version. The current protocol version SHALL be 4.
 
 #### Scenario: Matching versions
 - **WHEN** a version 2 client sends its hello to a version 2 server
@@ -47,6 +47,10 @@ The first frame a client sends SHALL be a hello. The hello's payload SHALL begin
 - **WHEN** a client's first frame has an empty payload
 - **THEN** the server closes the connection without answering
 
+#### Scenario: Version 3 client meets a version 4 server
+- **WHEN** a client speaking protocol version 3 sends its hello to a server speaking version 4
+- **THEN** the server rejects it with version 4 and closes the connection
+
 ### Requirement: Client messages
 After an attach request, a client SHALL send only these messages:
 
@@ -55,10 +59,11 @@ After an attach request, a client SHALL send only these messages:
 | key | a pane identifier, and a key code with its Shift, Alt and Ctrl modifiers as the input-encoding capability defines them |
 | paste | a pane identifier and the pasted text |
 | resize | the client terminal's columns and rows |
+| shown | the identifiers of every pane the client shows, as the layout-view capability defines; it replaces the set the client reported before |
 | action | one session action, as the session-server capability defines it, with the pane or workspace it names |
 | detach | nothing |
 
-Pane and workspace identifiers SHALL name panes and workspaces of the client's session. The open pane action SHALL name a workspace and, optionally, the pane whose column the new column follows. Every other action SHALL name a pane, and consume or expel SHALL also name its direction. A client that detaches SHALL send detach, then close the connection.
+Pane and workspace identifiers SHALL name panes and workspaces of the client's session. The server SHALL ignore a pane identifier in a shown message that names no pane of the client's session. The open pane action SHALL name a workspace and, optionally, the pane whose column the new column follows. Every other action SHALL name a pane, and consume or expel SHALL also name its direction. A client that detaches SHALL send detach, then close the connection.
 
 #### Scenario: Detach message
 - **WHEN** a client sends detach
@@ -69,13 +74,21 @@ Pane and workspace identifiers SHALL name panes and workspaces of the client's s
 - **WHEN** a client sends consume or expel naming pane 3 and the direction left
 - **THEN** the server decodes the same action, pane and direction
 
+#### Scenario: Shown round trip
+- **WHEN** a client sends shown naming panes 1 and 4
+- **THEN** the server decodes a shown message naming panes 1 and 4
+
+#### Scenario: Grow height round trip
+- **WHEN** a client sends grow height naming pane 2
+- **THEN** the server decodes the same action and pane
+
 ### Requirement: Server messages
 After the handshake, a server SHALL send only these messages:
 
 | message | content |
 |---|---|
 | info | the server's process id and the identity of the executable it runs from |
-| layout | the screen area's columns and rows, and the layout: its workspaces in order with their identifiers, each workspace's columns in order with their widths and full-width flags, and each column's panes in order with their identifiers |
+| layout | the screen area's columns and rows, and the layout: its workspaces in order with their identifiers, each workspace's columns in order with their widths and full-width flags, and each column's panes in order with their identifiers and heights, each either automatic with its weight or fixed with its rows |
 | snapshot | a pane identifier, the pane's columns and rows, and terminal output that, fed into an empty terminal grid of that size, reproduces that pane's screen on the server |
 | update | a pane identifier, and terminal output that, fed into the grid the client built for that pane from every earlier snapshot and update of it, reproduces that pane's current screen on the server |
 | focus | a pane identifier: the pane the client asked to open, which the client focuses |
@@ -112,6 +125,10 @@ A client SHALL keep one grid per pane. It SHALL build a pane's grid by replacing
 #### Scenario: Session ends
 - **WHEN** the last pane of a client's session leaves the layout
 - **THEN** that client receives exited as its last message
+
+#### Scenario: Heights in the layout
+- **WHEN** a column holds pane 1 with a fixed height of 14 rows and pane 2 with an automatic height of weight 10/7, and the server sends the layout
+- **THEN** the client decodes that column with pane 1 fixed at 14 rows and pane 2 automatic with weight 10/7
 
 ### Requirement: Requests
 After the server's info, the first message a client sends SHALL be one request:

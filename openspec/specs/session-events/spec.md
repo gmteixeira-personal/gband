@@ -14,8 +14,11 @@ Every change to the layout SHALL produce the events that describe it, in the ord
 | pane closed | the pane, and the workspace it left |
 | pane moved | the pane, and the workspace, column and row it now occupies |
 | column width changed | the workspace, the column, its new width and its full-width flag |
+| pane heights changed | the workspace, the column, and the height of each of its panes, top to bottom: automatic with its weight, or fixed with its rows |
 | workspace added | the workspace and its position |
 | workspace removed | the workspace |
+
+A pane opened or moved into a column SHALL take an automatic height of weight 1 there, and the last pane left in a column with an automatic height SHALL take weight 1, as the layout capability defines, without a pane heights changed event.
 
 #### Scenario: Open in the empty workspace
 - **WHEN** a pane opens in the last, empty workspace
@@ -32,6 +35,14 @@ Every change to the layout SHALL produce the events that describe it, in the ord
 #### Scenario: Consume at the edge
 - **WHEN** a consume or expel leaves the layout unchanged
 - **THEN** no event is produced
+
+#### Scenario: Grow a pane's height
+- **WHEN** the screen area is 80×24, the second column of a workspace holds P1 above P2, both with automatic heights of weight 1, and P1's height is grown
+- **THEN** the events are one pane heights changed naming that workspace, column 1, P1 fixed at 14 rows and P2 automatic with weight 1
+
+#### Scenario: Grow a column's width
+- **WHEN** a column of width 1/2 is grown
+- **THEN** the events are one column width changed naming the width 3/5 and full width off
 
 ### Requirement: Session event bus
 The server SHALL publish every layout event, every pane exit with its exit status, and every client attaching and detaching, as session events. It SHALL publish them on one bus, in the order the session applied the changes. Every subscriber SHALL receive the events in that order. A subscriber that falls behind SHALL be told how many events it missed, and SHALL NOT slow the session or other subscribers. The server SHALL record every session event in its log at debug level.
