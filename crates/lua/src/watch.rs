@@ -1,4 +1,3 @@
-use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::sync::{Arc, Mutex, Weak};
@@ -7,30 +6,9 @@ use std::time::{Duration, Instant};
 
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher as _};
 
-use crate::{Config, ConfigError, load};
+use crate::{Config, ConfigError, load, user_file};
 
 const DEBOUNCE: Duration = Duration::from_millis(100);
-
-pub fn config_path() -> Option<PathBuf> {
-    config_path_from(
-        std::env::var_os("XDG_CONFIG_HOME"),
-        std::env::var_os("HOME"),
-    )
-}
-
-pub fn config_path_from(
-    xdg_config_home: Option<OsString>,
-    home: Option<OsString>,
-) -> Option<PathBuf> {
-    let base = match xdg_config_home
-        .map(PathBuf::from)
-        .filter(|path| path.is_absolute())
-    {
-        Some(base) => base,
-        None => PathBuf::from(home.filter(|home| !home.is_empty())?).join(".config"),
-    };
-    Some(base.join("gband").join("init.lua"))
-}
 
 pub struct Watcher {
     _watcher: Option<Arc<Mutex<RecommendedWatcher>>>,
@@ -42,14 +20,13 @@ enum Watching {
     Parent,
 }
 
-pub fn watch<F>(path: PathBuf, deliver: F) -> Watcher
+pub fn watch<F>(dir: PathBuf, deliver: F) -> Watcher
 where
     F: FnMut(Result<Config, ConfigError>) + Send + 'static,
 {
     let idle = Watcher { _watcher: None };
-    let Some(directory) = path.parent().map(Path::to_path_buf) else {
-        return idle;
-    };
+    let path = user_file(&dir);
+    let directory = path.parent().expect("user_file has a parent").to_path_buf();
     let (events_tx, events) = mpsc::channel();
     let watcher = match notify::recommended_watcher(move |event| {
         let _ = events_tx.send(event);
@@ -64,10 +41,7 @@ where
         let mut inner = watcher.lock().expect("watcher lock");
         if inner.watch(&directory, RecursiveMode::NonRecursive).is_ok() {
             Watching::Directory
-        } else if directory
-            .parent()
-            .is_some_and(|parent| inner.watch(parent, RecursiveMode::NonRecursive).is_ok())
-        {
+        } else if inner.watch(&dir, RecursiveMode::NonRecursive).is_ok() {
             Watching::Parent
         } else {
             tracing::info!(
@@ -80,7 +54,7 @@ where
     let weak = Arc::downgrade(&watcher);
     let spawned = thread::Builder::new()
         .name("gband-config".to_owned())
-        .spawn(move || reload(path, directory, watching, events, weak, deliver));
+        .spawn(move || reload(dir, directory, watching, events, weak, deliver));
     if let Err(error) = spawned {
         tracing::warn!("cannot watch the configuration: {error}");
         return idle;
@@ -91,7 +65,7 @@ where
 }
 
 fn reload<F>(
-    path: PathBuf,
+    dir: PathBuf,
     directory: PathBuf,
     mut watching: Watching,
     events: mpsc::Receiver<notify::Result<Event>>,
@@ -100,6 +74,7 @@ fn reload<F>(
 ) where
     F: FnMut(Result<Config, ConfigError>),
 {
+    let path = user_file(&dir);
     while let Ok(event) = events.recv() {
         let relevant = match watching {
             Watching::Directory => touches(&event, &path),
@@ -117,9 +92,7 @@ fn reload<F>(
                 .watch(&directory, RecursiveMode::NonRecursive)
                 .is_ok()
             {
-                if let Some(parent) = directory.parent() {
-                    let _ = watcher.unwatch(parent);
-                }
+                let _ = watcher.unwatch(&dir);
                 watching = Watching::Directory;
             }
         }
@@ -132,7 +105,7 @@ fn reload<F>(
                 Err(RecvTimeoutError::Disconnected) => return,
             }
         }
-        deliver(load(&path));
+        deliver(load(&dir));
     }
 }
 
@@ -149,27 +122,7 @@ mod tests {
     use std::sync::mpsc::Receiver;
 
     use super::*;
-
-    fn os(text: &str) -> Option<OsString> {
-        Some(OsString::from(text))
-    }
-
-    #[test]
-    fn xdg_config_home_wins_when_absolute() {
-        assert_eq!(
-            config_path_from(os("/tmp/cfg"), os("/home/u")),
-            Some(PathBuf::from("/tmp/cfg/gband/init.lua"))
-        );
-    }
-
-    #[test]
-    fn home_is_the_fallback() {
-        let expected = Some(PathBuf::from("/home/u/.config/gband/init.lua"));
-        assert_eq!(config_path_from(None, os("/home/u")), expected);
-        assert_eq!(config_path_from(os("relative"), os("/home/u")), expected);
-        assert_eq!(config_path_from(os(""), os("/home/u")), expected);
-        assert_eq!(config_path_from(None, None), None);
-    }
+    use crate::defaults_file;
 
     struct Scratch(PathBuf);
 
@@ -181,6 +134,10 @@ mod tests {
             fs::create_dir_all(&path).unwrap();
             Self(path)
         }
+
+        fn dir(&self) -> PathBuf {
+            self.0.join("gband")
+        }
     }
 
     impl Drop for Scratch {
@@ -189,9 +146,9 @@ mod tests {
         }
     }
 
-    fn watched(path: &Path) -> (Watcher, Receiver<Result<Config, ConfigError>>) {
+    fn watched(dir: &Path) -> (Watcher, Receiver<Result<Config, ConfigError>>) {
         let (tx, rx) = mpsc::channel();
-        let watcher = watch(path.to_path_buf(), move |result| {
+        let watcher = watch(dir.to_path_buf(), move |result| {
             let _ = tx.send(result);
         });
         (watcher, rx)
@@ -203,6 +160,10 @@ mod tests {
             .expect("a good configuration")
     }
 
+    fn settle(rx: &Receiver<Result<Config, ConfigError>>) {
+        while rx.recv_timeout(Duration::from_millis(300)).is_ok() {}
+    }
+
     fn prefix_of(config: &Config) -> String {
         format!("{:?}", config.options.prefix)
     }
@@ -210,32 +171,45 @@ mod tests {
     #[test]
     fn write_rename_and_delete_each_reload() {
         let scratch = Scratch::new("watch");
-        let path = scratch.0.join("gband").join("init.lua");
-        fs::create_dir_all(path.parent().unwrap()).unwrap();
-        let (_watcher, rx) = watched(&path);
+        let dir = scratch.dir();
+        crate::prepare(&dir).unwrap();
+        let path = user_file(&dir);
+        let (_watcher, rx) = watched(&dir);
         let defaults = prefix_of(&crate::defaults());
 
         fs::write(&path, "gband.set { prefix = 'ctrl+b' }").unwrap();
         let written = next(&rx);
         assert_ne!(prefix_of(&written), defaults);
-        while rx.recv_timeout(Duration::from_millis(300)).is_ok() {}
+        settle(&rx);
 
         let temporary = path.with_file_name("init.lua.tmp");
         fs::write(&temporary, "gband.set { prefix = 'ctrl+x' }").unwrap();
         fs::rename(&temporary, &path).unwrap();
         let renamed = next(&rx);
         assert!(prefix_of(&renamed).contains("'x'"));
-        while rx.recv_timeout(Duration::from_millis(300)).is_ok() {}
+        settle(&rx);
 
         fs::remove_file(&path).unwrap();
         assert_eq!(prefix_of(&next(&rx)), defaults);
     }
 
     #[test]
-    fn missing_directory_is_watched_through_its_parent() {
+    fn defaults_file_is_not_watched() {
+        let scratch = Scratch::new("defaults");
+        let dir = scratch.dir();
+        crate::prepare(&dir).unwrap();
+        let (_watcher, rx) = watched(&dir);
+        fs::write(defaults_file(&dir), "gband.set { prefix = 'ctrl+b' }").unwrap();
+        assert!(rx.recv_timeout(Duration::from_secs(1)).is_err());
+    }
+
+    #[test]
+    fn missing_user_directory_is_watched_through_the_configuration_directory() {
         let scratch = Scratch::new("parent");
-        let path = scratch.0.join("gband").join("init.lua");
-        let (_watcher, rx) = watched(&path);
+        let dir = scratch.dir();
+        fs::create_dir_all(&dir).unwrap();
+        let path = user_file(&dir);
+        let (_watcher, rx) = watched(&dir);
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         let _ = rx.recv_timeout(Duration::from_millis(300));
         fs::write(&path, "gband.set { prefix = 'ctrl+b' }").unwrap();

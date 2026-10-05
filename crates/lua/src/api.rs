@@ -10,7 +10,7 @@ use mlua::{
 
 use crate::error::{ConfigError, caller};
 use crate::keys::parse_key;
-use crate::options::{NAMES, OptionsPatch, PartialOptions};
+use crate::options::{NAMES, Options, OptionsPatch};
 
 pub const ACTIONS: [(&str, Action); 19] = [
     ("focus_column_left", Action::View(ViewAction::FocusLeft)),
@@ -96,11 +96,11 @@ pub(crate) struct Bound {
 
 #[derive(Default)]
 pub(crate) struct Loading {
-    pub options: PartialOptions,
+    pub options: Options,
     pub bindings: Vec<Bound>,
 }
 
-pub(crate) struct Source(pub Option<PathBuf>);
+pub(crate) struct Source(pub PathBuf);
 
 struct Queue(Vec<Dispatch>);
 
@@ -314,9 +314,7 @@ pub fn call(lua: &Lua, function: &RegistryKey) -> (Vec<Dispatch>, Option<ConfigE
         .map(|queue| queue.0)
         .unwrap_or_default();
     let error = result.err().map(|error| {
-        let source = lua
-            .app_data_ref::<Source>()
-            .and_then(|source| source.0.clone());
+        let source = lua.app_data_ref::<Source>().map(|source| source.0.clone());
         ConfigError::from_lua(&error, source.as_deref())
     });
     (dispatched, error)

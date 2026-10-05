@@ -3,8 +3,6 @@ use std::path::{Path, PathBuf};
 
 use mlua::Lua;
 
-pub const DEFAULTS_CHUNK: &str = "defaults.lua";
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ConfigError {
     pub location: Option<(PathBuf, u32)>,
@@ -102,20 +100,20 @@ mod tests {
     #[test]
     fn display_names_the_location() {
         let error = ConfigError {
-            location: Some((PathBuf::from("/home/u/.config/gband/init.lua"), 12)),
+            location: Some((PathBuf::from("/home/u/.config/gband/user/init.lua"), 12)),
             message: "unexpected symbol".to_owned(),
         };
         assert_eq!(
             error.to_string(),
-            "/home/u/.config/gband/init.lua:12: unexpected symbol"
+            "/home/u/.config/gband/user/init.lua:12: unexpected symbol"
         );
         assert_eq!(ConfigError::new("plain").to_string(), "plain");
     }
 
     #[test]
     fn truncated_sources_expand_to_the_configuration_path() {
-        let config = Path::new("/a/very/long/path/gband/init.lua");
-        let error = located("...ng/path/gband/init.lua:3: boom", Some(config));
+        let config = Path::new("/a/very/long/path/gband/user/init.lua");
+        let error = located("...ng/path/gband/user/init.lua:3: boom", Some(config));
         assert_eq!(error.location, Some((config.to_path_buf(), 3)));
         assert_eq!(error.message, "boom");
     }

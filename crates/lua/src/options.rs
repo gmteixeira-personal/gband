@@ -1,6 +1,6 @@
 use std::fmt;
 
-use gband_core::input::Key;
+use gband_core::input::{Key, KeyCode, Modifiers};
 use gband_core::layout::{LayoutOptions, Proportion};
 use gband_core::view::CenterFocusedColumn;
 use serde::Deserialize;
@@ -17,21 +17,23 @@ pub struct Options {
     pub center_focused_column: CenterFocusedColumn,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct PartialOptions {
-    pub prefix: Option<Key>,
-    pub default_width: Option<Proportion>,
-    pub presets: Option<Vec<Proportion>>,
-    pub center_focused_column: Option<CenterFocusedColumn>,
+impl Default for Options {
+    fn default() -> Self {
+        Self {
+            prefix: Key::new(KeyCode::Char('a'), Modifiers::CTRL),
+            layout: LayoutOptions::default(),
+            center_focused_column: CenterFocusedColumn::default(),
+        }
+    }
 }
 
-impl PartialOptions {
+impl Options {
     pub fn merge(&mut self, patch: OptionsPatch) {
         if let Some(KeySpec(prefix)) = patch.prefix {
-            self.prefix = Some(prefix);
+            self.prefix = prefix;
         }
         if let Some(Width(width)) = patch.default_column_width {
-            self.default_width = Some(width);
+            self.layout.default_width = width;
         }
         if let Some(Presets(presets)) = patch.width_presets {
             let mut presets: Vec<Proportion> =
@@ -40,22 +42,11 @@ impl PartialOptions {
                 (u64::from(a.num) * u64::from(b.den)).cmp(&(u64::from(b.num) * u64::from(a.den)))
             });
             presets.dedup();
-            self.presets = Some(presets);
+            self.layout.presets = presets;
         }
         if let Some(policy) = patch.center_focused_column {
-            self.center_focused_column = Some(policy);
+            self.center_focused_column = policy;
         }
-    }
-
-    pub fn complete(self) -> Option<Options> {
-        Some(Options {
-            prefix: self.prefix?,
-            layout: LayoutOptions {
-                default_width: self.default_width?,
-                presets: self.presets?,
-            },
-            center_focused_column: self.center_focused_column?,
-        })
     }
 }
 
@@ -174,7 +165,6 @@ fn approximate(value: f64) -> (u64, u64) {
 
 #[cfg(test)]
 mod tests {
-    use gband_core::input::{KeyCode, Modifiers};
     use mlua::{Lua, LuaSerdeExt};
 
     use super::*;
@@ -187,11 +177,11 @@ mod tests {
             .map_err(|error| error.to_string())
     }
 
-    fn patched(source: &str) -> Result<PartialOptions, String> {
+    fn patched(source: &str) -> Result<Options, String> {
         let lua = Lua::new();
         let value = lua.load(source).eval().unwrap();
         let patch: OptionsPatch = lua.from_value(value).map_err(|error| error.to_string())?;
-        let mut options = PartialOptions::default();
+        let mut options = Options::default();
         options.merge(patch);
         Ok(options)
     }
@@ -226,26 +216,21 @@ mod tests {
     fn presets_are_sorted_and_deduplicated() {
         let options = patched("{ width_presets = { 2/3, 1/4, 2/3 } }").unwrap();
         assert_eq!(
-            options.presets,
-            Some(vec![Proportion::new(1, 4), Proportion::new(2, 3)])
+            options.layout.presets,
+            [Proportion::new(1, 4), Proportion::new(2, 3)]
         );
     }
 
     #[test]
     fn patch_changes_only_named_options() {
         let mut options = patched("{ default_column_width = 1/3 }").unwrap();
-        assert_eq!(
-            options,
-            PartialOptions {
-                default_width: Some(Proportion::ONE_THIRD),
-                ..PartialOptions::default()
-            }
-        );
+        let mut expected = Options::default();
+        expected.layout.default_width = Proportion::ONE_THIRD;
+        assert_eq!(options, expected);
         let lua = Lua::new();
         let later = lua.load("{ default_column_width = 2/3 }").eval().unwrap();
         options.merge(lua.from_value(later).unwrap());
-        assert_eq!(options.default_width, Some(Proportion::TWO_THIRDS));
-        assert_eq!(options.complete(), None);
+        assert_eq!(options.layout.default_width, Proportion::TWO_THIRDS);
     }
 
     #[test]
@@ -255,7 +240,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            options.complete().unwrap(),
+            options,
             Options {
                 prefix: Key::new(KeyCode::Char('b'), Modifiers::CTRL),
                 layout: LayoutOptions {

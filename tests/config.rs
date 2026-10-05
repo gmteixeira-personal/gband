@@ -1,14 +1,30 @@
 mod common;
 
 use std::fs;
+use std::os::unix::fs::PermissionsExt;
+use std::path::Path;
 use std::thread;
 use std::time::Duration;
 
 use common::*;
+use gband_lua::DEFAULTS;
 use gband_test_support::cell;
 use ratatui::style::Modifier;
 
 const RELOADED: &str = "configuration reloaded";
+
+fn with_defaults(source: &str) -> String {
+    format!("{source}\n{DEFAULTS}")
+}
+
+fn entries(dir: &Path) -> Vec<String> {
+    let mut names: Vec<String> = fs::read_dir(dir)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    names.sort();
+    names
+}
 
 fn reloads(env: &TestEnv, role: &str) -> usize {
     env.log_text(role).matches(RELOADED).count()
@@ -73,9 +89,112 @@ fn harness_isolates_the_configuration() {
         .and_then(|(_, value)| value);
     assert_eq!(named, Some(env.config_home().as_os_str()));
     assert!(env.config_home().starts_with(&env.root));
-    assert!(!env.init_lua().exists());
+    assert!(!env.config_dir().exists());
+    let client = Attached::start(&env, 80, 24);
+    client.wait_for_prompt();
+    assert!(env.defaults_lua().exists());
+    assert!(!env.user_lua().exists());
     env.write_config("");
-    assert!(env.init_lua().exists());
+    assert!(env.user_lua().exists());
+}
+
+#[test]
+fn first_run() {
+    let env = TestEnv::new("config-first-run");
+    let client = Attached::start(&env, 80, 24);
+    client.wait_for_prompt();
+    assert_eq!(fs::read_to_string(env.defaults_lua()).unwrap(), DEFAULTS);
+    assert!(entries(&env.config_dir().join("user")).is_empty());
+    for role in ["client", "server"] {
+        let log = env.log_text(role);
+        assert!(!log.contains("cannot prepare"), "{log}");
+        assert!(!log.contains("configuration error"), "{log}");
+    }
+}
+
+struct Writable<'a>(&'a Path);
+
+impl Drop for Writable<'_> {
+    fn drop(&mut self) {
+        let _ = fs::set_permissions(self.0, fs::Permissions::from_mode(0o755));
+    }
+}
+
+#[test]
+fn read_only_configuration_directory() {
+    let env = TestEnv::new("config-read-only");
+    let config_home = env.config_home();
+    fs::create_dir_all(&config_home).unwrap();
+    fs::set_permissions(&config_home, fs::Permissions::from_mode(0o555)).unwrap();
+    let _writable = Writable(&config_home);
+    let mut client = Attached::start(&env, 80, 24);
+    client.wait_for_prompt();
+    client.shell_pid(&env);
+    wait_until(
+        || {
+            env.log_text("client")
+                .contains("cannot prepare the configuration directory")
+        },
+        "the client log to record the failure",
+    );
+    client.send(b"\x01\r");
+    client.wait_for("two tiles with the second focused", |screen| {
+        let tiles = tiles(screen);
+        tiles.len() == 2 && tiles[1].focused
+    });
+}
+
+#[test]
+fn user_file_replaces_the_defaults() {
+    let env = TestEnv::new("config-replace");
+    env.write_config("gband.bind('alt+h', gband.action.focus_column_left)");
+    let mut client = Attached::start(&env, 80, 24);
+    client.wait_for_prompt();
+    client.shell_pid(&env);
+    echo_keys(&mut client);
+    client.send(b"\x1bh\x01q\r");
+    client.wait_for_line("^Aq");
+}
+
+#[test]
+fn another_prefix_key_in_a_copy_of_the_defaults() {
+    let env = TestEnv::new("config-copied-prefix");
+    let mut client = Attached::start(&env, 80, 24);
+    client.wait_for_prompt();
+    client.shell_pid(&env);
+    client.send(b"\x01\r");
+    client.wait_for("two tiles with the second focused", |screen| {
+        let tiles = tiles(screen);
+        tiles.len() == 2 && tiles[1].focused
+    });
+    client.wait_for_prompt();
+    client.shell_pid(&env);
+    let seen = reloads(&env, "client");
+    let copy = fs::read_to_string(env.defaults_lua()).unwrap();
+    env.write_config(&format!("{copy}\ngband.set {{ prefix = 'ctrl+b' }}\n"));
+    wait_for_reload(&env, "client", seen);
+    client.send(b"\x02q");
+    client.wait_for("one tile", |screen| tiles(screen).len() == 1);
+    client.wait_for_prompt();
+    echo_keys(&mut client);
+    client.send(b"\x01\r");
+    client.wait_for_line("^A");
+}
+
+#[test]
+fn defaults_file_edited_while_running() {
+    let env = TestEnv::new("config-defaults-edited");
+    let mut client = Attached::start(&env, 80, 24);
+    client.wait_for_prompt();
+    client.shell_pid(&env);
+    fs::write(env.defaults_lua(), "gband.set { prefix = 'ctrl+b' }\n").unwrap();
+    thread::sleep(Duration::from_secs(1));
+    assert_eq!(reloads(&env, "client"), 0);
+    client.send(b"\x01\r");
+    client.wait_for("two tiles with the second focused", |screen| {
+        let tiles = tiles(screen);
+        tiles.len() == 2 && tiles[1].focused
+    });
 }
 
 #[test]
@@ -96,7 +215,9 @@ fn no_configuration_file() {
 #[test]
 fn xdg_config_home_is_honoured() {
     let env = TestEnv::new("config-xdg");
-    env.write_config("gband.set { width_presets = { 1/4, 1/2 } }");
+    env.write_config(
+        "gband.set { width_presets = { 1/4, 1/2 } }\ngband.bind('prefix r', gband.action.cycle_column_width)",
+    );
     let mut client = Attached::start(&env, 80, 24);
     client.wait_for_prompt();
     client.send(b"\x01r");
@@ -109,7 +230,9 @@ fn xdg_config_home_is_honoured() {
 #[test]
 fn direct_binding_acts_without_the_prefix() {
     let env = TestEnv::new("config-direct");
-    env.write_config("gband.bind('alt+h', gband.action.focus_column_left)");
+    env.write_config(
+        "gband.bind('alt+h', gband.action.focus_column_left)\ngband.bind('prefix enter', gband.action.open_pane)",
+    );
     let mut client = Attached::start(&env, 80, 24);
     client.wait_for_prompt();
     client.shell_pid(&env);
@@ -154,7 +277,11 @@ fn spawn_a_command_line() {
 fn syntax_error_is_shown_on_the_bottom_row() {
     let env = TestEnv::new("config-syntax");
     let home = env.root.join("home");
-    let path = home.join(".config").join("gband").join("init.lua");
+    let path = home
+        .join(".config")
+        .join("gband")
+        .join("user")
+        .join("init.lua");
     fs::create_dir_all(path.parent().unwrap()).unwrap();
     fs::write(&path, "\n\n\n\n\n\n\n\n\n\n\nlocal = 1\n").unwrap();
     let client = Attached::start_with(&env, GBAND, &["attach"], 120, 24, |command| {
@@ -195,12 +322,16 @@ fn broken_file_at_start_keeps_the_defaults() {
 #[test]
 fn broken_edit_keeps_the_running_configuration() {
     let env = TestEnv::new("config-broken-edit");
-    env.write_config("gband.bind('alt+h', gband.action.focus_column_left)");
+    env.write_config(&with_defaults(
+        "gband.bind('alt+h', gband.action.focus_column_left)",
+    ));
     let mut client = two_panes_first_focused(&env);
     client.send(b"\x01l");
     client.wait_for("the second tile focused", |screen| tiles(screen)[1].focused);
     let seen = reloads(&env, "client");
-    env.write_config("gband.bind('alt+j', gband.action.focus_column_left)\nlocal = 1\n");
+    env.write_config(&with_defaults(
+        "gband.bind('alt+j', gband.action.focus_column_left)\nlocal = 1",
+    ));
     client.wait_for("the error banner", |screen| {
         bottom_row(screen).contains("init.lua:2:")
     });
@@ -217,7 +348,6 @@ fn broken_edit_keeps_the_running_configuration() {
 #[test]
 fn new_binding_without_restart() {
     let env = TestEnv::new("config-new-binding");
-    fs::create_dir_all(env.config_home()).unwrap();
     let mut client = two_panes_first_focused(&env);
     let seen = reloads(&env, "client");
     env.write_config("gband.bind('alt+l', gband.action.focus_column_right)");
@@ -229,16 +359,16 @@ fn new_binding_without_restart() {
 #[test]
 fn editor_replaces_the_file() {
     let env = TestEnv::new("config-rename");
-    env.write_config("");
+    env.write_config(DEFAULTS);
     let mut client = two_panes_first_focused(&env);
     let (client_seen, server_seen) = (reloads(&env, "client"), reloads(&env, "server"));
-    let temporary = env.init_lua().with_file_name("init.lua~");
+    let temporary = env.user_lua().with_file_name("init.lua~");
     fs::write(
         &temporary,
-        "gband.bind('alt+l', gband.action.focus_column_right)",
+        with_defaults("gband.bind('alt+l', gband.action.focus_column_right)"),
     )
     .unwrap();
-    fs::rename(&temporary, env.init_lua()).unwrap();
+    fs::rename(&temporary, env.user_lua()).unwrap();
     wait_for_reload(&env, "client", client_seen);
     wait_for_reload(&env, "server", server_seen);
     client.send(b"\x1bl");
@@ -253,7 +383,7 @@ fn file_removed_restores_the_defaults() {
     client.wait_for_prompt();
     client.shell_pid(&env);
     let seen = reloads(&env, "client");
-    fs::remove_file(env.init_lua()).unwrap();
+    fs::remove_file(env.user_lua()).unwrap();
     wait_for_reload(&env, "client", seen);
     echo_keys(&mut client);
     client.send(b"\x1bh\r");
