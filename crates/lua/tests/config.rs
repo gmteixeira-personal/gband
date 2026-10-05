@@ -6,7 +6,10 @@ use gband_core::input::{Key, KeyCode, Modifiers};
 use gband_core::layout::{Direction, Program, Proportion, Step};
 use gband_core::view::{CenterFocusedColumn, ViewAction};
 use gband_lua::keys::parse_key;
-use gband_lua::{ACTIONS, Binding, Chord, Config, ConfigError, Dispatch, Keys, call, load};
+use gband_lua::{
+    ACTIONS, Binding, Chord, Config, ConfigError, Dispatch, Keys, Options, call, defaults_file,
+    load, prepare, user_file,
+};
 
 struct Scratch(PathBuf);
 
@@ -19,8 +22,15 @@ impl Scratch {
         Self(path)
     }
 
-    fn init(&self) -> PathBuf {
-        self.0.join("init.lua")
+    fn dir(&self) -> PathBuf {
+        self.0.join("gband")
+    }
+
+    fn write(&self, source: &str) -> PathBuf {
+        let path = user_file(&self.dir());
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, source).unwrap();
+        path
     }
 }
 
@@ -32,9 +42,8 @@ impl Drop for Scratch {
 
 fn evaluate(name: &str, source: &str) -> (PathBuf, Result<Config, ConfigError>) {
     let scratch = Scratch::new(name);
-    let path = scratch.init();
-    fs::write(&path, source).unwrap();
-    let result = load(&path);
+    let path = scratch.write(source);
+    let result = load(&scratch.dir());
     (path, result)
 }
 
@@ -84,6 +93,17 @@ fn action_of(config: &Config, keys: Keys) -> Option<Action> {
     }
 }
 
+fn actions(config: &Config) -> Vec<(Keys, Action)> {
+    config
+        .bindings
+        .iter()
+        .map(|(keys, binding)| match binding {
+            Binding::Action(action) => (*keys, *action),
+            Binding::Function(_) => panic!("{keys:?} is bound to a function"),
+        })
+        .collect()
+}
+
 fn function_of(config: &Config, keys: Keys) -> &gband_lua::RegistryKey {
     match binding(config, keys) {
         Some(Binding::Function(function)) => function,
@@ -94,10 +114,38 @@ fn function_of(config: &Config, keys: Keys) -> &gband_lua::RegistryKey {
 #[test]
 fn no_configuration_file_gives_the_defaults() {
     let scratch = Scratch::new("missing");
-    let config = load(&scratch.init()).unwrap();
+    let config = load(&scratch.dir()).unwrap();
     let defaults = gband_lua::defaults();
     assert_eq!(config.options, defaults.options);
-    assert_eq!(config.bindings.len(), defaults.bindings.len());
+    assert_eq!(actions(&config), actions(&defaults));
+}
+
+#[test]
+fn user_file_replaces_the_defaults() {
+    let config = loaded(
+        "replace",
+        "gband.bind('alt+h', gband.action.focus_column_left)",
+    );
+    assert_eq!(
+        actions(&config),
+        [(
+            Keys::Direct(key("alt+h")),
+            Action::View(ViewAction::FocusLeft)
+        )]
+    );
+    assert_eq!(config.options, Options::default());
+}
+
+#[test]
+fn copied_defaults_load_unchanged() {
+    let scratch = Scratch::new("copied");
+    prepare(&scratch.dir()).unwrap();
+    let copy = fs::read_to_string(defaults_file(&scratch.dir())).unwrap();
+    scratch.write(&copy);
+    let config = load(&scratch.dir()).unwrap();
+    let defaults = gband_lua::defaults();
+    assert_eq!(config.options, defaults.options);
+    assert_eq!(actions(&config), actions(&defaults));
 }
 
 #[test]
@@ -120,6 +168,7 @@ fn defaults_reproduce_the_built_in_behaviour() {
         config.options.center_focused_column,
         CenterFocusedColumn::Never
     );
+    assert_eq!(config.options, Options::default());
     let char_key = |c| Keys::Prefixed(Chord::Key(Key::plain(KeyCode::Char(c))));
     let expected = [
         (char_key('h'), Action::View(ViewAction::FocusLeft)),
@@ -169,15 +218,7 @@ fn defaults_reproduce_the_built_in_behaviour() {
             Action::Client(ClientAction::SendPrefix),
         ),
     ];
-    let bound: Vec<(Keys, Action)> = config
-        .bindings
-        .iter()
-        .map(|(keys, binding)| match binding {
-            Binding::Action(action) => (*keys, *action),
-            Binding::Function(_) => panic!("{keys:?} is bound to a function"),
-        })
-        .collect();
-    assert_eq!(bound, expected);
+    assert_eq!(actions(&config), expected);
 }
 
 #[test]
@@ -233,7 +274,7 @@ fn partial_update() {
     assert_eq!(config.options.layout.default_width, Proportion::ONE_THIRD);
     assert_eq!(
         config.options.layout.presets,
-        gband_lua::defaults().options.layout.presets
+        Options::default().layout.presets
     );
 }
 
@@ -322,8 +363,11 @@ fn direct_binding() {
 }
 
 #[test]
-fn override_a_default() {
-    let config = loaded("override", "gband.bind('prefix q', gband.action.detach)");
+fn rebind_a_key() {
+    let config = loaded(
+        "rebind",
+        "gband.bind('prefix q', gband.action.close_pane)\ngband.bind('prefix q', gband.action.detach)",
+    );
     assert_eq!(
         action_of(&config, prefixed("q")),
         Some(Action::Client(ClientAction::Detach))
@@ -335,26 +379,24 @@ fn override_a_default() {
 }
 
 #[test]
-fn unbind_a_default() {
-    let config = loaded("unbind", "gband.unbind('prefix q')\ngband.unbind('alt+z')");
-    assert!(binding(&config, prefixed("q")).is_none());
-    assert_eq!(
-        config.bindings.len(),
-        gband_lua::defaults().bindings.len() - 1
+fn unbind_a_key() {
+    let config = loaded(
+        "unbind",
+        "gband.bind('prefix q', gband.action.close_pane)\ngband.unbind('prefix q')\ngband.unbind('alt+z')",
     );
+    assert!(config.bindings.is_empty());
 }
 
 #[test]
 fn prefix_changed_after_binding() {
-    let config = loaded("prefix", "gband.set { prefix = 'ctrl+b' }");
+    let config = loaded(
+        "prefix",
+        "gband.bind('prefix h', gband.action.focus_column_left)\ngband.set { prefix = 'ctrl+b' }",
+    );
     assert_eq!(config.options.prefix, key("ctrl+b"));
     assert_eq!(
-        action_of(&config, prefixed("h")),
-        Some(Action::View(ViewAction::FocusLeft))
-    );
-    assert_eq!(
-        action_of(&config, Keys::Prefixed(Chord::Prefix)),
-        Some(Action::Client(ClientAction::SendPrefix))
+        actions(&config),
+        [(prefixed("h"), Action::View(ViewAction::FocusLeft))]
     );
 }
 

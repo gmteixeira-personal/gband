@@ -1,4 +1,5 @@
 mod api;
+mod directory;
 mod error;
 pub mod keys;
 mod options;
@@ -10,14 +11,14 @@ use std::path::Path;
 pub use mlua::{Lua, RegistryKey};
 
 pub use crate::api::{ACTIONS, Binding, Chord, Dispatch, Keys, call};
+pub use crate::directory::{config_dir, config_dir_from, defaults_file, prepare, user_file};
 pub use crate::error::ConfigError;
 pub use crate::options::Options;
-pub use crate::watch::{Watcher, config_path, config_path_from, watch};
+pub use crate::watch::{Watcher, watch};
 
 use crate::api::{Loading, Source};
-use crate::error::DEFAULTS_CHUNK;
 
-const DEFAULTS: &str = include_str!("defaults.lua");
+pub const DEFAULTS: &str = include_str!("defaults.lua");
 
 pub struct Config {
     pub options: Options,
@@ -25,48 +26,39 @@ pub struct Config {
     pub lua: Lua,
 }
 
-pub fn load(path: &Path) -> Result<Config, ConfigError> {
-    let source = match std::fs::read(path) {
-        Ok(source) => Some(source),
-        Err(error) if error.kind() == ErrorKind::NotFound => None,
-        Err(error) => {
-            return Err(ConfigError::new(format!(
-                "cannot read {}: {error}",
-                path.display()
-            )));
+pub fn load(dir: &Path) -> Result<Config, ConfigError> {
+    let path = user_file(dir);
+    match std::fs::read(&path) {
+        Ok(source) => evaluate(&path, &source),
+        Err(error) if error.kind() == ErrorKind::NotFound => {
+            evaluate(&defaults_file(dir), DEFAULTS.as_bytes())
         }
-    };
-    evaluate(source.map(|source| (path, source)))
+        Err(error) => Err(ConfigError::new(format!(
+            "cannot read {}: {error}",
+            path.display()
+        ))),
+    }
 }
 
 pub fn defaults() -> Config {
-    evaluate(None).expect("defaults.lua loads")
+    evaluate(Path::new("defaults/init.lua"), DEFAULTS.as_bytes())
+        .expect("the default configuration loads")
 }
 
-fn evaluate(config: Option<(&Path, Vec<u8>)>) -> Result<Config, ConfigError> {
-    let path = config.as_ref().map(|(path, _)| *path);
-    let failed = |error: mlua::Error| ConfigError::from_lua(&error, path);
+fn evaluate(path: &Path, source: &[u8]) -> Result<Config, ConfigError> {
+    let failed = |error: mlua::Error| ConfigError::from_lua(&error, Some(path));
     let lua = Lua::new();
     api::install(&lua).map_err(failed)?;
-    lua.set_app_data(Source(path.map(Path::to_path_buf)));
+    lua.set_app_data(Source(path.to_path_buf()));
     lua.set_app_data(Loading::default());
-    lua.load(DEFAULTS)
-        .set_name(format!("@{DEFAULTS_CHUNK}"))
+    lua.load(source)
+        .set_name(format!("@{}", path.display()))
         .exec()
         .map_err(failed)?;
-    if let Some((path, source)) = config {
-        lua.load(source)
-            .set_name(format!("@{}", path.display()))
-            .exec()
-            .map_err(failed)?;
-    }
     let loading = lua
         .remove_app_data::<Loading>()
         .expect("installed before evaluation");
-    let options = loading
-        .options
-        .complete()
-        .ok_or_else(|| ConfigError::new("defaults.lua must set every option"))?;
+    let options = loading.options;
     if let Some(bound) = loading
         .bindings
         .iter()
@@ -87,4 +79,18 @@ fn evaluate(config: Option<(&Path, Vec<u8>)>) -> Result<Config, ConfigError> {
         bindings,
         lua,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn errors_in_the_default_text_name_the_defaults_file() {
+        let path = defaults_file(Path::new("/home/u/.config/gband"));
+        let Err(error) = evaluate(&path, b"\nerror('boom')") else {
+            panic!("the text loaded");
+        };
+        assert_eq!(error.location, Some((path, 2)));
+    }
 }

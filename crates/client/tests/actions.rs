@@ -11,7 +11,7 @@ use gband_core::layout::{
 };
 use gband_core::view::ViewAction;
 use gband_lua::keys::parse_key;
-use gband_lua::{Config, ConfigError};
+use gband_lua::{Config, ConfigError, DEFAULTS};
 use gband_protocol::{ClientMessage, ServerMessage};
 use gband_test_support::{TIMEOUT, TestClient, TestServer};
 use tokio::time::timeout;
@@ -151,9 +151,10 @@ impl Scratch {
     }
 
     fn load(&self, source: &str) -> Result<Config, ConfigError> {
-        let path = self.0.join("init.lua");
+        let path = gband_lua::user_file(&self.0);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(&path, source).unwrap();
-        gband_lua::load(&path)
+        gband_lua::load(&self.0)
     }
 }
 
@@ -243,14 +244,16 @@ fn error_in_a_binding_function_keeps_the_dispatched_actions() {
     controls.press(&mut display, key("alt+e"));
     assert_eq!(display.focused(), Some(panes[1]));
     let banner = display.banner().unwrap();
-    let expected = format!("{}:9: broken", scratch.0.join("init.lua").display());
+    let expected = format!("{}:9: broken", gband_lua::user_file(&scratch.0).display());
     assert_eq!(banner, expected);
 }
 
 #[test]
 fn send_prefix_follows_the_prefix_option() {
     let scratch = Scratch::new("prefix");
-    let config = scratch.load("gband.set { prefix = 'ctrl+b' }").unwrap();
+    let config = scratch
+        .load(&format!("{DEFAULTS}\ngband.set {{ prefix = 'ctrl+b' }}"))
+        .unwrap();
     let (mut display, panes) = three_columns();
     let mut controls = Controls::new(config, &mut display);
     assert_eq!(controls.press(&mut display, key("ctrl+b")), []);
@@ -274,7 +277,7 @@ fn send_prefix_follows_the_prefix_option() {
 fn reload_replaces_the_bindings_and_ends_a_prefix_sequence() {
     let scratch = Scratch::new("reload");
     let (mut display, panes) = three_columns();
-    let mut controls = Controls::new(scratch.load("").unwrap(), &mut display);
+    let mut controls = Controls::new(scratch.load(DEFAULTS).unwrap(), &mut display);
     assert_eq!(controls.press(&mut display, key("ctrl+a")), []);
     controls.reload(
         &mut display,
@@ -326,7 +329,9 @@ fn camera_policy_follows_the_configuration() {
     let (mut display, _) = three_columns();
     let mut controls = Controls::new(
         scratch
-            .load("gband.set { center_focused_column = 'always' }")
+            .load(&format!(
+                "{DEFAULTS}\ngband.set {{ center_focused_column = 'always' }}"
+            ))
             .unwrap(),
         &mut display,
     );

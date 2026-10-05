@@ -275,8 +275,8 @@ fn server(socket: PathBuf, session: SessionName, runtime_dir: &Path) -> Result<E
     }
     let loaded = configuration();
     let (options_tx, options) = watch::channel(loaded.config.options.layout);
-    let _watcher = loaded.path.map(|path| {
-        gband_lua::watch(path, move |result| match result {
+    let _watcher = loaded.dir.map(|dir| {
+        gband_lua::watch(dir, move |result| match result {
             Ok(config) => {
                 tracing::info!("configuration reloaded");
                 options_tx.send_replace(config.options.layout);
@@ -301,30 +301,36 @@ fn server(socket: PathBuf, session: SessionName, runtime_dir: &Path) -> Result<E
 struct Loaded {
     config: Config,
     error: Option<ConfigError>,
-    path: Option<PathBuf>,
+    dir: Option<PathBuf>,
 }
 
 fn configuration() -> Loaded {
-    let Some(path) = gband_lua::config_path() else {
+    let Some(dir) = gband_lua::config_dir() else {
         tracing::info!("no configuration directory, using the defaults");
         return Loaded {
             config: gband_lua::defaults(),
             error: None,
-            path: None,
+            dir: None,
         };
     };
-    match gband_lua::load(&path) {
+    if let Err(error) = gband_lua::prepare(&dir) {
+        tracing::warn!(
+            "cannot prepare the configuration directory {}: {error}",
+            dir.display()
+        );
+    }
+    match gband_lua::load(&dir) {
         Ok(config) => Loaded {
             config,
             error: None,
-            path: Some(path),
+            dir: Some(dir),
         },
         Err(error) => {
             tracing::warn!("configuration error: {error}");
             Loaded {
                 config: gband_lua::defaults(),
                 error: Some(error),
-                path: Some(path),
+                dir: Some(dir),
             }
         }
     }
@@ -367,8 +373,8 @@ fn attach(socket: PathBuf, session: SessionName, selection: &Selection) -> Resul
     let kill_command = config.kill_command.clone();
     let loaded = configuration();
     let (reloads_tx, reloads) = tokio::sync::mpsc::unbounded_channel();
-    let _watcher = loaded.path.map(|path| {
-        gband_lua::watch(path, move |result| {
+    let _watcher = loaded.dir.map(|dir| {
+        gband_lua::watch(dir, move |result| {
             let _ = reloads_tx.send(result);
         })
     });

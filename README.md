@@ -29,10 +29,25 @@ Configuration and automation are Lua scripts, so key bindings, layout behavior a
 
 ## Configuration
 
-gband reads `$XDG_CONFIG_HOME/gband/init.lua`, or `~/.config/gband/init.lua` when `XDG_CONFIG_HOME` is unset.
-The file is optional.
-gband first runs its built-in defaults, then your file, so your file only needs what you want to change.
-Saving the file reloads it while gband runs.
+gband keeps its configuration in `$XDG_CONFIG_HOME/gband/`, or `~/.config/gband/` when `XDG_CONFIG_HOME` is unset.
+gband creates the directory when it starts, with two folders in it:
+
+- `defaults/init.lua` holds the full default configuration.
+  gband owns this file: it writes the file when it is missing and overwrites it when its content differs from the defaults of the running build.
+  Edits to it have no effect.
+- `user/` holds your configuration.
+  gband creates it empty.
+
+When `user/init.lua` exists, gband runs it instead of the defaults, not on top of them.
+Your file starts from the default options and no key bindings, so it must bind every key you want.
+To start, copy `defaults/init.lua` to `user/init.lua` and edit the copy:
+
+```sh
+cp ~/.config/gband/defaults/init.lua ~/.config/gband/user/init.lua
+```
+
+Without `user/init.lua`, the defaults apply.
+Saving `user/init.lua` reloads it while gband runs, and deleting it returns to the defaults.
 An error in the file shows on the bottom row with its line number, and gband keeps the last configuration that loaded.
 
 ```lua
@@ -51,7 +66,7 @@ gband.bind("alt+l", gband.action.focus_column_right)
 -- A prefix binding acts on the key pressed after the prefix key.
 gband.bind("prefix x", gband.action.close_pane)
 
--- Remove a binding, including one of the defaults.
+-- Remove a binding made earlier, such as one copied from the defaults.
 gband.unbind("prefix q")
 
 -- A function binding can call actions and open panes running a command.

@@ -108,14 +108,16 @@ mod tests {
 
     fn configured(source: &str) -> Keymap {
         static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "gband-client-bindings-{}-{}.lua",
+        let dir = std::env::temp_dir().join(format!(
+            "gband-client-bindings-{}-{}",
             std::process::id(),
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
+        let path = gband_lua::user_file(&dir);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(&path, source).unwrap();
-        let config = gband_lua::load(&path).unwrap();
-        let _ = std::fs::remove_file(&path);
+        let config = gband_lua::load(&dir).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
         Keymap::new(config.options.prefix, config.bindings)
     }
 
@@ -288,7 +290,10 @@ mod tests {
 
     #[test]
     fn another_prefix_key() {
-        let keymap = configured("gband.set { prefix = 'ctrl+b' }");
+        let keymap = configured(&format!(
+            "{}\ngband.set {{ prefix = 'ctrl+b' }}",
+            gband_lua::DEFAULTS
+        ));
         let mut leader = Leader::default();
         assert_eq!(leader.handle(&keymap, key("ctrl+b")), Command::Discard);
         assert_eq!(
@@ -308,9 +313,7 @@ mod tests {
 
     #[test]
     fn no_prefix_binding_left() {
-        let keymap = configured(
-            "for _, key in ipairs({ 'h', 'l', 'j', 'k', 'u', 'i', 'enter', 'q', '[', ']', 'r', 'f', '-', '=', '_', '+', 'R', 'D', 'prefix' }) do gband.unbind('prefix ' .. key) end",
-        );
+        let keymap = configured("");
         assert!(keymap.prefixed.is_empty());
         let mut leader = Leader::default();
         assert_eq!(

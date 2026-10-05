@@ -63,12 +63,20 @@ impl TestEnv {
         self.root.join("config")
     }
 
-    pub fn init_lua(&self) -> PathBuf {
-        self.config_home().join("gband").join("init.lua")
+    pub fn config_dir(&self) -> PathBuf {
+        self.config_home().join("gband")
+    }
+
+    pub fn user_lua(&self) -> PathBuf {
+        self.config_dir().join("user").join("init.lua")
+    }
+
+    pub fn defaults_lua(&self) -> PathBuf {
+        self.config_dir().join("defaults").join("init.lua")
     }
 
     pub fn write_config(&self, source: &str) {
-        let path = self.init_lua();
+        let path = self.user_lua();
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(path, source).unwrap();
     }
@@ -184,6 +192,13 @@ impl TestEnv {
 
 impl Drop for TestEnv {
     fn drop(&mut self) {
+        if self.socket().exists() {
+            let _ = self
+                .command(GBAND, &["kill-server"])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
+        }
         for pid in self.shells.lock().unwrap().drain(..) {
             if let Some(pid) = Pid::from_raw(pid) {
                 let _ = rustix::process::kill_process(pid, Signal::KILL);
