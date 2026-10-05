@@ -20,7 +20,7 @@ MAIN = ROOT / "openspec" / "specs"
 DELTA = CHANGE / "specs"
 ADDED = CHANGE / "added"
 
-PLUGIN_WINDOW_SPECS = {"plugin-windows", "lua-control", "client-attach"}
+PLUGIN_WINDOW_SPECS = {"plugin-windows", "lua-control", "client-attach", "key-list"}
 
 KEEP = [
     "plugin-windows",
@@ -43,12 +43,15 @@ PLUGIN_WINDOW_TERMS = [
     (r'kind = "pane"', 'kind = "tiled"'),
 ]
 
-BARE_PLUGIN_WINDOW = [
+PLUGIN_WINDOW_NAMES = [
     (r"`WindowCursorLine`", "`PluginWindowCursorLine`"),
     (r"`WindowBorder`", "`PluginWindowBorder`"),
     (r"`WindowTitle`", "`PluginWindowTitle`"),
     (r"`Window`", "`PluginWindow`"),
     (r"`window`", "`plugin_window`"),
+]
+
+BARE_PLUGIN_WINDOW = [
     (r"(?<![-\w])Windows\b", "Plugin \x02s"),
     (r"(?<![-\w])Window\b", "Plugin \x02"),
     (r"(?<![-\w])windows\b", "plugin \x02s"),
@@ -106,8 +109,20 @@ def rename(text, capability):
         text = re.sub(pattern, token, text)
     if capability in PLUGIN_WINDOW_SPECS:
         text = re.sub(r"\b([Pp]lugin) window", "\\1 \x02", text)
+        for pattern, replacement in PLUGIN_WINDOW_NAMES:
+            text = re.sub(pattern, replacement, text)
+        spans = {}
+
+        def hold(match):
+            token = f"\x03{len(spans)}\x03"
+            spans[token] = match.group(0)
+            return token
+
+        text = re.sub(r"`[^`\n]*`", hold, text)
         for pattern, replacement in BARE_PLUGIN_WINDOW:
             text = re.sub(pattern, replacement, text)
+        for token, span in spans.items():
+            text = text.replace(token, span)
         text = text.replace("\x02", "window")
     for old, new in IDENTIFIERS:
         text = text.replace(old, new)
