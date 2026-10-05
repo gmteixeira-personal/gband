@@ -66,7 +66,7 @@ After the handshake, a server SHALL send only these messages:
 | message | content |
 |---|---|
 | info | the server's process id and the identity of the executable it runs from |
-| layout | the screen area's columns and rows, and the layout: its workspaces in order with their identifiers, each workspace's columns in order with their widths and full-width flags, and each column's panes in order with their identifiers and height weights |
+| layout | the screen area's columns and rows, and the layout: its workspaces in order with their identifiers, each workspace's columns in order with their widths and full-width flags, and each column's panes in order with their identifiers and heights, each either automatic with its weight or fixed with its rows |
 | snapshot | a pane identifier, the pane's columns and rows, and terminal output that, fed into an empty terminal grid of that size, reproduces that pane's screen on the server |
 | update | a pane identifier, and terminal output that, fed into the grid the client built for that pane from every earlier snapshot and update of it, reproduces that pane's current screen on the server |
 | focus | a pane identifier: the pane the client asked to open, which the client focuses |
@@ -104,6 +104,6 @@ A client SHALL keep one grid per pane. It SHALL build a pane's grid by replacing
 - **WHEN** the last pane of a client's session leaves the layout
 - **THEN** that client receives exited as its last message
 
-#### Scenario: Weights in the layout
-- **WHEN** a column holds panes 1 and 2 with weights 2 and 1, and the server sends the layout
-- **THEN** the client decodes that column with panes 1 and 2 and weights 2 and 1
+#### Scenario: Heights in the layout
+- **WHEN** a column holds pane 1 with a fixed height of 14 rows and pane 2 with an automatic height of weight 10/7, and the server sends the layout
+- **THEN** the client decodes that column with pane 1 fixed at 14 rows and pane 2 automatic with weight 10/7

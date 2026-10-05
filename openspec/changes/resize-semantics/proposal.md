@@ -5,11 +5,11 @@ Column widths can only be cycled through three presets or set to full width, and
 ## What Changes
 
 - **Step a column's width.** New session actions grow and shrink the width of the focused pane's column by 1/10 of the screen area's width, kept between 1/10 and 1. They follow niri's `set-column-width "+10%"` and `"-10%"`.
-- **Pane heights in a stack.** Each pane in a column carries a height weight, 1 by default. The column's height is shared among its panes in proportion to their weights. New session actions grow and shrink the focused pane's height and reset the heights of its column.
-- **Key bindings.** After Ctrl+A, `-` and `=` shrink and grow the column width. `_` and `+` shrink and grow the pane height. `R` resets the column's pane heights.
+- **Pane heights in a stack, as niri does them.** Each pane's height is either automatic, with a weight, or fixed in rows, and at most one pane per column is fixed. Growing or shrinking the focused pane sets it to its current height plus or minus 1/10 of the screen area's height, so every press moves it by the same number of rows. The other panes first become automatic, weighted by their current heights, so they keep their sizes relative to one another. Resetting returns the focused pane to an automatic height of weight 1. These follow niri's `set-window-height "+10%"`, `"-10%"` and `reset-window-height`.
+- **Key bindings.** After Ctrl+A, `-` and `=` shrink and grow the column width. `_` and `+` shrink and grow the pane height. `R` resets the pane height.
 - **Settled PTY resizes.** The server publishes every layout and screen-area change at once, so clients redraw tiles at the new size straight away. It resizes the PTYs only once 100 ms pass with no further change, so a burst of resizes reaches each program as one SIGWINCH at the final size. Until then, the client draws the pane's grid at its old size, cut or padded to the tile.
 - **Offscreen panes keep their size.** Each client reports the panes it shows. The server resizes only panes that at least one attached client shows. A pane no client shows keeps its PTY size until a client shows it. A session with no client attached resizes nothing.
-- **BREAKING** The wire protocol gains a shown message and pane height weights in the layout. The protocol version goes from 3 to 4, so older clients and servers detect each other and refuse.
+- **BREAKING** The wire protocol gains a shown message and pane heights in the layout. The protocol version goes from 3 to 4, so older clients and servers detect each other and refuse.
 
 ## Capabilities
 
@@ -19,11 +19,11 @@ None.
 
 ### Modified Capabilities
 
-- `layout`: column widths gain grow and shrink steps. Columns gain per-pane height weights, with grow, shrink and reset. Tile geometry shares a column's height by weight.
+- `layout`: column widths gain grow and shrink steps. Panes gain niri's automatic or fixed heights, with grow, shrink and reset. Tile geometry gives the fixed pane its rows and shares the rest by weight.
 - `layout-view`: a view defines the panes it shows: the panes whose tiles have a cell inside the client's terminal.
 - `session-server`: the session actions gain the five resize actions. PTY resizes wait for a 100 ms quiet period and apply only to shown panes.
 - `session-events`: a new layout event reports a column's changed pane heights.
-- `wire-protocol`: a new shown client message, height weights in the layout message, and protocol version 4.
+- `wire-protocol`: a new shown client message, pane heights in the layout message, and protocol version 4.
 - `client-attach`: the new key bindings, reporting shown panes, and drawing a grid whose size differs from its tile.
 
 ## Impact

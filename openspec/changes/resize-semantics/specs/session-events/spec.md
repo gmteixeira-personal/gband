@@ -9,11 +9,11 @@ Every change to the layout SHALL produce the events that describe it, in the ord
 | pane closed | the pane, and the workspace it left |
 | pane moved | the pane, and the workspace, column and row it now occupies |
 | column width changed | the workspace, the column, its new width and its full-width flag |
-| pane heights changed | the workspace, the column, and the height weights of its panes, top to bottom |
+| pane heights changed | the workspace, the column, and the height of each of its panes, top to bottom: automatic with its weight, or fixed with its rows |
 | workspace added | the workspace and its position |
 | workspace removed | the workspace |
 
-A pane opened or moved into a column SHALL take weight 1 there, as the layout capability defines, without a pane heights changed event.
+A pane opened or moved into a column SHALL take an automatic height of weight 1 there, and the last pane left in a column with an automatic height SHALL take weight 1, as the layout capability defines, without a pane heights changed event.
 
 #### Scenario: Open in the empty workspace
 - **WHEN** a pane opens in the last, empty workspace
@@ -32,8 +32,8 @@ A pane opened or moved into a column SHALL take weight 1 there, as the layout ca
 - **THEN** no event is produced
 
 #### Scenario: Grow a pane's height
-- **WHEN** the second column of a workspace holds P1 and P2, both of weight 1, and P1's height is grown
-- **THEN** the events are one pane heights changed naming that workspace, column 1, and the weights 2 and 1
+- **WHEN** the screen area is 80×24, the second column of a workspace holds P1 above P2, both with automatic heights of weight 1, and P1's height is grown
+- **THEN** the events are one pane heights changed naming that workspace, column 1, P1 fixed at 14 rows and P2 automatic with weight 1
 
 #### Scenario: Grow a column's width
 - **WHEN** a column of width 1/2 is grown

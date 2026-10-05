@@ -46,7 +46,7 @@ When the pane shares its column with other panes, it SHALL be expelled: it leave
 
 When the pane is alone in its column, it SHALL be consumed: it is appended at the bottom of the adjacent column in that direction, and its own column is removed. When no column exists in that direction, nothing SHALL change.
 
-A consumed or expelled pane SHALL take height weight 1 in the column it enters. The other panes of both columns SHALL keep their height weights.
+A pane that is consumed or expelled SHALL take an automatic height of weight 1 in the column it enters. The other panes of both columns SHALL keep their heights, except as "Pane heights" defines for a pane left alone in its column.
 
 #### Scenario: Expel to the left
 - **WHEN** a workspace holds columns A and B, B holds panes P1 and P2, and P2 is expelled to the left
@@ -60,16 +60,19 @@ A consumed or expelled pane SHALL take height weight 1 in the column it enters. 
 - **WHEN** P1 is alone in the workspace's first column and is consumed to the left
 - **THEN** the layout is unchanged
 
-#### Scenario: Consumed pane takes weight 1
-- **WHEN** column B holds P2 with weight 3 and P3 with weight 1, and P1, alone in column A, is consumed to the right
-- **THEN** column B holds P2, P3 and P1 with weights 3, 1 and 1
+#### Scenario: Consume next to a fixed height
+- **WHEN** the area is 80×24, column B holds P2 with a fixed height of 16 rows and P3 with an automatic height of weight 1, and P1, alone in column A, is consumed to the right
+- **THEN** P2 keeps its fixed height of 16 rows, and P1 takes an automatic height of weight 1
+- **AND** the tiles of P2, P3 and P1 are 16, 4 and 4 rows high
 
 ### Requirement: Tile geometry
 For a screen area of a given width and height, the layout SHALL give every pane of a workspace a tile on that workspace's strip:
 
 - A column's width in cells SHALL be the area's width when full width is on, and otherwise the area's width multiplied by its proportion and rounded down. It SHALL be at least 3 cells.
 - The first column SHALL start at strip position 0, and each later column SHALL start where the previous one ends.
-- A column's height SHALL be divided among its panes from the top, in proportion to their height weights. Each pane gets the area's height multiplied by its weight and divided by the sum of the column's weights, rounded down. The first panes, one for each row left over, get one row more.
+- A column's tiles SHALL be stacked from the area's top row, in the column's pane order, with no gap between them.
+- A pane with a fixed height SHALL get that many rows. When its column holds other panes, it SHALL get no more than the area's height less 3 rows for each other pane. When it is alone in its column, it SHALL get no more than the area's height, and the rows below its tile SHALL be covered by no tile.
+- The panes with an automatic height SHALL share the rows the fixed pane leaves, in proportion to their weights. Each gets those rows multiplied by its weight and divided by the sum of the automatic weights, rounded down, and the first automatic panes, one for each row left over, get one row more. While the shared rows allow every automatic pane 3 rows, a share below 3 rows SHALL be raised: the topmost automatic pane whose share is below 3 rows takes 3 rows, and the other automatic panes share the rest by the same rule.
 - Each tile SHALL have a one-cell border. A pane's terminal size SHALL be its tile less 2 columns and 2 rows, and at least 1 column by 1 row.
 
 #### Scenario: Default column on an 80×24 area
@@ -82,12 +85,28 @@ For a screen area of a given width and height, the layout SHALL give every pane 
 - **THEN** the first tile spans strip positions 0 to 29 and the second spans 30 to 89
 
 #### Scenario: Stack with a leftover row
-- **WHEN** a column holds two panes of weight 1 and the area is 80×25
+- **WHEN** a column holds two panes with automatic heights of weight 1 and the area is 80×25
 - **THEN** the top tile is 13 rows high and the bottom tile is 12 rows high
 
-#### Scenario: Weighted stack
-- **WHEN** a column holds a pane of weight 2 above a pane of weight 1 and the area is 80×25
-- **THEN** the top tile is 17 rows high and the bottom tile is 8 rows high
+#### Scenario: Fixed pane above an automatic pane
+- **WHEN** a column holds P1 with a fixed height of 16 rows above P2 with an automatic height, and the area is 80×24
+- **THEN** P1's tile is 16 rows high and P2's tile is 8 rows high
+
+#### Scenario: Automatic panes share by weight
+- **WHEN** the area is 80×24 and a column holds P1 with an automatic height of weight 10/7, P2 with an automatic height of weight 1, and P3 with a fixed height of 9 rows
+- **THEN** the tiles of P1, P2 and P3 are 9, 6 and 9 rows high
+
+#### Scenario: Fixed height leaves room for the others
+- **WHEN** the area is 80×24 and a column holds P1 with a fixed height of 30 rows above two panes with automatic heights
+- **THEN** the tiles are 18, 3 and 3 rows high
+
+#### Scenario: Automatic pane raised to 3 rows
+- **WHEN** the area is 80×24 and a column holds P1 with an automatic height of weight 1/20 above P2 with an automatic height of weight 1
+- **THEN** P1's tile is 3 rows high and P2's tile is 21 rows high
+
+#### Scenario: Lone pane with a fixed height
+- **WHEN** the area is 80×24 and a pane alone in its column has a fixed height of 20 rows
+- **THEN** its tile is 20 rows high, and rows 20 to 23 of that column are covered by no tile
 
 #### Scenario: Full width
 - **WHEN** a column has full width on and the area is 100×30
@@ -96,30 +115,49 @@ For a screen area of a given width and height, the layout SHALL give every pane 
 ## ADDED Requirements
 
 ### Requirement: Pane heights
-Each pane in a column SHALL carry a height weight, a whole number from 1 to 8. A pane SHALL take weight 1 when it opens. When a pane leaves a column, the other panes SHALL keep their weights.
+Each pane in a column SHALL have either an automatic height with a weight, a positive fraction held in lowest terms, or a fixed height in rows. At most one pane in a column SHALL have a fixed height. A pane SHALL take an automatic height of weight 1 when it opens. When a pane leaves a column and one pane remains with an automatic height, that pane's weight SHALL become 1. Otherwise the panes that remain SHALL keep their heights.
 
-Growing a pane's height SHALL add 1 to its weight. Shrinking a pane's height SHALL subtract 1 from its weight when its weight is above 1, and otherwise add 1 to the weight of every other pane in its column. No weight SHALL rise above 8. After a grow or shrink, every weight in the column SHALL be divided by the greatest common divisor of the column's weights. When the result leaves every weight as it was, nothing SHALL change. Resetting a column's heights SHALL set the weight of every pane in it to 1.
+Growing or shrinking a pane's height SHALL give it a fixed height. When the pane has an automatic height, every pane in its column SHALL first take an automatic height whose weight is its current tile height divided by the column's median tile height, so the other panes keep their apparent sizes relative to one another. The median SHALL be the tile height at index n/2, rounded down and counted from 0, of the column's n tile heights sorted in ascending order. The new fixed height SHALL be the pane's current tile height plus, when growing, or less, when shrinking, one step: the area's height divided by 10, rounded to the nearest whole number with halves rounded up, and at least 1. The result SHALL be no less than 3 rows. It SHALL be no more than the area's height less 3 rows for each other pane in the column, or no more than the area's height when the pane is alone. When the pane already had a fixed height and the result equals it, nothing SHALL change.
 
-#### Scenario: Grow in a stack of two
-- **WHEN** a column holds P1 and P2, both of weight 1, and P1's height is grown twice
-- **THEN** the weights are 2 and 1, then 3 and 1
+Resetting a pane's height SHALL give it an automatic height of weight 1. The other panes of its column SHALL keep their heights. When the pane already had an automatic height of weight 1, nothing SHALL change.
 
-#### Scenario: Shrink at weight 1 grows the others
-- **WHEN** a column holds P1, P2 and P3, all of weight 1, and P1's height is shrunk
-- **THEN** the weights are 1, 2 and 2
+Growing and shrinking SHALL measure tile heights, and the step, for the session's current screen area.
 
-#### Scenario: Weights kept in lowest terms
-- **WHEN** a column holds P1 of weight 1 and P2 of weight 2, and P1's height is grown
-- **THEN** the weights are 1 and 1
+#### Scenario: Each step adds the same rows
+- **WHEN** the area is 80×24, a column holds P1 above P2, both with automatic heights of weight 1, and P1's height is grown three times
+- **THEN** P1's tile is 14, then 16, then 18 rows high
+- **AND** P2's tile is 10, then 8, then 6 rows high
 
-#### Scenario: Lone pane
-- **WHEN** a pane is alone in its column and its height is grown
+#### Scenario: Shrink in a stack of two
+- **WHEN** the area is 80×24, a column holds P1 above P2, both with automatic heights of weight 1, and P1's height is shrunk
+- **THEN** P1 has a fixed height of 10 rows and P2's tile is 14 rows high
+
+#### Scenario: Step on an odd area
+- **WHEN** the area is 80×25, a column holds P1 above P2, both with automatic heights of weight 1, and P1's height is grown
+- **THEN** P1 has a fixed height of 16 rows and P2's tile is 9 rows high
+
+#### Scenario: Resizing another pane keeps the earlier one larger
+- **WHEN** the area is 80×24, a column holds P1, P2 and P3, all with automatic heights of weight 1, P1's height is grown, and then P3's height is grown
+- **THEN** after the first grow the tiles are 10, 7 and 7 rows high
+- **AND** after the second grow P1 has an automatic height of weight 10/7, P2 an automatic height of weight 1, and P3 a fixed height of 9 rows
+- **AND** the tiles are 9, 6 and 9 rows high
+
+#### Scenario: Upper limit
+- **WHEN** the area is 80×24, a column holds three panes, and the top pane has a fixed height of 18 rows and is grown
 - **THEN** the layout is unchanged
 
-#### Scenario: Weight limit
-- **WHEN** a column holds P1 of weight 8 and P2 of weight 1, and P1's height is grown
+#### Scenario: Lower limit
+- **WHEN** a pane has a fixed height of 3 rows and is shrunk
 - **THEN** the layout is unchanged
 
-#### Scenario: Reset heights
-- **WHEN** a column holds P1 of weight 3 and P2 of weight 1, and its heights are reset
-- **THEN** both weights are 1
+#### Scenario: Shrink a lone pane
+- **WHEN** the area is 80×24 and a pane alone in its column with an automatic height is shrunk
+- **THEN** it has a fixed height of 22 rows, and rows 22 and 23 of that column are covered by no tile
+
+#### Scenario: Reset height
+- **WHEN** the area is 80×24, a column holds P1 with a fixed height of 16 rows above P2 with an automatic height of weight 1, and P1's height is reset
+- **THEN** both panes have automatic heights of weight 1, and both tiles are 12 rows high
+
+#### Scenario: Last pane in a column takes weight 1
+- **WHEN** a column holds P1 with an automatic height of weight 10/7 and P2 with a fixed height, P2 closes, and then P3 is consumed into P1's column on an 80×24 area
+- **THEN** P1 and P3 both have automatic heights of weight 1, and both tiles are 12 rows high

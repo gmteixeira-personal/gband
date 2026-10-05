@@ -38,7 +38,7 @@ The server SHALL own the session's layout, as the layout capability defines it, 
 | shrink width | shrink the width of the named pane's column |
 | grow height | grow the height of the named pane |
 | shrink height | shrink the height of the named pane |
-| reset heights | reset the heights of the named pane's column |
+| reset height | reset the height of the named pane |
 
 After placing an opened pane, the server SHALL send the client that asked for it, after the layout that holds the pane, a message telling it to focus that pane. When the program of a new pane cannot be started, the server SHALL record the reason in its log and leave the layout unchanged.
 
@@ -56,8 +56,8 @@ After placing an opened pane, the server SHALL send the client that asked for it
 - **THEN** the layout is unchanged
 
 #### Scenario: Grow a pane's height
-- **WHEN** a client asks to grow the height of the top pane of a column holding two panes of weight 1
-- **THEN** every attached client receives a layout in which that column's weights are 2 and 1
+- **WHEN** the screen area is 80×24 and a client asks to grow the height of the top pane of a column holding two panes with automatic heights of weight 1
+- **THEN** every attached client receives a layout in which the top pane has a fixed height of 14 rows and the bottom pane an automatic height of weight 1
 
 ## ADDED Requirements
 
