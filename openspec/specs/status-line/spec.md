@@ -46,10 +46,13 @@ Every cell of the status line SHALL be drawn with the resolved style of `StatusL
 | `hl` | a group name | `"StatusLineSegment"` |
 | `redraw_on` | a list of built-in event names, as the lua-events capability lists them, and `"User"` | empty |
 | `redraw_interval` | an integer number of milliseconds, at least 100 | none |
+| `fill` | a boolean | `false` |
+
+A component whose `fill` is true is a fill component, which "Render triggers" renders again when the width left to it changes.
 
 A component added by code that belongs to a plugin SHALL belong to that plugin, and its full id SHALL follow the plugins capability's namespacing of names. When such code omits `id`, the full id SHALL be the plugin's name. Code that belongs to no plugin SHALL give `id`, which SHALL be used as given. A missing `render`, a field of the wrong type or value, an unknown event name, an omitted `id` outside a plugin, or a full id that another component already has SHALL be an error at the line of the call, and SHALL add nothing.
 
-`gband.ui.statusline.remove(id)` SHALL remove the component whose full id is `id` and return `true`, or return `false` when no component has that id. `gband.ui.statusline.list()` SHALL return one table per component, in ascending byte order of full ids, each holding `id`, `align`, `priority`, `order`, `hl`, `plugin` (the owner's name, or nil) and `enabled`. Changing a returned table SHALL NOT change the component. All three functions SHALL be callable while the configuration loads and in any callback.
+`gband.ui.statusline.remove(id)` SHALL remove the component whose full id is `id` and return `true`, or return `false` when no component has that id. `gband.ui.statusline.list()` SHALL return one table per component, in ascending byte order of full ids, each holding `id`, `align`, `priority`, `order`, `hl`, `fill`, `plugin` (the owner's name, or nil) and `enabled`. Changing a returned table SHALL NOT change the component. All three functions SHALL be callable while the configuration loads and in any callback.
 
 #### Scenario: Plugin component without an id
 - **WHEN** the plugin `pane` calls `gband.ui.statusline.add({ render = fn })`
@@ -70,6 +73,10 @@ A component added by code that belongs to a plugin SHALL belong to that plugin, 
 #### Scenario: Unknown event
 - **WHEN** line 3 of a plugin's `setup` adds a component with `redraw_on = { "FocusChange" }`
 - **THEN** a plugin error at that line names `FocusChange`
+
+#### Scenario: Fill of the wrong type
+- **WHEN** line 4 of `user/init.lua` adds a component with `fill = "yes"`
+- **THEN** loading fails with an error at `user/init.lua` line 4 naming `fill`
 
 #### Scenario: Remove a bundled segment
 - **WHEN** the default configuration's segments are set up and a binding function calls `gband.ui.statusline.remove("mode")`
@@ -119,7 +126,10 @@ While the status line is drawn, the client SHALL call an enabled component's `re
 - once each time an event its `redraw_on` names is emitted, after the handlers of that event have run;
 - once each `redraw_interval` milliseconds, when the component has one;
 - once when the terminal's width changes, and once when the status line starts being drawn;
-- once on each `HighlightChanged` and `ColorschemeChanged`.
+- once on each `HighlightChanged` and `ColorschemeChanged`;
+- for a fill component, once more after any of the triggers above, when the line has been laid out and the component's available width differs from the `width` of its latest call.
+
+When one trigger renders several components, the components that are not fill components SHALL render first, and the fill components after them, in descending `priority`, then in the order they were added. Once those renders are done, the line SHALL be laid out, and each enabled fill component whose available width, as the context defines it, then differs from the `width` of its latest call SHALL render once more, in the same order. Those renders SHALL NOT cause further renders for the same trigger.
 
 The client SHALL NOT call `render` at any other time. Each frame SHALL be drawn from the components' latest outputs, and drawing a frame, including every frame of an animation, SHALL NOT call `render`. A component's output SHALL stay in use until its next call.
 
@@ -138,6 +148,18 @@ The client SHALL NOT call `render` at any other time. Each frame SHALL be drawn 
 #### Scenario: Width change
 - **WHEN** the client's terminal changes from 80 to 60 columns
 - **THEN** every enabled component renders once with `total_width` 60
+
+#### Scenario: Fill renders after the others
+- **WHEN** the fill component F and the component M both have `redraw_on = { "KeyTableChanged" }`, M is in F's region, and the user presses Ctrl+Space, after which M's output grows from empty to `prefix`
+- **THEN** F renders once, after M, and its context's `width` counts `prefix` and the separator before it
+
+#### Scenario: Fill follows another component's width
+- **WHEN** the fill component F has no `redraw_on`, and the component P, with `redraw_on = { "FocusChanged" }`, changes its output from `2/3` to `10/12`
+- **THEN** F renders once more, with a context `width` two cells smaller than in its latest call
+
+#### Scenario: Fill width unchanged
+- **WHEN** the fill component F has no `redraw_on`, and the component P, with `redraw_on = { "FocusChanged" }`, changes its output from `2/3` to `3/3`
+- **THEN** F does not render
 
 ### Requirement: Layout
 Each shown component SHALL be placed in the region its `align` names. Within a region, components SHALL be placed in ascending `order`, and in the order they were added when their `order` is equal. Adjacent components in a region SHALL be separated by the value of the `statusline_separator` option. The width of a region SHALL be the width of its components and separators. Two adjacent non-empty regions SHALL be at least one cell apart. All widths SHALL be display widths, as `gband.ui.width` measures them.
