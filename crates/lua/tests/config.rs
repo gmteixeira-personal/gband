@@ -1,49 +1,24 @@
-use std::fs;
-use std::path::{Path, PathBuf};
+mod common;
 
+use std::fs;
+use std::path::PathBuf;
+
+use common::*;
 use gband_core::action::{Action, ClientAction, SessionCommand};
 use gband_core::input::{Key, KeyCode, Modifiers};
 use gband_core::layout::{Direction, Program, Proportion, Step};
 use gband_core::view::{CenterFocusedColumn, ViewAction};
-use gband_lua::keys::parse_key;
 use gband_lua::{
-    ACTIONS, Binding, Chord, Config, ConfigError, DEFAULTS, Dispatch, Keys, Options, call,
-    defaults_file, load, prepare, user_file,
+    ACTIONS, Binding, CallbackId, Chord, Config, ConfigError, DEFAULTS, Dispatch, Options,
+    defaults_file, prepare,
 };
 
-struct Scratch(PathBuf);
-
-impl Scratch {
-    fn new(name: &str) -> Self {
-        let path =
-            std::env::temp_dir().join(format!("gband-lua-config-{name}-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&path);
-        fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-
-    fn dir(&self) -> PathBuf {
-        self.0.join("gband")
-    }
-
-    fn write(&self, source: &str) -> PathBuf {
-        let path = user_file(&self.dir());
-        fs::create_dir_all(path.parent().unwrap()).unwrap();
-        fs::write(&path, source).unwrap();
-        path
-    }
-}
-
-impl Drop for Scratch {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
-    }
-}
+type Keys = (&'static str, Chord);
 
 fn evaluate(name: &str, source: &str) -> (PathBuf, Result<Config, ConfigError>) {
     let scratch = Scratch::new(name);
     let path = scratch.write(source);
-    let result = load(&scratch.dir());
+    let result = scratch.load();
     (path, result)
 }
 
@@ -60,64 +35,71 @@ fn failure(name: &str, source: &str) -> (PathBuf, ConfigError) {
     }
 }
 
-fn assert_error_at(error: &ConfigError, path: &Path, line: u32, mentions: &str) {
-    assert_eq!(error.location, Some((path.to_path_buf(), line)), "{error}");
+fn assert_failure_at(error: &ConfigError, path: &std::path::Path, line: u32, mentions: &str) {
+    assert_error_at(error, path, line, mentions);
     assert!(
         error
             .to_string()
             .starts_with(&format!("{}:{line}: ", path.display()))
     );
-    assert!(error.message.contains(mentions), "{error}");
 }
 
-fn key(name: &str) -> Key {
-    parse_key(name).unwrap()
+fn direct(name: &str) -> Keys {
+    ("root", Chord::Key(key(name)))
 }
 
 fn prefixed(name: &str) -> Keys {
-    Keys::Prefixed(Chord::Key(key(name)))
+    ("prefix", Chord::Key(key(name)))
 }
 
-fn binding(config: &Config, keys: Keys) -> Option<&Binding> {
+fn binding(config: &Config, (table, chord): Keys) -> Option<Binding> {
     config
-        .bindings
+        .keymap
+        .get(table)?
         .iter()
-        .find(|(bound, _)| *bound == keys)
-        .map(|(_, binding)| binding)
+        .find(|(bound, _)| *bound == chord)
+        .map(|(_, binding)| *binding)
 }
 
 fn action_of(config: &Config, keys: Keys) -> Option<Action> {
     match binding(config, keys)? {
-        Binding::Action(action) => Some(*action),
-        Binding::Function(_) => None,
+        Binding::Action(action) => Some(action),
+        Binding::Callback(_) => None,
     }
 }
 
-fn actions(config: &Config) -> Vec<(Keys, Action)> {
+fn actions(config: &Config) -> Vec<(String, Chord, Action)> {
     config
-        .bindings
+        .keymap
         .iter()
-        .map(|(keys, binding)| match binding {
-            Binding::Action(action) => (*keys, *action),
-            Binding::Function(_) => panic!("{keys:?} is bound to a function"),
+        .flat_map(|(table, bindings)| {
+            bindings.iter().map(move |(chord, binding)| match binding {
+                Binding::Action(action) => (table.clone(), *chord, *action),
+                Binding::Callback(_) => panic!("{table} {chord:?} is bound to a function"),
+            })
         })
         .collect()
 }
 
-fn function_of(config: &Config, keys: Keys) -> &gband_lua::RegistryKey {
+fn function_of(config: &Config, keys: Keys) -> CallbackId {
     match binding(config, keys) {
-        Some(Binding::Function(function)) => function,
+        Some(Binding::Callback(callback)) => callback,
         other => panic!("{keys:?} is bound to {other:?}"),
     }
+}
+
+fn binding_count(config: &Config) -> usize {
+    config.keymap.values().map(Vec::len).sum()
 }
 
 #[test]
 fn no_configuration_file_gives_the_defaults() {
     let scratch = Scratch::new("missing");
-    let config = load(&scratch.dir()).unwrap();
+    let config = scratch.loaded();
     let defaults = gband_lua::defaults();
     assert_eq!(config.options, defaults.options);
     assert_eq!(actions(&config), actions(&defaults));
+    assert!(config.errors.is_empty());
 }
 
 #[test]
@@ -129,7 +111,8 @@ fn user_file_replaces_the_defaults() {
     assert_eq!(
         actions(&config),
         [(
-            Keys::Direct(key("alt+h")),
+            "root".to_owned(),
+            Chord::Key(key("alt+h")),
             Action::View(ViewAction::FocusLeft)
         )]
     );
@@ -142,7 +125,7 @@ fn copied_defaults_load_unchanged() {
     prepare(&scratch.dir()).unwrap();
     let copy = fs::read_to_string(defaults_file(&scratch.dir())).unwrap();
     scratch.write(&copy);
-    let config = load(&scratch.dir()).unwrap();
+    let config = scratch.loaded();
     let defaults = gband_lua::defaults();
     assert_eq!(config.options, defaults.options);
     assert_eq!(actions(&config), actions(&defaults));
@@ -169,7 +152,7 @@ fn defaults_reproduce_the_built_in_behaviour() {
         CenterFocusedColumn::Never
     );
     assert_eq!(config.options, Options::default());
-    let char_key = |c| Keys::Prefixed(Chord::Key(Key::plain(KeyCode::Char(c))));
+    let char_key = |c| ("prefix", Chord::Key(Key::plain(KeyCode::Char(c))));
     let expected = [
         (char_key('h'), Action::View(ViewAction::FocusLeft)),
         (char_key('l'), Action::View(ViewAction::FocusRight)),
@@ -178,7 +161,7 @@ fn defaults_reproduce_the_built_in_behaviour() {
         (char_key('u'), Action::View(ViewAction::BandDown)),
         (char_key('i'), Action::View(ViewAction::BandUp)),
         (
-            Keys::Prefixed(Chord::Key(Key::plain(KeyCode::Enter))),
+            ("prefix", Chord::Key(Key::plain(KeyCode::Enter))),
             Action::Session(SessionCommand::OpenPane),
         ),
         (char_key('q'), Action::Session(SessionCommand::ClosePane)),
@@ -214,21 +197,44 @@ fn defaults_reproduce_the_built_in_behaviour() {
         (char_key('R'), Action::Session(SessionCommand::ResetHeight)),
         (char_key('D'), Action::Client(ClientAction::Detach)),
         (
-            Keys::Prefixed(Chord::Prefix),
+            ("prefix", Chord::Prefix),
             Action::Client(ClientAction::SendPrefix),
         ),
-    ];
+    ]
+    .map(|((table, chord), action)| (table.to_owned(), chord, action));
     assert_eq!(actions(&config), expected);
 }
 
 #[test]
-fn every_action_has_its_lua_name() {
+fn every_default_binding_is_described() {
     let config = gband_lua::defaults();
-    let mut names: Vec<String> = config
-        .lua
-        .load("local names = {} for name in pairs(gband.action) do names[#names + 1] = name end return names")
-        .eval()
-        .unwrap();
+    let undescribed: Vec<String> = eval(
+        &config,
+        "local descs = {}
+         for _, action in ipairs(gband.action.list()) do descs[action.name] = action.desc end
+         local wrong = {}
+         for _, entry in ipairs(gband.keymap.list('prefix')) do
+           if entry.desc == nil or entry.desc ~= descs[entry.action] then
+             wrong[#wrong + 1] = entry.key
+           end
+         end
+         return wrong",
+    );
+    assert!(undescribed.is_empty(), "{undescribed:?}");
+    let count: usize = eval(&config, "return #gband.keymap.list('prefix')");
+    assert_eq!(count, 19);
+}
+
+#[test]
+fn every_action_is_named() {
+    let config = gband_lua::defaults();
+    let mut names: Vec<String> = eval(
+        &config,
+        "local names = {} for _, action in ipairs(gband.action.list()) do names[#names + 1] = action.name end return names",
+    );
+    let mut sorted = names.clone();
+    sorted.sort();
+    assert_eq!(names, sorted);
     names.sort();
     let mut expected = [
         "focus_column_left",
@@ -257,13 +263,23 @@ fn every_action_has_its_lua_name() {
 }
 
 #[test]
+fn built_in_descriptions() {
+    let config = gband_lua::defaults();
+    let desc: String = eval(
+        &config,
+        "for _, action in ipairs(gband.action.list()) do if action.name == 'cycle_column_width' then return action.desc end end",
+    );
+    assert_eq!(desc, "cycle the width of the pane's column");
+}
+
+#[test]
 fn name_and_action_agree() {
     let config = loaded(
         "agree",
         "gband.bind('alt+r', gband.action.cycle_column_width)",
     );
     assert_eq!(
-        action_of(&config, Keys::Direct(key("alt+r"))),
+        action_of(&config, direct("alt+r")),
         Some(Action::Session(SessionCommand::CycleWidth))
     );
 }
@@ -305,13 +321,13 @@ fn decimal_width() {
 #[test]
 fn unknown_option() {
     let (path, error) = failure("unknown", "\n\ngband.set { colum_width = 1/2 }");
-    assert_error_at(&error, &path, 3, "colum_width");
+    assert_failure_at(&error, &path, 3, "colum_width");
 }
 
 #[test]
 fn wrong_type() {
     let (path, error) = failure("type", "\ngband.set { width_presets = \"1/2\" }");
-    assert_error_at(&error, &path, 2, "width_presets");
+    assert_failure_at(&error, &path, 2, "width_presets");
 }
 
 #[test]
@@ -320,25 +336,25 @@ fn unknown_camera_policy() {
         "policy",
         "gband.set { center_focused_column = 'sometimes' }",
     );
-    assert_error_at(&error, &path, 1, "center_focused_column");
+    assert_failure_at(&error, &path, 1, "center_focused_column");
 }
 
 #[test]
 fn out_of_range_width() {
     let (path, error) = failure("range", "gband.set { default_column_width = 0 }");
-    assert_error_at(&error, &path, 1, "default_column_width");
+    assert_failure_at(&error, &path, 1, "default_column_width");
 }
 
 #[test]
 fn syntax_error() {
     let (path, error) = failure("syntax", "gband.set {}\n\n\nlocal = 3\n");
-    assert_error_at(&error, &path, 4, "");
+    assert_failure_at(&error, &path, 4, "");
 }
 
 #[test]
 fn runtime_error() {
     let (path, error) = failure("runtime", "local x = 1\nerror('boom')\n");
-    assert_error_at(&error, &path, 2, "boom");
+    assert_failure_at(&error, &path, 2, "boom");
 }
 
 #[test]
@@ -347,7 +363,7 @@ fn unknown_key() {
         "hyper",
         "\n\n\n\ngband.bind('alt+hyper', gband.action.detach)",
     );
-    assert_error_at(&error, &path, 5, "alt+hyper");
+    assert_failure_at(&error, &path, 5, "alt+hyper");
 }
 
 #[test]
@@ -357,7 +373,7 @@ fn direct_binding() {
         "gband.bind('alt+h', gband.action.focus_column_left)",
     );
     assert_eq!(
-        action_of(&config, Keys::Direct(key("alt+h"))),
+        action_of(&config, direct("alt+h")),
         Some(Action::View(ViewAction::FocusLeft))
     );
 }
@@ -371,7 +387,11 @@ fn default_prefix() {
     assert_eq!(config.options.prefix, key("ctrl+space"));
     assert_eq!(
         actions(&config),
-        [(prefixed("q"), Action::Session(SessionCommand::ClosePane))]
+        [(
+            "prefix".to_owned(),
+            Chord::Key(key("q")),
+            Action::Session(SessionCommand::ClosePane)
+        )]
     );
 }
 
@@ -386,10 +406,11 @@ fn override_a_default() {
         action_of(&config, prefixed("q")),
         Some(Action::Client(ClientAction::Detach))
     );
-    assert!(config.bindings.iter().all(|(_, binding)| !matches!(
-        binding,
-        Binding::Action(Action::Session(SessionCommand::ClosePane))
-    )));
+    assert!(
+        actions(&config)
+            .iter()
+            .all(|(_, _, action)| *action != Action::Session(SessionCommand::ClosePane))
+    );
 }
 
 #[test]
@@ -401,8 +422,8 @@ fn unbind_a_default() {
     assert_eq!(config.options.prefix, key("ctrl+space"));
     assert!(binding(&config, prefixed("q")).is_none());
     assert_eq!(
-        config.bindings.len(),
-        gband_lua::defaults().bindings.len() - 1
+        binding_count(&config),
+        binding_count(&gband_lua::defaults()) - 1
     );
 }
 
@@ -415,7 +436,11 @@ fn prefix_changed_after_binding() {
     assert_eq!(config.options.prefix, key("ctrl+b"));
     assert_eq!(
         actions(&config),
-        [(prefixed("h"), Action::View(ViewAction::FocusLeft))]
+        [(
+            "prefix".to_owned(),
+            Chord::Key(key("h")),
+            Action::View(ViewAction::FocusLeft)
+        )]
     );
 }
 
@@ -425,7 +450,7 @@ fn direct_binding_of_the_prefix_key() {
         "prefix-direct",
         "\n\n\ngband.bind('ctrl+space', gband.action.detach)\n",
     );
-    assert_error_at(&error, &path, 4, "prefix");
+    assert_failure_at(&error, &path, 4, "prefix");
 }
 
 #[test]
@@ -434,37 +459,37 @@ fn direct_binding_of_a_later_prefix_key() {
         "prefix-later",
         "gband.bind('ctrl+b', gband.action.detach)\ngband.set { prefix = 'ctrl+b' }\n",
     );
-    assert_error_at(&error, &path, 1, "prefix");
+    assert_failure_at(&error, &path, 1, "prefix");
 }
 
 #[test]
 fn key_chain_too_long() {
     let (path, error) = failure("chain", "gband.bind('prefix w q', gband.action.detach)");
-    assert_error_at(&error, &path, 1, "prefix w q");
+    assert_failure_at(&error, &path, 1, "prefix w q");
 }
 
 #[test]
 fn second_key_needs_the_prefix() {
     let (path, error) = failure("pair", "gband.bind('ctrl+b h', gband.action.detach)");
-    assert_error_at(&error, &path, 1, "ctrl+b h");
+    assert_failure_at(&error, &path, 1, "ctrl+b h");
 }
 
 #[test]
 fn not_an_action() {
     let (path, error) = failure("string", "gband.bind('alt+h', 'focus_column_left')");
-    assert_error_at(&error, &path, 1, "alt+h");
+    assert_failure_at(&error, &path, 1, "alt+h");
 }
 
 #[test]
 fn action_during_evaluation() {
     let (path, error) = failure("eval-action", "\n\n\n\n\n\ngband.action.close_pane()");
-    assert_error_at(&error, &path, 7, "binding function");
+    assert_failure_at(&error, &path, 7, "binding function");
 }
 
 #[test]
 fn spawn_during_evaluation() {
     let (path, error) = failure("eval-spawn", "gband.spawn {}");
-    assert_error_at(&error, &path, 1, "binding function");
+    assert_failure_at(&error, &path, 1, "binding function");
 }
 
 #[test]
@@ -473,13 +498,10 @@ fn action_called_from_a_function() {
         "function",
         "gband.bind('alt+w', function()\n  gband.action.focus_column_right()\n  gband.action.focus_column_right()\nend)",
     );
-    let (dispatched, error) = call(
-        &config.lua,
-        function_of(&config, Keys::Direct(key("alt+w"))),
-    );
-    assert_eq!(error, None);
+    let outcome = config.runtime.call(function_of(&config, direct("alt+w")));
+    clean(&outcome);
     assert_eq!(
-        dispatched,
+        outcome.dispatched,
         [
             Dispatch::Action(Action::View(ViewAction::FocusRight)),
             Dispatch::Action(Action::View(ViewAction::FocusRight)),
@@ -494,15 +516,15 @@ fn error_in_a_binding_function() {
         "gband.bind('alt+e', function()\n  gband.action.focus_column_left()\n\n\n\n\n\n\n  error('broken')\nend)",
     );
     let config = result.unwrap();
-    let (dispatched, error) = call(
-        &config.lua,
-        function_of(&config, Keys::Direct(key("alt+e"))),
-    );
+    let outcome = config.runtime.call(function_of(&config, direct("alt+e")));
     assert_eq!(
-        dispatched,
+        outcome.dispatched,
         [Dispatch::Action(Action::View(ViewAction::FocusLeft))]
     );
-    assert_error_at(&error.unwrap(), &path, 9, "broken");
+    let [error] = outcome.errors.as_slice() else {
+        panic!("{:?}", outcome.errors);
+    };
+    assert_failure_at(error, &path, 9, "broken");
 }
 
 #[test]
@@ -513,28 +535,26 @@ fn spawn_programs() {
          gband.bind('alt+t', function() gband.spawn({ cmd = { 'htop', '-d', '10' } }) end)\n\
          gband.bind('alt+s', function() gband.spawn({}) end)",
     );
-    let spawned = |name: &str| call(&config.lua, function_of(&config, Keys::Direct(key(name))));
+    let spawned = |name: &str| {
+        let outcome = config.runtime.call(function_of(&config, direct(name)));
+        clean(&outcome);
+        outcome.dispatched
+    };
     assert_eq!(
         spawned("alt+n"),
-        (
-            vec![Dispatch::Spawn(Some(Program::CommandLine(
-                "fish".to_owned()
-            )))],
-            None
-        )
+        [Dispatch::Spawn(Some(Program::CommandLine(
+            "fish".to_owned()
+        )))]
     );
     assert_eq!(
         spawned("alt+t"),
-        (
-            vec![Dispatch::Spawn(Some(Program::Argv(vec![
-                "htop".to_owned(),
-                "-d".to_owned(),
-                "10".to_owned()
-            ])))],
-            None
-        )
+        [Dispatch::Spawn(Some(Program::Argv(vec![
+            "htop".to_owned(),
+            "-d".to_owned(),
+            "10".to_owned()
+        ])))]
     );
-    assert_eq!(spawned("alt+s"), (vec![Dispatch::Spawn(None)], None));
+    assert_eq!(spawned("alt+s"), [Dispatch::Spawn(None)]);
 }
 
 #[test]
@@ -554,12 +574,9 @@ fn invalid_spawn_requests_fail() {
             &format!("gband.bind('alt+n', function()\n  gband.spawn({request})\nend)"),
         );
         let config = result.unwrap();
-        let (dispatched, error) = call(
-            &config.lua,
-            function_of(&config, Keys::Direct(key("alt+n"))),
-        );
-        assert!(dispatched.is_empty(), "{request}");
-        assert_error_at(&error.unwrap(), &path, 2, "");
+        let outcome = config.runtime.call(function_of(&config, direct("alt+n")));
+        assert!(outcome.dispatched.is_empty(), "{request}");
+        assert_failure_at(&outcome.errors[0], &path, 2, "");
     }
 }
 
@@ -570,9 +587,89 @@ fn options_cannot_change_from_a_binding_function() {
         "gband.bind('alt+n', function()\n  gband.set { prefix = 'ctrl+b' }\nend)",
     );
     let config = result.unwrap();
-    let (_, error) = call(
-        &config.lua,
-        function_of(&config, Keys::Direct(key("alt+n"))),
+    let outcome = config.runtime.call(function_of(&config, direct("alt+n")));
+    assert_failure_at(
+        &outcome.errors[0],
+        &path,
+        2,
+        "while the configuration loads",
     );
-    assert_error_at(&error.unwrap(), &path, 2, "while the configuration loads");
+}
+
+#[test]
+fn registered_action_bound_to_a_key() {
+    let config = loaded(
+        "registered",
+        "gband.action.register('twice', function()\n  gband.action.focus_column_right()\n  gband.action.focus_column_right()\nend)\ngband.bind('alt+t', gband.action.twice)",
+    );
+    let outcome = config.runtime.call(function_of(&config, direct("alt+t")));
+    clean(&outcome);
+    assert_eq!(
+        outcome.dispatched,
+        [
+            Dispatch::Action(Action::View(ViewAction::FocusRight)),
+            Dispatch::Action(Action::View(ViewAction::FocusRight)),
+        ]
+    );
+}
+
+#[test]
+fn user_names_are_not_namespaced() {
+    let config = loaded(
+        "user-names",
+        "gband.action.register('greet', function() end, { desc = 'Greet' })",
+    );
+    let kind: String = eval(&config, "return type(gband.action.greet)");
+    assert_eq!(kind, "userdata");
+    let desc: String = eval(
+        &config,
+        "for _, a in ipairs(gband.action.list()) do if a.name == 'greet' then return a.desc end end",
+    );
+    assert_eq!(desc, "Greet");
+}
+
+#[test]
+fn built_in_name_taken() {
+    let (path, error) = failure(
+        "taken",
+        "\n\ngband.action.register('detach', function() end)",
+    );
+    assert_failure_at(&error, &path, 3, "detach");
+    for name in ["register", "list"] {
+        let (path, error) = failure(
+            &format!("reserved-{name}"),
+            &format!("gband.action.register('{name}', function() end)"),
+        );
+        assert_failure_at(&error, &path, 1, name);
+    }
+    let (path, error) = failure(
+        "duplicate-action",
+        "gband.action.register('a', function() end)\ngband.action.register('a', function() end)",
+    );
+    assert_failure_at(&error, &path, 2, "`a`");
+}
+
+#[test]
+fn registering_after_the_load_fails() {
+    let (path, result) = evaluate(
+        "late-register",
+        "gband.bind('alt+n', function()\n  gband.action.register('x', function() end)\nend)",
+    );
+    let config = result.unwrap();
+    let outcome = config.runtime.call(function_of(&config, direct("alt+n")));
+    assert_failure_at(
+        &outcome.errors[0],
+        &path,
+        2,
+        "while the configuration loads",
+    );
+}
+
+#[test]
+fn registered_action_cannot_be_called_while_loading() {
+    let (path, error) = failure(
+        "eval-registered",
+        "gband.action.register('x', function() end)\ngband.action.x()",
+    );
+    assert_failure_at(&error, &path, 2, "binding function");
 }

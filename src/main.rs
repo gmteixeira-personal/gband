@@ -10,7 +10,7 @@ use gband::executable;
 use gband::logging::{self, Role};
 use gband::paths::{self, ServerName};
 use gband_client::{ClientConfig, Configuration, Outcome, UnixTransport};
-use gband_lua::{Config, ConfigError};
+use gband_lua::{Config, ConfigError, LoadOptions, Locations};
 use gband_protocol::SessionName;
 use gband_server::{SUN_PATH_MAX, ServerConfig};
 use tokio::sync::watch;
@@ -275,14 +275,19 @@ fn server(socket: PathBuf, session: SessionName, runtime_dir: &Path) -> Result<E
     }
     let loaded = configuration();
     let (options_tx, options) = watch::channel(loaded.config.options.layout);
-    let _watcher = loaded.dir.map(|dir| {
-        gband_lua::watch(dir, move |result| match result {
-            Ok(config) => {
-                tracing::info!("configuration reloaded");
-                options_tx.send_replace(config.options.layout);
-            }
-            Err(error) => tracing::warn!("configuration error: {error}"),
-        })
+    let _watcher = loaded.locations.map(|locations| {
+        gband_lua::watch(
+            locations,
+            LoadOptions::default(),
+            move |result| match result {
+                Ok(config) => {
+                    tracing::info!("configuration reloaded");
+                    log_errors(&config);
+                    options_tx.send_replace(config.options.layout);
+                }
+                Err(error) => tracing::warn!("configuration error: {error}"),
+            },
+        )
     });
     let config = ServerConfig {
         socket,
@@ -301,38 +306,47 @@ fn server(socket: PathBuf, session: SessionName, runtime_dir: &Path) -> Result<E
 struct Loaded {
     config: Config,
     error: Option<ConfigError>,
-    dir: Option<PathBuf>,
+    locations: Option<Locations>,
+}
+
+fn log_errors(config: &Config) {
+    for error in &config.errors {
+        tracing::warn!("configuration error: {error}");
+    }
 }
 
 fn configuration() -> Loaded {
-    let Some(dir) = gband_lua::config_dir() else {
+    let Some(locations) = Locations::from_env() else {
         tracing::info!("no configuration directory, using the defaults");
         return Loaded {
             config: gband_lua::defaults(),
             error: None,
-            dir: None,
+            locations: None,
         };
     };
-    if let Err(error) = gband_lua::prepare(&dir) {
+    if let Err(error) = gband_lua::prepare(&locations.config) {
         tracing::warn!(
             "cannot prepare the configuration directory {}: {error}",
-            dir.display()
+            locations.config.display()
         );
     }
-    match gband_lua::load(&dir) {
-        Ok(config) => Loaded {
-            config,
-            error: None,
-            dir: Some(dir),
-        },
+    let options = LoadOptions::default();
+    let (config, error) = match gband_lua::load(&locations, &options) {
+        Ok(config) => (config, None),
         Err(error) => {
             tracing::warn!("configuration error: {error}");
-            Loaded {
-                config: gband_lua::defaults(),
-                error: Some(error),
-                dir: Some(dir),
-            }
+            let config = gband_lua::load_defaults(&locations, &options).unwrap_or_else(|error| {
+                tracing::warn!("configuration error: {error}");
+                gband_lua::defaults()
+            });
+            (config, Some(error))
         }
+    };
+    log_errors(&config);
+    Loaded {
+        config,
+        error,
+        locations: Some(locations),
     }
 }
 
@@ -373,8 +387,8 @@ fn attach(socket: PathBuf, session: SessionName, selection: &Selection) -> Resul
     let kill_command = config.kill_command.clone();
     let loaded = configuration();
     let (reloads_tx, reloads) = tokio::sync::mpsc::unbounded_channel();
-    let _watcher = loaded.dir.map(|dir| {
-        gband_lua::watch(dir, move |result| {
+    let _watcher = loaded.locations.map(|locations| {
+        gband_lua::watch(locations, LoadOptions::default(), move |result| {
             let _ = reloads_tx.send(result);
         })
     });

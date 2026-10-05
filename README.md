@@ -47,24 +47,27 @@ cp ~/.config/gband/defaults/init.lua ~/.config/gband/user/init.lua
 ```
 
 Without `user/init.lua`, the defaults apply.
-Saving `user/init.lua` reloads it while gband runs, and deleting it returns to the defaults.
+Saving `user/init.lua`, or any other `.lua` file under `user/`, reloads the configuration while gband runs, and deleting `user/init.lua` returns to the defaults.
 An error in the file shows on the bottom row with its line number, and gband keeps the last configuration that loaded.
 
 ```lua
--- Change options. Each call changes only the options it names.
+-- Set options one at a time through gband.opt.
+gband.opt.prefix = "ctrl+b"
+gband.opt.default_column_width = 1/3
+
+-- Or change several at once. Each call changes only the options it names.
 gband.set {
-  prefix = "ctrl+b",
-  default_column_width = 1/3,
   width_presets = { 1/3, 1/2, 2/3, 1 },
   center_focused_column = "on-overflow",
 }
 
--- A direct binding acts without the prefix key.
-gband.bind("alt+h", gband.action.focus_column_left)
+-- A root binding acts without the prefix key.
+gband.keymap.set("root", "alt+h", gband.action.focus_column_left, { desc = "focus left" })
 gband.bind("alt+l", gband.action.focus_column_right)
 
 -- A prefix binding acts on the key pressed after the prefix key.
-gband.bind("prefix x", gband.action.close_pane)
+gband.keymap.set("prefix", "x", gband.action.close_pane, { desc = "close the pane" })
+gband.bind("prefix c", gband.action.cycle_column_width)
 
 -- Remove a binding made earlier, such as one copied from the defaults.
 gband.unbind("prefix q")
@@ -88,7 +91,15 @@ The options and their defaults:
 | `width_presets` | the widths that cycling the column width steps through | `{ 1/3, 1/2, 2/3 }` |
 | `center_focused_column` | `"never"`, `"always"` or `"on-overflow"` | `"never"` |
 
-To keep the old Ctrl+A prefix, or if your desktop takes Ctrl+Space for itself, put `gband.set { prefix = "ctrl+a" }` in `user/init.lua`.
+To keep the old Ctrl+A prefix, or if your desktop takes Ctrl+Space for itself, put `gband.opt.prefix = "ctrl+a"` in `user/init.lua`.
+
+Reading `gband.opt.<name>` returns an option's current value.
+A value set through `gband.opt` that the option rejects is reported, does not stop the rest of the file, and resets the option to its default.
+`gband.set` instead stops the file at the invalid value.
+
+`gband.keymap.set(table, key, action, { desc = ... })` binds a key in a key table: `root` for keys pressed on their own, `prefix` for keys pressed after the prefix key, or a table of your own that a function enters with `gband.keymap.enter`.
+`gband.bind` is the short form: `gband.bind("alt+h", ...)` binds in `root`, and `gband.bind("prefix h", ...)` binds in `prefix`.
+`gband.keymap.del` and `gband.unbind` remove bindings, and `gband.keymap.list(table)` lists them with their descriptions.
 
 A key is a key name with optional `ctrl`, `alt` and `shift` modifiers joined by `+`, such as `alt+h`, `ctrl+PageUp` or `alt++`.
 A key name is one character, or `enter`, `tab`, `backtab`, `backspace`, `escape`, `space`, the arrow keys `up`, `down`, `left` and `right`, `home`, `end`, `insert`, `delete`, `pageup`, `pagedown`, or `f1` to `f12`.
@@ -113,6 +124,14 @@ The actions in `gband.action`:
 | `grow_pane_height`, `shrink_pane_height`, `reset_pane_height` | change or reset the height of the focused pane |
 | `detach` | detach the client |
 | `send_prefix` | send the prefix key to the focused pane |
+
+`gband.action.list()` lists every action with its description.
+
+### Plugins
+
+gband loads plugins from `$XDG_DATA_HOME/gband/plugins/`, or `~/.local/share/gband/plugins/`.
+A plugin can add actions, commands, options, key bindings and event handlers.
+[docs/plugins.md](docs/plugins.md) explains how to write one, and [examples/plugins/hello](examples/plugins/hello) is a sample to start from.
 
 ## Building
 

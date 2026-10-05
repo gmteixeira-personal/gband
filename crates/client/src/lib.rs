@@ -6,22 +6,22 @@ pub mod render;
 mod requests;
 mod transport;
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::io::stdout;
 use std::thread;
 use std::time::Instant;
 
 use anyhow::{Context, Result};
 use crossterm::cursor::Show;
-use crossterm::event::{self, DisableBracketedPaste, EnableBracketedPaste, Event};
+use crossterm::event::{self, DisableBracketedPaste, EnableBracketedPaste, Event as TerminalEvent};
 use crossterm::execute;
 use gband_core::action::{Action, ClientAction, SessionCommand};
 use gband_core::geometry::Size;
 use gband_core::input::Key;
-use gband_core::layout::{Layout, PaneId, Program, SessionAction};
+use gband_core::layout::{BandId, Layout, PaneId, Program, SessionAction};
 use gband_core::view::{CenterFocusedColumn, Scene, View, ViewAction};
 use gband_emulator::{Emulator, Grid};
-use gband_lua::{Binding, Config, ConfigError, Dispatch, Lua, Options};
+use gband_lua::{Binding, Config, ConfigError, Dispatch, Event, Options, Outcome as Ran, Runtime};
 use gband_protocol::{ClientMessage, ExecutableId, ServerMessage, SessionName};
 use ratatui::DefaultTerminal;
 use tokio::sync::mpsc;
@@ -29,7 +29,7 @@ use tokio::sync::mpsc;
 use crate::animation::{
     ANIMATIONS_VARIABLE, Animations, Drawn, FRAME, Presentation, Targets, parse_animations,
 };
-use crate::bindings::{Command, Keymap, Leader};
+use crate::bindings::{Command, Keymap, Leader, ROOT};
 pub use crate::connect::{Connection, connect};
 use crate::input::key_from_event;
 use crate::render::{Ribbon, draw_frame};
@@ -89,7 +89,14 @@ pub fn run(
         let outcome = {
             let _restore = TerminalGuard::enter()?;
             let mut terminal = ratatui::init();
-            attach(&mut terminal, &mut connection, animations, configuration).await?
+            attach(
+                &mut terminal,
+                &mut connection,
+                animations,
+                configuration,
+                &config.session,
+            )
+            .await?
         };
         tracing::info!("client finished: {outcome:?}");
         Ok(Report {
@@ -172,6 +179,21 @@ impl Display {
 
     pub fn focused(&self) -> Option<PaneId> {
         self.view.as_ref().and_then(View::focused)
+    }
+
+    pub fn observe(&self) -> Option<Observed> {
+        let view = self.view.as_ref()?;
+        Some(Observed {
+            focused: view.focused(),
+            band: view.band(),
+            panes: self
+                .layout
+                .bands()
+                .iter()
+                .flat_map(|band| band.panes().map(move |pane| (pane, band.id)))
+                .collect(),
+            size: self.terminal,
+        })
     }
 
     pub fn apply(&mut self, message: ServerMessage) -> Option<Outcome> {
@@ -273,60 +295,233 @@ pub enum Step {
     Nothing,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Observed {
+    focused: Option<PaneId>,
+    band: BandId,
+    panes: BTreeMap<PaneId, BandId>,
+    size: Size,
+}
+
+fn changes(before: Option<Observed>, after: Option<&Observed>) -> Vec<Event> {
+    let (Some(before), Some(after)) = (before, after) else {
+        return Vec::new();
+    };
+    let mut events = Vec::new();
+    for (&pane, &band) in &before.panes {
+        if !after.panes.contains_key(&pane) {
+            events.push(Event::PaneClosed { pane, band });
+        }
+    }
+    for (&pane, &band) in &after.panes {
+        if !before.panes.contains_key(&pane) {
+            events.push(Event::PaneOpened { pane, band });
+        }
+    }
+    if after.band != before.band {
+        events.push(Event::BandChanged {
+            band: after.band,
+            previous: before.band,
+        });
+    }
+    if after.focused != before.focused {
+        events.push(Event::FocusChanged {
+            pane: after.focused,
+            previous: before.focused,
+        });
+    }
+    if after.size != before.size {
+        events.push(Event::TerminalResized {
+            cols: after.size.cols,
+            rows: after.size.rows,
+        });
+    }
+    events
+}
+
+const EVENT_DEPTH: usize = 10;
+
+#[derive(Debug, Default, PartialEq)]
+pub struct Received {
+    pub steps: Vec<Step>,
+    pub outcome: Option<Outcome>,
+}
+
 pub struct Controls {
     keymap: Keymap,
-    lua: Lua,
+    runtime: Runtime,
     leader: Leader,
 }
 
 impl Controls {
     pub fn new(config: Config, display: &mut Display) -> Self {
         display.configure(&config.options);
+        display.set_banner(config.errors.last().map(ToString::to_string));
         Self {
-            keymap: Keymap::new(config.options.prefix, config.bindings),
-            lua: config.lua,
+            keymap: Keymap::new(config.options.prefix, config.keymap),
+            runtime: config.runtime,
             leader: Leader::default(),
         }
     }
 
-    pub fn press(&mut self, display: &mut Display, key: Key) -> Vec<Step> {
-        match self.leader.handle(&self.keymap, key) {
-            Command::Send(key) => vec![dispatch(
-                display,
-                Action::Client(ClientAction::SendKey(key)),
-            )],
-            Command::Run(Binding::Action(action)) => vec![dispatch(display, *action)],
-            Command::Run(Binding::Function(function)) => {
-                let (dispatched, error) = gband_lua::call(&self.lua, function);
-                let steps = dispatched
-                    .into_iter()
-                    .map(|entry| match entry {
-                        Dispatch::Action(action) => dispatch(display, action),
-                        Dispatch::Spawn(program) => spawn(display, program),
-                    })
-                    .collect();
-                if let Some(error) = error {
-                    tracing::warn!("configuration error: {error}");
-                    display.set_banner(Some(error.to_string()));
+    pub fn runtime(&self) -> &Runtime {
+        &self.runtime
+    }
+
+    pub fn active_table(&self) -> &str {
+        self.leader.active()
+    }
+
+    pub fn attached(&mut self, display: &mut Display, session: &str) -> Vec<Step> {
+        self.react(
+            display,
+            vec![Event::Attached {
+                session: session.to_owned(),
+            }],
+            |_, _, _| {},
+        )
+    }
+
+    pub fn receive(
+        &mut self,
+        display: &mut Display,
+        messages: impl IntoIterator<Item = ServerMessage>,
+    ) -> Received {
+        let mut outcome = None;
+        let steps = self.react(display, Vec::new(), |_, display, _| {
+            for message in messages {
+                outcome = display.apply(message);
+                if outcome.is_some() {
+                    return;
                 }
-                steps
             }
-            Command::Discard => Vec::new(),
+        });
+        match outcome {
+            Some(outcome) => Received {
+                steps: Vec::new(),
+                outcome: Some(outcome),
+            },
+            None => Received {
+                steps,
+                outcome: None,
+            },
         }
     }
 
-    pub fn reload(&mut self, display: &mut Display, result: Result<Config, ConfigError>) {
+    pub fn resize(&mut self, display: &mut Display, terminal: Size) -> Vec<Step> {
+        self.react(display, Vec::new(), |_, display, _| {
+            display.resize(terminal)
+        })
+    }
+
+    pub fn press(&mut self, display: &mut Display, key: Key) -> Vec<Step> {
+        self.react(
+            display,
+            Vec::new(),
+            |controls, display, steps| match controls.leader.handle(&controls.keymap, key) {
+                Command::Send(key) => steps.push(dispatch(
+                    display,
+                    Action::Client(ClientAction::SendKey(key)),
+                )),
+                Command::Run(Binding::Action(action)) => steps.push(dispatch(display, action)),
+                Command::Run(Binding::Callback(callback)) => {
+                    let outcome = controls.runtime.call(callback);
+                    controls.apply(display, outcome, steps);
+                }
+                Command::Discard => {}
+            },
+        )
+    }
+
+    pub fn reload(
+        &mut self,
+        display: &mut Display,
+        result: Result<Config, ConfigError>,
+    ) -> Vec<Step> {
         match result {
             Ok(config) => {
                 tracing::info!("configuration reloaded");
+                for error in &config.errors {
+                    tracing::warn!("configuration error: {error}");
+                }
+                let previous = self.leader.active().to_owned();
                 *self = Self::new(config, display);
-                display.set_banner(None);
+                let mut events = vec![Event::ConfigReloaded];
+                if previous != ROOT {
+                    events.push(Event::KeyTableChanged {
+                        table: ROOT.to_owned(),
+                        previous,
+                    });
+                }
+                self.react(display, events, |_, _, _| {})
             }
             Err(error) => {
                 tracing::warn!("configuration error: {error}");
-                self.leader.reset();
                 display.set_banner(Some(error.to_string()));
+                self.react(display, Vec::new(), |controls, _, _| {
+                    controls.leader.reset()
+                })
             }
+        }
+    }
+
+    fn react(
+        &mut self,
+        display: &mut Display,
+        mut events: Vec<Event>,
+        change: impl FnOnce(&mut Self, &mut Display, &mut Vec<Step>),
+    ) -> Vec<Step> {
+        let mut steps = Vec::new();
+        let mut before = display.observe();
+        let mut table = self.leader.active().to_owned();
+        change(self, display, &mut steps);
+        for depth in 0.. {
+            self.table_changed(&mut table, &mut events);
+            let after = display.observe();
+            events.extend(changes(before, after.as_ref()));
+            before = after;
+            if events.is_empty() {
+                break;
+            }
+            if depth == EVENT_DEPTH {
+                tracing::warn!(
+                    "dropping {} events caused by event handlers {EVENT_DEPTH} times in a row",
+                    events.len()
+                );
+                break;
+            }
+            for event in std::mem::take(&mut events) {
+                let outcome = self.runtime.emit(&event);
+                self.apply(display, outcome, &mut steps);
+            }
+        }
+        steps
+    }
+
+    fn table_changed(&mut self, table: &mut String, events: &mut Vec<Event>) {
+        let active = self.leader.active();
+        if active != table {
+            self.runtime.set_active_table(active);
+            events.push(Event::KeyTableChanged {
+                table: active.to_owned(),
+                previous: std::mem::replace(table, active.to_owned()),
+            });
+        }
+    }
+
+    fn apply(&mut self, display: &mut Display, outcome: Ran, steps: &mut Vec<Step>) {
+        for entry in outcome.dispatched {
+            match entry {
+                Dispatch::Action(action) => steps.push(dispatch(display, action)),
+                Dispatch::Spawn(program) => steps.push(spawn(display, program)),
+                Dispatch::Enter(table) => self.leader.enter(table),
+            }
+        }
+        for error in &outcome.errors {
+            tracing::warn!("configuration error: {error}");
+        }
+        if let Some(error) = outcome.errors.last() {
+            display.set_banner(Some(error.to_string()));
         }
     }
 }
@@ -368,22 +563,53 @@ pub fn dispatch(display: &mut Display, action: Action) -> Step {
     message.map_or(Step::Nothing, Step::Send)
 }
 
+async fn perform(connection: &mut Connection, steps: Vec<Step>) -> Result<Option<Outcome>> {
+    for step in steps {
+        match step {
+            Step::Send(message) => connection.send(&message).await?,
+            Step::Detach => {
+                let _ = connection.send(&ClientMessage::Detach).await;
+                return Ok(Some(Outcome::Detached));
+            }
+            Step::Nothing => {}
+        }
+    }
+    Ok(None)
+}
+
 async fn attach(
     terminal: &mut DefaultTerminal,
     connection: &mut Connection,
     animations: Animations,
     configuration: Configuration,
+    session: &SessionName,
 ) -> Result<Outcome> {
     let mut events = spawn_events();
     let size = terminal.size()?;
     let mut display = Display::new(Size::new(size.width, size.height), animations);
     let mut controls = Controls::new(configuration.config, &mut display);
-    display.set_banner(configuration.error.map(|error| error.to_string()));
+    if let Some(error) = configuration.error {
+        display.set_banner(Some(error.to_string()));
+    }
     let mut reloads = configuration.reloads;
+    let steps = controls.attached(&mut display, &session.to_string());
+    if let Some(outcome) = perform(connection, steps).await? {
+        return Ok(outcome);
+    }
     loop {
-        if let Some(outcome) = apply_messages(connection, &mut display)? {
-            draw(terminal, &mut display, Instant::now())?;
-            return Ok(outcome);
+        let mut messages = Vec::new();
+        while let Some(message) = connection.reader.try_recv::<ServerMessage>()? {
+            messages.push(message);
+        }
+        if !messages.is_empty() {
+            let received = controls.receive(&mut display, messages);
+            if let Some(outcome) = received.outcome {
+                draw(terminal, &mut display, Instant::now())?;
+                return Ok(outcome);
+            }
+            if let Some(outcome) = perform(connection, received.steps).await? {
+                return Ok(outcome);
+            }
         }
         if let Some(message) = display.report_shown() {
             let _ = connection.send(&message).await;
@@ -396,35 +622,37 @@ async fn attach(
         tokio::select! {
             () = tokio::time::sleep_until(frame.unwrap_or_else(tokio::time::Instant::now)),
                 if frame.is_some() => {}
-            Some(result) = reloads.recv() => controls.reload(&mut display, result),
+            Some(result) = reloads.recv() => {
+                let steps = controls.reload(&mut display, result);
+                if let Some(outcome) = perform(connection, steps).await? {
+                    return Ok(outcome);
+                }
+            }
             filled = connection.reader.fill() => match filled {
                 Ok(true) => {}
                 Ok(false) | Err(gband_protocol::IoError::Io(_)) => return Ok(Outcome::LostServer),
                 Err(error) => return Err(error.into()),
             },
             event = events.recv() => match event {
-                Some(Event::Key(key_event)) => {
+                Some(TerminalEvent::Key(key_event)) => {
                     let Some(key) = key_from_event(&key_event) else { continue };
-                    for step in controls.press(&mut display, key) {
-                        match step {
-                            Step::Send(message) => connection.send(&message).await?,
-                            Step::Detach => {
-                                let _ = connection.send(&ClientMessage::Detach).await;
-                                return Ok(Outcome::Detached);
-                            }
-                            Step::Nothing => {}
-                        }
+                    let steps = controls.press(&mut display, key);
+                    if let Some(outcome) = perform(connection, steps).await? {
+                        return Ok(outcome);
                     }
                 }
-                Some(Event::Paste(text)) => {
+                Some(TerminalEvent::Paste(text)) => {
                     if let Some(pane) = display.focused() {
                         connection.send(&ClientMessage::Paste { pane, text }).await?;
                     }
                 }
-                Some(Event::Resize(cols, rows)) => {
+                Some(TerminalEvent::Resize(cols, rows)) => {
                     terminal.autoresize()?;
-                    display.resize(Size::new(cols, rows));
+                    let steps = controls.resize(&mut display, Size::new(cols, rows));
                     connection.send(&ClientMessage::Resize { cols, rows }).await?;
+                    if let Some(outcome) = perform(connection, steps).await? {
+                        return Ok(outcome);
+                    }
                 }
                 Some(_) => {}
                 None => return Ok(Outcome::LostServer),
@@ -433,16 +661,7 @@ async fn attach(
     }
 }
 
-fn apply_messages(connection: &mut Connection, display: &mut Display) -> Result<Option<Outcome>> {
-    while let Some(message) = connection.reader.try_recv::<ServerMessage>()? {
-        if let Some(outcome) = display.apply(message) {
-            return Ok(Some(outcome));
-        }
-    }
-    Ok(None)
-}
-
-fn spawn_events() -> mpsc::UnboundedReceiver<Event> {
+fn spawn_events() -> mpsc::UnboundedReceiver<TerminalEvent> {
     let (sender, receiver) = mpsc::unbounded_channel();
     thread::spawn(move || {
         while let Ok(event) = event::read() {

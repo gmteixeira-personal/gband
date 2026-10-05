@@ -1,26 +1,21 @@
 use gband_core::input::{Key, KeyCode};
-use gband_lua::{Binding, Chord, Keys};
+use gband_lua::{Binding, Chord, KeyTables};
+
+pub const ROOT: &str = "root";
+pub const PREFIX: &str = "prefix";
 
 pub struct Keymap {
     pub prefix: Key,
-    pub direct: Vec<(Key, Binding)>,
-    pub prefixed: Vec<(Chord, Binding)>,
+    pub tables: KeyTables,
 }
 
 impl Keymap {
-    pub fn new(prefix: Key, bindings: Vec<(Keys, Binding)>) -> Self {
-        let mut keymap = Self {
-            prefix,
-            direct: Vec::new(),
-            prefixed: Vec::new(),
-        };
-        for (keys, binding) in bindings {
-            match keys {
-                Keys::Direct(key) => keymap.direct.push((key, binding)),
-                Keys::Prefixed(chord) => keymap.prefixed.push((chord, binding)),
-            }
-        }
-        keymap
+    pub fn new(prefix: Key, tables: KeyTables) -> Self {
+        Self { prefix, tables }
+    }
+
+    pub fn table(&self, name: &str) -> &[(Chord, Binding)] {
+        self.tables.get(name).map_or(&[], Vec::as_slice)
     }
 
     fn chord_key(&self, chord: Chord) -> Key {
@@ -29,52 +24,63 @@ impl Keymap {
             Chord::Prefix => self.prefix,
         }
     }
+
+    fn find(&self, table: &str, key: Key) -> Option<Binding> {
+        self.table(table)
+            .iter()
+            .find(|&&(chord, _)| matches(self.chord_key(chord), key))
+            .map(|&(_, binding)| binding)
+    }
 }
 
-#[derive(Debug)]
-pub enum Command<'a> {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Command {
     Send(Key),
-    Run(&'a Binding),
+    Run(Binding),
     Discard,
 }
 
-impl PartialEq for Command<'_> {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Command::Send(a), Command::Send(b)) => a == b,
-            (Command::Run(a), Command::Run(b)) => std::ptr::eq(*a, *b),
-            (Command::Discard, Command::Discard) => true,
-            _ => false,
+#[derive(Debug)]
+pub struct Leader {
+    active: String,
+}
+
+impl Default for Leader {
+    fn default() -> Self {
+        Self {
+            active: ROOT.to_owned(),
         }
     }
 }
 
-#[derive(Debug, Default)]
-pub struct Leader {
-    after_prefix: bool,
-}
-
 impl Leader {
-    pub fn handle<'a>(&mut self, keymap: &'a Keymap, key: Key) -> Command<'a> {
-        if std::mem::take(&mut self.after_prefix) {
+    pub fn active(&self) -> &str {
+        &self.active
+    }
+
+    pub fn handle(&mut self, keymap: &Keymap, key: Key) -> Command {
+        if self.active != ROOT {
+            let table = std::mem::replace(&mut self.active, ROOT.to_owned());
             return keymap
-                .prefixed
-                .iter()
-                .find(|&&(chord, _)| matches(keymap.chord_key(chord), key))
-                .map_or(Command::Discard, |(_, binding)| Command::Run(binding));
+                .find(&table, key)
+                .map_or(Command::Discard, Command::Run);
         }
-        if let Some((_, binding)) = keymap.direct.iter().find(|(bound, _)| matches(*bound, key)) {
+        if let Some(binding) = keymap.find(ROOT, key) {
             return Command::Run(binding);
         }
-        if !keymap.prefixed.is_empty() && matches(keymap.prefix, key) {
-            self.after_prefix = true;
+        if !keymap.table(PREFIX).is_empty() && matches(keymap.prefix, key) {
+            self.active = PREFIX.to_owned();
             return Command::Discard;
         }
         Command::Send(key)
     }
 
+    pub fn enter(&mut self, table: String) {
+        self.active = table;
+    }
+
     pub fn reset(&mut self) {
-        self.after_prefix = false;
+        self.active = ROOT.to_owned();
     }
 }
 
@@ -103,7 +109,7 @@ mod tests {
 
     fn defaults() -> Keymap {
         let config = gband_lua::defaults();
-        Keymap::new(config.options.prefix, config.bindings)
+        Keymap::new(config.options.prefix, config.keymap)
     }
 
     fn configured(source: &str) -> Keymap {
@@ -116,9 +122,13 @@ mod tests {
         let path = gband_lua::user_file(&dir);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(&path, source).unwrap();
-        let config = gband_lua::load(&dir).unwrap();
+        let locations = gband_lua::Locations {
+            config: dir.clone(),
+            plugins: None,
+        };
+        let config = gband_lua::load(&locations, &gband_lua::LoadOptions::default()).unwrap();
         let _ = std::fs::remove_dir_all(&dir);
-        Keymap::new(config.options.prefix, config.bindings)
+        Keymap::new(config.options.prefix, config.keymap)
     }
 
     fn key(name: &str) -> Key {
@@ -129,9 +139,9 @@ mod tests {
         Key::plain(KeyCode::Char(c))
     }
 
-    fn ran(command: Command<'_>) -> Option<Action> {
+    fn ran(command: Command) -> Option<Action> {
         match command {
-            Command::Run(Binding::Action(action)) => Some(*action),
+            Command::Run(Binding::Action(action)) => Some(action),
             _ => None,
         }
     }
@@ -183,14 +193,14 @@ mod tests {
             after_prefix(&keymap, Key::plain(KeyCode::Enter)),
             Some(Action::Session(SessionCommand::OpenPane))
         );
-        assert!(keymap.direct.is_empty());
-        assert_eq!(keymap.prefixed.len(), expected.len() + 2);
+        assert!(keymap.table(ROOT).is_empty());
+        assert_eq!(keymap.table(PREFIX).len(), expected.len() + 2);
     }
 
     #[test]
     fn every_default_binding_names_an_action() {
         let keymap = defaults();
-        for (chord, binding) in &keymap.prefixed {
+        for (chord, binding) in keymap.table(PREFIX) {
             assert!(matches!(binding, Binding::Action(_)), "{chord:?}");
         }
     }
@@ -321,7 +331,7 @@ mod tests {
     #[test]
     fn no_prefix_binding_left() {
         let keymap = configured("");
-        assert!(keymap.prefixed.is_empty());
+        assert!(keymap.table(PREFIX).is_empty());
         let mut leader = Leader::default();
         assert_eq!(
             leader.handle(&keymap, key("ctrl+space")),
@@ -342,6 +352,62 @@ mod tests {
         assert_eq!(
             leader.handle(&keymap, char_key('q')),
             Command::Send(char_key('q'))
+        );
+    }
+
+    fn move_table() -> Keymap {
+        configured(
+            "gband.keymap.set('move', 'h', gband.action.focus_column_left)
+gband.keymap.set('move', 'l', gband.action.focus_column_right)
+gband.keymap.set('prefix', 'm', function() gband.keymap.enter('move') end)
+gband.keymap.set('root', 'alt+m', function() gband.keymap.enter('move') end)",
+        )
+    }
+
+    #[test]
+    fn named_key_table() {
+        let keymap = move_table();
+        let mut leader = Leader::default();
+        assert_eq!(leader.handle(&keymap, keymap.prefix), Command::Discard);
+        assert_eq!(leader.active(), PREFIX);
+        assert!(matches!(
+            leader.handle(&keymap, char_key('m')),
+            Command::Run(Binding::Callback(_))
+        ));
+        assert_eq!(leader.active(), ROOT);
+        leader.enter("move".to_owned());
+        assert_eq!(
+            ran(leader.handle(&keymap, char_key('l'))),
+            Some(Action::View(ViewAction::FocusRight))
+        );
+        assert_eq!(leader.active(), ROOT);
+        assert_eq!(
+            leader.handle(&keymap, char_key('l')),
+            Command::Send(char_key('l'))
+        );
+    }
+
+    #[test]
+    fn unbound_key_in_a_named_table() {
+        let keymap = move_table();
+        let mut leader = Leader::default();
+        leader.enter("move".to_owned());
+        assert_eq!(leader.handle(&keymap, char_key('x')), Command::Discard);
+        assert_eq!(leader.active(), ROOT);
+    }
+
+    #[test]
+    fn root_binding_enters_a_table() {
+        let keymap = move_table();
+        let mut leader = Leader::default();
+        assert!(matches!(
+            leader.handle(&keymap, key("alt+m")),
+            Command::Run(Binding::Callback(_))
+        ));
+        leader.enter("move".to_owned());
+        assert_eq!(
+            ran(leader.handle(&keymap, char_key('h'))),
+            Some(Action::View(ViewAction::FocusLeft))
         );
     }
 }

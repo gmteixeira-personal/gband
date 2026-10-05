@@ -1,0 +1,306 @@
+use std::collections::BTreeMap;
+
+use gband_core::layout::{BandId, PaneId};
+use mlua::{Lua, Table, Value};
+
+use crate::api;
+use crate::callbacks::{self, CallbackId};
+use crate::error::ConfigError;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Event {
+    Attached {
+        session: String,
+    },
+    FocusChanged {
+        pane: Option<PaneId>,
+        previous: Option<PaneId>,
+    },
+    BandChanged {
+        band: BandId,
+        previous: BandId,
+    },
+    PaneOpened {
+        pane: PaneId,
+        band: BandId,
+    },
+    PaneClosed {
+        pane: PaneId,
+        band: BandId,
+    },
+    TerminalResized {
+        cols: u16,
+        rows: u16,
+    },
+    ConfigReloaded,
+    KeyTableChanged {
+        table: String,
+        previous: String,
+    },
+}
+
+const USER: &str = "User";
+
+const BUILTIN: [&str; 8] = [
+    "Attached",
+    "FocusChanged",
+    "BandChanged",
+    "PaneOpened",
+    "PaneClosed",
+    "TerminalResized",
+    "ConfigReloaded",
+    "KeyTableChanged",
+];
+
+impl Event {
+    pub fn name(&self) -> &'static str {
+        match self {
+            Event::Attached { .. } => "Attached",
+            Event::FocusChanged { .. } => "FocusChanged",
+            Event::BandChanged { .. } => "BandChanged",
+            Event::PaneOpened { .. } => "PaneOpened",
+            Event::PaneClosed { .. } => "PaneClosed",
+            Event::TerminalResized { .. } => "TerminalResized",
+            Event::ConfigReloaded => "ConfigReloaded",
+            Event::KeyTableChanged { .. } => "KeyTableChanged",
+        }
+    }
+
+    fn payload(&self, lua: &Lua) -> mlua::Result<Table> {
+        let payload = lua.create_table()?;
+        match self {
+            Event::Attached { session } => payload.set("session", session.as_str())?,
+            Event::FocusChanged { pane, previous } => {
+                payload.set("pane", pane.map(|pane| pane.0))?;
+                payload.set("previous", previous.map(|pane| pane.0))?;
+            }
+            Event::BandChanged { band, previous } => {
+                payload.set("band", band.0)?;
+                payload.set("previous", previous.0)?;
+            }
+            Event::PaneOpened { pane, band } | Event::PaneClosed { pane, band } => {
+                payload.set("pane", pane.0)?;
+                payload.set("band", band.0)?;
+            }
+            Event::TerminalResized { cols, rows } => {
+                payload.set("cols", *cols)?;
+                payload.set("rows", *rows)?;
+            }
+            Event::ConfigReloaded => {}
+            Event::KeyTableChanged { table, previous } => {
+                payload.set("table", table.as_str())?;
+                payload.set("previous", previous.as_str())?;
+            }
+        }
+        Ok(payload)
+    }
+}
+
+struct Handler {
+    id: u64,
+    event: String,
+    callback: CallbackId,
+    group: Option<i64>,
+    once: bool,
+    pattern: Option<String>,
+}
+
+#[derive(Default)]
+struct Events {
+    handlers: Vec<Handler>,
+    groups: BTreeMap<String, i64>,
+    next: u64,
+}
+
+fn events(lua: &Lua) -> mlua::AppDataRefMut<'_, Events> {
+    lua.app_data_mut::<Events>()
+        .expect("events are installed with the runtime")
+}
+
+pub(crate) fn install(lua: &Lua, gband: &Table) -> mlua::Result<()> {
+    lua.set_app_data(Events::default());
+    gband.set("on", lua.create_function(on)?)?;
+    gband.set("augroup", lua.create_function(augroup)?)?;
+    gband.set("emit", lua.create_function(emit)?)?;
+    Ok(())
+}
+
+fn on(lua: &Lua, (event, function, opts): (Value, Value, Value)) -> mlua::Result<()> {
+    let event = match &event {
+        Value::String(event) => event.to_str()?.to_owned(),
+        _ => {
+            return Err(ConfigError::raise(
+                lua,
+                "gband.on expects an event name as a string",
+            ));
+        }
+    };
+    if event != USER && !BUILTIN.contains(&event.as_str()) {
+        return Err(ConfigError::raise(lua, format!("unknown event `{event}`")));
+    }
+    let Value::Function(function) = function else {
+        return Err(ConfigError::raise(
+            lua,
+            format!("the handler of `{event}` must be a function"),
+        ));
+    };
+    let (group, once, pattern) = match opts {
+        Value::Nil => (None, false, None),
+        Value::Table(opts) => (
+            group(lua, opts.get("group")?)?,
+            match opts.get::<Value>("once")? {
+                Value::Nil => false,
+                Value::Boolean(once) => once,
+                _ => return Err(ConfigError::raise(lua, "`once` must be a boolean")),
+            },
+            match opts.get::<Value>("pattern")? {
+                Value::Nil => None,
+                Value::String(pattern) if event == USER => Some(pattern.to_str()?.to_owned()),
+                Value::String(_) => {
+                    return Err(ConfigError::raise(
+                        lua,
+                        format!("`pattern` applies only to `User` events, not `{event}`"),
+                    ));
+                }
+                _ => return Err(ConfigError::raise(lua, "`pattern` must be a string")),
+            },
+        ),
+        _ => {
+            return Err(ConfigError::raise(
+                lua,
+                "gband.on expects its options as a table",
+            ));
+        }
+    };
+    let callback = callbacks::register(lua, function)?;
+    let mut events = events(lua);
+    let id = events.next;
+    events.next += 1;
+    events.handlers.push(Handler {
+        id,
+        event,
+        callback,
+        group,
+        once,
+        pattern,
+    });
+    Ok(())
+}
+
+fn group(lua: &Lua, value: Value) -> mlua::Result<Option<i64>> {
+    let events = events(lua);
+    let known = match &value {
+        Value::Nil => return Ok(None),
+        Value::Integer(id) => events
+            .groups
+            .values()
+            .any(|known| known == id)
+            .then_some(*id),
+        Value::String(name) => events.groups.get(&*name.to_str()?).copied(),
+        _ => {
+            drop(events);
+            return Err(ConfigError::raise(
+                lua,
+                "`group` must be a group id or name",
+            ));
+        }
+    };
+    drop(events);
+    known
+        .map(Some)
+        .ok_or_else(|| ConfigError::raise(lua, "unknown handler group"))
+}
+
+fn augroup(lua: &Lua, (name, opts): (Value, Value)) -> mlua::Result<i64> {
+    let name = match &name {
+        Value::String(name) if !name.as_bytes().is_empty() => name.to_str()?.to_owned(),
+        _ => {
+            return Err(ConfigError::raise(
+                lua,
+                "gband.augroup expects a name as a non-empty string",
+            ));
+        }
+    };
+    let clear = match opts {
+        Value::Nil => true,
+        Value::Table(opts) => match opts.get::<Value>("clear")? {
+            Value::Nil => true,
+            Value::Boolean(clear) => clear,
+            _ => return Err(ConfigError::raise(lua, "`clear` must be a boolean")),
+        },
+        _ => {
+            return Err(ConfigError::raise(
+                lua,
+                "gband.augroup expects its options as a table",
+            ));
+        }
+    };
+    let mut events = events(lua);
+    let next = i64::try_from(events.groups.len()).unwrap_or(i64::MAX) + 1;
+    let id = *events.groups.entry(name).or_insert(next);
+    if clear {
+        events.handlers.retain(|handler| handler.group != Some(id));
+    }
+    Ok(id)
+}
+
+fn emit(lua: &Lua, (name, data): (Value, Value)) -> mlua::Result<()> {
+    let name = match &name {
+        Value::String(name) if !name.as_bytes().is_empty() => name.to_str()?.to_owned(),
+        _ => {
+            return Err(ConfigError::raise(
+                lua,
+                "gband.emit expects an event name as a non-empty string",
+            ));
+        }
+    };
+    if !api::in_callback(lua) {
+        return Err(api::outside_callback(lua, "gband.emit"));
+    }
+    deliver(lua, USER, Some(&name), |lua| {
+        let payload = lua.create_table()?;
+        payload.set("name", name.as_str())?;
+        payload.set("data", data.clone())?;
+        Ok(payload)
+    })
+}
+
+pub(crate) fn emit_event(lua: &Lua, event: &Event) -> mlua::Result<()> {
+    deliver(lua, event.name(), None, |lua| event.payload(lua))
+}
+
+fn deliver(
+    lua: &Lua,
+    event: &str,
+    user: Option<&str>,
+    payload: impl Fn(&Lua) -> mlua::Result<Table>,
+) -> mlua::Result<()> {
+    let matching: Vec<u64> = events(lua)
+        .handlers
+        .iter()
+        .filter(|handler| {
+            handler.event == event
+                && handler
+                    .pattern
+                    .as_deref()
+                    .is_none_or(|pattern| Some(pattern) == user)
+        })
+        .map(|handler| handler.id)
+        .collect();
+    for id in matching {
+        let callback = {
+            let mut events = events(lua);
+            let Some(index) = events.handlers.iter().position(|handler| handler.id == id) else {
+                continue;
+            };
+            let handler = &events.handlers[index];
+            let callback = handler.callback;
+            if handler.once {
+                events.handlers.remove(index);
+            }
+            callback
+        };
+        callbacks::run::<()>(lua, callback, payload(lua)?)?;
+    }
+    Ok(())
+}

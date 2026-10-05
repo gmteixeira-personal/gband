@@ -1,65 +1,14 @@
-use std::path::PathBuf;
-
-use gband_core::action::{Action, ClientAction, SessionCommand};
+use gband_core::action::Action;
 use gband_core::input::Key;
-use gband_core::layout::{Direction, Program, Step};
-use gband_core::view::ViewAction;
-use mlua::{
-    Function, Lua, LuaSerdeExt, MetaMethod, RegistryKey, Table, UserData, UserDataMethods, Value,
-};
+use gband_core::layout::Program;
+use mlua::{Lua, Table, Value};
 
-use crate::error::{ConfigError, caller};
+use crate::callbacks::CallbackId;
+use crate::error::ConfigError;
+use crate::keymap;
 use crate::keys::parse_key;
-use crate::options::{NAMES, Options, OptionsPatch};
-
-pub const ACTIONS: [(&str, Action); 19] = [
-    ("focus_column_left", Action::View(ViewAction::FocusLeft)),
-    ("focus_column_right", Action::View(ViewAction::FocusRight)),
-    ("focus_pane_down", Action::View(ViewAction::FocusDown)),
-    ("focus_pane_up", Action::View(ViewAction::FocusUp)),
-    ("focus_band_down", Action::View(ViewAction::BandDown)),
-    ("focus_band_up", Action::View(ViewAction::BandUp)),
-    ("open_pane", Action::Session(SessionCommand::OpenPane)),
-    ("close_pane", Action::Session(SessionCommand::ClosePane)),
-    (
-        "consume_or_expel_left",
-        Action::Session(SessionCommand::ConsumeOrExpel(Direction::Left)),
-    ),
-    (
-        "consume_or_expel_right",
-        Action::Session(SessionCommand::ConsumeOrExpel(Direction::Right)),
-    ),
-    (
-        "cycle_column_width",
-        Action::Session(SessionCommand::CycleWidth),
-    ),
-    (
-        "toggle_full_width",
-        Action::Session(SessionCommand::ToggleFullWidth),
-    ),
-    (
-        "grow_column_width",
-        Action::Session(SessionCommand::StepWidth(Step::Grow)),
-    ),
-    (
-        "shrink_column_width",
-        Action::Session(SessionCommand::StepWidth(Step::Shrink)),
-    ),
-    (
-        "grow_pane_height",
-        Action::Session(SessionCommand::StepHeight(Step::Grow)),
-    ),
-    (
-        "shrink_pane_height",
-        Action::Session(SessionCommand::StepHeight(Step::Shrink)),
-    ),
-    (
-        "reset_pane_height",
-        Action::Session(SessionCommand::ResetHeight),
-    ),
-    ("detach", Action::Client(ClientAction::Detach)),
-    ("send_prefix", Action::Client(ClientAction::SendPrefix)),
-];
+use crate::options;
+use crate::runtime::is_loading;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Chord {
@@ -68,83 +17,67 @@ pub enum Chord {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Keys {
-    Direct(Key),
-    Prefixed(Chord),
-}
-
-#[derive(Debug)]
 pub enum Binding {
     Action(Action),
-    Function(RegistryKey),
+    Callback(CallbackId),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Dispatch {
     Action(Action),
     Spawn(Option<Program>),
-}
-
-pub(crate) struct Bound {
-    pub keys: Keys,
-    pub binding: Binding,
-    pub location: Option<(PathBuf, u32)>,
+    Enter(String),
 }
 
 #[derive(Default)]
-pub(crate) struct Loading {
-    pub options: Options,
-    pub bindings: Vec<Bound>,
+pub(crate) struct Queue(pub Option<Vec<Dispatch>>);
+
+pub(crate) fn in_callback(lua: &Lua) -> bool {
+    lua.app_data_ref::<Queue>()
+        .is_some_and(|queue| queue.0.is_some())
 }
 
-pub(crate) struct Source(pub PathBuf);
-
-struct Queue(Vec<Dispatch>);
-
-struct LuaAction(Action);
-
-impl UserData for LuaAction {
-    fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
-        methods.add_meta_method(MetaMethod::Call, |lua, this, ()| {
-            queue(lua, Dispatch::Action(this.0), "an action")
-        });
-    }
+pub(crate) fn outside_callback(lua: &Lua, what: &str) -> mlua::Error {
+    ConfigError::raise(
+        lua,
+        format!("{what} can only be called inside a binding function or another callback"),
+    )
 }
 
-fn queue(lua: &Lua, entry: Dispatch, what: &str) -> mlua::Result<()> {
-    match lua.app_data_mut::<Queue>() {
-        Some(mut queue) => {
-            queue.0.push(entry);
+pub(crate) fn queue(lua: &Lua, entry: Dispatch, what: &str) -> mlua::Result<()> {
+    let mut queue = lua
+        .app_data_mut::<Queue>()
+        .expect("the queue is installed with the runtime");
+    match &mut queue.0 {
+        Some(entries) => {
+            entries.push(entry);
             Ok(())
         }
-        None => Err(ConfigError::raise(
-            lua,
-            format!("{what} can only be called inside a binding function"),
-        )),
+        None => {
+            drop(queue);
+            Err(outside_callback(lua, what))
+        }
     }
 }
 
-fn loading<'lua>(lua: &'lua Lua, what: &str) -> mlua::Result<mlua::AppDataRefMut<'lua, Loading>> {
-    lua.app_data_mut::<Loading>().ok_or_else(|| {
-        ConfigError::raise(
+pub(crate) fn require_loading(lua: &Lua, what: &str) -> mlua::Result<()> {
+    if is_loading(lua) {
+        Ok(())
+    } else {
+        Err(ConfigError::raise(
             lua,
             format!("{what} can only be called while the configuration loads"),
-        )
-    })
+        ))
+    }
 }
 
-pub(crate) fn install(lua: &Lua) -> mlua::Result<()> {
-    let gband = lua.create_table()?;
+pub(crate) fn install(lua: &Lua, gband: &Table) -> mlua::Result<()> {
+    lua.set_app_data(Queue::default());
     gband.set("set", lua.create_function(set)?)?;
     gband.set("bind", lua.create_function(bind)?)?;
     gband.set("unbind", lua.create_function(unbind)?)?;
     gband.set("spawn", lua.create_function(spawn)?)?;
-    let actions = lua.create_table()?;
-    for (name, action) in ACTIONS {
-        actions.set(name, LuaAction(action))?;
-    }
-    gband.set("action", actions)?;
-    lua.globals().set("gband", gband)
+    Ok(())
 }
 
 fn set(lua: &Lua, options: Value) -> mlua::Result<()> {
@@ -166,45 +99,36 @@ fn set(lua: &Lua, options: Value) -> mlua::Result<()> {
                 ));
             }
         };
-        if !NAMES.contains(&name.as_str()) {
+        if !options::NAMES.contains(&name.as_str()) {
             return Err(ConfigError::raise(lua, format!("unknown option `{name}`")));
         }
-        let single = lua.create_table()?;
-        single.set(name.as_str(), value)?;
-        let patch: OptionsPatch = lua.from_value(Value::Table(single)).map_err(|error| {
-            ConfigError::raise(
-                lua,
-                format!("invalid value for option `{name}`: {}", reason(&error)),
-            )
-        })?;
+        let patch = options::patch(lua, &name, value)
+            .map_err(|reason| ConfigError::raise(lua, options::invalid(&name, &reason)))?;
         patches.push(patch);
     }
-    let mut loading = loading(lua, "gband.set")?;
+    require_loading(lua, "gband.set")?;
     for patch in patches {
-        loading.options.merge(patch);
+        options::merge(lua, patch);
     }
     Ok(())
 }
 
-fn reason(error: &mlua::Error) -> String {
-    match error {
-        mlua::Error::DeserializeError(message) => message.clone(),
-        other => other.to_string(),
-    }
-}
-
-pub(crate) fn parse_keys(text: &str) -> Result<Keys, String> {
+pub(crate) fn parse_keys(text: &str) -> Result<(&'static str, Chord), String> {
     let words: Vec<&str> = text.split(' ').collect();
     let key = |name: &str| parse_key(name).map_err(|error| error.to_string());
     match words.as_slice() {
-        [name] => key(name).map(Keys::Direct),
-        ["prefix", "prefix"] => Ok(Keys::Prefixed(Chord::Prefix)),
-        ["prefix", name] => key(name).map(|key| Keys::Prefixed(Chord::Key(key))),
+        [name] => key(name).map(|key| (keymap::ROOT, Chord::Key(key))),
+        ["prefix", "prefix"] => Ok((keymap::PREFIX, Chord::Prefix)),
+        ["prefix", name] => key(name).map(|key| (keymap::PREFIX, Chord::Key(key))),
         _ => Err(format!("invalid key list `{text}`")),
     }
 }
 
-fn keys_argument(lua: &Lua, keys: &Value, function: &str) -> mlua::Result<(String, Keys)> {
+fn keys_argument(
+    lua: &Lua,
+    keys: &Value,
+    function: &str,
+) -> mlua::Result<(String, &'static str, Chord)> {
     let Value::String(text) = keys else {
         return Err(ConfigError::raise(
             lua,
@@ -212,45 +136,27 @@ fn keys_argument(lua: &Lua, keys: &Value, function: &str) -> mlua::Result<(Strin
         ));
     };
     let text = text.to_str()?.to_owned();
-    let keys = parse_keys(&text).map_err(|message| ConfigError::raise(lua, message))?;
-    Ok((text, keys))
+    let (table, chord) = parse_keys(&text).map_err(|message| ConfigError::raise(lua, message))?;
+    Ok((text, table, chord))
 }
 
 fn bind(lua: &Lua, (keys, action): (Value, Value)) -> mlua::Result<()> {
-    let (text, keys) = keys_argument(lua, &keys, "gband.bind")?;
-    let binding = match &action {
-        Value::Function(function) => {
-            Binding::Function(lua.create_registry_value(function.clone())?)
-        }
-        Value::UserData(data) => match data.borrow::<LuaAction>() {
-            Ok(action) => Binding::Action(action.0),
-            Err(_) => return Err(not_an_action(lua, &text)),
-        },
-        _ => return Err(not_an_action(lua, &text)),
-    };
-    let location = caller(lua);
-    let mut loading = loading(lua, "gband.bind")?;
-    loading.bindings.retain(|bound| bound.keys != keys);
-    loading.bindings.push(Bound {
-        keys,
-        binding,
-        location,
-    });
-    Ok(())
-}
-
-fn not_an_action(lua: &Lua, text: &str) -> mlua::Error {
-    ConfigError::raise(
-        lua,
-        format!("the binding of `{text}` must be a gband.action value or a function"),
-    )
+    let (text, table, chord) = keys_argument(lua, &keys, "gband.bind")?;
+    let target = keymap::target(lua, &action)?.ok_or_else(|| {
+        ConfigError::raise(
+            lua,
+            format!("the binding of `{text}` must be a gband.action value or a function"),
+        )
+    })?;
+    require_loading(lua, "gband.bind")?;
+    let key = text.rsplit(' ').next().unwrap_or(&text).to_owned();
+    keymap::insert(lua, table, key, chord, target, None)
 }
 
 fn unbind(lua: &Lua, keys: Value) -> mlua::Result<()> {
-    let (_, keys) = keys_argument(lua, &keys, "gband.unbind")?;
-    loading(lua, "gband.unbind")?
-        .bindings
-        .retain(|bound| bound.keys != keys);
+    let (_, table, chord) = keys_argument(lua, &keys, "gband.unbind")?;
+    require_loading(lua, "gband.unbind")?;
+    keymap::remove(lua, table, chord);
     Ok(())
 }
 
@@ -288,7 +194,7 @@ fn command(lua: &Lua, value: Value) -> mlua::Result<Option<Program>> {
     }
 }
 
-fn list_of_strings(list: &Table) -> Option<Vec<String>> {
+pub(crate) fn list_of_strings(list: &Table) -> Option<Vec<String>> {
     let length = list.raw_len();
     if list.pairs::<Value, Value>().count() != length {
         return None;
@@ -299,20 +205,4 @@ fn list_of_strings(list: &Table) -> Option<Vec<String>> {
             _ => None,
         })
         .collect()
-}
-
-pub fn call(lua: &Lua, function: &RegistryKey) -> (Vec<Dispatch>, Option<ConfigError>) {
-    lua.set_app_data(Queue(Vec::new()));
-    let result = lua
-        .registry_value::<Function>(function)
-        .and_then(|function| function.call::<()>(()));
-    let dispatched = lua
-        .remove_app_data::<Queue>()
-        .map(|queue| queue.0)
-        .unwrap_or_default();
-    let error = result.err().map(|error| {
-        let source = lua.app_data_ref::<Source>().map(|source| source.0.clone());
-        ConfigError::from_lua(&error, source.as_deref())
-    });
-    (dispatched, error)
 }

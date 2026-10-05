@@ -89,6 +89,12 @@ fn harness_isolates_the_configuration() {
         .and_then(|(_, value)| value);
     assert_eq!(named, Some(env.config_home().as_os_str()));
     assert!(env.config_home().starts_with(&env.root));
+    let data = command
+        .get_envs()
+        .find(|(name, _)| *name == "XDG_DATA_HOME")
+        .and_then(|(_, value)| value);
+    assert_eq!(data, Some(env.data_home().as_os_str()));
+    assert!(env.data_home().starts_with(&env.root));
     assert!(!env.config_dir().exists());
     let client = Attached::start(&env, 80, 24);
     client.wait_for_prompt();
@@ -412,4 +418,71 @@ fn file_removed_restores_the_defaults() {
     echo_keys(&mut client);
     client.send(b"\x1bh\r");
     client.wait_for_line("^[h");
+}
+
+#[test]
+fn plugin_sets_a_width_option() {
+    let env = TestEnv::new("config-plugin-width");
+    env.write_plugin_file(
+        "widths",
+        "plugin/widths.lua",
+        "gband.opt.default_column_width = 1/3\n",
+    );
+    let mut client = Attached::start(&env, 80, 24);
+    client.wait_for_prompt();
+    client.shell_pid(&env);
+    client.send(b"\x00\r");
+    client.wait_for("a second column of width 1/3", |screen| {
+        let tiles = tiles(screen);
+        tiles.len() == 2 && tiles[1].focused && tiles[1].left == 26
+    });
+    assert!(!env.log_text("server").contains("configuration error"));
+}
+
+#[test]
+fn default_configuration_with_a_plugin() {
+    let env = TestEnv::new("config-default-plugin");
+    env.write_plugin_file(
+        "keys",
+        "plugin/keys.lua",
+        "gband.keymap.set('root', 'alt+g', gband.action.focus_column_left)\n",
+    );
+    let mut client = Attached::start(&env, 80, 24);
+    client.wait_for_prompt();
+    client.shell_pid(&env);
+    client.send(b"\x00\r");
+    client.wait_for("two tiles with the second focused", |screen| {
+        let tiles = tiles(screen);
+        tiles.len() == 2 && tiles[1].focused
+    });
+    client.wait_for_prompt();
+    client.send(b"\x1bg");
+    client.wait_for("the first tile focused", |screen| tiles(screen)[0].focused);
+}
+
+#[test]
+fn infinite_loop_in_setup() {
+    let env = TestEnv::new("config-setup-loop");
+    env.write_plugin_file(
+        "spin",
+        "lua/spin/init.lua",
+        "return { setup = function() while true do end end }\n",
+    );
+    env.write_config("gband.plugin('spin')\n");
+    let mut client = Attached::start(&env, 120, 24);
+    client.wait_for("the plugin error banner", |screen| {
+        let row = bottom_row(screen);
+        row.starts_with("spin: ") && row.contains("instruction limit exceeded")
+    });
+    client.wait_for_text("$");
+    client.send(b"\x00\r");
+    client.wait_for("two tiles with the second focused", |screen| {
+        tops(screen).len() == 2 && focused_top(screen) == Some(60)
+    });
+    for role in ["client", "server"] {
+        wait_until(
+            || env.log_text(role).contains("instruction limit exceeded"),
+            "the log to record the stopped plugin",
+        );
+    }
 }

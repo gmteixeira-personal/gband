@@ -6,6 +6,21 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::DEFAULTS;
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Locations {
+    pub config: PathBuf,
+    pub plugins: Option<PathBuf>,
+}
+
+impl Locations {
+    pub fn from_env() -> Option<Self> {
+        Some(Self {
+            config: config_dir()?,
+            plugins: plugins_dir(),
+        })
+    }
+}
+
 pub fn config_dir() -> Option<PathBuf> {
     config_dir_from(
         std::env::var_os("XDG_CONFIG_HOME"),
@@ -27,8 +42,32 @@ pub fn config_dir_from(
     Some(base.join("gband"))
 }
 
+pub fn plugins_dir() -> Option<PathBuf> {
+    plugins_dir_from(std::env::var_os("XDG_DATA_HOME"), std::env::var_os("HOME"))
+}
+
+pub fn plugins_dir_from(
+    xdg_data_home: Option<OsString>,
+    home: Option<OsString>,
+) -> Option<PathBuf> {
+    let base = match xdg_data_home
+        .map(PathBuf::from)
+        .filter(|path| path.is_absolute())
+    {
+        Some(base) => base,
+        None => PathBuf::from(home.filter(|home| !home.is_empty())?)
+            .join(".local")
+            .join("share"),
+    };
+    Some(base.join("gband").join("plugins"))
+}
+
+pub fn user_dir(dir: &Path) -> PathBuf {
+    dir.join("user")
+}
+
 pub fn user_file(dir: &Path) -> PathBuf {
-    dir.join("user").join("init.lua")
+    user_dir(dir).join("init.lua")
 }
 
 pub fn defaults_file(dir: &Path) -> PathBuf {
@@ -86,6 +125,24 @@ mod tests {
         assert_eq!(config_dir_from(os(""), os("/home/u")), expected);
         assert_eq!(config_dir_from(None, None), None);
         assert_eq!(config_dir_from(os("relative"), None), None);
+    }
+
+    #[test]
+    fn xdg_data_home_wins_when_absolute() {
+        assert_eq!(
+            plugins_dir_from(os("/tmp/data"), os("/home/u")),
+            Some(PathBuf::from("/tmp/data/gband/plugins"))
+        );
+    }
+
+    #[test]
+    fn data_home_fallback() {
+        let expected = Some(PathBuf::from("/home/u/.local/share/gband/plugins"));
+        assert_eq!(plugins_dir_from(None, os("/home/u")), expected);
+        assert_eq!(plugins_dir_from(os("relative"), os("/home/u")), expected);
+        assert_eq!(plugins_dir_from(os(""), os("/home/u")), expected);
+        assert_eq!(plugins_dir_from(None, None), None);
+        assert_eq!(plugins_dir_from(os("relative"), None), None);
     }
 
     #[test]
