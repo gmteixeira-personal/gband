@@ -4,6 +4,7 @@ use gband_core::geometry::{BORDER, Size, Tile, tiles};
 use gband_core::layout::{Layout, PaneId};
 use gband_core::view::View;
 use gband_emulator::{Emulator, Grid};
+use gband_lua::StatusLine;
 use ratatui::Frame;
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Position, Rect};
@@ -12,10 +13,17 @@ use ratatui::widgets::{Block, Clear, Widget};
 use tui_term::widget::{Cursor, PseudoTerminal, Screen};
 
 use crate::animation::{Drawn, DrawnBand, DrawnTile};
+use crate::color::ColorSupport;
 
 pub const FOCUSED_BORDER: Style = Style::new().add_modifier(Modifier::BOLD);
 pub const UNFOCUSED_BORDER: Style = Style::new().add_modifier(Modifier::DIM);
 pub const BANNER: Style = Style::new().fg(Color::Red).add_modifier(Modifier::REVERSED);
+
+pub struct StatusArea<'a> {
+    pub area: Rect,
+    pub line: Option<&'a StatusLine>,
+    pub colors: ColorSupport,
+}
 
 pub struct Ribbon<'a> {
     pub layout: &'a Layout,
@@ -23,21 +31,52 @@ pub struct Ribbon<'a> {
     pub view: &'a View,
     pub grids: &'a HashMap<PaneId, Grid>,
     pub drawn: &'a Drawn,
+    pub region: Rect,
     pub banner: Option<&'a str>,
+    pub status: Option<StatusArea<'a>>,
 }
 
 pub fn draw_frame(frame: &mut Frame<'_>, ribbon: &Ribbon<'_>) {
     let cursor = render(ribbon, frame.buffer_mut());
-    if let Some(banner) = ribbon.banner {
-        draw_banner(frame.buffer_mut(), banner);
+    match (&ribbon.status, ribbon.banner) {
+        (Some(status), _) => draw_status(frame.buffer_mut(), status),
+        (None, Some(banner)) => draw_banner(frame.buffer_mut(), ribbon.region, banner),
+        (None, None) => {}
     }
     if let Some(cursor) = cursor {
         frame.set_cursor_position(cursor);
     }
 }
 
-fn draw_banner(buffer: &mut Buffer, text: &str) {
-    let area = buffer.area;
+fn draw_status(buffer: &mut Buffer, status: &StatusArea<'_>) {
+    let area = status.area.intersection(buffer.area);
+    if area.is_empty() {
+        return;
+    }
+    Clear.render(area, buffer);
+    let Some(line) = status.line else {
+        return;
+    };
+    buffer.set_style(area, status.colors.style(&line.base));
+    for span in &line.spans {
+        let Some(room) = area.width.checked_sub(span.col).filter(|room| *room > 0) else {
+            continue;
+        };
+        let cells = gband_lua::ui::width(&span.text).min(usize::from(room)) as u16;
+        let x = area.x + span.col;
+        buffer.set_style(Rect::new(x, area.y, cells, 1), Style::reset());
+        buffer.set_stringn(
+            x,
+            area.y,
+            &span.text,
+            usize::from(cells),
+            status.colors.style(&span.style),
+        );
+    }
+}
+
+fn draw_banner(buffer: &mut Buffer, region: Rect, text: &str) {
+    let area = region.intersection(buffer.area);
     let Some(row) = area.bottom().checked_sub(1).filter(|_| area.height > 0) else {
         return;
     };
@@ -49,7 +88,7 @@ fn draw_banner(buffer: &mut Buffer, text: &str) {
 }
 
 pub fn render(ribbon: &Ribbon<'_>, buffer: &mut Buffer) -> Option<Position> {
-    let target = buffer.area;
+    let target = ribbon.region.intersection(buffer.area);
     let focused = ribbon.view.focused();
     let mut cursor = None;
     for drawn in &ribbon.drawn.bands {

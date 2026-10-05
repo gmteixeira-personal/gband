@@ -6,8 +6,8 @@ use gband_core::input::{Key, KeyCode, Modifiers};
 use gband_core::layout::{LayoutOptions, Proportion};
 use gband_core::view::CenterFocusedColumn;
 use mlua::{IntoLua, Lua, LuaSerdeExt, Table, Value};
-use serde::Deserialize;
 use serde::de::{self, Deserializer, Visitor};
+use serde::{Deserialize, Serialize};
 
 use crate::api::require_loading;
 use crate::error::{ConfigError, caller};
@@ -16,12 +16,40 @@ use crate::keys::{key_name, parse_key};
 use crate::owner;
 
 const MAX_DENOMINATOR: u64 = 100;
+const MAX_STATUSLINE_HEIGHT: u16 = 8;
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum StatusLinePosition {
+    #[default]
+    Bottom,
+    Top,
+    Off,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StatusLineOptions {
+    pub position: StatusLinePosition,
+    pub height: u16,
+    pub separator: String,
+}
+
+impl Default for StatusLineOptions {
+    fn default() -> Self {
+        Self {
+            position: StatusLinePosition::default(),
+            height: 1,
+            separator: " │ ".to_owned(),
+        }
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Options {
     pub prefix: Key,
     pub layout: LayoutOptions,
     pub center_focused_column: CenterFocusedColumn,
+    pub statusline: StatusLineOptions,
 }
 
 impl Default for Options {
@@ -30,6 +58,7 @@ impl Default for Options {
             prefix: Key::new(KeyCode::Char(' '), Modifiers::CTRL),
             layout: LayoutOptions::default(),
             center_focused_column: CenterFocusedColumn::default(),
+            statusline: StatusLineOptions::default(),
         }
     }
 }
@@ -54,6 +83,15 @@ impl Options {
         if let Some(policy) = patch.center_focused_column {
             self.center_focused_column = policy;
         }
+        if let Some(position) = patch.statusline_position {
+            self.statusline.position = position;
+        }
+        if let Some(Height(height)) = patch.statusline_height {
+            self.statusline.height = height;
+        }
+        if let Some(separator) = patch.statusline_separator {
+            self.statusline.separator = separator;
+        }
     }
 }
 
@@ -65,6 +103,9 @@ impl Options {
             "default_column_width" => self.layout.default_width = defaults.layout.default_width,
             "width_presets" => self.layout.presets = defaults.layout.presets,
             "center_focused_column" => self.center_focused_column = defaults.center_focused_column,
+            "statusline_position" => self.statusline.position = defaults.statusline.position,
+            "statusline_height" => self.statusline.height = defaults.statusline.height,
+            "statusline_separator" => self.statusline.separator = defaults.statusline.separator,
             _ => {}
         }
     }
@@ -78,19 +119,25 @@ impl Options {
                 .create_sequence_from(self.layout.presets.iter().map(|&preset| width(preset)))?
                 .into_lua(lua),
             "center_focused_column" => lua.to_value(&self.center_focused_column),
+            "statusline_position" => lua.to_value(&self.statusline.position),
+            "statusline_height" => self.statusline.height.into_lua(lua),
+            "statusline_separator" => self.statusline.separator.as_str().into_lua(lua),
             _ => Ok(Value::Nil),
         }
     }
 }
 
-pub const NAMES: [&str; 4] = [
+pub const NAMES: [&str; 7] = [
     "prefix",
     "default_column_width",
     "width_presets",
     "center_focused_column",
+    "statusline_position",
+    "statusline_height",
+    "statusline_separator",
 ];
 
-const BUILTIN: [(&str, &str, &str); 4] = [
+const BUILTIN: [(&str, &str, &str); 7] = [
     ("prefix", "string", "the key that starts a key sequence"),
     (
         "default_column_width",
@@ -106,6 +153,21 @@ const BUILTIN: [(&str, &str, &str); 4] = [
         "center_focused_column",
         "string",
         "when the view centres the focused column: never, always or on-overflow",
+    ),
+    (
+        "statusline_position",
+        "string",
+        "where the status line sits: bottom, top or off",
+    ),
+    (
+        "statusline_height",
+        "integer",
+        "the number of rows the status line takes, from 1 to 8",
+    ),
+    (
+        "statusline_separator",
+        "string",
+        "the text drawn between adjacent status line components",
     ),
 ];
 
@@ -520,6 +582,53 @@ pub struct OptionsPatch {
     default_column_width: Option<Width>,
     width_presets: Option<Presets>,
     center_focused_column: Option<CenterFocusedColumn>,
+    statusline_position: Option<StatusLinePosition>,
+    statusline_height: Option<Height>,
+    statusline_separator: Option<String>,
+}
+
+#[derive(Debug)]
+struct Height(u16);
+
+impl<'de> Deserialize<'de> for Height {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct Integer;
+
+        impl Visitor<'_> for Integer {
+            type Value = i64;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str("an integer")
+            }
+
+            fn visit_i64<E: de::Error>(self, value: i64) -> Result<i64, E> {
+                Ok(value)
+            }
+
+            fn visit_u64<E: de::Error>(self, value: u64) -> Result<i64, E> {
+                i64::try_from(value).map_err(|_| E::custom("the integer is too large"))
+            }
+
+            fn visit_f64<E: de::Error>(self, value: f64) -> Result<i64, E> {
+                if value.fract() == 0.0 && value.abs() < 1e15 {
+                    Ok(value as i64)
+                } else {
+                    Err(E::custom(format!("expected an integer, found {value}")))
+                }
+            }
+        }
+
+        let value = deserializer.deserialize_i64(Integer)?;
+        u16::try_from(value)
+            .ok()
+            .filter(|height| (1..=MAX_STATUSLINE_HEIGHT).contains(height))
+            .map(Height)
+            .ok_or_else(|| {
+                de::Error::custom(format!(
+                    "expected an integer from 1 to {MAX_STATUSLINE_HEIGHT}, found {value}"
+                ))
+            })
+    }
 }
 
 #[derive(Debug)]
@@ -692,7 +801,7 @@ mod tests {
     #[test]
     fn every_option_is_read() {
         let options = patched(
-            "{ prefix = 'ctrl+b', default_column_width = 0.35, width_presets = { 1/2 }, center_focused_column = 'on-overflow' }",
+            "{ prefix = 'ctrl+b', default_column_width = 0.35, width_presets = { 1/2 }, center_focused_column = 'on-overflow', statusline_position = 'top', statusline_height = 2, statusline_separator = ' | ' }",
         )
         .unwrap();
         assert_eq!(
@@ -704,6 +813,11 @@ mod tests {
                     presets: vec![Proportion::ONE_HALF],
                 },
                 center_focused_column: CenterFocusedColumn::OnOverflow,
+                statusline: StatusLineOptions {
+                    position: StatusLinePosition::Top,
+                    height: 2,
+                    separator: " | ".to_owned(),
+                },
             }
         );
     }
@@ -718,6 +832,11 @@ mod tests {
             "{ default_column_width = 'wide' }",
             "{ center_focused_column = 'sometimes' }",
             "{ prefix = 'ctrl+hyper' }",
+            "{ statusline_position = 'left' }",
+            "{ statusline_height = 0 }",
+            "{ statusline_height = 9 }",
+            "{ statusline_height = 1.5 }",
+            "{ statusline_separator = 3 }",
         ] {
             assert!(patched(source).is_err(), "{source}");
         }

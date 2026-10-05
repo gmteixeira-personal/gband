@@ -7,7 +7,7 @@ use gband_client::animation::Animations;
 use gband_client::{Controls, Display, Step};
 use gband_core::geometry::Size;
 use gband_core::input::Key;
-use gband_core::layout::{Layout, LayoutOptions, PaneId};
+use gband_core::layout::{Direction, Layout, LayoutOptions, PaneId, SessionAction};
 use gband_lua::keys::parse_key;
 use gband_lua::{Config, ConfigError, DEFAULTS, LoadOptions, Locations};
 use gband_protocol::{ClientMessage, ServerMessage};
@@ -89,7 +89,7 @@ local function record(name)
     log[#log + 1] = name .. ' ' .. table.concat(keys, ',')
   end
 end
-for _, name in ipairs({ 'Attached', 'FocusChanged', 'BandChanged', 'PaneOpened', 'PaneClosed', 'TerminalResized', 'ConfigReloaded', 'KeyTableChanged' }) do
+for _, name in ipairs({ 'Attached', 'FocusChanged', 'BandChanged', 'PaneOpened', 'PaneClosed', 'LayoutChanged', 'TerminalResized', 'ConfigReloaded', 'KeyTableChanged' }) do
   gband.on(name, record(name))
 end
 ";
@@ -184,6 +184,71 @@ fn pane_opened_and_closed() {
             format!("PaneClosed band=1,pane={second}"),
         ]
     );
+}
+
+#[test]
+fn layout_changed_follows_pane_events() {
+    let (_scratch, mut client) = recording("layout-after-panes", "");
+    let (one, _) = layout_of(1);
+    let (two, panes) = layout_of(2);
+    client.receive([shown(&one)]);
+    client.receive([shown(&two)]);
+    let log: Vec<String> = client
+        .log()
+        .into_iter()
+        .filter(|entry| entry.starts_with("Pane") || entry.starts_with("Layout"))
+        .collect();
+    assert_eq!(
+        log,
+        [
+            format!("PaneOpened band=1,pane={}", panes[1].0),
+            "LayoutChanged ".to_owned(),
+        ]
+    );
+}
+
+#[test]
+fn layout_change_without_a_pane_change() {
+    let (_scratch, mut client) = recording("layout-change", "");
+    let (mut layout, panes) = layout_of(2);
+    client.receive([shown(&layout), ServerMessage::Focus(panes[1])]);
+    client.clear();
+    layout.apply(
+        SessionAction::ConsumeOrExpel {
+            pane: panes[1],
+            direction: Direction::Left,
+        },
+        Size::new(80, 24),
+        &LayoutOptions::default(),
+    );
+    client.receive([shown(&layout)]);
+    assert_eq!(client.log(), ["LayoutChanged "]);
+}
+
+#[test]
+fn heights_alone_are_no_layout_change() {
+    let (_scratch, mut client) = recording("layout-heights", "");
+    let (mut layout, panes) = layout_of(2);
+    layout.apply(
+        SessionAction::ConsumeOrExpel {
+            pane: panes[1],
+            direction: Direction::Left,
+        },
+        Size::new(80, 24),
+        &LayoutOptions::default(),
+    );
+    client.receive([shown(&layout)]);
+    client.clear();
+    layout.apply(
+        SessionAction::StepHeight {
+            pane: panes[0],
+            step: gband_core::layout::Step::Grow,
+        },
+        Size::new(80, 24),
+        &LayoutOptions::default(),
+    );
+    client.receive([shown(&layout)]);
+    assert_eq!(client.log(), Vec::<String>::new());
 }
 
 #[test]

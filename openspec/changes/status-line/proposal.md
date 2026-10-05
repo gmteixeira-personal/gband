@@ -34,7 +34,7 @@ Out of scope: a key hints plugin, column headers, a band bar, overlays, pickers 
 - `client-attach`: the ribbon area, which the client reports as its terminal size, uses as its viewport and draws the ribbon in. The status line rows. The banner only while no status line is drawn.
 - `configuration`: the gband API installed before the init file includes the status line, its groups and the `default` colorscheme. The default configuration sets up the bundled segments. The options `statusline_position`, `statusline_height` and `statusline_separator`. Errors are shown in the status line.
 - `lua-events`: the built-in events `LayoutChanged`, `HighlightChanged` and `ColorschemeChanged`.
-- `plugins`: module lookup also finds the modules bundled with gband.
+- `plugins`: module lookup also finds the modules bundled with gband. A plugin error at setup shows in the status line's error item.
 
 ## Impact
 
@@ -62,13 +62,7 @@ Out of scope: a key hints plugin, column headers, a band bar, overlays, pickers 
 - crates/client/src/color.rs
 - crates/client/src/placement.rs
 - crates/client/tests/
-- src/main.rs
-- tests/common/mod.rs
 - tests/statusline.rs
-- tests/attach.rs
-- tests/sessions.rs
-- tests/config.rs
-- tests/kill_server.rs
 - examples/plugins/pane/
 - docs/plugins.md
 - README.md

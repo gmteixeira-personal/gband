@@ -129,6 +129,8 @@ fn copied_defaults_load_unchanged() {
     let defaults = gband_lua::defaults();
     assert_eq!(config.options, defaults.options);
     assert_eq!(actions(&config), actions(&defaults));
+    assert!(config.errors.is_empty(), "{:?}", config.errors);
+    assert_eq!(component_ids(&config), component_ids(&defaults));
 }
 
 #[test]
@@ -203,6 +205,14 @@ fn defaults_reproduce_the_built_in_behaviour() {
     ]
     .map(|((table, chord), action)| (table.to_owned(), chord, action));
     assert_eq!(actions(&config), expected);
+    assert_eq!(component_ids(&config), ["band", "mode", "position"]);
+}
+
+fn component_ids(config: &Config) -> Vec<String> {
+    eval(
+        config,
+        "local ids = {} for _, c in ipairs(gband.ui.statusline.list()) do ids[#ids + 1] = c.id end return ids",
+    )
 }
 
 #[test]

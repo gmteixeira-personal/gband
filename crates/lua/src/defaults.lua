@@ -2,6 +2,9 @@ gband.opt.prefix = "ctrl+space"
 gband.opt.default_column_width = 1/2
 gband.opt.width_presets = { 1/3, 1/2, 2/3 }
 gband.opt.center_focused_column = "never"
+gband.opt.statusline_position = "bottom"
+gband.opt.statusline_height = 1
+gband.opt.statusline_separator = " │ "
 
 local set = gband.keymap.set
 local action = gband.action
@@ -25,3 +28,7 @@ set("prefix", "+", action.grow_pane_height, { desc = "grow the height of the pan
 set("prefix", "R", action.reset_pane_height, { desc = "reset the height of the pane" })
 set("prefix", "D", action.detach, { desc = "detach" })
 set("prefix", "prefix", action.send_prefix, { desc = "send the prefix key to the focused pane" })
+
+gband.plugin("gband.statusline.band")
+gband.plugin("gband.statusline.mode")
+gband.plugin("gband.statusline.position")

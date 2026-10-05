@@ -149,6 +149,49 @@ pub(crate) fn run<T>(
     }))
 }
 
+pub(crate) fn isolated<T>(
+    lua: &Lua,
+    owner: Option<String>,
+    label: Option<String>,
+    f: impl FnOnce() -> mlua::Result<T>,
+) -> mlua::Result<Result<T, Failure>> {
+    let saved = {
+        let mut budget = budget(lua);
+        let saved = (
+            budget.left,
+            budget.depth,
+            budget.exhausted.take(),
+            std::mem::take(&mut budget.tightened),
+        );
+        budget.depth = 0;
+        saved
+    };
+    let result = run(lua, owner, f);
+    {
+        let mut budget = budget(lua);
+        (
+            budget.left,
+            budget.depth,
+            budget.exhausted,
+            budget.tightened,
+        ) = saved;
+    }
+    Ok(result?.map_err(|mut failure| {
+        if let Some(label) = label {
+            failure.error.plugin = Some(label);
+        }
+        failure
+    }))
+}
+
+pub(crate) fn report_isolated(lua: &Lua, failure: Failure, labelled: bool) {
+    if labelled {
+        push(lua, failure.error);
+    } else {
+        report(lua, failure);
+    }
+}
+
 pub(crate) fn report(lua: &Lua, failure: Failure) {
     if let Some(plugin) = &failure.error.plugin
         && (failure.limit || is_loading(lua))
@@ -263,6 +306,75 @@ mod tests {
         let failure = guarded(&lua, Some("hello"), "\n\nerror('boom')").unwrap_err();
         assert!(!failure.limit);
         assert_eq!(failure.error.to_string(), "hello: /p/x.lua:3: boom");
+    }
+
+    fn with_isolated(lua: &Lua, label: Option<&str>) {
+        let isolated = lua
+            .create_function(
+                move |lua, (owner, label, function): (Option<String>, Option<String>, Function)| {
+                    let labelled = label.is_some();
+                    match isolated(lua, owner, label, || function.call::<()>(()))? {
+                        Ok(()) => Ok(true),
+                        Err(failure) => {
+                            report_isolated(lua, failure, labelled);
+                            Ok(false)
+                        }
+                    }
+                },
+            )
+            .unwrap();
+        lua.globals().set("isolated", isolated).unwrap();
+        lua.globals().set("label", label).unwrap();
+    }
+
+    #[test]
+    fn isolated_stop_ends_only_the_inner_call() {
+        let lua = state(50_000);
+        with_isolated(&lua, None);
+        guarded(
+            &lua,
+            Some("outer"),
+            "stopped = isolated('inner', nil, function() while true do end end)\nfor i = 1, 5000 do end\nfinished = true",
+        )
+        .unwrap();
+        assert!(!lua.globals().get::<bool>("stopped").unwrap());
+        assert!(lua.globals().get::<bool>("finished").unwrap());
+        assert!(owner::is_failed(&lua, Some("inner")));
+        assert!(!owner::is_failed(&lua, Some("outer")));
+        let reported = drain(&lua);
+        assert_eq!(reported.len(), 1);
+        assert_eq!(reported[0].plugin.as_deref(), Some("inner"));
+        assert_eq!(reported[0].message, LIMIT);
+    }
+
+    #[test]
+    fn isolated_keeps_the_outer_budget() {
+        let lua = state(50_000);
+        with_isolated(&lua, None);
+        let failure = guarded(
+            &lua,
+            Some("outer"),
+            "isolated(nil, nil, function() end)\nwhile true do end",
+        )
+        .unwrap_err();
+        assert!(failure.limit);
+        assert_eq!(failure.error.plugin.as_deref(), Some("outer"));
+    }
+
+    #[test]
+    fn labelled_stop_marks_nothing_failed() {
+        let lua = state(50_000);
+        with_isolated(&lua, Some("colors/dusk"));
+        guarded(
+            &lua,
+            Some("outer"),
+            "isolated('inner', label, function() while true do end end)",
+        )
+        .unwrap();
+        assert!(!owner::is_failed(&lua, Some("inner")));
+        assert!(!owner::is_failed(&lua, Some("colors/dusk")));
+        let reported = drain(&lua);
+        assert_eq!(reported[0].plugin.as_deref(), Some("colors/dusk"));
     }
 
     #[test]

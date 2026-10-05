@@ -1,7 +1,9 @@
 pub mod animation;
 pub mod bindings;
+pub mod color;
 mod connect;
 pub mod input;
+pub mod placement;
 pub mod render;
 mod requests;
 mod transport;
@@ -18,21 +20,27 @@ use crossterm::execute;
 use gband_core::action::{Action, ClientAction, SessionCommand};
 use gband_core::geometry::Size;
 use gband_core::input::Key;
-use gband_core::layout::{BandId, Layout, PaneId, Program, SessionAction};
+use gband_core::layout::{BandId, Layout, PaneId, Program, Proportion, SessionAction};
 use gband_core::view::{CenterFocusedColumn, Scene, View, ViewAction};
 use gband_emulator::{Emulator, Grid};
-use gband_lua::{Binding, Config, ConfigError, Dispatch, Event, Options, Outcome as Ran, Runtime};
+use gband_lua::{
+    BandState, Binding, ColumnState, Config, ConfigError, Dispatch, Event, Options, Outcome as Ran,
+    Runtime, StatusLine, ViewState,
+};
 use gband_protocol::{ClientMessage, ExecutableId, ServerMessage, SessionName};
-use ratatui::DefaultTerminal;
+use ratatui::layout::Rect;
+use ratatui::{DefaultTerminal, Frame};
 use tokio::sync::mpsc;
 
 use crate::animation::{
     ANIMATIONS_VARIABLE, Animations, Drawn, FRAME, Presentation, Targets, parse_animations,
 };
 use crate::bindings::{Command, Keymap, Leader, ROOT};
-pub use crate::connect::{Connection, connect};
+use crate::color::ColorSupport;
+pub use crate::connect::{Connection, connect, connect_reporting};
 use crate::input::key_from_event;
-use crate::render::{Ribbon, draw_frame};
+use crate::placement::Placement;
+use crate::render::{Ribbon, StatusArea, draw_frame};
 pub use crate::requests::{kill_session, list_sessions};
 pub use crate::transport::{Link, Transport, UnixTransport};
 
@@ -76,8 +84,9 @@ pub fn run(
 ) -> Result<Report> {
     let cwd = std::env::current_dir().context("cannot read the current directory")?;
     let animations = parse_animations(std::env::var(ANIMATIONS_VARIABLE).ok().as_deref());
+    let placement = Placement::new(&configuration.config.options.statusline);
     runtime()?.block_on(async {
-        let mut connection = connect(&config, &transport).await?;
+        let mut connection = connect_reporting(&config, &transport, placement).await?;
         connection
             .send(&ClientMessage::Attach {
                 session: config.session.clone(),
@@ -127,6 +136,9 @@ pub struct Display {
     layout: Layout,
     area: Size,
     terminal: Size,
+    placement: Placement,
+    ribbon: Rect,
+    status: Option<Rect>,
     grids: HashMap<PaneId, Grid>,
     view: Option<View>,
     shown: Option<Vec<PaneId>>,
@@ -134,14 +146,20 @@ pub struct Display {
     prefix: Option<Key>,
     policy: CenterFocusedColumn,
     banner: Option<String>,
+    colors: ColorSupport,
+    line: Option<StatusLine>,
 }
 
 impl Display {
     pub fn new(terminal: Size, animations: Animations) -> Self {
+        let (ribbon, status) = Placement::OFF.split(terminal);
         Self {
             layout: Layout::new(),
             area: terminal,
             terminal,
+            placement: Placement::OFF,
+            ribbon,
+            status,
             grids: HashMap::new(),
             view: None,
             shown: None,
@@ -149,6 +167,8 @@ impl Display {
             prefix: None,
             policy: CenterFocusedColumn::default(),
             banner: None,
+            colors: ColorSupport::default(),
+            line: None,
         }
     }
 
@@ -157,6 +177,84 @@ impl Display {
         self.policy = options.center_focused_column;
         if let Some(view) = &mut self.view {
             view.set_center_focused_column(self.policy);
+        }
+        self.set_placement(Placement::new(&options.statusline));
+    }
+
+    pub fn set_colors(&mut self, colors: ColorSupport) {
+        self.colors = colors;
+    }
+
+    pub fn colors(&self) -> ColorSupport {
+        self.colors
+    }
+
+    pub fn reported_size(&self) -> Size {
+        Size::new(self.ribbon.width, self.ribbon.height)
+    }
+
+    pub fn ribbon_area(&self) -> Rect {
+        self.ribbon
+    }
+
+    pub fn status_area(&self) -> Option<Rect> {
+        self.status
+    }
+
+    pub fn status_line(&self) -> Option<&StatusLine> {
+        self.line.as_ref()
+    }
+
+    pub fn set_status_line(&mut self, line: StatusLine) {
+        self.line = Some(line);
+    }
+
+    pub fn set_size(&mut self, terminal: Size, placement: Placement) -> Option<Size> {
+        let before = self.reported_size();
+        self.terminal = terminal;
+        self.placement = placement;
+        (self.ribbon, self.status) = placement.split(terminal);
+        let after = self.reported_size();
+        if after == before {
+            return None;
+        }
+        self.presentation.snap();
+        self.with_view(View::sync);
+        Some(after)
+    }
+
+    pub fn set_placement(&mut self, placement: Placement) -> Option<Size> {
+        self.set_size(self.terminal, placement)
+    }
+
+    pub fn view_state(&self, table: &str) -> ViewState {
+        let bands = self.layout.bands();
+        let viewed = match &self.view {
+            Some(view) => Some(view.band()),
+            None => bands.first().map(|band| band.id),
+        };
+        let index = viewed.and_then(|id| bands.iter().position(|band| band.id == id));
+        let count = |n: usize| u32::try_from(n).unwrap_or(u32::MAX);
+        let column = index.and_then(|index| {
+            let band = &bands[index];
+            let (column, _) = band.locate(self.focused()?)?;
+            Some(ColumnState {
+                index: count(column + 1),
+                count: count(band.columns.len()),
+            })
+        });
+        ViewState {
+            table: table.to_owned(),
+            band: BandState {
+                number: viewed.map_or(0, |id| id.0),
+                index: index.map_or(0, |index| count(index + 1)),
+                count: count(bands.len()),
+            },
+            column,
+            pane: self.focused().map(|pane| pane.0),
+            width: self.terminal.cols,
+            drawn: self.status.is_some(),
+            error: self.banner.clone(),
         }
     }
 
@@ -193,6 +291,19 @@ impl Display {
                 .flat_map(|band| band.panes().map(move |pane| (pane, band.id)))
                 .collect(),
             size: self.terminal,
+            shape: self
+                .layout
+                .bands()
+                .iter()
+                .map(|band| {
+                    let columns = band
+                        .columns
+                        .iter()
+                        .map(|column| (column.panes.clone(), column.width, column.full_width))
+                        .collect();
+                    (band.id, columns)
+                })
+                .collect(),
         })
     }
 
@@ -247,17 +358,33 @@ impl Display {
         self.with_view(|view, scene| view.apply(action, scene));
     }
 
-    fn resize(&mut self, terminal: Size) {
-        self.terminal = terminal;
-        self.presentation.snap();
-        self.with_view(View::sync);
-    }
-
     pub fn present(&mut self, now: Instant) -> Option<Drawn> {
         let view = self.view.as_ref()?;
-        let targets = Targets::new(&self.layout, self.area, view, self.terminal);
+        let targets = Targets::new(&self.layout, self.area, view, self.reported_size());
         self.presentation.update(now, &targets);
         Some(self.presentation.drawn(now))
+    }
+
+    pub fn draw(&mut self, frame: &mut Frame<'_>, now: Instant) {
+        let drawn = self.present(now);
+        let (Some(view), Some(drawn)) = (&self.view, &drawn) else {
+            return;
+        };
+        let ribbon = Ribbon {
+            layout: &self.layout,
+            area: self.area,
+            view,
+            grids: &self.grids,
+            drawn,
+            region: self.ribbon,
+            banner: self.banner.as_deref(),
+            status: self.status.map(|area| StatusArea {
+                area,
+                line: self.line.as_ref(),
+                colors: self.colors,
+            }),
+        };
+        draw_frame(frame, &ribbon);
     }
 
     pub fn is_animating(&self, now: Instant) -> bool {
@@ -268,7 +395,7 @@ impl Display {
         Scene {
             layout: &self.layout,
             area: self.area,
-            viewport: self.terminal,
+            viewport: self.reported_size(),
         }
     }
 
@@ -276,7 +403,7 @@ impl Display {
         let scene = Scene {
             layout: &self.layout,
             area: self.area,
-            viewport: self.terminal,
+            viewport: Size::new(self.ribbon.width, self.ribbon.height),
         };
         if let Some(view) = &mut self.view {
             change(view, scene);
@@ -301,7 +428,10 @@ pub struct Observed {
     band: BandId,
     panes: BTreeMap<PaneId, BandId>,
     size: Size,
+    shape: Vec<(BandId, Vec<ColumnShape>)>,
 }
+
+type ColumnShape = (Vec<PaneId>, Proportion, bool);
 
 fn changes(before: Option<Observed>, after: Option<&Observed>) -> Vec<Event> {
     let (Some(before), Some(after)) = (before, after) else {
@@ -317,6 +447,9 @@ fn changes(before: Option<Observed>, after: Option<&Observed>) -> Vec<Event> {
         if !before.panes.contains_key(&pane) {
             events.push(Event::PaneOpened { pane, band });
         }
+    }
+    if after.shape != before.shape {
+        events.push(Event::LayoutChanged);
     }
     if after.band != before.band {
         events.push(Event::BandChanged {
@@ -351,6 +484,7 @@ pub struct Controls {
     keymap: Keymap,
     runtime: Runtime,
     leader: Leader,
+    refresh_pending: bool,
 }
 
 impl Controls {
@@ -361,6 +495,7 @@ impl Controls {
             keymap: Keymap::new(config.options.prefix, config.keymap),
             runtime: config.runtime,
             leader: Leader::default(),
+            refresh_pending: false,
         }
     }
 
@@ -373,6 +508,7 @@ impl Controls {
     }
 
     pub fn attached(&mut self, display: &mut Display, session: &str) -> Vec<Step> {
+        self.refresh_pending = true;
         self.react(
             display,
             vec![Event::Attached {
@@ -380,6 +516,24 @@ impl Controls {
             }],
             |_, _, _| {},
         )
+    }
+
+    pub fn refresh(&mut self, display: &mut Display) -> Vec<Step> {
+        self.react(display, Vec::new(), |controls, display, steps| {
+            controls.refresh_now(display, steps);
+        })
+    }
+
+    pub fn next_timer(&self) -> Option<Instant> {
+        self.runtime.next_timer()
+    }
+
+    pub fn fire_timers(&mut self, display: &mut Display, now: Instant) -> Vec<Step> {
+        self.react(display, Vec::new(), |controls, display, steps| {
+            controls.push_state(display, steps);
+            let outcome = controls.runtime.fire_timers(now);
+            controls.apply(display, outcome, steps);
+        })
     }
 
     pub fn receive(
@@ -409,8 +563,11 @@ impl Controls {
     }
 
     pub fn resize(&mut self, display: &mut Display, terminal: Size) -> Vec<Step> {
-        self.react(display, Vec::new(), |_, display, _| {
-            display.resize(terminal)
+        self.react(display, Vec::new(), |_, display, steps| {
+            let placement = display.placement;
+            if let Some(size) = display.set_size(terminal, placement) {
+                steps.push(resize_step(size));
+            }
         })
     }
 
@@ -445,6 +602,7 @@ impl Controls {
                     tracing::warn!("configuration error: {error}");
                 }
                 let previous = self.leader.active().to_owned();
+                let resized = display.set_placement(Placement::new(&config.options.statusline));
                 *self = Self::new(config, display);
                 let mut events = vec![Event::ConfigReloaded];
                 if previous != ROOT {
@@ -453,7 +611,10 @@ impl Controls {
                         previous,
                     });
                 }
-                self.react(display, events, |_, _, _| {})
+                self.refresh_pending = true;
+                let mut steps: Vec<Step> = resized.map(resize_step).into_iter().collect();
+                steps.extend(self.react(display, events, |_, _, _| {}));
+                steps
             }
             Err(error) => {
                 tracing::warn!("configuration error: {error}");
@@ -474,6 +635,7 @@ impl Controls {
         let mut steps = Vec::new();
         let mut before = display.observe();
         let mut table = self.leader.active().to_owned();
+        let drawn = display.status_area().is_some();
         change(self, display, &mut steps);
         for depth in 0.. {
             self.table_changed(&mut table, &mut events);
@@ -491,11 +653,36 @@ impl Controls {
                 break;
             }
             for event in std::mem::take(&mut events) {
+                self.push_state(display, &mut steps);
                 let outcome = self.runtime.emit(&event);
                 self.apply(display, outcome, &mut steps);
             }
         }
+        if !drawn && display.status_area().is_some() {
+            self.refresh_pending = true;
+        }
+        if self.refresh_pending && display.view.is_some() {
+            self.refresh_pending = false;
+            self.refresh_now(display, &mut steps);
+        }
+        self.push_state(display, &mut steps);
+        if let Some(line) = self.runtime.take_line() {
+            display.set_status_line(line);
+        }
         steps
+    }
+
+    fn refresh_now(&mut self, display: &mut Display, steps: &mut Vec<Step>) {
+        self.push_state(display, steps);
+        let outcome = self.runtime.refresh_statusline();
+        self.apply(display, outcome, steps);
+    }
+
+    fn push_state(&mut self, display: &mut Display, steps: &mut Vec<Step>) {
+        let outcome = self
+            .runtime
+            .set_state(display.view_state(self.leader.active()));
+        self.apply(display, outcome, steps);
     }
 
     fn table_changed(&mut self, table: &mut String, events: &mut Vec<Event>) {
@@ -524,6 +711,13 @@ impl Controls {
             display.set_banner(Some(error.to_string()));
         }
     }
+}
+
+fn resize_step(size: Size) -> Step {
+    Step::Send(ClientMessage::Resize {
+        cols: size.cols,
+        rows: size.rows,
+    })
 }
 
 fn spawn(display: &mut Display, program: Option<Program>) -> Step {
@@ -587,6 +781,7 @@ async fn attach(
     let mut events = spawn_events();
     let size = terminal.size()?;
     let mut display = Display::new(Size::new(size.width, size.height), animations);
+    display.set_colors(ColorSupport::detect());
     let mut controls = Controls::new(configuration.config, &mut display);
     if let Some(error) = configuration.error {
         display.set_banner(Some(error.to_string()));
@@ -619,9 +814,17 @@ async fn attach(
         let frame = display
             .is_animating(now)
             .then(|| tokio::time::Instant::from_std(now + FRAME));
+        let timer = controls.next_timer().map(tokio::time::Instant::from_std);
         tokio::select! {
             () = tokio::time::sleep_until(frame.unwrap_or_else(tokio::time::Instant::now)),
                 if frame.is_some() => {}
+            () = tokio::time::sleep_until(timer.unwrap_or_else(tokio::time::Instant::now)),
+                if timer.is_some() => {
+                let steps = controls.fire_timers(&mut display, Instant::now());
+                if let Some(outcome) = perform(connection, steps).await? {
+                    return Ok(outcome);
+                }
+            }
             Some(result) = reloads.recv() => {
                 let steps = controls.reload(&mut display, result);
                 if let Some(outcome) = perform(connection, steps).await? {
@@ -649,7 +852,6 @@ async fn attach(
                 Some(TerminalEvent::Resize(cols, rows)) => {
                     terminal.autoresize()?;
                     let steps = controls.resize(&mut display, Size::new(cols, rows));
-                    connection.send(&ClientMessage::Resize { cols, rows }).await?;
                     if let Some(outcome) = perform(connection, steps).await? {
                         return Ok(outcome);
                     }
@@ -674,20 +876,6 @@ fn spawn_events() -> mpsc::UnboundedReceiver<TerminalEvent> {
 }
 
 fn draw(terminal: &mut DefaultTerminal, display: &mut Display, now: Instant) -> Result<()> {
-    let drawn = display.present(now);
-    terminal.draw(|frame| {
-        let (Some(view), Some(drawn)) = (&display.view, &drawn) else {
-            return;
-        };
-        let ribbon = Ribbon {
-            layout: &display.layout,
-            area: display.area,
-            view,
-            grids: &display.grids,
-            drawn,
-            banner: display.banner.as_deref(),
-        };
-        draw_frame(frame, &ribbon);
-    })?;
+    terminal.draw(|frame| display.draw(frame, now))?;
     Ok(())
 }

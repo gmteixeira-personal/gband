@@ -5,7 +5,10 @@ use std::path::{Path, PathBuf};
 
 use gband_core::input::Key;
 use gband_lua::keys::parse_key;
-use gband_lua::{Config, ConfigError, LoadOptions, Locations, Outcome};
+use gband_lua::{
+    BandState, Binding, Chord, Config, ConfigError, LoadOptions, Locations, Outcome, StatusLine,
+    ViewState,
+};
 use mlua::FromLua;
 
 pub struct Scratch(pub PathBuf);
@@ -103,4 +106,65 @@ pub fn assert_error_at(error: &ConfigError, path: &Path, line: u32, mentions: &s
 pub fn clean(outcome: &Outcome) {
     assert!(outcome.errors.is_empty(), "{:?}", outcome.errors);
     assert!(!outcome.disabled);
+}
+
+pub const JOB: &str = "gband.bind('alt+x', function() job() end)\n";
+
+pub fn run_job(config: &Config, code: &str) -> Outcome {
+    config
+        .runtime
+        .lua()
+        .load(format!("job = function()\n{code}\nend"))
+        .exec()
+        .unwrap_or_else(|error| panic!("{error}"));
+    let chord = Chord::Key(key("alt+x"));
+    let Some((_, Binding::Callback(callback))) = config.keymap["root"]
+        .iter()
+        .find(|(bound, _)| *bound == chord)
+    else {
+        panic!("alt+x is not bound to a function");
+    };
+    config.runtime.call(*callback)
+}
+
+pub fn drawn(width: u16) -> ViewState {
+    ViewState {
+        table: "root".to_owned(),
+        band: BandState {
+            number: 1,
+            index: 1,
+            count: 1,
+        },
+        column: None,
+        pane: None,
+        width,
+        drawn: true,
+        error: None,
+    }
+}
+
+pub fn text(line: &StatusLine, width: u16) -> String {
+    let mut cells = vec![" ".to_owned(); usize::from(width)];
+    for span in &line.spans {
+        let mut col = usize::from(span.col);
+        for c in span.text.chars() {
+            let cells_taken = gband_lua::ui::width(&c.to_string());
+            if col < cells.len() {
+                cells[col] = c.to_string();
+            }
+            for extra in 1..cells_taken {
+                if col + extra < cells.len() {
+                    cells[col + extra] = String::new();
+                }
+            }
+            col += cells_taken;
+        }
+    }
+    cells.concat()
+}
+
+pub fn presented(config: &Config, state: ViewState) -> StatusLine {
+    clean(&config.runtime.set_state(state));
+    clean(&config.runtime.refresh_statusline());
+    config.runtime.take_line().expect("a line is presented")
 }

@@ -8,7 +8,9 @@ use serde::de::DeserializeOwned;
 use tokio::io::{AsyncRead, AsyncWrite};
 
 use crate::ClientConfig;
+use crate::placement::Placement;
 use crate::transport::{Link, Transport};
+use gband_core::geometry::Size;
 
 pub struct Connection {
     pub reader: MessageReader<Box<dyn AsyncRead + Send + Unpin>>,
@@ -34,7 +36,16 @@ enum Handshake {
 }
 
 pub async fn connect(config: &ClientConfig, transport: &impl Transport) -> Result<Connection> {
+    connect_reporting(config, transport, Placement::OFF).await
+}
+
+pub async fn connect_reporting(
+    config: &ClientConfig,
+    transport: &impl Transport,
+    placement: Placement,
+) -> Result<Connection> {
     let (cols, rows) = crossterm::terminal::size().unwrap_or((80, 24));
+    let Size { cols, rows } = placement.reported(Size::new(cols, rows));
     let mut replaced = false;
     loop {
         let link = transport.open().await?;
