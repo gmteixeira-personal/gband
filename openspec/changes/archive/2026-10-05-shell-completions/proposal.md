@@ -48,5 +48,6 @@ None. The `command-line` requirements list their own five subcommands and stay t
 - src/lib.rs
 - src/completions.rs
 - tests/completions.rs
+- tests/subcommands.rs
 - README.md
 - openspec/changes/shell-completions/

@@ -1,10 +1,11 @@
-use std::io::IsTerminal;
+use std::io::{IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use anyhow::{Context, Result, bail};
 use clap::error::ErrorKind;
 use clap::{Args, CommandFactory, Parser, Subcommand};
+use gband::completions::{self, Shell};
 use gband::executable;
 use gband::logging::{self, Role};
 use gband::paths::{self, ServerName};
@@ -93,16 +94,27 @@ enum Command {
     KillSession,
     #[command(about = "Stop the running server and every session")]
     KillServer,
+    #[command(about = "Print the completion script for SHELL")]
+    Completions {
+        #[arg(value_name = "SHELL")]
+        shell: Shell,
+    },
+    #[command(about = "Install the completion script where SHELL loads it")]
+    InstallCompletions {
+        #[arg(value_name = "SHELL")]
+        shell: Shell,
+    },
 }
 
 impl Command {
-    fn role(&self) -> Role {
+    fn role(&self) -> Option<Role> {
         match self {
-            Command::Server => Role::Server,
+            Command::Server => Some(Role::Server),
             Command::Attach
             | Command::ListSessions
             | Command::KillSession
-            | Command::KillServer => Role::Client,
+            | Command::KillServer => Some(Role::Client),
+            Command::Completions { .. } | Command::InstallCompletions { .. } => None,
         }
     }
 
@@ -110,7 +122,23 @@ impl Command {
         match self {
             Command::ListSessions => Some("list-sessions"),
             Command::KillServer => Some("kill-server"),
-            Command::Server | Command::Attach | Command::KillSession => None,
+            Command::Server
+            | Command::Attach
+            | Command::KillSession
+            | Command::Completions { .. }
+            | Command::InstallCompletions { .. } => None,
+        }
+    }
+
+    fn is_standalone(&self) -> Option<&'static str> {
+        match self {
+            Command::Completions { .. } => Some("completions"),
+            Command::InstallCompletions { .. } => Some("install-completions"),
+            Command::Server
+            | Command::Attach
+            | Command::ListSessions
+            | Command::KillSession
+            | Command::KillServer => None,
         }
     }
 }
@@ -138,8 +166,33 @@ fn main() -> ExitCode {
             )
             .exit();
     }
+    if let Some(subcommand) = command.is_standalone() {
+        let flag = [
+            (cli.session.is_some(), "-s"),
+            (cli.selection.server.is_some(), "-S"),
+            (cli.selection.socket.is_some(), "-p"),
+        ]
+        .into_iter()
+        .find_map(|(set, flag)| set.then_some(flag));
+        if let Some(flag) = flag {
+            Cli::command()
+                .error(
+                    ErrorKind::ArgumentConflict,
+                    format!(
+                        "the option '{flag}' does not apply to '{subcommand}', which addresses no \
+                         server"
+                    ),
+                )
+                .exit();
+        }
+    }
+    let Some(role) = command.role() else {
+        return standalone(command).unwrap_or_else(|error| {
+            eprintln!("gband: {error:#}");
+            ExitCode::FAILURE
+        });
+    };
     let session = cli.session.unwrap_or_default();
-    let role = command.role();
 
     let _guard = match logging::init(role) {
         Ok(guard) => guard,
@@ -167,12 +220,47 @@ fn main() -> ExitCode {
         Command::ListSessions => list_sessions(socket, &cli.selection),
         Command::KillSession => kill_session(socket, session, &cli.selection),
         Command::KillServer => kill_server(&socket),
+        Command::Completions { .. } | Command::InstallCompletions { .. } => {
+            unreachable!("standalone subcommands return before logging starts")
+        }
     });
     result.unwrap_or_else(|error| {
         tracing::error!("{error:#}");
         eprintln!("gband: {error:#}");
         ExitCode::FAILURE
     })
+}
+
+fn standalone(command: Command) -> Result<ExitCode> {
+    match command {
+        Command::Completions { shell } => print_completions(shell),
+        Command::InstallCompletions { shell } => install_completions(shell),
+        _ => unreachable!("only standalone subcommands have no role"),
+    }
+}
+
+fn print_completions(shell: Shell) -> Result<ExitCode> {
+    let mut script = Vec::new();
+    completions::generate(shell, &mut Cli::command(), &mut script);
+    std::io::stdout()
+        .write_all(&script)
+        .context("cannot write the completion script to standard output")?;
+    Ok(ExitCode::SUCCESS)
+}
+
+fn install_completions(shell: Shell) -> Result<ExitCode> {
+    let path = completions::install_path(shell, |name| std::env::var_os(name))?;
+    completions::install(shell, &mut Cli::command(), &path)?;
+    println!("{}", path.display());
+    if shell == Shell::Zsh
+        && let Some(directory) = path.parent()
+    {
+        println!(
+            "add fpath=({} $fpath) to ~/.zshrc before compinit runs",
+            directory.display()
+        );
+    }
+    Ok(ExitCode::SUCCESS)
 }
 
 fn server(socket: PathBuf, session: SessionName, runtime_dir: &Path) -> Result<ExitCode> {
