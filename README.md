@@ -133,7 +133,8 @@ The actions in `gband.action`:
 ### Status line
 
 The status line takes the bottom row of the terminal, and the panes get the rows above it.
-By default it shows the viewed band on the left, such as `band 1`, the active key table after the prefix key, such as `prefix`, and the focused column on the right, such as `2/3`.
+By default it shows the viewed band on the left, such as `band 1`, the active key table after the prefix key, such as `prefix`, hints for the keys of that table, and the focused column on the right, such as `2/3`.
+The hints show `C-space prefix` until the prefix key is pressed, then each key of the prefix table with a short label, such as `h left  l right`, cut with `…` when the line is full.
 The latest configuration or plugin error shows first, in red.
 
 `statusline_position = "top"` moves it to the top row, and `"off"` removes it, so the panes get the whole terminal.
@@ -146,11 +147,14 @@ A `user/init.lua` replaces the defaults, so it sets the segments up itself with 
 ```lua
 gband.plugin("gband.statusline.band")
 gband.plugin("gband.statusline.mode")
+gband.plugin("gband.statusline.hints")
 gband.plugin("gband.statusline.position")
 ```
 
 Without these calls the status line is drawn empty.
-Each takes the options `align`, `priority`, `order` and `hl`, and `gband.plugin("gband.statusline.clock")` adds a clock.
+Each takes the options `align`, `priority` and `order`, all but `hints` also take `hl`, and `gband.plugin("gband.statusline.clock")` adds a clock.
+`hints` also takes `labels`, which renames or hides an action's hint, and `root = false`, which hides it until the prefix key.
+A `user/init.lua` written before the hints segment existed adds the `gband.plugin("gband.statusline.hints")` line to get it.
 `gband.colorscheme(name)` loads a colorscheme, and `gband.hl.set` styles any part of the line.
 [docs/plugins.md](docs/plugins.md) describes the segments, highlight groups, colorschemes and writing your own segment.
 

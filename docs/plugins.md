@@ -308,6 +308,7 @@ Everything on it is a component, and the segments gband bundles are plugins writ
 | `hl` | a highlight group name | `"StatusLineSegment"` |
 | `redraw_on` | a list of built-in event names and `"User"` | empty |
 | `redraw_interval` | an integer number of milliseconds, at least 100 | none |
+| `fill` | a boolean; a fill component renders again when the width left to it changes | `false` |
 
 Component ids are namespaced like action names.
 In the plugin `pane`, `id = "count"` gives `pane.count`, and a plugin adding one component can omit `id` to get `pane`.
@@ -315,7 +316,7 @@ Code that belongs to no plugin must give `id`.
 An invalid field, an unknown event name or an id already taken is an error at the line of the call.
 
 `gband.ui.statusline.remove(id)` removes a component and returns `true`, or returns `false` when no component has that id.
-`gband.ui.statusline.list()` returns `{ id, align, priority, order, hl, plugin, enabled }` for each component, in byte order of ids.
+`gband.ui.statusline.list()` returns `{ id, align, priority, order, hl, fill, plugin, enabled }` for each component, in byte order of ids.
 The tables are copies.
 
 All three can be called while the configuration loads and in any callback.
@@ -357,6 +358,12 @@ gband calls an enabled component's `render` only while the status line is drawn,
 - once each `redraw_interval` milliseconds
 - once when the terminal's width changes, and once when the status line starts being drawn
 - once on each `HighlightChanged` and `ColorschemeChanged`
+- for a fill component, once more after any of these, when the width left to it differs from the `width` of its latest call
+
+When one trigger renders several components, the others render first and the fill components after them, in descending `priority`, then in the order they were added.
+gband then lays the line out, and renders once more each enabled fill component whose `width` has changed, in the same order.
+Those renders trigger no further render.
+A component that fits its output to `ctx.width`, like the hints segment, sets `fill = true` so that width is never stale.
 
 Frames, animations included, draw the latest output and never call `render`.
 Keep `render` cheap anyway: it runs in the client's event loop.
@@ -384,29 +391,80 @@ It stays until the configuration next loads without errors.
 
 ### Bundled segments
 
-gband bundles four segment plugins:
+gband bundles five segment plugins:
 
 | module | plugin | shows | redraws on | align | priority | order | group |
 |---|---|---|---|---|---|---|---|
 | `gband.statusline.band` | `band` | `band ` and the viewed band's index | `BandChanged`, `LayoutChanged` | left | 20 | 10 | `StatusLineSegment` |
 | `gband.statusline.mode` | `mode` | the active key table; hidden in `root` | `KeyTableChanged` | left | 30 | 20 | `StatusLineAccent` |
+| `gband.statusline.hints` | `hints` | the keys of the active key table and what each does, below | `KeyTableChanged`, and as a fill component | left | 0 | 30 | `KeyHintLabel` |
 | `gband.statusline.position` | `position` | the focused column and the column count, such as `3/7`; hidden in an empty band | `FocusChanged`, `BandChanged`, `LayoutChanged` | right | 10 | 10 | `StatusLineMuted` |
 | `gband.statusline.clock` | `clock` | the local time, `os.date(opts.format)`, `"%H:%M"` by default | every `opts.interval` milliseconds, 1000 by default | right | 5 | 20 | `StatusLineMuted` |
 
-Each takes the options `align`, `priority`, `order` and `hl`.
+Each takes the options `align`, `priority` and `order`, and each but `hints` takes `hl`.
 An option of the wrong type makes `setup` fail.
-The default configuration sets up `band`, `mode` and `position`, in that order.
+The default configuration sets up `band`, `mode`, `hints` and `position`, in that order.
 A `user/init.lua` replaces the default configuration, so it gets the segments only with the same calls:
 
 ```lua
 gband.plugin("gband.statusline.band")
 gband.plugin("gband.statusline.mode", { align = "right", order = 1 })
+gband.plugin("gband.statusline.hints")
 gband.plugin("gband.statusline.position")
 gband.plugin("gband.statusline.clock", { format = "%H:%M:%S" })
 ```
 
 Without them the status line is drawn empty.
 Set `statusline_position = "off"` to give the ribbon the whole terminal.
+
+### The hints segment
+
+`hints` shows one hint per binding of the active key table, in the order `gband.keymap.list` gives them: the key in `KeyHintKey`, a space, and a label in `KeyHintLabel`, with two spaces between hints.
+In `root` it starts with the prefix key labelled `prefix`, when the `prefix` table holds a binding, so the default line shows `C-space prefix`, and the prefix table's hints after Ctrl+Space.
+
+Keys are shown short: `C-`, `A-` and `S-` for Ctrl, Alt and Shift, in that order, named keys in lowercase, `escape` as `esc`, and `shift` with a lowercase letter as the uppercase letter.
+`ctrl+space` shows as `C-space`, `shift+d` as `D` and `Alt+PageUp` as `A-pageup`.
+The key `prefix` in another table shows as the key the `prefix` option names.
+
+A hint's label is the first of these that applies:
+
+1. the `labels` option's string for the binding's action; an action that `labels` maps to `false` takes no hint
+2. the binding's own `desc`, when it is not empty and differs from its action's description
+3. a built-in action's short label, below
+4. a registered action's description, when it is not empty
+5. the action's full name, such as `hello.greet`
+
+A binding to a function shows its `desc`, and takes no hint without one.
+
+| action | short label | action | short label |
+|---|---|---|---|
+| `focus_column_left` | `left` | `consume_or_expel_right` | `stack right` |
+| `focus_column_right` | `right` | `cycle_column_width` | `width` |
+| `focus_pane_down` | `down` | `toggle_full_width` | `full` |
+| `focus_pane_up` | `up` | `grow_column_width` | `wider` |
+| `focus_band_down` | `band down` | `shrink_column_width` | `narrower` |
+| `focus_band_up` | `band up` | `grow_pane_height` | `taller` |
+| `open_pane` | `new` | `shrink_pane_height` | `shorter` |
+| `close_pane` | `close` | `reset_pane_height` | `reset height` |
+| `consume_or_expel_left` | `stack left` | `detach` | `detach` |
+| | | `send_prefix` | `send prefix` |
+
+The segment fits itself to its `ctx.width`: it shows the leading hints that fit, followed by ` …` when some are left out, and hides itself when not even the first fits.
+It is a fill component, so that width follows the other segments of the same render.
+
+Its options, besides `align`, `priority` and `order`:
+
+| option | value | default |
+|---|---|---|
+| `labels` | a table from action names to a label string, or `false` to leave the action out | `{}` |
+| `root` | `false` hides the segment while `root` is active | `true` |
+
+```lua
+gband.plugin("gband.statusline.hints", { labels = { close_pane = "kill", send_prefix = false } })
+```
+
+Its groups are `KeyHintKey`, linked to `StatusLineAccent` by default, and `KeyHintLabel`, linked to `StatusLineSegment`.
+A colorscheme or `gband.hl.set` can style them like any group.
 
 ### A component
 
@@ -473,6 +531,8 @@ The status line defines these groups, as defaults:
 | `StatusLineMuted` | `{ dim = true }` | secondary text |
 | `StatusLineAccent` | `{ bold = true }` | emphasised text |
 | `StatusLineError` | `{ fg = "red", bold = true }` | the error item |
+
+The hints segment adds `KeyHintKey`, `{ link = "StatusLineAccent" }`, and `KeyHintLabel`, `{ link = "StatusLineSegment" }`, when its module is first required.
 
 A span's style is its group's resolved style over `StatusLine`'s, field by field.
 
