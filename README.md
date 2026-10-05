@@ -1,7 +1,8 @@
 # gband
 
 gband is a terminal multiplexer inspired by the [niri](https://github.com/YaLTeR/niri) window manager.
-It places panes on an infinitely side-scrolling strip and groups strips into bands.
+It places panes (niri's windows) on an infinitely side-scrolling strip.
+Each strip belongs to a band (niri's workspace), and bands stack vertically without limit.
 It is written in Rust and scriptable with Lua.
 
 ## Status
@@ -15,12 +16,62 @@ Each new pane shrinks the panes already on screen.
 
 gband follows niri's scrollable tiling model instead:
 
-- Panes sit in columns on a strip that extends without limit to the left and right.
+- Panes sit in columns on a strip that scrolls sideways without limit.
 - A new pane adds a column to the strip, and existing panes keep their size.
 - The view scrolls sideways to follow focus, so the focused pane is always on screen.
 - A column can hold several panes stacked vertically.
 - Each band has its own strip.
-  Bands stack vertically, and you move between them up and down.
+  Bands stack vertically, and the view slides up and down between them.
+- An empty band always waits below the last one.
+  Opening a pane in it adds a new empty band below, and a band other than the last is removed when its last pane closes.
+
+Scrolling, band switches and resizes animate.
+Set `GBAND_ANIMATIONS=off` before you attach to turn the animations off.
+
+## Names
+
+gband keeps niri's layout model but renames two of its parts:
+
+| niri | gband |
+|---|---|
+| window | pane |
+| workspace | band |
+
+Columns and the strip keep their niri names.
+
+In gband, a window is something else: text that a plugin draws, either as a float over the panes or as a pane of its own.
+[docs/plugins.md](docs/plugins.md#windows-gbandwin) describes windows.
+
+## Usage
+
+`gband` attaches to the session named `default`, and starts a server first when none runs.
+`gband -s work` attaches to the session named `work` instead, and creates it when it does not exist.
+`-S NAME` addresses a separate server named `NAME`.
+
+The prefix key followed by `D` detaches, and the session keeps running on the server.
+Run `gband` again to attach to it.
+
+- `gband list-sessions` lists the sessions of the running server.
+- `gband kill-session -s work` ends the session `work` and its panes.
+- `gband kill-server` stops the server and every session.
+
+The default key bindings all follow the prefix key, Ctrl+Space:
+
+| key | action |
+|---|---|
+| `h`, `l` | focus the column to the left or right |
+| `j`, `k` | focus the pane below or above |
+| `u`, `i` | view the band below or above |
+| `enter` | open a pane running your shell |
+| `q` | close the pane |
+| `[`, `]` | move the pane into or out of the column to the left or right |
+| `r` | cycle the column's width through the presets |
+| `f` | toggle full width of the column |
+| `-`, `=` | narrow or widen the column |
+| `_`, `+` | shorten or heighten the pane |
+| `R` | reset the pane's height |
+| `D` | detach |
+| Ctrl+Space | send Ctrl+Space to the pane |
 
 ## Scripting
 
@@ -185,25 +236,38 @@ A `user/init.lua` written before the hints segment existed adds the `gband.plugi
 
 gband loads plugins from `$XDG_DATA_HOME/gband/plugins/`, or `~/.local/share/gband/plugins/`.
 A plugin has a manifest, `plugin.lua`, and a `client.lua` that each client runs, a `server.lua` that the server runs, or both.
-In the client, a plugin can add actions, commands, options, key bindings, event handlers, status line segments, notifications and colorschemes.
+In the client, a plugin can add actions, commands, options, key bindings, event handlers, status line segments, windows, notifications and colorschemes.
 In the server, it can watch pane output and input, keep state per pane, emit events to clients, queue them while no client is attached, and answer commands clients call.
 [docs/plugins.md](docs/plugins.md) explains how to write one.
 [examples/plugins/hello](examples/plugins/hello) is a sample to start from, [examples/plugins/pane](examples/plugins/pane) adds a status line segment and a colorscheme, and [examples/plugins/agent-status](examples/plugins/agent-status) notifies you when a coding agent in a pane waits for an answer.
 `gband test` runs a plugin's Lua tests against a real client and server in a terminal of their own, and compares what they draw with committed screenshots; [docs/testing.md](docs/testing.md) explains how to write them.
 
-## Building
+## Installing
 
 Install a stable Rust toolchain, version 1.89 or newer, and a C compiler such as `gcc` or `clang`.
 The C compiler builds the Lua runtime that gband bundles, so no system Lua is needed.
-Then run:
+
+Install release 0.1.0 with Cargo:
 
 ```sh
-git clone git@github.com:gmteixeira-personal/gband.git
+cargo install --locked --git https://github.com/gmteixeira-personal/gband --tag v0.1.0
+```
+
+Cargo puts the `gband` binary in `~/.cargo/bin/`, which must be on your `PATH`.
+To install the development version instead, replace `--tag v0.1.0` with `--branch dev`.
+
+## Building
+
+To build from a clone, run:
+
+```sh
+git clone https://github.com/gmteixeira-personal/gband.git
 cd gband
 cargo build --release
 ```
 
 The binary is `target/release/gband`.
+`cargo install --locked --path .` installs it into `~/.cargo/bin/` instead.
 
 ## Shell completions
 
