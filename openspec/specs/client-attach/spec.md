@@ -224,9 +224,11 @@ The terminal's cursor SHALL sit where the focused pane's cursor is. It SHALL be 
 - **AND** the rows above it show the tile unchanged
 
 ### Requirement: Key bindings
-The client SHALL take its key bindings and its prefix key from the configuration, as the configuration capability defines them. Outside a prefix sequence, a key that a direct binding names SHALL run that binding, and the prefix key SHALL start a prefix sequence. The client SHALL send neither to the server. Any other key outside a prefix sequence SHALL be sent to the focused pane. The key pressed next in a prefix sequence SHALL end it: a key that a prefix binding names SHALL run that binding, and any other key SHALL discard both keys. When no prefix binding exists, the prefix key SHALL be sent to the focused pane like any other key.
+The client SHALL take its key tables and its prefix key from the configuration, as the configuration capability defines them. The client SHALL keep one active key table, which SHALL be `root` outside a key sequence. While `root` is active, a key bound in `root` SHALL run its binding, and the prefix key SHALL make `prefix` the active table. The client SHALL send neither to the server. Any other key while `root` is active SHALL be sent to the focused pane. While another table is active, the next key SHALL end the sequence: a key bound in that table SHALL run its binding, and any other key SHALL be discarded together with the keys that began the sequence. When the sequence ends, the active table SHALL become the table its binding entered with `gband.keymap.enter`, or `root` when it entered none. A binding run while `root` is active MAY also enter a table, which then becomes active. Entering a table with no binding SHALL be an error raised by `gband.keymap.enter`. When `prefix` holds no binding, the prefix key SHALL be sent to the focused pane like any other key. A reload SHALL make `root` the active table.
 
-With no configuration file, the bindings SHALL be those the default configuration makes: Ctrl+Space as the prefix, no direct binding, and these prefix bindings:
+`gband.keymap.current_table()` SHALL return the name of the active table, and `root` while the configuration loads. Each change of the active table SHALL emit `KeyTableChanged`, as the lua-events capability defines, naming the new and the previous table.
+
+With no configuration file, the bindings SHALL be those the default configuration makes: Ctrl+Space as the prefix, no binding in `root`, and these bindings in `prefix`:
 
 | key after Ctrl+Space | Lua binding | action | kind |
 |---|---|---|---|
@@ -319,6 +321,23 @@ A binding to an action SHALL dispatch it. A binding to a Lua function SHALL run 
 #### Scenario: No prefix binding left
 - **WHEN** `user/init.lua` makes no prefix binding and the user presses Ctrl+Space then `h`
 - **THEN** the focused pane receives `\x00` and then `h`
+
+#### Scenario: Named key table
+- **WHEN** `user/init.lua` binds `h` and `l` in the table `move`, and binds `prefix m` to a function that calls `gband.keymap.enter("move")`, and the user presses Ctrl+Space, `m`, then `l`, with the first of two columns focused
+- **THEN** the second column is focused
+- **AND** a further `l` reaches the focused pane
+
+#### Scenario: Unbound key in a named table
+- **WHEN** the user enters the table `move` and presses `x`
+- **THEN** nothing is sent to the pane and `root` is active again
+
+#### Scenario: Key table change events
+- **WHEN** a `KeyTableChanged` handler records each payload and the user presses Ctrl+Space then `h`
+- **THEN** the handler records `prefix` with previous `root`, then `root` with previous `prefix`
+
+#### Scenario: Current table
+- **WHEN** a binding in `prefix` calls `gband.keymap.current_table()`
+- **THEN** it returns `prefix`
 
 ### Requirement: Report shown panes
 The client SHALL send the server a shown message naming its shown panes, as the layout-view capability defines them, once it has received the first layout after attaching. It SHALL send a new shown message whenever its shown panes change, whether a layout, a focus message, a view action or a change of its terminal's size changed them. It SHALL NOT send a shown message that names the same panes as the last one it sent.

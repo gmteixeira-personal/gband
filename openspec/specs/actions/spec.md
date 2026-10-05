@@ -40,7 +40,7 @@ A session action from a binding SHALL name no pane. Before sending it, the clien
 - **THEN** the result is open pane naming that band and no pane to open after
 
 ### Requirement: Lua names of actions
-Every action SHALL have one Lua name, under which `gband.action` holds it:
+Every built-in action SHALL have one Lua name, under which `gband.action` holds it, and one description, the text of its action column:
 
 | Lua name | action | kind |
 |---|---|---|
@@ -64,9 +64,15 @@ Every action SHALL have one Lua name, under which `gband.action` holds it:
 | `detach` | detach | client |
 | `send_prefix` | send the prefix key to the focused pane | client |
 
+Actions that the configuration capability's `gband.action.register` adds SHALL sit beside the built-in actions in `gband.action` and in `gband.action.list()`, and SHALL NOT take a built-in action's name.
+
 #### Scenario: Every action is named
-- **WHEN** the keys of `gband.action` are listed
+- **WHEN** no action is registered and the names `gband.action.list()` returns are read
 - **THEN** they are exactly the Lua names in the table
+
+#### Scenario: Built-in descriptions
+- **WHEN** `gband.action.list()` is read
+- **THEN** the entry named `cycle_column_width` has the description `cycle the width of the pane's column`
 
 #### Scenario: Name and action agree
 - **WHEN** a binding names `gband.action.cycle_column_width` and its keys are pressed with pane 3 focused
