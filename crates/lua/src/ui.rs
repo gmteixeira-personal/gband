@@ -4,7 +4,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use gband_core::geometry::Size;
-use gband_core::layout::Layout;
+use gband_core::layout::{Layout, PaneId};
+use gband_protocol::Value as Data;
 
 use mlua::{Function, Lua, MultiValue, RegistryKey, Table, Value};
 use unicode_width::UnicodeWidthChar;
@@ -40,7 +41,10 @@ pub struct ViewState {
     pub layout: Arc<Layout>,
     pub area: Size,
     pub ribbon: Size,
+    pub states: Arc<PaneStates>,
 }
+
+pub type PaneStates = BTreeMap<PaneId, BTreeMap<String, Data>>;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Color {
@@ -205,6 +209,7 @@ fn host(lua: &Lua) -> mlua::Result<Table> {
         lua.create_sequence_from(events::NAMES.iter().copied())?,
     )?;
     host.set("state", lua.create_function(state)?)?;
+    host.set("panes", lua.create_function(panes)?)?;
     host.set("present", lua.create_function(present)?)?;
     host.set("timer", lua.create_function(timer)?)?;
     host.set(
@@ -360,6 +365,25 @@ fn state(lua: &Lua, (): ()) -> mlua::Result<Table> {
     Ok(table)
 }
 
+fn panes(lua: &Lua, (): ()) -> mlua::Result<Table> {
+    let state = current_state(lua);
+    let list = lua.create_table()?;
+    for band in state.layout.bands() {
+        for pane in band.panes() {
+            let entry = lua.create_table()?;
+            entry.set("pane", pane.0)?;
+            entry.set("band", band.id.0)?;
+            let copy = lua.create_table()?;
+            for (key, value) in state.states.get(&pane).into_iter().flatten() {
+                copy.set(key.as_str(), crate::value::into_lua(lua, value)?)?;
+            }
+            entry.set("state", copy)?;
+            list.push(entry)?;
+        }
+    }
+    Ok(list)
+}
+
 pub(crate) fn set_state(lua: &Lua, state: ViewState) -> mlua::Result<()> {
     let changed = {
         let mut stored = lua
@@ -504,6 +528,7 @@ mod tests {
     fn config(source: &str) -> Config {
         crate::evaluate(
             None,
+            crate::Side::Client,
             &LoadOptions::default(),
             Path::new("init.lua"),
             source.as_bytes(),

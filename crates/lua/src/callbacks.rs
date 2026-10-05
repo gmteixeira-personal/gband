@@ -1,5 +1,6 @@
 use mlua::{FromLuaMulti, Function, IntoLuaMulti, Lua, RegistryKey};
 
+use crate::error::ConfigError;
 use crate::guard;
 use crate::owner;
 
@@ -16,7 +17,7 @@ pub(crate) struct Callbacks(Vec<Entry>);
 
 pub(crate) enum Ran<R> {
     Returned(R),
-    Failed,
+    Failed(ConfigError),
     Disabled,
 }
 
@@ -51,8 +52,17 @@ pub(crate) fn run<R: FromLuaMulti>(
     match guard::run(lua, owner, || function.call::<R>(args))? {
         Ok(value) => Ok(Ran::Returned(value)),
         Err(failure) => {
+            let error = failure.error.clone();
             guard::report(lua, failure);
-            Ok(Ran::Failed)
+            Ok(Ran::Failed(error))
         }
     }
+}
+
+pub(crate) fn owner(lua: &Lua, id: CallbackId) -> Option<String> {
+    lua.app_data_ref::<Callbacks>()
+        .expect("callbacks are installed with the runtime")
+        .0[id.0]
+        .owner
+        .clone()
 }

@@ -2,6 +2,7 @@ mod frame;
 mod io;
 mod message;
 mod session;
+mod value;
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -9,9 +10,10 @@ use std::path::{Path, PathBuf};
 pub use frame::{Decoder, FrameError, HEADER_LEN, MAX_FRAME_LEN, decode, encode, leading_version};
 pub use io::{IoError, MessageReader, MessageWriter};
 pub use message::{
-    ClientMessage, ExecutableId, Hello, HelloReply, PROTOCOL_VERSION, ServerMessage,
+    ClientMessage, ExecutableId, Hello, HelloReply, PROTOCOL_VERSION, Requirement, ServerMessage,
 };
 pub use session::{DEFAULT_SESSION, SESSION_NAME_MAX, SessionName, SessionSummary};
+pub use value::{Key, MAX_DEPTH, Value, varint_len};
 
 pub const SOCKET_NAME: &str = "default.sock";
 

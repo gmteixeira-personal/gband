@@ -152,14 +152,14 @@ impl Scratch {
     }
 
     fn load(&self, source: &str) -> Result<Config, ConfigError> {
-        let path = gband_lua::user_file(&self.0);
+        let path = gband_lua::user_file(&self.0, gband_lua::Side::Client);
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(&path, source).unwrap();
         let locations = Locations {
             config: self.0.clone(),
             plugins: None,
         };
-        gband_lua::load(&locations, &LoadOptions::default())
+        gband_lua::load(&locations, gband_lua::Side::Client, &LoadOptions::default())
     }
 }
 
@@ -250,7 +250,10 @@ fn error_in_a_binding_function_keeps_the_dispatched_actions() {
     controls.press(&mut display, key("alt+e"));
     assert_eq!(display.focused(), Some(panes[1]));
     let banner = display.banner().unwrap();
-    let expected = format!("{}:9: broken", gband_lua::user_file(&scratch.0).display());
+    let expected = format!(
+        "{}:9: broken",
+        gband_lua::user_file(&scratch.0, gband_lua::Side::Client).display()
+    );
     assert_eq!(banner, expected);
 }
 

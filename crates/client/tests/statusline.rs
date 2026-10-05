@@ -34,13 +34,25 @@ impl Scratch {
         }
     }
 
-    fn plugin_file(&self, plugin: &str, relative: &str, source: &str) -> PathBuf {
-        write(&self.0.join("plugins").join(plugin).join(relative), source)
+    fn client_plugin(&self, plugin: &str, source: &str) -> PathBuf {
+        let directory = self.0.join("plugins").join(plugin);
+        write(
+            &directory.join("plugin.lua"),
+            &format!("return {{ name = '{plugin}', version = '0.1.0' }}"),
+        );
+        write(&directory.join("client.lua"), source)
     }
 
     fn load(&self, source: &str) -> Result<Config, ConfigError> {
-        write(&gband_lua::user_file(&self.0.join("config")), source);
-        gband_lua::load(&self.locations(), &LoadOptions::default())
+        write(
+            &gband_lua::user_file(&self.0.join("config"), gband_lua::Side::Client),
+            source,
+        );
+        gband_lua::load(
+            &self.locations(),
+            gband_lua::Side::Client,
+            &LoadOptions::default(),
+        )
     }
 }
 
@@ -405,7 +417,7 @@ fn timers_drive_interval_components() {
 #[test]
 fn plugin_error_at_start() {
     let scratch = Scratch::new("error-start");
-    let file = scratch.plugin_file("hello", "plugin/hello.lua", "\n\nerror('boom')");
+    let file = scratch.client_plugin("hello", "\n\nerror('boom')");
     let config = scratch.load(DEFAULTS).unwrap();
     let mut client = Client::new(config, Size::new(400, 24));
     client.attach(1, 0);
@@ -421,7 +433,7 @@ fn plugin_error_at_start() {
 #[test]
 fn cleared_by_a_good_load() {
     let scratch = Scratch::new("error-cleared");
-    scratch.plugin_file("hello", "plugin/hello.lua", "error('boom')");
+    scratch.client_plugin("hello", "error('boom')");
     let config = scratch.load(DEFAULTS).unwrap();
     let mut client = Client::new(config, Size::new(200, 24));
     client.attach(1, 0);
@@ -471,7 +483,7 @@ fn failing_component_reaches_the_status_line() {
 #[test]
 fn plugin_error_on_the_banner() {
     let scratch = Scratch::new("error-banner");
-    let file = scratch.plugin_file("hello", "plugin/hello.lua", "\n\nerror('boom')");
+    let file = scratch.client_plugin("hello", "\n\nerror('boom')");
     let config = scratch
         .load(&format!(
             "{DEFAULTS}\ngband.opt.statusline_position = 'off'"

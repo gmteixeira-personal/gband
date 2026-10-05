@@ -8,8 +8,8 @@ use gband_core::layout::{
     SessionAction, Step, Weight,
 };
 use gband_protocol::{
-    ClientMessage, Decoder, ExecutableId, Hello, HelloReply, PROTOCOL_VERSION, ServerMessage,
-    SessionName, SessionSummary, encode,
+    ClientMessage, Decoder, ExecutableId, Hello, HelloReply, Key as ValueKey, PROTOCOL_VERSION,
+    Requirement, ServerMessage, SessionName, SessionSummary, Value, encode,
 };
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -28,8 +28,8 @@ fn session(name: &str) -> SessionName {
 }
 
 #[test]
-fn protocol_version_is_five() {
-    assert_eq!(PROTOCOL_VERSION, 5);
+fn protocol_version_is_six() {
+    assert_eq!(PROTOCOL_VERSION, 6);
 }
 
 #[test]
@@ -364,4 +364,93 @@ fn hello_reply_encoding_is_pinned() {
         encode(&HelloReply::Rejected { version: 1 }).unwrap(),
         [0, 0, 0, 2, 0x01, 0x01]
     );
+}
+
+fn text(value: &str) -> Value {
+    Value::string(value)
+}
+
+#[test]
+fn value_round_trip() {
+    let value = Value::Table(vec![
+        (ValueKey::string("n"), Value::Int(3)),
+        (ValueKey::string("f"), Value::Float(0.5)),
+        (ValueKey::string("b"), Value::Bytes(vec![0, 255])),
+        (
+            ValueKey::string("list"),
+            Value::Table(vec![
+                (ValueKey::Int(1), text("x")),
+                (ValueKey::Int(2), text("y")),
+            ]),
+        ),
+        (ValueKey::Int(1), Value::Bool(false)),
+        (ValueKey::string("1"), Value::Nil),
+    ]);
+    let mut decoder = Decoder::new();
+    decoder.feed(&encode(&value).unwrap()).unwrap();
+    let decoded = decoder.next_message::<Value>().unwrap().unwrap();
+    assert_eq!(decoded, value);
+    let Value::Table(entries) = decoded else {
+        panic!("a table");
+    };
+    assert!(matches!(entries[0].1, Value::Int(3)));
+    assert!(matches!(entries[1].1, Value::Float(_)));
+}
+
+fn nested(depth: usize) -> Value {
+    (0..depth).fold(Value::Nil, |inner, _| {
+        Value::Table(vec![(ValueKey::Int(1), inner)])
+    })
+}
+
+#[test]
+fn values_nested_more_than_32_deep_are_refused() {
+    let mut decoder = Decoder::new();
+    decoder.feed(&encode(&nested(32)).unwrap()).unwrap();
+    assert_eq!(decoder.next_message::<Value>().unwrap(), Some(nested(32)));
+    let mut decoder = Decoder::new();
+    decoder.feed(&encode(&nested(33)).unwrap()).unwrap();
+    assert!(decoder.next_message::<Value>().is_err());
+}
+
+#[test]
+fn command_round_trip() {
+    round_trip(ClientMessage::Command {
+        call: 7,
+        name: "agents.next_waiting".to_owned(),
+        args: Value::Table(vec![(ValueKey::string("state"), text("agent"))]),
+    });
+}
+
+#[test]
+fn bridge_messages_round_trip() {
+    round_trip(ServerMessage::Result {
+        call: 7,
+        result: Err("unknown command absent".to_owned()),
+    });
+    round_trip(ServerMessage::Result {
+        call: 8,
+        result: Ok(Value::Int(4)),
+    });
+    round_trip(ServerMessage::Event {
+        name: "agent.waiting".to_owned(),
+        data: Value::Table(vec![(ValueKey::string("pane"), Value::Int(1))]),
+        queued: true,
+        time: 1_700_000_000_000,
+    });
+    round_trip(ServerMessage::PaneState {
+        pane: PaneId(2),
+        key: "agent".to_owned(),
+        value: Some(text("waiting")),
+    });
+    round_trip(ServerMessage::PaneState {
+        pane: PaneId(2),
+        key: "agent".to_owned(),
+        value: None,
+    });
+    round_trip(ServerMessage::Requirements(vec![Requirement {
+        plugin: "agent-status".to_owned(),
+        requirement: ">= 0.1".to_owned(),
+    }]));
+    round_trip(ServerMessage::ServerError("server: boom".to_owned()));
 }

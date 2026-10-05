@@ -91,8 +91,8 @@ A command message becomes `Input::Call` with a oneshot `reply` and the connectio
 `options.rs` gains a side for each built-in option. The client table drops `default_column_width` and `width_presets` and gains `notify_style`; the server table holds the two widths. The client still parses a width option's name only to report "a server option" in its error. `src/main.rs::server` loads the server side, sends `options.layout` through the existing `watch` channel on every successful load, and hands the `Config` to the scripting thread.
 - Alternative: keep reading the widths from `user/init.lua` for compatibility. Rejected by the user: the server would keep evaluating client code.
 
-### Protocol version 5
-New `ClientMessage::Command { id, name, args }` and `ServerMessage::{Event, PaneState, Result, Requirements, ServerError}`. The version check already refuses a version 4 peer, and the client replaces a server of another build as it does today.
+### Protocol version 6
+New `ClientMessage::Command { id, name, args }` and `ServerMessage::{Event, PaneState, Result, Requirements, ServerError}`. Version 5 is taken by `plugin-windows`, which landed first. The version check already refuses a version 5 peer, and the client replaces a server of another build as it does today.
 
 ## Risks / Trade-offs
 
@@ -100,13 +100,13 @@ New `ClientMessage::Command { id, name, args }` and `ServerMessage::{Event, Pane
 - [A runaway server handler delays commands and events for up to the instruction limit] → The limit stops it and marks its plugin failed. Panes and screens are unaffected.
 - [Pane state keys are global, so two plugins can clobber one key] → Documented: a plugin prefixes keys it does not mean to share. Global keys are the point of shared state such as `agent`.
 - [The status-line delta modifies a capability that does not exist on `<base>` yet] → It depends on `status-line`, which creates it; validation reports this as information until then.
-- [`plugin-windows` also plans protocol version 5 and adds client-only APIs (`gband.layout`, `gband.view`, `gband.pane`, `gband.band`, `gband.win`)] → Whichever change lands second takes version 6 at `/ready`, after merging `<base>`, and extends the side guard's client list with the other's names.
+- [`plugin-windows` landed first with protocol version 5 and client-only APIs (`gband.layout`, `gband.view`, `gband.pane`, `gband.band`, `gband.win`)] → This change takes version 6, and the side guard's client list includes those names.
 - [Breaking layout and option moves] → No third-party plugin exists yet. The guide documents the move, and an option set on the wrong side is reported naming the side that owns it.
 
 ## Migration Plan
 
 1. Move every `plugin/*.lua` and `plugin/client/*.lua` in tests, examples and docs to a `client.lua` with a `plugin.lua` manifest.
 2. Move width options in tests from `user/init.lua` to `user/server.lua`.
-3. Ship the server runtime, protocol version 5 and the client bridge together; a version 4 client is refused and replaced as today.
+3. Ship the server runtime, protocol version 6 and the client bridge together; a version 5 client is refused and replaced as today.
 
 Rollback is reverting the change: no on-disk format outside `defaults/server.lua` is introduced, and that file is rewritten on each start.

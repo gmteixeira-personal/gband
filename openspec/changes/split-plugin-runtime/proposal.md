@@ -20,7 +20,7 @@ The rule: what must keep working while no client is attached, or must be shared 
 - **Required plugins**: after attach the server sends the client requirements of its loaded plugins, such as `agent-status >= 0.1`. The client compares them with its own manifests and reports each missing or incompatible plugin as a configuration warning.
 - **Trust**: the server never sends Lua code. A client loads only Lua from its own machine, so attaching to a server cannot run code locally.
 - Server plugin and configuration errors are logged by the server and sent to attached clients, which show them prefixed with `server: `.
-- **BREAKING**: protocol version 5. New client message `command`; new server messages `event`, `pane state`, `result`, `requirements` and `server error`.
+- **BREAKING**: protocol version 6. New client message `command`; new server messages `event`, `pane state`, `result`, `requirements` and `server error`.
 - `docs/plugins.md` is rewritten around the two sides, and an example plugin `examples/plugins/agent-status` ships a `server.lua` that detects a waiting coding agent and a `client.lua` that notifies, counts waiting agents in the status line and jumps to the next one.
 
 Out of scope: the SSH transport, plugin distribution or a package manager, process survival across a server crash, built-in pane title or working directory tracking, a server reload triggered by plugin directory changes, and running server code on behalf of a single client's view (focus and scroll stay client state).
@@ -39,13 +39,13 @@ Out of scope: the SSH transport, plugin distribution or a package manager, proce
 - `configuration`: `defaults/server.lua`, the server configuration file, the split of options between client and server, server errors shown in the client, and reload of `user/server.lua`.
 - `lua-events`: the events `ServerEvent` and `PaneStateChanged`, and patterns for `ServerEvent`.
 - `status-line`: the `panes` field of the render context, and server errors in the error item.
-- `wire-protocol`: protocol version 5 and the new messages.
+- `wire-protocol`: protocol version 6 and the new messages.
 - `session-server`: session actions applied from the server's Lua, and pane output and input observed by it without slowing panes.
 
 ## Impact
 
 - `crates/lua`: a side parameter through `evaluate` and `install`; manifest reading and side file sourcing in `runtime.rs`; the side guard; a new `server` module with the server API, server events and pane state proxy; a `value` module converting Lua values to and from the protocol's plain-data value; client functions for `rpc`, `pane_state`, notify, bell, clipboard and open; `ServerEvent` and `PaneStateChanged`; an embedded `defaults_server.lua`; `watch` for `user/server.lua`.
-- `crates/protocol`: the `Value` type, the new messages and version 5.
+- `crates/protocol`: the `Value` type, the new messages and version 6.
 - `crates/server`: a scripting thread that owns the server Lua state, fed by the session bus, a pane output tap and input notices; pane state storage and broadcast; the event queue; command dispatch with results; requirements on attach; server error forwarding.
 - `crates/client`: handling the new server messages, the requirement check, local actions, and the render context's panes.
 - `src/main.rs`: the server loads its own configuration and passes its runtime to the server crate.

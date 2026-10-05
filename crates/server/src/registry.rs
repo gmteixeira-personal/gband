@@ -11,7 +11,9 @@ use gband_protocol::{SessionName, SessionSummary};
 use tokio::sync::{broadcast, mpsc, oneshot, watch};
 use tracing::Instrument;
 
-use crate::event::{Bus, Published};
+use crate::event::{Bus, Published, SessionEvent};
+use crate::hub::Hub;
+use crate::scripting::Taps;
 use crate::session::{self, Command, Session, SessionConfig, State};
 
 pub struct SessionHandle {
@@ -64,7 +66,16 @@ pub struct Registry {
     requests: mpsc::UnboundedSender<Request>,
     events: broadcast::Sender<Published>,
     options: watch::Receiver<LayoutOptions>,
+    hub: Arc<Hub>,
+    taps: Arc<Taps>,
     next_id: u64,
+}
+
+pub struct Shared {
+    pub events: broadcast::Sender<Published>,
+    pub options: watch::Receiver<LayoutOptions>,
+    pub hub: Arc<Hub>,
+    pub taps: Arc<Taps>,
 }
 
 impl Registry {
@@ -72,16 +83,17 @@ impl Registry {
         program: Vec<OsString>,
         socket: PathBuf,
         requests: mpsc::UnboundedSender<Request>,
-        events: broadcast::Sender<Published>,
-        options: watch::Receiver<LayoutOptions>,
+        shared: Shared,
     ) -> Self {
         Self {
             sessions: BTreeMap::new(),
             program,
             socket,
             requests,
-            events,
-            options,
+            events: shared.events,
+            options: shared.options,
+            hub: shared.hub,
+            taps: shared.taps,
             next_id: 1,
         }
     }
@@ -100,6 +112,8 @@ impl Registry {
         self.next_id += 1;
         let span = tracing::info_span!("session", name = %name);
         let (exits_tx, exits) = mpsc::unbounded_channel();
+        let bus = Bus::new(self.events.clone(), name.clone());
+        bus.send(SessionEvent::Created);
         let session = span.in_scope(|| {
             Session::start(
                 SessionConfig {
@@ -108,12 +122,20 @@ impl Registry {
                     cwd,
                     socket: self.socket.clone(),
                     area,
-                    events: Bus::new(self.events.clone(), name.clone()),
+                    events: bus.clone(),
                     options: self.options.clone(),
+                    taps: Arc::clone(&self.taps),
                 },
                 exits_tx,
             )
-        })?;
+        });
+        let session = match session {
+            Ok(session) => session,
+            Err(error) => {
+                bus.send(SessionEvent::Ended);
+                return Err(error);
+            }
+        };
         let (commands_tx, commands) = mpsc::unbounded_channel();
         let (ended_tx, ended) = watch::channel(false);
         let handle = Arc::new(SessionHandle {
@@ -140,6 +162,7 @@ impl Registry {
             .instrument(span),
         );
         tracing::info!(session = %name, "session created");
+        self.hub.add_session(Arc::clone(&handle));
         self.sessions.insert(name, Arc::clone(&handle));
         Ok(handle)
     }
@@ -180,11 +203,9 @@ impl Registry {
                 let _ = reply.send(handle);
             }
             Request::Ended { name, id } => {
-                if self
-                    .sessions
-                    .get(&name)
-                    .is_some_and(|handle| handle.id == id)
-                {
+                if let Some(handle) = self.sessions.get(&name).filter(|handle| handle.id == id) {
+                    handle.events.send(SessionEvent::Ended);
+                    self.hub.remove_session(&name, handle);
                     self.sessions.remove(&name);
                     tracing::info!(session = %name, "session removed");
                 }

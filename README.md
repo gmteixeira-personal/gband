@@ -32,13 +32,21 @@ Configuration and automation are Lua scripts, so key bindings, layout behavior a
 gband keeps its configuration in `$XDG_CONFIG_HOME/gband/`, or `~/.config/gband/` when `XDG_CONFIG_HOME` is unset.
 gband creates the directory when it starts, with two folders in it:
 
-- `defaults/init.lua` holds the full default configuration.
-  gband owns this file: it writes the file when it is missing and overwrites it when its content differs from the defaults of the running build.
-  Edits to it have no effect.
+- `defaults/init.lua` holds the full default client configuration, and `defaults/server.lua` the default server configuration.
+  gband owns these files: it writes each when it is missing and overwrites it when its content differs from the defaults of the running build.
+  Edits to them have no effect.
 - `user/` holds your configuration.
   gband creates it empty.
 
-When `user/init.lua` exists, gband runs it instead of the defaults, not on top of them.
+The configuration has two files, one per process:
+
+- `user/init.lua` configures each client: the prefix key, key bindings, the status line, colors and notifications.
+- `user/server.lua` configures the server: the column widths, and the server halves of plugins.
+
+The server reads its file from the machine it runs on, and each client reads its own.
+Neither process runs the other's file.
+
+When `user/init.lua` exists, gband runs it instead of the default client configuration, not on top of it.
 Your file starts from the default options and no key bindings, so it must bind every key you want.
 To start, copy `defaults/init.lua` to `user/init.lua` and edit the copy:
 
@@ -53,12 +61,11 @@ An error in the file shows in the status line with its line number, and gband ke
 ```lua
 -- Set options one at a time through gband.opt.
 gband.opt.prefix = "ctrl+b"
-gband.opt.default_column_width = 1/3
 
 -- Or change several at once. Each call changes only the options it names.
 gband.set {
-  width_presets = { 1/3, 1/2, 2/3, 1 },
   center_focused_column = "on-overflow",
+  statusline_position = "top",
 }
 
 -- A root binding acts without the prefix key.
@@ -82,17 +89,33 @@ gband.bind("alt+w", function()
 end)
 ```
 
-The options and their defaults:
+The client options, set in `user/init.lua`, and their defaults:
 
 | option | value | default |
 |---|---|---|
 | `prefix` | one key | `"ctrl+space"` |
-| `default_column_width` | the width of a new column, as a fraction of the screen | `1/2` |
-| `width_presets` | the widths that cycling the column width steps through | `{ 1/3, 1/2, 2/3 }` |
 | `center_focused_column` | `"never"`, `"always"` or `"on-overflow"` | `"never"` |
 | `statusline_position` | `"bottom"`, `"top"` or `"off"` | `"bottom"` |
 | `statusline_height` | the rows the status line takes, from 1 to 8 | `1` |
 | `statusline_separator` | the text between two status line segments | `" │ "` |
+| `notify_style` | how a plugin's desktop notification reaches your terminal: `"osc9"`, `"osc777"`, `"bell"` or `"none"` | `"osc9"` |
+
+The server options, set in `user/server.lua`, and their defaults:
+
+| option | value | default |
+|---|---|---|
+| `default_column_width` | the width of a new column, as a fraction of the screen | `1/2` |
+| `width_presets` | the widths that cycling the column width steps through | `{ 1/3, 1/2, 2/3 }` |
+
+```lua
+-- user/server.lua
+gband.opt.default_column_width = 1/3
+gband.set { width_presets = { 1/3, 1/2, 2/3, 1 } }
+```
+
+Saving `user/server.lua` reloads the server's configuration; new widths apply to the columns opened after it, and existing columns keep theirs.
+Setting an option in the other side's file is an error naming the side that owns it, so a width set in `user/init.lua` reports that it belongs in `user/server.lua`.
+An error in `user/server.lua` shows in each client prefixed with `server: `.
 
 To keep the old Ctrl+A prefix, or if your desktop takes Ctrl+Space for itself, put `gband.opt.prefix = "ctrl+a"` in `user/init.lua`.
 
@@ -161,9 +184,11 @@ A `user/init.lua` written before the hints segment existed adds the `gband.plugi
 ### Plugins
 
 gband loads plugins from `$XDG_DATA_HOME/gband/plugins/`, or `~/.local/share/gband/plugins/`.
-A plugin can add actions, commands, options, key bindings, event handlers, status line segments and colorschemes.
+A plugin has a manifest, `plugin.lua`, and a `client.lua` that each client runs, a `server.lua` that the server runs, or both.
+In the client, a plugin can add actions, commands, options, key bindings, event handlers, status line segments, notifications and colorschemes.
+In the server, it can watch pane output and input, keep state per pane, emit events to clients, queue them while no client is attached, and answer commands clients call.
 [docs/plugins.md](docs/plugins.md) explains how to write one.
-[examples/plugins/hello](examples/plugins/hello) is a sample to start from, and [examples/plugins/pane](examples/plugins/pane) adds a status line segment and a colorscheme.
+[examples/plugins/hello](examples/plugins/hello) is a sample to start from, [examples/plugins/pane](examples/plugins/pane) adds a status line segment and a colorscheme, and [examples/plugins/agent-status](examples/plugins/agent-status) notifies you when a coding agent in a pane waits for an answer.
 
 ## Building
 

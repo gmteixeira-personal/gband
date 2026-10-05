@@ -16,13 +16,28 @@ use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::{mpsc, oneshot};
 
 use crate::event::SessionEvent;
+use crate::hub::Hub;
 use crate::pane::{Contents, Input, Seen};
 use crate::registry::{Request, SessionHandle};
+use crate::scripting::{self, Taps};
 use crate::session::{Command, INITIAL_AREA, Reply, State};
 
 pub struct Context {
     pub registry: mpsc::UnboundedSender<Request>,
     pub info: ServerMessage,
+    pub hub: Arc<Hub>,
+    pub taps: Arc<Taps>,
+}
+
+struct Registration<'a> {
+    hub: &'a Hub,
+    client: u64,
+}
+
+impl Drop for Registration<'_> {
+    fn drop(&mut self) {
+        self.hub.detach(self.client);
+    }
 }
 
 struct Attachment {
@@ -204,10 +219,20 @@ async fn attach(
     let mut sent = Sent::default();
     sync(&mut link.writer, &session, &mut sent).await?;
 
+    let (deliveries_tx, mut deliveries) = mpsc::unbounded_channel();
+    let attached = context.hub.attach(client, &session.name, deliveries_tx);
+    let _registration = Registration {
+        hub: &context.hub,
+        client,
+    };
+    for message in &attached.messages {
+        link.send(message).await?;
+    }
+
     let (reply_tx, mut replies) = mpsc::unbounded_channel();
     let mut ended = session.ended.clone();
     loop {
-        if dispatch(&mut link.reader, &session, client, &reply_tx)? {
+        if dispatch(&mut link.reader, &session, client, &reply_tx, context)? {
             return Ok(());
         }
         tokio::select! {
@@ -220,7 +245,12 @@ async fn attach(
                 let message = match reply {
                     Reply::Focus(pane) => ServerMessage::Focus(pane),
                     Reply::Opened { request, pane } => ServerMessage::Opened { request, pane },
+                    Reply::Result { call, result } => ServerMessage::Result { call, result },
                 };
+                link.send(&message).await?;
+            }
+            Some(message) = deliveries.recv() => {
+                sync(&mut link.writer, &session, &mut sent).await?;
                 link.send(&message).await?;
             }
             _ = async { ended.wait_for(|ended| *ended).await.is_ok() } => {
@@ -242,11 +272,36 @@ fn dispatch(
     session: &SessionHandle,
     client: u64,
     reply_tx: &mpsc::UnboundedSender<Reply>,
+    context: &Context,
 ) -> Result<bool> {
     while let Some(message) = reader.try_recv::<ClientMessage>()? {
         match message {
-            ClientMessage::Key { pane, key } => forward(session, pane, Input::Key(key)),
-            ClientMessage::Paste { pane, text } => forward(session, pane, Input::Paste(text)),
+            ClientMessage::Key { pane, key } => {
+                if forward(session, pane, Input::Key(key)) {
+                    context.taps.notice(&session.name, pane, client);
+                }
+            }
+            ClientMessage::Paste { pane, text } => {
+                if forward(session, pane, Input::Paste(text)) {
+                    context.taps.notice(&session.name, pane, client);
+                }
+            }
+            ClientMessage::Command { call, name, args } => {
+                let call_input = scripting::Input::Call {
+                    session: session.name.clone(),
+                    client,
+                    call,
+                    name: name.clone(),
+                    args,
+                    replies: reply_tx.clone(),
+                };
+                if !context.taps.call(call_input) {
+                    let _ = reply_tx.send(Reply::Result {
+                        call,
+                        result: Err(format!("unknown command `{name}`")),
+                    });
+                }
+            }
             ClientMessage::Resize { cols, rows } => session.command(Command::Area {
                 size: Size::new(cols, rows),
                 applied: None,
@@ -275,15 +330,17 @@ fn dispatch(
     Ok(false)
 }
 
-fn forward(session: &SessionHandle, pane: PaneId, input: Input) {
+fn forward(session: &SessionHandle, pane: PaneId, input: Input) -> bool {
     let state = session.state.borrow();
     let Some(entry) = state.panes.get(&pane) else {
         tracing::debug!(pane = %pane, "input dropped for a pane not in the layout");
-        return;
+        return false;
     };
     if entry.input.send(input).is_err() {
         tracing::debug!(pane = %pane, "input dropped because the PTY writer has stopped");
+        return false;
     }
+    true
 }
 
 async fn sync(

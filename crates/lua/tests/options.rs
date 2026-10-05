@@ -15,10 +15,10 @@ fn error_naming<'a>(errors: &'a [ConfigError], name: &str) -> &'a ConfigError {
 #[test]
 fn option_read_and_set_through_gband_opt() {
     let scratch = Scratch::new("read-set");
-    scratch.write(
+    scratch.server(
         "gband.opt.default_column_width = 1/3\npresets = gband.opt.width_presets\nwidth = gband.opt.default_column_width",
     );
-    let config = scratch.loaded();
+    let config = scratch.loaded_server();
     assert_eq!(config.options.layout.default_width, Proportion::ONE_THIRD);
     let presets: Vec<f64> = global(&config, "presets");
     assert_eq!(presets, [1.0 / 3.0, 1.0 / 2.0, 2.0 / 3.0]);
@@ -44,10 +44,10 @@ fn built_in_reads() {
 #[test]
 fn invalid_value_falls_back_to_the_default() {
     let scratch = Scratch::new("invalid");
-    let path = scratch.write(
+    let path = scratch.server(
         "\n\n\ngband.opt.default_column_width = 1/3\ngband.opt.default_column_width = 'wide'",
     );
-    let config = scratch.loaded();
+    let config = scratch.loaded_server();
     assert_eq!(config.options.layout.default_width, Proportion::ONE_HALF);
     let [error] = config.errors.as_slice() else {
         panic!("{:?}", config.errors);
@@ -59,8 +59,8 @@ fn invalid_value_falls_back_to_the_default() {
 fn gband_set_and_gband_opt_share_the_options() {
     let scratch = Scratch::new("shared");
     scratch
-        .write("gband.set { default_column_width = 1/3 }\nwidth = gband.opt.default_column_width");
-    let config = scratch.loaded();
+        .server("gband.set { default_column_width = 1/3 }\nwidth = gband.opt.default_column_width");
+    let config = scratch.loaded_server();
     assert_eq!(global::<f64>(&config, "width"), 1.0 / 3.0);
 }
 
@@ -68,7 +68,7 @@ fn gband_set_and_gband_opt_share_the_options() {
 fn plugin_files_see_the_init_files_options() {
     let scratch = Scratch::new("plugin-sees");
     scratch.write("gband.opt.prefix = 'ctrl+b'");
-    scratch.user_file("plugin/check.lua", "seen = gband.opt.prefix");
+    scratch.client_plugin("check", "seen = gband.opt.prefix");
     let config = scratch.loaded();
     assert_eq!(global::<String>(&config, "seen"), "ctrl+b");
 }
@@ -76,9 +76,7 @@ fn plugin_files_see_the_init_files_options() {
 #[test]
 fn declared_plugin_option() {
     let scratch = Scratch::new("declared");
-    scratch.plugin_file(
-        "hello",
-        "plugin/hello.lua",
+    scratch.client_plugin("hello",
         "full = gband.opt.declare('greeting', { type = 'string', default = 'hello', desc = 'what to say' })",
     );
     let config = scratch.loaded();
@@ -91,9 +89,8 @@ fn declared_plugin_option() {
 fn set_before_declared() {
     let scratch = Scratch::new("before");
     scratch.write("gband.opt['hello.greeting'] = 'hi'");
-    scratch.plugin_file(
+    scratch.client_plugin(
         "hello",
-        "plugin/hello.lua",
         "gband.opt.declare('greeting', { type = 'string', default = 'hello' })",
     );
     let config = scratch.loaded();
@@ -106,9 +103,8 @@ fn set_before_declared() {
 fn set_before_declared_with_a_wrong_type() {
     let scratch = Scratch::new("before-wrong");
     let path = scratch.write("\ngband.opt['hello.count'] = 'many'");
-    scratch.plugin_file(
+    scratch.client_plugin(
         "hello",
-        "plugin/hello.lua",
         "gband.opt.declare('count', { type = 'integer', default = 3 })",
     );
     let config = scratch.loaded();
@@ -210,13 +206,12 @@ fn list_holds_built_in_and_declared_options() {
         names,
         [
             "center_focused_column",
-            "default_column_width",
             "greeting",
+            "notify_style",
             "prefix",
             "statusline_height",
             "statusline_position",
             "statusline_separator",
-            "width_presets"
         ]
     );
     let greeting: Vec<String> = eval(
@@ -230,6 +225,13 @@ fn list_holds_built_in_and_declared_options() {
     );
     assert_eq!(prefix[1], "ctrl+space");
     assert!(!prefix[3].is_empty());
+    let server = Scratch::new("list-server");
+    let config = server.loaded_server();
+    let names: Vec<String> = eval(
+        &config,
+        "local names = {} for _, o in ipairs(gband.opt.list()) do names[#names + 1] = o.name end return names",
+    );
+    assert_eq!(names, ["default_column_width", "width_presets"]);
 }
 
 #[test]
@@ -263,15 +265,14 @@ end)",
 #[test]
 fn plugin_option_errors_name_the_plugin() {
     let scratch = Scratch::new("plugin-error");
-    let file = scratch.plugin_file(
+    let file = scratch.client_plugin(
         "hello",
-        "plugin/hello.lua",
-        "\ngband.opt.default_column_width = 'wide'\nafter = true",
+        "\ngband.opt.statusline_height = 'tall'\nafter = true",
     );
     let config = scratch.loaded();
-    let error = error_naming(&config.errors, "default_column_width");
+    let error = error_naming(&config.errors, "statusline_height");
     assert_eq!(error.plugin.as_deref(), Some("hello"));
-    assert_error_at(error, &file, 2, "default_column_width");
+    assert_error_at(error, &file, 2, "statusline_height");
     assert!(global::<bool>(&config, "after"));
 }
 
@@ -326,4 +327,29 @@ fn invalid_status_line_position() {
         StatusLinePosition::Bottom
     );
     error_naming(&config.errors, "statusline_position");
+}
+
+#[test]
+fn server_option_assigned_in_the_client_file() {
+    let scratch = Scratch::new("foreign-assign");
+    let path = scratch
+        .write("\ngband.opt.default_column_width = 1/3\nwidth = gband.opt.default_column_width");
+    let config = scratch.loaded();
+    let error = error_naming(&config.errors, "default_column_width");
+    assert_error_at(error, &path, 2, "server");
+    assert!(global::<Option<f64>>(&config, "width").is_none());
+}
+
+#[test]
+fn notify_style() {
+    let scratch = Scratch::new("notify-style");
+    scratch.write("before = gband.opt.notify_style\ngband.opt.notify_style = 'osc777'");
+    let config = scratch.loaded();
+    assert_eq!(global::<String>(&config, "before"), "osc9");
+    assert_eq!(config.options.notify_style, gband_lua::NotifyStyle::Osc777);
+    let rejected = Scratch::new("notify-style-rejected");
+    rejected.write("gband.opt.notify_style = 'loud'");
+    let config = rejected.loaded();
+    assert_eq!(config.options.notify_style, gband_lua::NotifyStyle::Osc9);
+    error_naming(&config.errors, "notify_style");
 }

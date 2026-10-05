@@ -9,7 +9,7 @@ use gband_core::geometry::{Size, tiles};
 use gband_core::layout::{
     BandId, Layout, LayoutOptions, PaneContent, PaneId, Program, Proportion, SessionAction,
 };
-use gband_protocol::SessionName;
+use gband_protocol::{SessionName, Value};
 use portable_pty::{ChildKiller, ExitStatus};
 use rustix::process::{Pid, Signal};
 use tokio::sync::{mpsc, oneshot, watch};
@@ -18,6 +18,7 @@ use tracing::Instrument;
 
 use crate::event::{Bus, SessionEvent};
 use crate::pane::{self, Pane, PaneEntry, PaneExit, SpawnRequest};
+use crate::scripting::{Taps, signal_number};
 
 const KILL_GRACE: Duration = Duration::from_secs(2);
 const SETTLE: Duration = Duration::from_millis(100);
@@ -54,10 +55,17 @@ pub enum Command {
     CloseAll,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Reply {
     Focus(PaneId),
-    Opened { request: u32, pane: Option<PaneId> },
+    Opened {
+        request: u32,
+        pane: Option<PaneId>,
+    },
+    Result {
+        call: u64,
+        result: Result<Value, String>,
+    },
 }
 
 struct Placement {
@@ -74,6 +82,7 @@ pub struct SessionConfig {
     pub area: Size,
     pub events: Bus,
     pub options: watch::Receiver<LayoutOptions>,
+    pub taps: Arc<Taps>,
 }
 
 struct Live {
@@ -227,9 +236,14 @@ impl Session {
 
     pub fn exited(&mut self, exit: PaneExit) {
         tracing::info!(pane = %exit.pane, "program exited: {}", exit.status);
+        let signal = exit.status.signal().map(|name| (name, signal_number(name)));
+        if let Some((name, None)) = signal {
+            tracing::debug!("no signal number is known for `{name}`");
+        }
         self.config.events.send(SessionEvent::PaneExited {
             pane: exit.pane,
-            status: exit.status.to_string(),
+            code: signal.is_none().then(|| exit.status.exit_code()),
+            signal: signal.and_then(|(_, number)| number),
         });
         self.last_status = Some(exit.status);
         self.panes.remove(&exit.pane);
@@ -360,6 +374,7 @@ impl Session {
             socket: &self.config.socket,
             session: &self.config.name,
             size,
+            taps: &self.config.taps,
         };
         match pane::spawn(request, &self.changed, self.exits.clone()) {
             Ok(spawned) => {

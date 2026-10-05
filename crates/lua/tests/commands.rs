@@ -157,9 +157,7 @@ fn listed_tables_are_copies() {
 #[test]
 fn already_namespaced() {
     let scratch = Scratch::new("namespaced");
-    scratch.plugin_file(
-        "hello",
-        "plugin/hello.lua",
+    scratch.client_plugin("hello",
         "full = gband.cmd.register('hello.say', function() end)\nshort = gband.cmd.register('wave', function() end)",
     );
     let config = scratch.loaded();
@@ -170,14 +168,12 @@ fn already_namespaced() {
 #[test]
 fn disabled_command_returns_false() {
     let scratch = Scratch::new("disabled");
-    scratch.plugin_file(
+    scratch.client_plugin(
         "broken",
-        "plugin/a.lua",
         "gband.cmd.register('go', function() ran = true end)\nerror('broken plugin')",
     );
-    scratch.plugin_file(
+    scratch.client_plugin(
         "user",
-        "plugin/keys.lua",
         "gband.bind('alt+g', function() result = gband.cmd.run('broken.go') end)",
     );
     let config = scratch.loaded();

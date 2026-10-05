@@ -1,10 +1,11 @@
 use std::collections::BTreeMap;
 
 use gband_core::action::{Action, ClientAction, SessionCommand};
-use gband_core::layout::{Direction, Step};
+use gband_core::layout::{BandId, Direction, PaneContent, PaneId, SessionAction, Step};
 use gband_core::view::ViewAction;
 use mlua::{Lua, MetaMethod, Table, UserData, UserDataMethods, Value};
 
+use crate::Side;
 use crate::api::{self, Dispatch, require_loading};
 use crate::callbacks::{self, CallbackId};
 use crate::error::ConfigError;
@@ -117,8 +118,18 @@ pub const ACTIONS: [BuiltinAction; 19] = [
 const RESERVED: [&str; 2] = ["register", "list"];
 
 pub(crate) enum LuaAction {
-    Builtin { name: &'static str, action: Action },
-    Registered { name: String, callback: CallbackId },
+    Builtin {
+        name: &'static str,
+        action: Action,
+    },
+    Registered {
+        name: String,
+        callback: CallbackId,
+    },
+    Targeted {
+        name: &'static str,
+        command: SessionCommand,
+    },
 }
 
 impl UserData for LuaAction {
@@ -142,6 +153,14 @@ impl UserData for LuaAction {
                 callbacks::run::<()>(lua, *callback, ())?;
                 Ok(())
             }
+            LuaAction::Targeted { name, command } => {
+                if !api::in_callback(lua) {
+                    return Err(api::outside_callback(lua, "an action"));
+                }
+                let entry = session_target(name, *command, &target)
+                    .map_err(|message| ConfigError::raise(lua, message))?;
+                api::queue(lua, entry, "an action")
+            }
         });
     }
 }
@@ -149,11 +168,120 @@ impl UserData for LuaAction {
 #[derive(Default)]
 struct Registered(BTreeMap<String, Option<String>>);
 
-pub(crate) fn install(lua: &Lua, gband: &Table) -> mlua::Result<()> {
+fn integer(value: &Value) -> Option<u32> {
+    match *value {
+        Value::Integer(number) => u32::try_from(number).ok(),
+        Value::Number(number) if number.fract() == 0.0 && number >= 0.0 => {
+            u32::try_from(number as i64).ok()
+        }
+        _ => None,
+    }
+}
+
+fn session_target(name: &str, command: SessionCommand, target: &Value) -> Result<Dispatch, String> {
+    let Value::Table(target) = target else {
+        return Err(format!(
+            "`{name}` expects a target table naming `session`, found {}",
+            target.type_name()
+        ));
+    };
+    let opening = command == SessionCommand::OpenPane;
+    let allowed: &[&str] = if opening {
+        &["session", "band", "after", "program"]
+    } else {
+        &["session", "pane"]
+    };
+    for pair in target.pairs::<Value, Value>() {
+        let (field, _) = pair.map_err(|error| error.to_string())?;
+        let known = matches!(&field, Value::String(text) if allowed.iter().any(|allowed| *text == *allowed));
+        if !known {
+            return Err(format!(
+                "the target of `{name}` takes no field `{}`",
+                crate::control::field_name(&field)
+            ));
+        }
+    }
+    let get = |field: &str| {
+        target
+            .get::<Value>(field)
+            .map_err(|error| error.to_string())
+    };
+    let session = match get("session")? {
+        Value::String(session) if !session.as_bytes().is_empty() => session.to_string_lossy(),
+        Value::Nil => return Err(format!("the target of `{name}` must name a `session`")),
+        other => {
+            return Err(format!(
+                "the `session` of `{name}` must be a session name, found {}",
+                other.type_name()
+            ));
+        }
+    };
+    let number = |field: &str, required: bool| -> Result<Option<u32>, String> {
+        match get(field)? {
+            Value::Nil if required => Err(format!("the target of `{name}` must name a `{field}`")),
+            Value::Nil => Ok(None),
+            value => integer(&value).map(Some).ok_or_else(|| {
+                format!(
+                    "the `{field}` of `{name}` must be a number, found {}",
+                    crate::control::field_name(&value)
+                )
+            }),
+        }
+    };
+    let action = if opening {
+        let band = BandId(number("band", true)?.expect("required"));
+        let after = number("after", false)?.map(PaneId);
+        let program = match get("program")? {
+            Value::Nil => None,
+            Value::String(line) => Some(gband_core::layout::Program::CommandLine(
+                line.to_string_lossy(),
+            )),
+            Value::Table(list) => match api::list_of_strings(&list) {
+                Some(argv) if !argv.is_empty() => Some(gband_core::layout::Program::Argv(argv)),
+                _ => {
+                    return Err(format!(
+                        "the `program` of `{name}` must be a non-empty list of strings"
+                    ));
+                }
+            },
+            other => {
+                return Err(format!(
+                    "the `program` of `{name}` must be a string or a list of strings, found {}",
+                    other.type_name()
+                ));
+            }
+        };
+        SessionAction::OpenPane {
+            band,
+            after,
+            width: None,
+            focus: false,
+            content: PaneContent::Program(program),
+        }
+    } else {
+        let pane = PaneId(number("pane", true)?.expect("required"));
+        command
+            .on_pane(pane)
+            .expect("every command but open pane names a pane")
+    };
+    Ok(Dispatch::Targeted { session, action })
+}
+
+fn on_side(action: &BuiltinAction, side: Side) -> bool {
+    side == Side::Client || !crate::sides::is_client_action(action.action)
+}
+
+pub(crate) fn install(lua: &Lua, gband: &Table, side: Side) -> mlua::Result<()> {
     lua.set_app_data(Registered::default());
     let actions = lua.create_table()?;
     for BuiltinAction { name, action, .. } in ACTIONS {
-        actions.set(name, LuaAction::Builtin { name, action })?;
+        match (side, action) {
+            (Side::Client, _) => actions.set(name, LuaAction::Builtin { name, action })?,
+            (Side::Server, Action::Session(command)) => {
+                actions.set(name, LuaAction::Targeted { name, command })?
+            }
+            (Side::Server, _) => {}
+        }
     }
     actions.set("register", lua.create_function(register)?)?;
     actions.set("list", lua.create_function(list)?)?;
@@ -224,8 +352,10 @@ fn description(lua: &Lua, opts: &Value) -> mlua::Result<Option<String>> {
 }
 
 fn list(lua: &Lua, (): ()) -> mlua::Result<Table> {
+    let side = crate::runtime::side(lua);
     let mut entries: Vec<(String, Option<String>)> = ACTIONS
         .iter()
+        .filter(|action| on_side(action, side))
         .map(|action| (action.name.to_owned(), Some(action.desc.to_owned())))
         .collect();
     entries.extend(

@@ -185,13 +185,13 @@ fn prefix_hint_follows_the_option() {
 
 #[test]
 fn root_with_the_defaults() {
-    let config = gband_lua::defaults();
+    let config = gband_lua::defaults(gband_lua::Side::Client);
     assert_eq!(shown(&config, "root", 80), "band 1 │ C-space prefix");
 }
 
 #[test]
 fn prefix_table_with_the_defaults() {
-    let config = gband_lua::defaults();
+    let config = gband_lua::defaults(gband_lua::Side::Client);
     assert_eq!(
         shown(&config, "prefix", 240),
         format!("band 1 │ prefix │ {PREFIX_HINTS}")
@@ -269,7 +269,7 @@ fn separators_and_ellipsis_in_the_label_group() {
 
 #[test]
 fn default_description_gives_the_short_label() {
-    let config = gband_lua::defaults();
+    let config = gband_lua::defaults(gband_lua::Side::Client);
     assert!(shown(&config, "prefix", 240).contains("  r width  "));
 }
 
@@ -301,9 +301,7 @@ fn label_option_hides_an_action() {
 
 fn registered(name: &str, opts: &str) -> (Scratch, Config) {
     let scratch = Scratch::new(name);
-    scratch.plugin_file(
-        "hello",
-        "plugin/hello.lua",
+    scratch.client_plugin("hello",
         &format!(
             "gband.action.register('greet', function() end{opts})\ngband.keymap.set('root', 'alt+g', gband.action['hello.greet'])"
         ),

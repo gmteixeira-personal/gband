@@ -1,10 +1,9 @@
 gband.opt.prefix = "ctrl+space"
-gband.opt.default_column_width = 1/2
-gband.opt.width_presets = { 1/3, 1/2, 2/3 }
 gband.opt.center_focused_column = "never"
 gband.opt.statusline_position = "bottom"
 gband.opt.statusline_height = 1
 gband.opt.statusline_separator = " │ "
+gband.opt.notify_style = "osc9"
 
 local set = gband.keymap.set
 local action = gband.action

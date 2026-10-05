@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::ffi::OsString;
 use std::fmt;
 use std::fs;
@@ -14,7 +14,7 @@ use gband_core::layout::{Layout, LayoutOptions, PaneId, SessionAction};
 pub use gband_emulator::{Emulator, Grid};
 use gband_protocol::{
     ClientMessage, ExecutableId, Hello, HelloReply, IoError, MessageReader, MessageWriter,
-    PROTOCOL_VERSION, ServerMessage, SessionName, SessionSummary, socket_path,
+    PROTOCOL_VERSION, ServerMessage, SessionName, SessionSummary, Value, socket_path,
 };
 use gband_server::ServerConfig;
 use ratatui::buffer::Cell;
@@ -66,6 +66,7 @@ pub fn config(runtime_dir: &Path, program: &[&str]) -> ServerConfig {
         cwd: runtime_dir.to_path_buf(),
         executable: IDENTITY,
         options: tokio::sync::watch::channel(LayoutOptions::default()).1,
+        scripting: None,
     }
 }
 
@@ -255,6 +256,8 @@ pub struct TestClient {
     pub opened: Vec<(u32, Option<PaneId>)>,
     pub info: ServerMessage,
     pub exited: bool,
+    pub bridge: Vec<ServerMessage>,
+    pub states: HashMap<PaneId, BTreeMap<String, Value>>,
 }
 
 impl TestClient {
@@ -313,6 +316,8 @@ impl TestClient {
             opened: Vec::new(),
             info,
             exited: false,
+            bridge: Vec::new(),
+            states: HashMap::new(),
         };
         match client.receive().await {
             Some(ServerMessage::Layout { .. }) => {}
@@ -328,7 +333,13 @@ impl TestClient {
                 other => panic!("expected a snapshot, got {other:?}"),
             }
         }
-        client
+        loop {
+            match client.receive().await {
+                Some(ServerMessage::Requirements(_)) => return client,
+                Some(ServerMessage::PaneState { .. }) => {}
+                other => panic!("expected pane states, then requirements, got {other:?}"),
+            }
+        }
     }
 
     pub fn panes(&self) -> Vec<PaneId> {
@@ -442,6 +453,18 @@ impl TestClient {
                 self.opened.push((*request, *pane));
             }
             ServerMessage::Exited => self.exited = true,
+            ServerMessage::PaneState { pane, key, value } => {
+                let state = self.states.entry(*pane).or_default();
+                match value {
+                    Some(value) => state.insert(key.clone(), value.clone()),
+                    None => state.remove(key),
+                };
+                self.bridge.push(message.clone());
+            }
+            ServerMessage::Event { .. }
+            | ServerMessage::Result { .. }
+            | ServerMessage::Requirements(_)
+            | ServerMessage::ServerError(_) => self.bridge.push(message.clone()),
             ServerMessage::Info { .. }
             | ServerMessage::Sessions(_)
             | ServerMessage::Killed

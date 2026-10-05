@@ -131,9 +131,7 @@ gband.keymap.set('move', 'h', gband.action.focus_pane_down, { desc = 'down' })",
 fn registered_action_lists_its_full_name() {
     let scratch = Scratch::new("registered");
     scratch.write("");
-    scratch.plugin_file(
-        "hello",
-        "plugin/hello.lua",
+    scratch.client_plugin("hello",
         "gband.action.register('greet', function() end)\ngband.keymap.set('prefix', 'g', gband.action['hello.greet'], { desc = 'Greet' })",
     );
     let config = scratch.loaded();
@@ -176,9 +174,7 @@ gband.keymap.set('prefix', 'e', function() gband.keymap.enter('empty') end)",
 #[test]
 fn plugin_root_binding_of_the_prefix_key_is_dropped() {
     let scratch = Scratch::new("plugin-prefix");
-    scratch.plugin_file(
-        "hello",
-        "plugin/hello.lua",
+    scratch.client_plugin("hello",
         "gband.keymap.set('root', 'ctrl+space', gband.action.detach)\ngband.keymap.set('root', 'alt+d', gband.action.detach)",
     );
     let config = scratch.loaded();

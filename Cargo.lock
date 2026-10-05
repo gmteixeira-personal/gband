@@ -988,6 +988,7 @@ name = "gband-lua"
 version = "0.1.0"
 dependencies = [
  "gband-core",
+ "gband-protocol",
  "mlua",
  "notify",
  "serde",
@@ -1016,6 +1017,7 @@ dependencies = [
  "anyhow",
  "gband-core",
  "gband-emulator",
+ "gband-lua",
  "gband-protocol",
  "gband-test-support",
  "portable-pty",

@@ -8,6 +8,7 @@ rust-version.workspace = true
 gband-core.workspace = true
 gband-protocol.workspace = true
 gband-emulator.workspace = true
+gband-lua.workspace = true
 portable-pty.workspace = true
 tokio = { workspace = true, features = ["full"] }
 rustix.workspace = true

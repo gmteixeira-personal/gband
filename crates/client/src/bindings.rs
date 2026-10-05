@@ -108,7 +108,7 @@ mod tests {
     use super::*;
 
     fn defaults() -> Keymap {
-        let config = gband_lua::defaults();
+        let config = gband_lua::defaults(gband_lua::Side::Client);
         Keymap::new(config.options.prefix, config.keymap)
     }
 
@@ -119,14 +119,19 @@ mod tests {
             std::process::id(),
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
-        let path = gband_lua::user_file(&dir);
+        let path = gband_lua::user_file(&dir, gband_lua::Side::Client);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(&path, source).unwrap();
         let locations = gband_lua::Locations {
             config: dir.clone(),
             plugins: None,
         };
-        let config = gband_lua::load(&locations, &gband_lua::LoadOptions::default()).unwrap();
+        let config = gband_lua::load(
+            &locations,
+            gband_lua::Side::Client,
+            &gband_lua::LoadOptions::default(),
+        )
+        .unwrap();
         let _ = std::fs::remove_dir_all(&dir);
         Keymap::new(config.options.prefix, config.keymap)
     }

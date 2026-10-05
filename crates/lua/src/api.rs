@@ -1,8 +1,10 @@
 use gband_core::action::Action;
 use gband_core::input::Key;
 use gband_core::layout::{BandId, PaneContent, PaneId, Program, Proportion, SessionAction};
+use gband_protocol::Value as Data;
 use mlua::{Lua, Table, Value};
 
+use crate::Side;
 use crate::callbacks::CallbackId;
 use crate::error::ConfigError;
 use crate::keymap;
@@ -47,8 +49,21 @@ pub enum Dispatch {
     Spawn(Option<Program>),
     Enter(String),
     Session(SessionAction),
-    Input { pane: PaneId, input: PaneInput },
+    Input {
+        pane: PaneId,
+        input: PaneInput,
+    },
     Window(WindowRequest),
+    Write(Vec<u8>),
+    Call {
+        call: u64,
+        name: String,
+        args: Data,
+    },
+    Targeted {
+        session: String,
+        action: SessionAction,
+    },
 }
 
 #[derive(Default)]
@@ -93,9 +108,12 @@ pub(crate) fn require_loading(lua: &Lua, what: &str) -> mlua::Result<()> {
     }
 }
 
-pub(crate) fn install(lua: &Lua, gband: &Table) -> mlua::Result<()> {
+pub(crate) fn install(lua: &Lua, gband: &Table, side: Side) -> mlua::Result<()> {
     lua.set_app_data(Queue::default());
     gband.set("set", lua.create_function(set)?)?;
+    if side == Side::Server {
+        return Ok(());
+    }
     gband.set("bind", lua.create_function(bind)?)?;
     gband.set("unbind", lua.create_function(unbind)?)?;
     gband.set("spawn", lua.create_function(spawn)?)?;
@@ -121,9 +139,7 @@ fn set(lua: &Lua, options: Value) -> mlua::Result<()> {
                 ));
             }
         };
-        if !options::NAMES.contains(&name.as_str()) {
-            return Err(ConfigError::raise(lua, format!("unknown option `{name}`")));
-        }
+        options::check_name(lua, &name).map_err(|message| ConfigError::raise(lua, message))?;
         let patch = options::patch(lua, &name, value)
             .map_err(|reason| ConfigError::raise(lua, options::invalid(&name, &reason)))?;
         patches.push(patch);

@@ -6,6 +6,7 @@ rust-version.workspace = true
 
 [dependencies]
 gband-core.workspace = true
+gband-protocol.workspace = true
 mlua.workspace = true
 serde.workspace = true
 notify.workspace = true

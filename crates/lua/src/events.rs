@@ -1,12 +1,15 @@
 use std::collections::BTreeMap;
 
 use gband_core::layout::{BandId, PaneId};
+use gband_protocol::Value as Data;
 use mlua::{Lua, Table, Value};
 
+use crate::Side;
 use crate::api;
 use crate::callbacks::{self, CallbackId};
 use crate::error::ConfigError;
-use crate::ui;
+use crate::runtime::side;
+use crate::{server, ui, value};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Event {
@@ -46,11 +49,24 @@ pub enum Event {
         name: String,
         previous: String,
     },
+    ServerEvent {
+        name: String,
+        data: Data,
+        queued: bool,
+        time: u64,
+    },
+    PaneStateChanged {
+        pane: PaneId,
+        key: String,
+        value: Option<Data>,
+        previous: Option<Data>,
+    },
 }
 
 const USER: &str = "User";
+const SERVER_EVENT: &str = "ServerEvent";
 
-pub(crate) const NAMES: [&str; 11] = [
+pub(crate) const NAMES: [&str; 13] = [
     "Attached",
     "FocusChanged",
     "BandChanged",
@@ -62,7 +78,16 @@ pub(crate) const NAMES: [&str; 11] = [
     "KeyTableChanged",
     "HighlightChanged",
     "ColorschemeChanged",
+    "ServerEvent",
+    "PaneStateChanged",
 ];
+
+fn names(side: Side) -> &'static [&'static str] {
+    match side {
+        Side::Client => &NAMES,
+        Side::Server => &server::NAMES,
+    }
+}
 
 impl Event {
     pub fn name(&self) -> &'static str {
@@ -78,6 +103,15 @@ impl Event {
             Event::KeyTableChanged { .. } => "KeyTableChanged",
             Event::HighlightChanged { .. } => "HighlightChanged",
             Event::ColorschemeChanged { .. } => "ColorschemeChanged",
+            Event::ServerEvent { .. } => SERVER_EVENT,
+            Event::PaneStateChanged { .. } => "PaneStateChanged",
+        }
+    }
+
+    fn pattern(&self) -> Option<&str> {
+        match self {
+            Event::ServerEvent { name, .. } => Some(name),
+            _ => None,
         }
     }
 
@@ -111,6 +145,32 @@ impl Event {
                 payload.set("name", name.as_str())?;
                 payload.set("previous", previous.as_str())?;
             }
+            Event::ServerEvent {
+                name,
+                data,
+                queued,
+                time,
+            } => {
+                payload.set("name", name.as_str())?;
+                payload.set("data", value::into_lua(lua, data)?)?;
+                payload.set("queued", *queued)?;
+                payload.set("time", *time)?;
+            }
+            Event::PaneStateChanged {
+                pane,
+                key,
+                value,
+                previous,
+            } => {
+                let data = |value: &Option<Data>| match value {
+                    Some(value) => value::into_lua(lua, value),
+                    None => Ok(Value::Nil),
+                };
+                payload.set("pane", pane.0)?;
+                payload.set("key", key.as_str())?;
+                payload.set("value", data(value)?)?;
+                payload.set("previous", data(previous)?)?;
+            }
         }
         Ok(payload)
     }
@@ -137,12 +197,30 @@ fn events(lua: &Lua) -> mlua::AppDataRefMut<'_, Events> {
         .expect("events are installed with the runtime")
 }
 
-pub(crate) fn install(lua: &Lua, gband: &Table) -> mlua::Result<()> {
+pub(crate) fn install(lua: &Lua, gband: &Table, side: Side) -> mlua::Result<()> {
     lua.set_app_data(Events::default());
     gband.set("on", lua.create_function(on)?)?;
     gband.set("augroup", lua.create_function(augroup)?)?;
-    gband.set("emit", lua.create_function(emit)?)?;
+    match side {
+        Side::Client => gband.set("emit", lua.create_function(emit)?)?,
+        Side::Server => gband.set("emit", lua.create_function(server::emit)?)?,
+    }
     Ok(())
+}
+
+fn known(lua: &Lua, event: &str) -> Result<(), String> {
+    let side = side(lua);
+    if names(side).contains(&event) || (side == Side::Client && event == USER) {
+        return Ok(());
+    }
+    if names(side.other()).contains(&event) || event == USER {
+        return Err(format!(
+            "`{event}` is a {} event; this is the {}",
+            side.other().name(),
+            side.name()
+        ));
+    }
+    Err(format!("unknown event `{event}`"))
 }
 
 fn on(lua: &Lua, (event, function, opts): (Value, Value, Value)) -> mlua::Result<()> {
@@ -155,9 +233,7 @@ fn on(lua: &Lua, (event, function, opts): (Value, Value, Value)) -> mlua::Result
             ));
         }
     };
-    if event != USER && !NAMES.contains(&event.as_str()) {
-        return Err(ConfigError::raise(lua, format!("unknown event `{event}`")));
-    }
+    known(lua, &event).map_err(|message| ConfigError::raise(lua, message))?;
     let Value::Function(function) = function else {
         return Err(ConfigError::raise(
             lua,
@@ -175,11 +251,15 @@ fn on(lua: &Lua, (event, function, opts): (Value, Value, Value)) -> mlua::Result
             },
             match opts.get::<Value>("pattern")? {
                 Value::Nil => None,
-                Value::String(pattern) if event == USER => Some(pattern.to_str()?.to_owned()),
+                Value::String(pattern) if event == USER || event == SERVER_EVENT => {
+                    Some(pattern.to_str()?.to_owned())
+                }
                 Value::String(_) => {
                     return Err(ConfigError::raise(
                         lua,
-                        format!("`pattern` applies only to `User` events, not `{event}`"),
+                        format!(
+                            "`pattern` applies only to `User` and `ServerEvent` events, not `{event}`"
+                        ),
                     ));
                 }
                 _ => return Err(ConfigError::raise(lua, "`pattern` must be a string")),
@@ -287,7 +367,18 @@ fn emit(lua: &Lua, (name, data): (Value, Value)) -> mlua::Result<()> {
 }
 
 pub(crate) fn emit_event(lua: &Lua, event: &Event) -> mlua::Result<()> {
+    deliver(lua, event.name(), event.pattern(), |lua| event.payload(lua))
+}
+
+pub(crate) fn emit_server(lua: &Lua, event: &server::Event) -> mlua::Result<()> {
     deliver(lua, event.name(), None, |lua| event.payload(lua))
+}
+
+pub(crate) fn handles(lua: &Lua, event: &str) -> bool {
+    events(lua)
+        .handlers
+        .iter()
+        .any(|handler| handler.event == event)
 }
 
 pub(crate) fn deliver_table(lua: &Lua, event: &str, payload: &Table) -> mlua::Result<()> {
@@ -304,7 +395,7 @@ pub(crate) fn deliver_table(lua: &Lua, event: &str, payload: &Table) -> mlua::Re
 fn deliver(
     lua: &Lua,
     event: &str,
-    user: Option<&str>,
+    name: Option<&str>,
     payload: impl Fn(&Lua) -> mlua::Result<Table>,
 ) -> mlua::Result<()> {
     let matching: Vec<u64> = events(lua)
@@ -315,7 +406,7 @@ fn deliver(
                 && handler
                     .pattern
                     .as_deref()
-                    .is_none_or(|pattern| Some(pattern) == user)
+                    .is_none_or(|pattern| Some(pattern) == name)
         })
         .map(|handler| handler.id)
         .collect();

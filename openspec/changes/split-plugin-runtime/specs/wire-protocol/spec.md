@@ -10,7 +10,7 @@ Every plain data value, as the plugin-bridge capability defines it, SHALL be car
 ## MODIFIED Requirements
 
 ### Requirement: Handshake
-The first frame a client sends SHALL be a hello. The hello's payload SHALL begin with the client's protocol version, encoded the same way in every protocol version, followed by the client's terminal size. The first frame the server sends SHALL answer it. The server SHALL decode the leading version on its own, and compare it with its own version before it decodes anything that follows it. When the versions differ, the answer SHALL reject the client and carry the server's protocol version, whatever bytes follow the version, and the server SHALL then close the connection. When the versions are equal and the rest of the hello decodes, the answer SHALL accept the client and carry the server's protocol version. The leading version and the answer SHALL keep the same encoding in every later protocol version, so that two versions can always detect each other. The fields after the leading version MAY change in a later protocol version. The current protocol version SHALL be 5.
+The first frame a client sends SHALL be a hello. The hello's payload SHALL begin with the client's protocol version, encoded the same way in every protocol version, followed by the client's terminal size. The first frame the server sends SHALL answer it. The server SHALL decode the leading version on its own, and compare it with its own version before it decodes anything that follows it. When the versions differ, the answer SHALL reject the client and carry the server's protocol version, whatever bytes follow the version, and the server SHALL then close the connection. When the versions are equal and the rest of the hello decodes, the answer SHALL accept the client and carry the server's protocol version. The leading version and the answer SHALL keep the same encoding in every later protocol version, so that two versions can always detect each other. The fields after the leading version MAY change in a later protocol version. The current protocol version SHALL be 6.
 
 #### Scenario: Matching versions
 - **WHEN** a version 2 client sends its hello to a version 2 server
@@ -42,6 +42,10 @@ The first frame a client sends SHALL be a hello. The hello's payload SHALL begin
 - **WHEN** a client speaking protocol version 4 sends its hello to a server speaking version 5
 - **THEN** the server rejects it with version 5 and closes the connection
 
+#### Scenario: Version 5 client meets a version 6 server
+- **WHEN** a client speaking protocol version 5 sends its hello to a server speaking version 6
+- **THEN** the server rejects it with version 6 and closes the connection
+
 ### Requirement: Client messages
 After an attach request, a client SHALL send only these messages:
 
@@ -52,10 +56,11 @@ After an attach request, a client SHALL send only these messages:
 | resize | the client terminal's columns and rows |
 | shown | the identifiers of every pane the client shows, as the layout-view capability defines; it replaces the set the client reported before |
 | action | one session action, as the session-server capability defines it, with the pane or band it names |
+| content | a pane identifier, and terminal output for the plugin pane's screen, as the session-server capability defines |
 | command | a call number chosen by the client, a server command's full name, and its arguments as a plain data value |
 | detach | nothing |
 
-Pane and band identifiers SHALL name panes and bands of the client's session. The server SHALL ignore a pane identifier in a shown message that names no pane of the client's session. The open pane action SHALL name a band, optionally the pane whose column the new column follows, and optionally the program to run, either as a command line or as an argument list. Every other action SHALL name a pane, and consume or expel SHALL also name its direction. A client SHALL NOT reuse a call number while its call is unanswered. A client that detaches SHALL send detach, then close the connection.
+Pane and band identifiers SHALL name panes and bands of the client's session. The server SHALL ignore a pane identifier in a shown message that names no pane of the client's session. The open pane action SHALL name a band, optionally the pane whose column the new column follows, optionally the new column's width, whether the client asks to focus the new pane, and what the pane holds: either a program, which is optionally named as a command line or as an argument list, or plugin content with a request number. Every other action SHALL name a pane. Consume or expel SHALL also name its direction. Set width SHALL also name a width. Set height SHALL also name either a number of rows or a weight. A width and a weight SHALL each be a fraction in lowest terms. A client SHALL NOT reuse a call number while its call is unanswered. A client that detaches SHALL send detach, then close the connection.
 
 #### Scenario: Detach message
 - **WHEN** a client sends detach
@@ -82,6 +87,18 @@ Pane and band identifiers SHALL name panes and bands of the client's session. Th
 - **WHEN** a client sends open pane naming band 1 and no pane or program
 - **THEN** the server decodes open pane naming band 1 with no pane and no program
 
+#### Scenario: Open plugin pane round trip
+- **WHEN** a client sends open pane naming band 1, pane 2, the width 1/4, no focus, and plugin content with request number 7
+- **THEN** the server decodes the same band, pane, width, focus flag, content kind and request number
+
+#### Scenario: Set height round trip
+- **WHEN** a client sends set height naming pane 2 and the weight 3/2
+- **THEN** the server decodes set height naming pane 2 and the weight 3/2
+
+#### Scenario: Content round trip
+- **WHEN** a client sends content naming pane 4 and the output `\x1b[1;1Hhello`
+- **THEN** the server decodes content naming pane 4 and the same bytes
+
 #### Scenario: Command round trip
 - **WHEN** a client sends command number 7 naming `agents.next_waiting` with the arguments `{ state = "agent" }`
 - **THEN** the server decodes the same number, name and arguments
@@ -96,6 +113,7 @@ After the handshake, a server SHALL send only these messages:
 | snapshot | a pane identifier, the pane's columns and rows, and terminal output that, fed into an empty terminal grid of that size, reproduces that pane's screen on the server |
 | update | a pane identifier, and terminal output that, fed into the grid the client built for that pane from every earlier snapshot and update of it, reproduces that pane's current screen on the server |
 | focus | a pane identifier: the pane the client asked to open, or the pane a server command focused for it, which the client focuses |
+| opened | a request number, and the identifier of the plugin pane opened for it, or none |
 | exited | nothing; the client's session has ended |
 | sessions | for each session, its name, pane count and attached-client count |
 | killed | nothing; the session a kill request named has ended |
@@ -106,7 +124,7 @@ After the handshake, a server SHALL send only these messages:
 | requirements | for each plugin the server requires in the client, its name and its requirement |
 | server error | the text of a configuration or plugin error of the server's Lua |
 
-The server SHALL send info exactly once, as its first message after accepting the hello, before any answer to a request. An executable's identity SHALL be the device and inode of the file the process was started from, taken when the process starts, so that replacing the file on disk, as a rebuild does, gives a new identity. The layout, snapshot, update, focus, exited, pane state and result messages SHALL concern only the session the client attached to and the client's own calls. After the layout and the snapshots of an attach, the server SHALL send, in this order, a pane state message for each key of each pane state of the session, one requirements message, the latest server error if any, and the queued events for the client; and only then any later message.
+The server SHALL send info exactly once, as its first message after accepting the hello, before any answer to a request. An executable's identity SHALL be the device and inode of the file the process was started from, taken when the process starts, so that replacing the file on disk, as a rebuild does, gives a new identity. The layout, snapshot, update, focus, opened, exited and pane state messages SHALL concern only the session the client attached to, and the result messages only the client's own calls. After the layout and the snapshots of an attach, the server SHALL send, in this order, a pane state message for each key of each pane state of the session, one requirements message, the latest server error if any, and the queued events for the client; and only then any later message.
 
 A client SHALL keep one grid per pane. It SHALL build a pane's grid by replacing it with a new empty grid of the snapshot's size on every snapshot of that pane, then feeding the snapshot's output into it, and by feeding each update's output for that pane into its current grid. It SHALL discard the grid of a pane that the latest layout does not hold.
 
@@ -138,6 +156,10 @@ A client SHALL keep one grid per pane. It SHALL build a pane's grid by replacing
 #### Scenario: Heights in the layout
 - **WHEN** a column holds pane 1 with a fixed height of 14 rows and pane 2 with an automatic height of weight 10/7, and the server sends the layout
 - **THEN** the client decodes that column with pane 1 fixed at 14 rows and pane 2 automatic with weight 10/7
+
+#### Scenario: Opened round trip
+- **WHEN** an opened message naming request 7 and pane 9, and one naming request 8 and no pane, are framed and decoded
+- **THEN** each decoded message equals the original
 
 #### Scenario: Attach order with plugin state
 - **WHEN** pane 1's state holds `agent`, the server loaded a plugin requiring `agent-status >= 0.1` in the client, one event is queued, and a client attaches
