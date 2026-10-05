@@ -1,14 +1,17 @@
 use std::fmt::Debug;
 use std::path::PathBuf;
 
+use gband_core::geometry::Size;
 use gband_core::input::{Key, KeyCode, Modifiers};
-use gband_core::layout::{Direction, Layout, PaneId, SessionAction};
+use gband_core::layout::{Direction, Layout, PaneHeight, PaneId, SessionAction, Step, Weight};
 use gband_protocol::{
     ClientMessage, Decoder, ExecutableId, Hello, HelloReply, PROTOCOL_VERSION, ServerMessage,
     SessionName, SessionSummary, encode,
 };
 use serde::Serialize;
 use serde::de::DeserializeOwned;
+
+const AREA: Size = Size::new(80, 24);
 
 fn round_trip<T: Serialize + DeserializeOwned + PartialEq + Debug>(message: T) {
     let mut decoder = Decoder::new();
@@ -22,8 +25,8 @@ fn session(name: &str) -> SessionName {
 }
 
 #[test]
-fn protocol_version_is_three() {
-    assert_eq!(PROTOCOL_VERSION, 3);
+fn protocol_version_is_four() {
+    assert_eq!(PROTOCOL_VERSION, 4);
 }
 
 #[test]
@@ -142,6 +145,8 @@ fn client_messages_round_trip() {
         rows: 90,
     });
     round_trip(ClientMessage::Detach);
+    round_trip(ClientMessage::Shown(vec![PaneId(1), PaneId(4)]));
+    round_trip(ClientMessage::Shown(Vec::new()));
 }
 
 #[test]
@@ -168,6 +173,19 @@ fn session_actions_round_trip() {
         },
         SessionAction::CycleWidth(PaneId(6)),
         SessionAction::ToggleFullWidth(PaneId(7)),
+        SessionAction::StepWidth {
+            pane: PaneId(8),
+            step: Step::Grow,
+        },
+        SessionAction::StepHeight {
+            pane: PaneId(2),
+            step: Step::Grow,
+        },
+        SessionAction::StepHeight {
+            pane: PaneId(2),
+            step: Step::Shrink,
+        },
+        SessionAction::ResetHeight(PaneId(9)),
     ] {
         round_trip(ClientMessage::Action(action));
     }
@@ -182,19 +200,57 @@ fn layout_round_trips() {
     let w1 = layout.workspaces()[0].id;
     layout.open(first, w1, None);
     layout.open(second, w1, Some(first));
-    layout.apply(SessionAction::ConsumeOrExpel {
-        pane: second,
-        direction: Direction::Left,
-    });
-    layout.apply(SessionAction::CycleWidth(first));
-    layout.apply(SessionAction::CycleWidth(first));
-    layout.apply(SessionAction::ToggleFullWidth(first));
+    layout.apply(
+        SessionAction::ConsumeOrExpel {
+            pane: second,
+            direction: Direction::Left,
+        },
+        AREA,
+    );
+    layout.apply(SessionAction::CycleWidth(first), AREA);
+    layout.apply(SessionAction::CycleWidth(first), AREA);
+    layout.apply(SessionAction::ToggleFullWidth(first), AREA);
     let w2 = layout.workspaces()[1].id;
     layout.open(third, w2, None);
     assert_eq!(layout.workspaces().len(), 3);
     round_trip(ServerMessage::Layout {
         cols: 120,
         rows: 40,
+        layout,
+    });
+}
+
+#[test]
+fn heights_in_the_layout_round_trip() {
+    let mut layout = Layout::new();
+    let workspace = layout.workspaces()[0].id;
+    let panes: Vec<PaneId> = (0..3).map(|_| layout.allocate_pane()).collect();
+    layout.open(panes[0], workspace, None);
+    for pair in panes.windows(2) {
+        layout.open(pair[1], workspace, Some(pair[0]));
+        layout.apply(
+            SessionAction::ConsumeOrExpel {
+                pane: pair[1],
+                direction: Direction::Left,
+            },
+            AREA,
+        );
+    }
+    let grow = |pane| SessionAction::StepHeight {
+        pane,
+        step: Step::Grow,
+    };
+    layout.apply(grow(panes[1]), AREA);
+    layout.apply(grow(panes[0]), AREA);
+    layout.remove(panes[2]);
+    layout.apply(grow(panes[0]), Size::new(80, 50));
+    assert_eq!(
+        layout.workspaces()[0].columns[0].heights,
+        [PaneHeight::Fixed(14), PaneHeight::Auto(Weight::new(10, 7))]
+    );
+    round_trip(ServerMessage::Layout {
+        cols: 80,
+        rows: 24,
         layout,
     });
 }

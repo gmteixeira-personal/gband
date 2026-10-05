@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::input::Key;
-use crate::layout::Direction;
+use crate::layout::{Direction, Step};
 use crate::view::ViewAction;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -18,6 +18,9 @@ pub enum SessionCommand {
     ConsumeOrExpel(Direction),
     CycleWidth,
     ToggleFullWidth,
+    StepWidth(Step),
+    StepHeight(Step),
+    ResetHeight,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]

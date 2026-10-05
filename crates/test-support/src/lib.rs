@@ -357,6 +357,15 @@ impl TestClient {
         self.send(&ClientMessage::Action(action)).await;
     }
 
+    pub async fn show(&mut self, panes: &[PaneId]) {
+        self.send(&ClientMessage::Shown(panes.to_vec())).await;
+    }
+
+    pub async fn show_all(&mut self) {
+        let panes = self.panes();
+        self.show(&panes).await;
+    }
+
     pub async fn key(&mut self, key: Key) {
         let pane = self.first();
         self.key_to(pane, key).await;

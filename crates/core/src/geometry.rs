@@ -1,8 +1,9 @@
 use serde::{Deserialize, Serialize};
 
-use crate::layout::{Column, PaneId, Workspace};
+use crate::layout::{Column, PaneHeight, PaneId, Weight, Workspace, gcd};
 
 pub const MIN_COLUMN_WIDTH: u16 = 3;
+pub const MIN_TILE_HEIGHT: u16 = 3;
 pub const BORDER: u16 = 1;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -81,6 +82,93 @@ pub fn column_spans(workspace: &Workspace, area: Size) -> Vec<Span> {
         .collect()
 }
 
+fn share(rows: u16, weights: &[u64]) -> Vec<u16> {
+    let total: u64 = weights.iter().sum();
+    if total == 0 {
+        return vec![0; weights.len()];
+    }
+    let mut shares: Vec<u16> = weights
+        .iter()
+        .map(|&weight| (u64::from(rows) * weight / total) as u16)
+        .collect();
+    let leftover = rows - shares.iter().sum::<u16>();
+    for share in shares.iter_mut().take(usize::from(leftover)) {
+        *share += 1;
+    }
+    shares
+}
+
+fn scaled(weights: &[Weight]) -> Vec<u64> {
+    let common = weights.iter().fold(1u64, |lcm, weight| {
+        let den = u64::from(weight.den());
+        lcm / gcd(lcm, den) * den
+    });
+    weights
+        .iter()
+        .map(|weight| u64::from(weight.num()) * (common / u64::from(weight.den())))
+        .collect()
+}
+
+fn share_automatic(rows: u16, weights: &[Weight]) -> Vec<u16> {
+    let weights = scaled(weights);
+    let count = weights.len() as u32;
+    let mut raised = vec![false; weights.len()];
+    loop {
+        let open: Vec<usize> = (0..weights.len()).filter(|&index| !raised[index]).collect();
+        let raised_rows = (weights.len() - open.len()) as u16 * MIN_TILE_HEIGHT;
+        let open_weights: Vec<u64> = open.iter().map(|&index| weights[index]).collect();
+        let shares = share(rows - raised_rows, &open_weights);
+        let short = open
+            .iter()
+            .zip(&shares)
+            .find(|&(_, &share)| share < MIN_TILE_HEIGHT);
+        match short {
+            Some((&index, _)) if u32::from(rows) >= count * u32::from(MIN_TILE_HEIGHT) => {
+                raised[index] = true;
+            }
+            _ => {
+                let mut result = vec![MIN_TILE_HEIGHT; weights.len()];
+                for (&index, share) in open.iter().zip(shares) {
+                    result[index] = share;
+                }
+                return result;
+            }
+        }
+    }
+}
+
+pub fn fixed_height_limit(panes: usize, rows: u16) -> u16 {
+    let others = panes.saturating_sub(1) as u16;
+    rows.saturating_sub(MIN_TILE_HEIGHT.saturating_mul(others))
+}
+
+pub fn pane_heights(column: &Column, rows: u16) -> Vec<u16> {
+    let ceiling = fixed_height_limit(column.heights.len(), rows);
+    let mut heights: Vec<u16> = column
+        .heights
+        .iter()
+        .map(|height| match *height {
+            PaneHeight::Fixed(fixed) => fixed.min(ceiling),
+            PaneHeight::Auto(_) => 0,
+        })
+        .collect();
+    let remaining = rows.saturating_sub(heights.iter().sum());
+    let automatic: Vec<(usize, Weight)> = column
+        .heights
+        .iter()
+        .enumerate()
+        .filter_map(|(index, height)| match *height {
+            PaneHeight::Auto(weight) => Some((index, weight)),
+            PaneHeight::Fixed(_) => None,
+        })
+        .collect();
+    let weights: Vec<Weight> = automatic.iter().map(|&(_, weight)| weight).collect();
+    for (&(index, _), share) in automatic.iter().zip(share_automatic(remaining, &weights)) {
+        heights[index] = share;
+    }
+    heights
+}
+
 pub fn tiles(workspace: &Workspace, area: Size) -> Vec<Tile> {
     workspace
         .columns
@@ -88,16 +176,13 @@ pub fn tiles(workspace: &Workspace, area: Size) -> Vec<Tile> {
         .zip(column_spans(workspace, area))
         .enumerate()
         .flat_map(|(column_index, (column, span))| {
-            let count = column.panes.len() as u16;
-            let base = area.rows / count;
-            let extra = area.rows % count;
             let mut y = 0;
             column
                 .panes
                 .iter()
+                .zip(pane_heights(column, area.rows))
                 .enumerate()
-                .map(move |(row, &pane)| {
-                    let height = base + u16::from((row as u16) < extra);
+                .map(move |(row, (&pane, height))| {
                     let tile = Tile {
                         pane,
                         column: column_index,

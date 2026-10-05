@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ffi::OsString;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -11,12 +11,14 @@ use gband_protocol::SessionName;
 use portable_pty::{ChildKiller, ExitStatus};
 use rustix::process::{Pid, Signal};
 use tokio::sync::{mpsc, oneshot, watch};
+use tokio::time::Instant;
 use tracing::Instrument;
 
 use crate::event::{Bus, SessionEvent};
 use crate::pane::{self, Pane, PaneEntry, PaneExit, SpawnRequest};
 
 const KILL_GRACE: Duration = Duration::from_secs(2);
+const SETTLE: Duration = Duration::from_millis(100);
 pub const INITIAL_AREA: Size = Size::new(80, 24);
 
 pub struct State {
@@ -33,6 +35,10 @@ pub enum Command {
     Action {
         action: SessionAction,
         focus: Option<mpsc::UnboundedSender<PaneId>>,
+    },
+    Shown {
+        client: u64,
+        panes: Vec<PaneId>,
     },
     CloseAll,
 }
@@ -62,6 +68,8 @@ pub struct Session {
     changed: Arc<watch::Sender<u64>>,
     exits: mpsc::UnboundedSender<PaneExit>,
     last_status: Option<ExitStatus>,
+    shown: HashMap<u64, HashSet<PaneId>>,
+    settle_at: Option<Instant>,
 }
 
 impl Session {
@@ -80,6 +88,8 @@ impl Session {
             changed: Arc::new(watch::Sender::new(0)),
             exits,
             last_status: None,
+            shown: HashMap::new(),
+            settle_at: None,
         };
         let workspace = session.layout.workspaces()[0].id;
         session.open(workspace, None)?;
@@ -115,7 +125,42 @@ impl Session {
                 }
             }
             Command::Action { action, focus } => self.act(action, focus),
+            Command::Shown { client, panes } => self.show(client, panes),
             Command::CloseAll => self.terminate(),
+        }
+    }
+
+    fn show(&mut self, client: u64, panes: Vec<PaneId>) {
+        let panes: HashSet<PaneId> = panes
+            .into_iter()
+            .filter(|&pane| self.layout.contains(pane))
+            .collect();
+        let previous = if panes.is_empty() {
+            self.shown.remove(&client)
+        } else {
+            self.shown.insert(client, panes.clone())
+        };
+        if previous.unwrap_or_default() != panes {
+            self.unsettle();
+        }
+    }
+
+    fn unsettle(&mut self) {
+        self.settle_at = Some(Instant::now() + SETTLE);
+    }
+
+    fn settle(&mut self) {
+        self.settle_at = None;
+        let shown: HashSet<PaneId> = self.shown.values().flatten().copied().collect();
+        for workspace in self.layout.workspaces() {
+            for tile in tiles(workspace, self.area) {
+                if !shown.contains(&tile.pane) {
+                    continue;
+                }
+                if let Some(live) = self.panes.get(&tile.pane) {
+                    live.entry.pane.resize(tile.terminal_size());
+                }
+            }
         }
     }
 
@@ -155,7 +200,7 @@ impl Session {
             },
             SessionAction::ClosePane(pane) => self.close(pane),
             other => {
-                let events = self.layout.apply(other);
+                let events = self.layout.apply(other, self.area);
                 if !events.is_empty() {
                     self.config.events.layout(events);
                     self.publish();
@@ -225,13 +270,7 @@ impl Session {
     }
 
     fn publish(&mut self) {
-        for workspace in self.layout.workspaces() {
-            for tile in tiles(workspace, self.area) {
-                if let Some(live) = self.panes.get(&tile.pane) {
-                    live.entry.pane.resize(tile.terminal_size());
-                }
-            }
-        }
+        self.unsettle();
         let panes = self
             .panes
             .iter()
@@ -252,9 +291,13 @@ pub async fn drive(
     mut exits: mpsc::UnboundedReceiver<PaneExit>,
 ) {
     while !session.is_over() {
+        let settle_at = session.settle_at;
         tokio::select! {
             Some(command) = commands.recv() => session.handle(command),
             Some(exit) = exits.recv() => session.exited(exit),
+            () = async { tokio::time::sleep_until(settle_at.unwrap()).await }, if settle_at.is_some() => {
+                session.settle();
+            }
         }
     }
     match session.last_status {

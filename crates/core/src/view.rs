@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 use crate::action::SessionCommand;
-use crate::geometry::{Size, column_spans};
+use crate::geometry::{Size, column_spans, tiles};
 use crate::layout::{Layout, Location, PaneId, SessionAction, Workspace, WorkspaceId};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -26,7 +26,7 @@ struct WorkspaceView {
 pub struct Scene<'a> {
     pub layout: &'a Layout,
     pub area: Size,
-    pub viewport_cols: u16,
+    pub viewport: Size,
 }
 
 #[derive(Clone, Debug)]
@@ -85,7 +85,35 @@ impl View {
             },
             SessionCommand::CycleWidth => SessionAction::CycleWidth(focused?),
             SessionCommand::ToggleFullWidth => SessionAction::ToggleFullWidth(focused?),
+            SessionCommand::StepWidth(step) => SessionAction::StepWidth {
+                pane: focused?,
+                step,
+            },
+            SessionCommand::StepHeight(step) => SessionAction::StepHeight {
+                pane: focused?,
+                step,
+            },
+            SessionCommand::ResetHeight => SessionAction::ResetHeight(focused?),
         })
+    }
+
+    pub fn shown(&self, scene: Scene<'_>) -> Vec<PaneId> {
+        let Some(workspace) = scene.layout.workspace(self.workspace) else {
+            return Vec::new();
+        };
+        let left = self.camera();
+        let right = left + u32::from(scene.viewport.cols);
+        tiles(workspace, scene.area)
+            .into_iter()
+            .filter(|tile| {
+                tile.width > 0
+                    && tile.height > 0
+                    && tile.x < right
+                    && tile.span().end() > left
+                    && tile.y < scene.viewport.rows
+            })
+            .map(|tile| tile.pane)
+            .collect()
     }
 
     pub fn apply(&mut self, action: ViewAction, scene: Scene<'_>) {
@@ -232,7 +260,7 @@ impl View {
             return;
         };
         let span = column_spans(workspace, scene.area)[column];
-        let viewport = u32::from(scene.viewport_cols);
+        let viewport = u32::from(scene.viewport.cols);
         let state = self.workspaces.entry(workspace.id).or_default();
         if span.x >= state.camera && span.end() <= state.camera + viewport {
             return;

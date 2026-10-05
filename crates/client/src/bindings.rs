@@ -1,6 +1,6 @@
 use gband_core::action::{Action, ClientAction, SessionCommand};
 use gband_core::input::{Key, KeyCode, Modifiers};
-use gband_core::layout::Direction;
+use gband_core::layout::{Direction, Step};
 use gband_core::view::ViewAction;
 
 pub const PREFIX: Key = Key {
@@ -43,6 +43,23 @@ pub const BINDINGS: &[(Key, Action)] = &[
         char_key('f'),
         Action::Session(SessionCommand::ToggleFullWidth),
     ),
+    (
+        char_key('-'),
+        Action::Session(SessionCommand::StepWidth(Step::Shrink)),
+    ),
+    (
+        char_key('='),
+        Action::Session(SessionCommand::StepWidth(Step::Grow)),
+    ),
+    (
+        char_key('_'),
+        Action::Session(SessionCommand::StepHeight(Step::Shrink)),
+    ),
+    (
+        char_key('+'),
+        Action::Session(SessionCommand::StepHeight(Step::Grow)),
+    ),
+    (char_key('R'), Action::Session(SessionCommand::ResetHeight)),
     (char_key('D'), Action::Client(ClientAction::Detach)),
     (PREFIX, Action::Client(ClientAction::SendKey(PREFIX))),
 ];
@@ -123,6 +140,17 @@ mod tests {
             ),
             ('r', Action::Session(SessionCommand::CycleWidth)),
             ('f', Action::Session(SessionCommand::ToggleFullWidth)),
+            (
+                '-',
+                Action::Session(SessionCommand::StepWidth(Step::Shrink)),
+            ),
+            ('=', Action::Session(SessionCommand::StepWidth(Step::Grow))),
+            (
+                '_',
+                Action::Session(SessionCommand::StepHeight(Step::Shrink)),
+            ),
+            ('+', Action::Session(SessionCommand::StepHeight(Step::Grow))),
+            ('R', Action::Session(SessionCommand::ResetHeight)),
         ];
         for (c, action) in expected {
             assert_eq!(after_prefix(char_key(c)), Command::Run(action), "{c}");
@@ -159,6 +187,11 @@ mod tests {
             (char_key(']'), Kind::Session),
             (char_key('r'), Kind::Session),
             (char_key('f'), Kind::Session),
+            (char_key('-'), Kind::Session),
+            (char_key('='), Kind::Session),
+            (char_key('_'), Kind::Session),
+            (char_key('+'), Kind::Session),
+            (char_key('R'), Kind::Session),
             (char_key('D'), Kind::Client),
             (PREFIX, Kind::Client),
         ];
@@ -182,6 +215,16 @@ mod tests {
             after_prefix(char_key('D')),
             Command::Run(Action::Client(ClientAction::Detach))
         );
+    }
+
+    #[test]
+    fn plus_grows_the_height_with_or_without_the_shift_flag() {
+        let grow = Command::Run(Action::Session(SessionCommand::StepHeight(Step::Grow)));
+        assert_eq!(
+            after_prefix(Key::new(KeyCode::Char('+'), Modifiers::SHIFT)),
+            grow
+        );
+        assert_eq!(after_prefix(char_key('+')), grow);
     }
 
     #[test]

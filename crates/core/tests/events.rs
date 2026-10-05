@@ -1,5 +1,10 @@
 use gband_core::event::LayoutEvent;
-use gband_core::layout::{Direction, Layout, PaneId, Proportion, SessionAction, WorkspaceId};
+use gband_core::geometry::Size;
+use gband_core::layout::{
+    Direction, Layout, PaneHeight, PaneId, Proportion, SessionAction, Step, Weight, WorkspaceId,
+};
+
+const AREA: Size = Size::new(80, 24);
 
 fn open(
     layout: &mut Layout,
@@ -90,10 +95,13 @@ fn consume_into_the_left_neighbour_moves_one_pane() {
     let mut layout = Layout::new();
     let (first, _) = open(&mut layout, 0, None);
     let (second, _) = open(&mut layout, 0, Some(first));
-    let events = layout.apply(SessionAction::ConsumeOrExpel {
-        pane: second,
-        direction: Direction::Left,
-    });
+    let events = layout.apply(
+        SessionAction::ConsumeOrExpel {
+            pane: second,
+            direction: Direction::Left,
+        },
+        AREA,
+    );
     assert_eq!(
         events,
         [LayoutEvent::PaneMoved {
@@ -110,14 +118,20 @@ fn expel_to_the_right_moves_one_pane() {
     let mut layout = Layout::new();
     let (first, _) = open(&mut layout, 0, None);
     let (second, _) = open(&mut layout, 0, Some(first));
-    layout.apply(SessionAction::ConsumeOrExpel {
-        pane: second,
-        direction: Direction::Left,
-    });
-    let events = layout.apply(SessionAction::ConsumeOrExpel {
-        pane: second,
-        direction: Direction::Right,
-    });
+    layout.apply(
+        SessionAction::ConsumeOrExpel {
+            pane: second,
+            direction: Direction::Left,
+        },
+        AREA,
+    );
+    let events = layout.apply(
+        SessionAction::ConsumeOrExpel {
+            pane: second,
+            direction: Direction::Right,
+        },
+        AREA,
+    );
     assert_eq!(
         events,
         [LayoutEvent::PaneMoved {
@@ -138,7 +152,7 @@ fn consume_at_the_edge_produces_nothing() {
     for (pane, direction) in [(first, Direction::Left), (second, Direction::Right)] {
         assert!(
             layout
-                .apply(SessionAction::ConsumeOrExpel { pane, direction })
+                .apply(SessionAction::ConsumeOrExpel { pane, direction }, AREA)
                 .is_empty()
         );
     }
@@ -160,19 +174,19 @@ fn cycling_and_toggling_widths_report_the_column() {
         }]
     };
     assert_eq!(
-        layout.apply(SessionAction::CycleWidth(second)),
+        layout.apply(SessionAction::CycleWidth(second), AREA),
         changed(Proportion::TWO_THIRDS, false)
     );
     assert_eq!(
-        layout.apply(SessionAction::CycleWidth(second)),
+        layout.apply(SessionAction::CycleWidth(second), AREA),
         changed(Proportion::ONE_THIRD, false)
     );
     assert_eq!(
-        layout.apply(SessionAction::ToggleFullWidth(second)),
+        layout.apply(SessionAction::ToggleFullWidth(second), AREA),
         changed(Proportion::ONE_THIRD, true)
     );
     assert_eq!(
-        layout.apply(SessionAction::ToggleFullWidth(second)),
+        layout.apply(SessionAction::ToggleFullWidth(second), AREA),
         changed(Proportion::ONE_THIRD, false)
     );
 }
@@ -183,10 +197,89 @@ fn actions_on_a_missing_pane_produce_nothing() {
     open(&mut layout, 0, None);
     let missing = PaneId(99);
     assert!(layout.remove(missing).is_empty());
-    assert!(layout.apply(SessionAction::CycleWidth(missing)).is_empty());
     assert!(
         layout
-            .apply(SessionAction::ToggleFullWidth(missing))
+            .apply(SessionAction::CycleWidth(missing), AREA)
             .is_empty()
     );
+    assert!(
+        layout
+            .apply(SessionAction::ToggleFullWidth(missing), AREA)
+            .is_empty()
+    );
+}
+
+#[test]
+fn growing_a_column_width_reports_it_once() {
+    let mut layout = Layout::new();
+    let (first, _) = open(&mut layout, 0, None);
+    let grow = SessionAction::StepWidth {
+        pane: first,
+        step: Step::Grow,
+    };
+    assert_eq!(
+        layout.apply(grow, AREA),
+        [LayoutEvent::ColumnWidthChanged {
+            workspace: workspace(&layout, 0),
+            column: 0,
+            width: Proportion::new(3, 5),
+            full_width: false,
+        }]
+    );
+    let shrink = SessionAction::StepWidth {
+        pane: first,
+        step: Step::Shrink,
+    };
+    for _ in 0..6 {
+        layout.apply(shrink, AREA);
+    }
+    assert!(layout.apply(shrink, AREA).is_empty());
+}
+
+fn second_column_stack() -> (Layout, PaneId, PaneId) {
+    let mut layout = Layout::new();
+    let (first, _) = open(&mut layout, 0, None);
+    let (top, _) = open(&mut layout, 0, Some(first));
+    let (bottom, _) = open(&mut layout, 0, Some(top));
+    layout.apply(
+        SessionAction::ConsumeOrExpel {
+            pane: bottom,
+            direction: Direction::Left,
+        },
+        AREA,
+    );
+    (layout, top, bottom)
+}
+
+#[test]
+fn growing_a_pane_height_reports_the_column() {
+    let (mut layout, top, _) = second_column_stack();
+    assert_eq!(
+        layout.apply(
+            SessionAction::StepHeight {
+                pane: top,
+                step: Step::Grow,
+            },
+            AREA,
+        ),
+        [LayoutEvent::PaneHeightsChanged {
+            workspace: workspace(&layout, 0),
+            column: 1,
+            heights: vec![PaneHeight::Fixed(14), PaneHeight::Auto(Weight::ONE)],
+        }]
+    );
+}
+
+#[test]
+fn height_steps_at_the_limits_produce_nothing() {
+    for (step, presses) in [(Step::Grow, 5), (Step::Shrink, 5)] {
+        let (mut layout, top, _) = second_column_stack();
+        let action = SessionAction::StepHeight { pane: top, step };
+        for _ in 0..presses {
+            assert!(!layout.apply(action, AREA).is_empty());
+        }
+        let before = layout.clone();
+        assert!(layout.apply(action, AREA).is_empty());
+        assert_eq!(layout, before);
+    }
 }
