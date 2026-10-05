@@ -52,7 +52,9 @@ gband's Lua configuration can set options and bind keys, but nothing beyond one 
 - rename-workspaces-to-bands
 
 ### Expected Files
+- Cargo.lock
 - crates/lua/
+- crates/client/Cargo.toml
 - crates/client/src/lib.rs
 - crates/client/src/bindings.rs
 - crates/client/tests/actions.rs
