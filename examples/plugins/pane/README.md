@@ -2,7 +2,7 @@
 
 A sample gband status line plugin. It shows the parts of the status line API that most segments use:
 
-- a component that shows the focused pane, such as `pane 3`, and redraws when the focus changes
+- a component that shows the focused window, such as `pane 3`, and redraws when the focus changes
 - its own highlight group, `PaneSegment`, whose default links to `StatusLineAccent`
 - the colorscheme `dusk`, which sets the built-in status line groups and overrides `PaneSegment`
 
@@ -36,5 +36,5 @@ gband draws them as such when the client's `COLORTERM` is `truecolor` or `24bit`
 
 ## Tests
 
-`tests/pane_spec.lua` opens and focuses panes and compares the status line with the references in `tests/screenshots/`, with the default colors and with `dusk`.
+`tests/pane_spec.lua` opens and focuses windows and compares the status line with the references in `tests/screenshots/`, with the default colors and with `dusk`.
 Run it with `gband test` in this directory; [the testing guide](../../../docs/testing.md) walks through it.

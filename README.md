@@ -1,46 +1,48 @@
 # gband
 
 gband is a terminal multiplexer inspired by the [niri](https://github.com/YaLTeR/niri) window manager.
-It places panes (niri's windows) on an infinitely side-scrolling strip.
+Like niri, it places windows on an infinitely side-scrolling strip.
 Each strip belongs to a band (niri's workspace), and bands stack vertically without limit.
 It is written in Rust and scriptable with Lua.
 
 ## Status
 
-gband is in early development and is not usable yet.
+gband is usable and stable, but in early development.
+Configuration, the Lua API and the plugin API can still change between releases.
 
 ## How it works
 
-Multiplexers such as tmux and Zellij split a fixed screen area.
+Multiplexers such as tmux and Zellij split a fixed screen area into panes.
 Each new pane shrinks the panes already on screen.
 
 gband follows niri's scrollable tiling model instead:
 
-- Panes sit in columns on a strip that scrolls sideways without limit.
-- A new pane adds a column to the strip, and existing panes keep their size.
-- The view scrolls sideways to follow focus, so the focused pane is always on screen.
-- A column can hold several panes stacked vertically.
+- Windows sit in columns on a strip that scrolls sideways without limit.
+- A new window adds a column to the strip, and existing windows keep their size.
+- The view scrolls sideways to follow focus, so the focused window is always on screen.
+- A column can hold several windows stacked vertically.
 - Each band has its own strip.
   Bands stack vertically, and the view slides up and down between them.
 - An empty band always waits below the last one.
-  Opening a pane in it adds a new empty band below, and a band other than the last is removed when its last pane closes.
+  Opening a window in it adds a new empty band below, and a band other than the last is removed when its last window closes.
 
 Scrolling, band switches and resizes animate.
 Set `GBAND_ANIMATIONS=off` before you attach to turn the animations off.
 
 ## Names
 
-gband keeps niri's layout model but renames two of its parts:
+gband keeps niri's layout model but renames one of its parts:
 
 | niri | gband |
 |---|---|
-| window | pane |
 | workspace | band |
 
-Columns and the strip keep their niri names.
+Windows, columns and the strip keep their niri names.
+What gband calls a window, tmux and Zellij call a pane.
+Some Lua API names still say pane, such as `gband.action.close_pane` and `gband.pane`, and each of them acts on windows.
 
-In gband, a window is something else: text that a plugin draws, either as a float over the panes or as a pane of its own.
-[docs/plugins.md](docs/plugins.md#windows-gbandwin) describes windows.
+A plugin window is something else: text that a plugin draws, either floating over the windows or tiled in a column like a window.
+[docs/plugins.md](docs/plugins.md#plugin-windows-gbandwin) describes plugin windows.
 
 ## Usage
 
@@ -52,7 +54,7 @@ The prefix key followed by `D` detaches, and the session keeps running on the se
 Run `gband` again to attach to it.
 
 - `gband list-sessions` lists the sessions of the running server.
-- `gband kill-session -s work` ends the session `work` and its panes.
+- `gband kill-session -s work` ends the session `work` and its windows.
 - `gband kill-server` stops the server and every session.
 
 The default key bindings all follow the prefix key, Ctrl+Space:
@@ -60,18 +62,18 @@ The default key bindings all follow the prefix key, Ctrl+Space:
 | key | action |
 |---|---|
 | `h`, `l` | focus the column to the left or right |
-| `j`, `k` | focus the pane below or above |
+| `j`, `k` | focus the window below or above |
 | `u`, `i` | view the band below or above |
-| `enter` | open a pane running your shell |
-| `q` | close the pane |
-| `[`, `]` | move the pane into or out of the column to the left or right |
+| `enter` | open a window running your shell |
+| `q` | close the window |
+| `[`, `]` | move the window into or out of the column to the left or right |
 | `r` | cycle the column's width through the presets |
 | `f` | toggle full width of the column |
 | `-`, `=` | narrow or widen the column |
-| `_`, `+` | shorten or heighten the pane |
-| `R` | reset the pane's height |
+| `_`, `+` | shorten or heighten the window |
+| `R` | reset the window's height |
 | `D` | detach |
-| Ctrl+Space | send Ctrl+Space to the pane |
+| Ctrl+Space | send Ctrl+Space to the window |
 
 ## Scripting
 
@@ -124,13 +126,13 @@ gband.keymap.set("root", "alt+h", gband.action.focus_column_left, { desc = "focu
 gband.bind("alt+l", gband.action.focus_column_right)
 
 -- A prefix binding acts on the key pressed after the prefix key.
-gband.keymap.set("prefix", "x", gband.action.close_pane, { desc = "close the pane" })
+gband.keymap.set("prefix", "x", gband.action.close_pane, { desc = "close the window" })
 gband.bind("prefix c", gband.action.cycle_column_width)
 
 -- Remove a binding made earlier, such as one copied from the defaults.
 gband.unbind("prefix q")
 
--- A function binding can call actions and open panes running a command.
+-- A function binding can call actions and open windows running a command.
 gband.bind("alt+n", function()
   gband.spawn { cmd = "htop" }
 end)
@@ -190,30 +192,30 @@ The actions in `gband.action`:
 | action | effect |
 |---|---|
 | `focus_column_left`, `focus_column_right` | focus the column to the left or right |
-| `focus_pane_down`, `focus_pane_up` | focus the pane below or above |
+| `focus_pane_down`, `focus_pane_up` | focus the window below or above |
 | `focus_band_down`, `focus_band_up` | view the band below or above |
-| `open_pane` | open a pane running your shell right of the focused column |
-| `close_pane` | close the focused pane |
-| `consume_or_expel_left`, `consume_or_expel_right` | move the focused pane into or out of the neighbouring column |
+| `open_pane` | open a window running your shell right of the focused column |
+| `close_pane` | close the focused window |
+| `consume_or_expel_left`, `consume_or_expel_right` | move the focused window into or out of the neighbouring column |
 | `cycle_column_width` | step the column's width through the presets |
 | `toggle_full_width` | toggle full width of the column |
 | `grow_column_width`, `shrink_column_width` | widen or narrow the column by a tenth of the screen |
-| `grow_pane_height`, `shrink_pane_height`, `reset_pane_height` | change or reset the height of the focused pane |
+| `grow_pane_height`, `shrink_pane_height`, `reset_pane_height` | change or reset the height of the focused window |
 | `detach` | detach the client |
-| `send_prefix` | send the prefix key to the focused pane |
+| `send_prefix` | send the prefix key to the focused window |
 
 `gband.action.list()` lists every action with its description.
 
 ### Status line
 
-The status line takes the bottom row of the terminal, and the panes get the rows above it.
+The status line takes the bottom row of the terminal, and the windows get the rows above it.
 By default it shows the viewed band on the left, such as `band 1`, the active key table after the prefix key, such as `prefix`, hints for the keys of that table, and the focused column on the right, such as `2/3`.
 The hints show `C-space prefix` until the prefix key is pressed, then each key of the prefix table with a short label, such as `h left  l right`, cut with `…` when the line is full.
 The latest configuration or plugin error shows first, in red.
 
-`statusline_position = "top"` moves it to the top row, and `"off"` removes it, so the panes get the whole terminal.
+`statusline_position = "top"` moves it to the top row, and `"off"` removes it, so the windows get the whole terminal.
 `statusline_height` gives it more rows.
-Both apply on the next reload, and the panes are resized to match.
+Both apply on the next reload, and the windows are resized to match.
 
 Each segment is a plugin bundled with gband, set up by the default configuration.
 A `user/init.lua` replaces the defaults, so it sets the segments up itself with the same calls; a copy of `defaults/init.lua` already holds them:
@@ -236,10 +238,10 @@ A `user/init.lua` written before the hints segment existed adds the `gband.plugi
 
 gband loads plugins from `$XDG_DATA_HOME/gband/plugins/`, or `~/.local/share/gband/plugins/`.
 A plugin has a manifest, `plugin.lua`, and a `client.lua` that each client runs, a `server.lua` that the server runs, or both.
-In the client, a plugin can add actions, commands, options, key bindings, event handlers, status line segments, windows, notifications and colorschemes.
-In the server, it can watch pane output and input, keep state per pane, emit events to clients, queue them while no client is attached, and answer commands clients call.
+In the client, a plugin can add actions, commands, options, key bindings, event handlers, status line segments, plugin windows, notifications and colorschemes.
+In the server, it can watch window output and input, keep state per window, emit events to clients, queue them while no client is attached, and answer commands clients call.
 [docs/plugins.md](docs/plugins.md) explains how to write one.
-[examples/plugins/hello](examples/plugins/hello) is a sample to start from, [examples/plugins/pane](examples/plugins/pane) adds a status line segment and a colorscheme, and [examples/plugins/agent-status](examples/plugins/agent-status) notifies you when a coding agent in a pane waits for an answer.
+[examples/plugins/hello](examples/plugins/hello) is a sample to start from, [examples/plugins/pane](examples/plugins/pane) adds a status line segment and a colorscheme, and [examples/plugins/agent-status](examples/plugins/agent-status) notifies you when a coding agent in a window waits for an answer.
 `gband test` runs a plugin's Lua tests against a real client and server in a terminal of their own, and compares what they draw with committed screenshots; [docs/testing.md](docs/testing.md) explains how to write them.
 
 ## Installing

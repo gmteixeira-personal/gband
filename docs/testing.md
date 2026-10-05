@@ -52,7 +52,7 @@ The exit status is 0 when every case passed, 1 when a case or a file failed, and
 An invalid invocation prints one line on standard error and runs nothing.
 
 `gband test` needs no terminal, writes no log of its own, and never connects to, starts or stops a server you run.
-It works from inside one of your own gband panes too.
+It works from inside one of your own gband windows too.
 
 ## Test files
 
@@ -146,7 +146,7 @@ An invalid argument to any of them is an error at the line of the call.
 ### Running Lua in the client and the server
 
 `g.client` and `g.server` send a chunk of Lua source to the process, which runs it as a callback that belongs to no plugin, between its other work.
-The chunk can do anything a callback of that side can: read `gband.layout()`, dispatch actions, set pane state, emit events.
+The chunk can do anything a callback of that side can: read `gband.layout()`, dispatch actions, set window state, emit events.
 Actions it dispatches take effect after it returns, so follow it with `g.settle()` before looking at the result.
 Arguments and results are plain data, as [the plugin guide](plugins.md#plain-data) defines.
 
@@ -259,7 +259,7 @@ Handlers that keep triggering each other make it fail after ten rounds.
 A settle that does not finish in 10 seconds fails naming the step that did not.
 `g.start` returns after a settle.
 
-Settle does not wait for programs in panes: a shell may print its prompt or a command its output at any time.
+Settle does not wait for programs in windows: a shell may print its prompt or a command its output at any time.
 Wait for those with `g.wait_text` or `g.wait`:
 
 ```lua
@@ -267,14 +267,14 @@ g.run("echo hi")
 g.wait_text("hi")
 ```
 
-Use settle for gband's own work, such as keys, bindings, handlers, the status line, and wait for what pane programs print.
+Use settle for gband's own work, such as keys, bindings, handlers, the status line, and wait for what programs in windows print.
 Never sleep.
 
-A few things to know when comparing screenshots with pane contents:
+A few things to know when comparing screenshots with window contents:
 
-- A pane's program starts before the client attaches, at the size of an 80 by 24 screen, and takes its tile's size shortly after. Output it prints before then wraps at the old width. Use the default `80x24` terminal when a screenshot holds the output of the first pane's program, or wait for the program to see its final size.
+- A window's program starts before the client attaches, at the size of an 80 by 24 screen, and takes its tile's size shortly after. Output it prints before then wraps at the old width. Use the default `80x24` terminal when a screenshot holds the output of the first window's program, or wait for the program to see its final size.
 - Wait for the prompt before a screenshot that shows a shell, since the shell prints it in its own time.
-- A program that runs `$SHELL` gets `/bin/sh`, whose prompt differs between systems once `PS1` is lost; `env = { SHELL = "/bin/cat" }` gives panes without a prompt.
+- A program that runs `$SHELL` gets `/bin/sh`, whose prompt differs between systems once `PS1` is lost; `env = { SHELL = "/bin/cat" }` gives windows without a prompt.
 
 ## The test channel
 
@@ -282,7 +282,7 @@ The runner reaches the client and the server through a Unix socket in the case's
 When `GBAND_TEST_SOCKET` names a socket, `gband attach` and `gband server` connect to it before loading their configuration, check that the process listening runs as the same user, and say which side they are.
 When the connection fails, the process prints one line naming the path and the reason, logs it, and exits with status 1.
 When the variable is unset or empty, gband behaves as it always does.
-The server removes the variable from every pane's environment, so a gband started in a pane of the case does not join the channel.
+The server removes the variable from every window's environment, so a gband started in a window of the case does not join the channel.
 When the channel closes, the client detaches and the server stops as on SIGTERM, so a killed runner leaves nothing running.
 
 The channel carries chunks only between the runner and the process its own environment named.
@@ -290,8 +290,8 @@ No Lua crosses the connection between a client and a server, and a server never 
 
 ## A worked example
 
-The [pane sample](../examples/plugins/pane) shows the focused pane in the status line.
-The first case of its `tests/pane_spec.lua` opens a second pane, moves back to the first, and keeps the screen as a reference, the screenshot shown under "Screenshots":
+The [pane sample](../examples/plugins/pane) shows the focused window in the status line.
+The first case of its `tests/pane_spec.lua` opens a second window, moves back to the first, and keeps the screen as a reference, the screenshot shown under "Screenshots":
 
 ```lua
 local t = require("gband.test")
