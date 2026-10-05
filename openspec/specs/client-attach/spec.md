@@ -135,7 +135,7 @@ A release build, and a debug build that does not replace, SHALL attach to the se
 - **AND** it exits with status 1 without changing the terminal
 
 ### Requirement: Send input
-The client SHALL send each key press and repeat that the key bindings do not consume to the server as a key naming the focused pane, each paste as a paste naming the focused pane, and each change of its reported size, as "Ribbon area" defines it, as a resize carrying the reported size. Keys and pastes SHALL be dropped while no pane is focused. Keys the input-encoding capability cannot represent SHALL be dropped. On attach, the client SHALL report its reported size as its terminal size.
+The client SHALL send each key press and repeat that the key bindings do not consume to the server as a key naming the focused pane, each paste as a paste naming the focused pane, except while a window is focused, when the plugin-windows capability takes them, and each change of its reported size, as "Ribbon area" defines it, as a resize carrying the reported size. Keys and pastes SHALL be dropped while no pane is focused. Keys the input-encoding capability cannot represent SHALL be dropped. On attach, the client SHALL report its reported size as its terminal size.
 
 #### Scenario: Typing runs a command
 - **WHEN** the user types `echo hi` and Enter
@@ -153,6 +153,14 @@ The client SHALL send each key press and repeat that the key bindings do not con
 #### Scenario: Height excludes the status line
 - **WHEN** the client's terminal is 80×24, the status line takes one row, and the only pane runs `tput lines`
 - **THEN** the pane prints `21`
+
+#### Scenario: Typing into a focused float
+- **WHEN** a float is focused and the user types `ls`
+- **THEN** nothing is sent to the server
+
+#### Scenario: Paste into a focused float
+- **WHEN** a float is focused and the user pastes `hello`
+- **THEN** the paste is discarded and nothing is sent to the server
 
 ### Requirement: Leaving the client
 Whenever the client exits after taking the terminal, it SHALL first leave the alternate screen, disable raw mode and bracketed paste, and show the cursor. It SHALL then print one line to standard output, followed by the note for a server from a different build when one applies, and exit as follows:
@@ -200,15 +208,15 @@ The reported size SHALL change when the terminal changes size, and when a succes
 - **AND** the ribbon is drawn from row 1, and the status line on row 0
 
 ### Requirement: Present the ribbon
-After the handshake, the client SHALL take the terminal full screen in raw mode with bracketed paste enabled. It SHALL keep its own grid of every pane, as the wire-protocol capability defines, and its own view, as the layout-view capability defines. It SHALL draw only the viewed band, except during a band switch, when it SHALL draw the bands the animations capability places on screen. It SHALL draw the ribbon in the ribbon area and the status line in the rows the status-line capability gives it. While the configuration capability shows a configuration error and no status line is drawn, the client SHALL draw that error over the ribbon area's bottom row, after the tiles.
+After the handshake, the client SHALL take the terminal full screen in raw mode with bracketed paste enabled. It SHALL keep its own grid of every pane, as the wire-protocol capability defines, and its own view, as the layout-view capability defines. It SHALL draw only the viewed band, except during a band switch, when it SHALL draw the bands the animations capability places on screen. It SHALL draw the ribbon in the ribbon area and the status line in the rows the status-line capability gives it. It SHALL draw the floats it opened over the tiles, as the plugin-windows capability defines. While the configuration capability shows a configuration error and no status line is drawn, the client SHALL draw that error over the ribbon area's bottom row, after the tiles and the floats.
 
 Each pane SHALL be drawn in its tile, as the layout capability's tile geometry gives it for the screen area in the latest layout. A tile SHALL be drawn at its strip position less the viewed band's camera position, from the ribbon area's top row. While an animation runs, the tile's position and size, the camera and the band's top row SHALL be the drawn values the animations capability defines. At rest they equal the values above. Each tile SHALL show a one-cell border around the pane's grid, which is drawn from its top-left corner. The focused pane's border SHALL be drawn in a style distinct from the other borders.
 
 A pane's grid MAY differ in size from its tile's interior while the server has not yet resized the pane. The border SHALL still follow the tile, at its drawn size while an animation runs. A grid larger than the interior SHALL be cut at the interior's right and bottom edges, and interior cells the grid does not cover SHALL be blank.
 
-A tile that crosses the ribbon area's left, right, top or bottom edge SHALL be cut at that edge, and the part of the tile inside the ribbon area SHALL be drawn unchanged, except where a configuration error covers the bottom row. No tile SHALL be resized to fit the ribbon area. A tile wholly outside the ribbon area SHALL NOT be drawn, no tile SHALL be drawn over the status line, and cells of the ribbon area that no tile or configuration error covers SHALL be blank.
+A tile that crosses the ribbon area's left, right, top or bottom edge SHALL be cut at that edge, and the part of the tile inside the ribbon area SHALL be drawn unchanged, except where a float or a configuration error covers it. No tile SHALL be resized to fit the ribbon area. A tile wholly outside the ribbon area SHALL NOT be drawn, no tile SHALL be drawn over the status line, and cells of the ribbon area that no tile, float or configuration error covers SHALL be blank.
 
-The terminal's cursor SHALL sit where the focused pane's cursor is. It SHALL be hidden when the focused pane hides its cursor, when that cell lies outside the ribbon area or outside the tile's interior, when no pane is focused, or while the animations capability hides it during motion.
+The terminal's cursor SHALL sit where the focused pane's cursor is. It SHALL be hidden when the focused pane hides its cursor, when that cell lies outside the ribbon area or outside the tile's interior, when no pane is focused, while a float is focused, or while the animations capability hides it during motion.
 
 #### Scenario: Two columns side by side
 - **WHEN** the client's 80×24 terminal sets the screen area, the status line is off, and the viewed band holds two columns of width 1/2 with the second focused
@@ -259,8 +267,17 @@ The terminal's cursor SHALL sit where the focused pane's cursor is. It SHALL be 
 - **THEN** the bottom row shows the error, cut at the terminal's width
 - **AND** the rows above it show the tile unchanged
 
+#### Scenario: Float over two tiles
+- **WHEN** the client's 80×24 terminal sets the screen area, the status line is off, the viewed band holds two columns of width 1/2, and a float with a border spans columns 20 to 59 and rows 6 to 16
+- **THEN** those cells show the float, and the tiles show around it
+- **AND** the cursor is hidden while the float is focused
+
+#### Scenario: Error banner over a float
+- **WHEN** the status line is off, a float covers the ribbon area's bottom row, and the client shows a configuration error
+- **THEN** the bottom row shows the error
+
 ### Requirement: Key bindings
-The client SHALL take its key tables and its prefix key from the configuration, as the configuration capability defines them. The client SHALL keep one active key table, which SHALL be `root` outside a key sequence. While `root` is active, a key bound in `root` SHALL run its binding, and the prefix key SHALL make `prefix` the active table. The client SHALL send neither to the server. Any other key while `root` is active SHALL be sent to the focused pane. While another table is active, the next key SHALL end the sequence: a key bound in that table SHALL run its binding, and any other key SHALL be discarded together with the keys that began the sequence. When the sequence ends, the active table SHALL become the table its binding entered with `gband.keymap.enter`, or `root` when it entered none. A binding run while `root` is active MAY also enter a table, which then becomes active. Entering a table with no binding SHALL be an error raised by `gband.keymap.enter`. When `prefix` holds no binding, the prefix key SHALL be sent to the focused pane like any other key. A reload SHALL make `root` the active table.
+The client SHALL take its key tables and its prefix key from the configuration, as the configuration capability defines them. The client SHALL keep one active key table, which SHALL be `root` outside a key sequence. While `root` is active, a key bound in `root` SHALL run its binding, and the prefix key SHALL make `prefix` the active table. The client SHALL send neither to the server. Any other key while `root` is active SHALL go to the focused window when there is one, as the plugin-windows capability defines, and SHALL otherwise be sent to the focused pane. While another table is active, the next key SHALL end the sequence: a key bound in that table SHALL run its binding, and any other key SHALL be discarded together with the keys that began the sequence. When the sequence ends, the active table SHALL become the table its binding entered with `gband.keymap.enter`, or `root` when it entered none. A binding run while `root` is active MAY also enter a table, which then becomes active. Entering a table with no binding SHALL be an error raised by `gband.keymap.enter`. When `prefix` holds no binding, the prefix key SHALL be handled like any other key. A reload SHALL make `root` the active table.
 
 `gband.keymap.current_table()` SHALL return the name of the active table, and `root` while the configuration loads. Each change of the active table SHALL emit `KeyTableChanged`, as the lua-events capability defines, naming the new and the previous table.
 
@@ -374,6 +391,14 @@ A binding to an action SHALL dispatch it. A binding to a Lua function SHALL run 
 #### Scenario: Current table
 - **WHEN** a binding in `prefix` calls `gband.keymap.current_table()`
 - **THEN** it returns `prefix`
+
+#### Scenario: Unbound key goes to the focused window
+- **WHEN** a float with `keys = { j = fn }` is focused and the user presses `j`
+- **THEN** `fn` runs and the focused pane receives nothing
+
+#### Scenario: Root binding before the window
+- **WHEN** `user/init.lua` binds `alt+h` in `root` to `gband.action.focus_column_left`, a float binding `alt+h` in its `keys` is focused, and the user presses Alt+H
+- **THEN** the root binding runs and the float's function does not
 
 ### Requirement: Report shown panes
 The client SHALL send the server a shown message naming its shown panes, as the layout-view capability defines them, once it has received the first layout after attaching. It SHALL send a new shown message whenever its shown panes change, whether a layout, a focus message, a view action or a change of its terminal's size changed them. It SHALL NOT send a shown message that names the same panes as the last one it sent.
