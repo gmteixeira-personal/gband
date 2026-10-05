@@ -160,6 +160,7 @@ pub fn names(side: Side) -> &'static [&'static str] {
     match side {
         Side::Client => &CLIENT_NAMES,
         Side::Server => &SERVER_NAMES,
+        Side::Test => &[],
     }
 }
 

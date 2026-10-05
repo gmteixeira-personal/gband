@@ -2,6 +2,7 @@ mod frame;
 mod io;
 mod message;
 mod session;
+pub mod test;
 mod value;
 
 use std::ffi::OsString;

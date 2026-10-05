@@ -21,3 +21,8 @@ ln -s "$PWD/examples/plugins/agent-status" ~/.local/share/gband/plugins/agent-st
 
 Start a new server with `gband kill-server` and attach again, then run `printf 'Do you want to proceed?\n'` in a pane.
 The status line shows `agents waiting: 1`, your terminal shows a notification, and Ctrl+Space then `a` focuses that pane.
+
+## Tests
+
+`tests/agent_status_spec.lua` prints a prompt in a pane, checks the waiting state, the segment and the notification, and jumps to the waiting pane.
+Run it with `gband test` in this directory; [the testing guide](../../../docs/testing.md) describes the API.

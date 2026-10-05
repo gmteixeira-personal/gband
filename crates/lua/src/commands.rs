@@ -142,6 +142,7 @@ fn run(lua: &Lua, (name, args): (Value, Value)) -> mlua::Result<bool> {
             Ran::Returned(())
         )),
         Side::Server => Ok(call(lua, &name, callback, args, None)?.is_ok()),
+        Side::Test => Ok(false),
     }
 }
 

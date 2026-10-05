@@ -1,13 +1,88 @@
 use vt100::{MouseProtocolEncoding, MouseProtocolMode, Screen};
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Record {
+    Notification { title: Option<String>, body: String },
+    Clipboard(String),
+    Bell,
+    Settle(u64),
+}
+
 #[derive(Default)]
 pub struct Callbacks {
     pub write_back: Vec<u8>,
+    pub records: Option<Vec<Record>>,
+}
+
+impl Callbacks {
+    fn record(&mut self, record: Record) {
+        if let Some(records) = &mut self.records {
+            records.push(record);
+        }
+    }
+}
+
+fn joined(params: &[&[u8]]) -> String {
+    params
+        .iter()
+        .map(|param| String::from_utf8_lossy(param))
+        .collect::<Vec<_>>()
+        .join(";")
+}
+
+fn recognised(params: &[&[u8]]) -> Option<Record> {
+    match params {
+        [b"9", body @ ..] => Some(Record::Notification {
+            title: None,
+            body: joined(body),
+        }),
+        [b"777", b"notify", title, body @ ..] => Some(Record::Notification {
+            title: Some(String::from_utf8_lossy(title).into_owned()),
+            body: joined(body),
+        }),
+        [b"7777", b"settle", round] => std::str::from_utf8(round)
+            .ok()?
+            .parse()
+            .ok()
+            .map(Record::Settle),
+        _ => None,
+    }
+}
+
+const BASE64: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+pub fn decode_base64(text: &[u8]) -> Option<Vec<u8>> {
+    let mut decoded = Vec::with_capacity(text.len() / 4 * 3);
+    let mut joined = 0u32;
+    let mut bits = 0;
+    for &byte in text.iter().take_while(|&&byte| byte != b'=') {
+        let value = BASE64.iter().position(|&known| known == byte)?;
+        joined = joined << 6 | value as u32;
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            decoded.push((joined >> bits) as u8);
+            joined &= (1 << bits) - 1;
+        }
+    }
+    Some(decoded)
 }
 
 impl vt100::Callbacks for Callbacks {
     fn audible_bell(&mut self, _: &mut Screen) {
         tracing::debug!("bell");
+        self.record(Record::Bell);
+    }
+
+    fn copy_to_clipboard(&mut self, _: &mut Screen, ty: &[u8], data: &[u8]) {
+        if ty != b"c" {
+            return;
+        }
+        if let Some(text) = decode_base64(data) {
+            self.record(Record::Clipboard(
+                String::from_utf8_lossy(&text).into_owned(),
+            ));
+        }
     }
 
     fn unhandled_control(&mut self, _: &mut Screen, b: u8) {
@@ -52,12 +127,13 @@ impl vt100::Callbacks for Callbacks {
     }
 
     fn unhandled_osc(&mut self, _: &mut Screen, params: &[&[u8]]) {
-        let params = params
-            .iter()
-            .map(|param| String::from_utf8_lossy(param))
-            .collect::<Vec<_>>()
-            .join(";");
-        tracing::debug!("unhandled OSC \\e]{params}");
+        if self.records.is_some()
+            && let Some(record) = recognised(params)
+        {
+            self.record(record);
+            return;
+        }
+        tracing::debug!("unhandled OSC \\e]{}", joined(params));
     }
 }
 
@@ -115,7 +191,100 @@ fn private_mode_state(screen: &Screen, mode: u16) -> u8 {
 mod tests {
     use gband_core::geometry::Size;
 
-    use crate::{Emulator, Grid};
+    use crate::{Emulator, Grid, Record};
+
+    fn recorded(output: &[u8]) -> Vec<Record> {
+        let mut grid = Grid::new(Size::new(80, 24));
+        grid.record();
+        grid.process(output);
+        grid.take_records()
+    }
+
+    #[test]
+    fn osc_9_is_a_notification_without_a_title() {
+        assert_eq!(
+            recorded(b"\x1b]9;build; done\x07"),
+            [Record::Notification {
+                title: None,
+                body: "build; done".to_owned()
+            }]
+        );
+    }
+
+    #[test]
+    fn osc_777_notify_carries_a_title() {
+        assert_eq!(
+            recorded(b"\x1b]777;notify;ci;build done\x1b\\"),
+            [Record::Notification {
+                title: Some("ci".to_owned()),
+                body: "build done".to_owned()
+            }]
+        );
+    }
+
+    #[test]
+    fn osc_52_is_decoded() {
+        assert_eq!(
+            recorded(b"\x1b]52;c;aGVsbG8gd29ybGQ=\x07"),
+            [Record::Clipboard("hello world".to_owned())]
+        );
+        assert_eq!(recorded(b"\x1b]52;p;aGk=\x07"), []);
+        assert_eq!(recorded(b"\x1b]52;c;?\x07"), []);
+    }
+
+    #[test]
+    fn bells_are_counted() {
+        assert_eq!(recorded(b"a\x07b\x07"), [Record::Bell, Record::Bell]);
+    }
+
+    #[test]
+    fn settle_markers_carry_their_round() {
+        assert_eq!(recorded(b"\x1b]7777;settle;3\x07"), [Record::Settle(3)]);
+        assert_eq!(recorded(b"\x1b]7777;settle;x\x07"), []);
+    }
+
+    #[test]
+    fn nothing_is_recorded_unless_asked() {
+        let mut grid = Grid::new(Size::new(80, 24));
+        grid.process(b"\x07\x1b]9;hi\x07\x1b]52;c;aGk=\x07\x1b]7777;settle;1\x07");
+        assert_eq!(grid.take_records(), []);
+    }
+
+    #[test]
+    fn base64_round_trips() {
+        for text in ["", "h", "hi", "hey", "hello world"] {
+            let encoded = gband_base64(text.as_bytes());
+            assert_eq!(
+                crate::callbacks::decode_base64(encoded.as_bytes()).unwrap(),
+                text.as_bytes()
+            );
+        }
+        assert_eq!(crate::callbacks::decode_base64(b"a*b="), None);
+    }
+
+    fn gband_base64(bytes: &[u8]) -> String {
+        const TABLE: &[u8; 64] =
+            b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        let mut encoded = String::new();
+        for chunk in bytes.chunks(3) {
+            let joined = chunk
+                .iter()
+                .enumerate()
+                .fold(0u32, |joined, (index, &byte)| {
+                    joined | u32::from(byte) << (16 - 8 * index)
+                });
+            for index in 0..4 {
+                if index <= chunk.len() {
+                    encoded.push(char::from(
+                        TABLE[(joined >> (18 - 6 * index) & 63) as usize],
+                    ));
+                } else {
+                    encoded.push('=');
+                }
+            }
+        }
+        encoded
+    }
 
     fn replies(output: &str) -> String {
         let mut grid = Grid::new(Size::new(80, 24));

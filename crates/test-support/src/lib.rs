@@ -67,6 +67,7 @@ pub fn config(runtime_dir: &Path, program: &[&str]) -> ServerConfig {
         executable: IDENTITY,
         options: tokio::sync::watch::channel(LayoutOptions::default()).1,
         scripting: None,
+        channel: None,
     }
 }
 

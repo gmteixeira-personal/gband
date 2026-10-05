@@ -187,7 +187,8 @@ fn help_lists_subcommands() {
                 "kill-session",
                 "kill-server",
                 "completions",
-                "install-completions"
+                "install-completions",
+                "test"
             ],
             "{flag}"
         );
@@ -231,6 +232,33 @@ fn session_option_on_a_subcommand_without_sessions_is_rejected() {
         let stderr = String::from_utf8(output.stderr).unwrap();
         assert!(stderr.contains("'-s'"), "{stderr}");
         assert!(stderr.contains(subcommand), "{stderr}");
+    }
+    assert!(!state.join("gband").exists());
+    assert!(!runtime_home(&state).exists());
+}
+
+#[test]
+fn invalid_test_invocations_are_rejected_without_a_log() {
+    let state = state_home("test_invocations");
+    let cases: [(&[&str], &str); 6] = [
+        (&["test", "-S", "feature"], "'-S' does not apply to 'test'"),
+        (&["-S", "feature", "test"], "'-S' does not apply to 'test'"),
+        (
+            &["test", "-p", "/tmp/x.sock"],
+            "'-p' does not apply to 'test'",
+        ),
+        (&["test", "-s", "work"], "'-s' does not apply to 'test'"),
+        (&["test", "-", "a_spec.lua"], "standard input"),
+        (&["test", "missing_spec.lua"], "missing_spec.lua"),
+    ];
+    for (args, expected) in cases {
+        let output = gband(&state, None, args);
+        assert_eq!(output.status.code(), Some(2), "{args:?}");
+        let stderr = String::from_utf8(output.stderr).unwrap();
+        assert!(stderr.contains(expected), "{args:?}: {stderr}");
+        if !expected.starts_with('\'') {
+            assert_eq!(stderr.lines().count(), 1, "{args:?}: {stderr}");
+        }
     }
     assert!(!state.join("gband").exists());
     assert!(!runtime_home(&state).exists());

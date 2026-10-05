@@ -1,5 +1,6 @@
 pub mod animation;
 pub mod bindings;
+mod channel;
 pub mod color;
 mod connect;
 pub mod input;
@@ -39,6 +40,8 @@ use crate::animation::{
     ANIMATIONS_VARIABLE, Animations, Drawn, FRAME, Presentation, Targets, parse_animations,
 };
 use crate::bindings::{Command, Keymap, Leader, ROOT};
+use crate::channel::{Channel, Served};
+pub use crate::channel::{Loader, TestChannel};
 use crate::color::ColorSupport;
 pub use crate::connect::{Connection, connect, connect_reporting};
 use crate::input::key_from_event;
@@ -59,6 +62,7 @@ pub struct Configuration {
     pub config: Config,
     pub error: Option<ConfigError>,
     pub reloads: mpsc::UnboundedReceiver<Result<Config, ConfigError>>,
+    pub channel: Option<TestChannel>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -783,6 +787,21 @@ impl Controls {
         })
     }
 
+    pub fn eval(
+        &mut self,
+        display: &mut Display,
+        source: &str,
+        args: &[Value],
+    ) -> (Result<Vec<Value>, String>, Vec<Step>) {
+        let mut answer = Err("the chunk did not run".to_owned());
+        let steps = self.react(display, Vec::new(), |controls, display, steps| {
+            let (result, outcome) = controls.runtime.eval(source, args);
+            answer = result;
+            controls.apply(display, outcome, steps);
+        });
+        (answer, steps)
+    }
+
     pub fn paste(&mut self, display: &mut Display, text: String) -> Vec<Step> {
         if display.focused_window().is_some() {
             return Vec::new();
@@ -1057,7 +1076,10 @@ pub fn dispatch(display: &mut Display, action: Action) -> Step {
     message.map_or(Step::Nothing, Step::Send)
 }
 
-async fn perform(connection: &mut Connection, steps: Vec<Step>) -> Result<Option<Outcome>> {
+pub(crate) async fn perform(
+    connection: &mut Connection,
+    steps: Vec<Step>,
+) -> Result<Option<Outcome>> {
     for step in steps {
         match step {
             Step::Send(message) => connection.send(&message).await?,
@@ -1093,6 +1115,7 @@ async fn attach(
         display.set_banner(Some(error.to_string()));
     }
     let mut reloads = configuration.reloads;
+    let mut channel = configuration.channel.map(Channel::new).transpose()?;
     controls.attach_when_ready(session.as_str());
     loop {
         let mut messages = Vec::new();
@@ -1114,6 +1137,11 @@ async fn attach(
         }
         let now = Instant::now();
         draw(terminal, &mut display, now)?;
+        if let Some(channel) = &mut channel
+            && !display.is_animating(now)
+        {
+            channel.drawn(connection.sent).await?;
+        }
         let frame = display
             .is_animating(now)
             .then(|| tokio::time::Instant::from_std(now + FRAME));
@@ -1139,6 +1167,17 @@ async fn attach(
                 Ok(false) | Err(gband_protocol::IoError::Io(_)) => return Ok(Outcome::LostServer),
                 Err(error) => return Err(error.into()),
             },
+            filled = async { channel.as_mut().expect("guarded by is_some").fill().await },
+                if channel.is_some() => {
+                let Some(open) = channel.as_mut().filter(|_| filled) else {
+                    let _ = connection.send(&ClientMessage::Detach).await;
+                    return Ok(Outcome::Detached);
+                };
+                let served = open.serve(&mut controls, &mut display, connection).await?;
+                if let Served::Finished(outcome) = served {
+                    return Ok(outcome);
+                }
+            }
             event = events.recv(), if controls.is_attached() => match event {
                 Some(TerminalEvent::Key(key_event)) => {
                     let Some(key) = key_from_event(&key_event) else { continue };
@@ -1151,6 +1190,11 @@ async fn attach(
                     let steps = controls.paste(&mut display, text);
                     if let Some(outcome) = perform(connection, steps).await? {
                         return Ok(outcome);
+                    }
+                }
+                Some(TerminalEvent::FocusGained) => {
+                    if let Some(channel) = &mut channel {
+                        channel.marker(connection.sent).await?;
                     }
                 }
                 Some(TerminalEvent::Resize(cols, rows)) => {

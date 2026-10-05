@@ -3,6 +3,7 @@ mod api;
 mod bridge;
 mod bundled;
 mod callbacks;
+mod clock;
 mod commands;
 mod control;
 mod directory;
@@ -32,6 +33,7 @@ pub use crate::actions::{ACTIONS, BuiltinAction};
 pub use crate::api::{Binding, Chord, Dispatch, PaneInput, WindowRequest};
 pub use crate::bridge::{base64, notification};
 pub use crate::callbacks::CallbackId;
+pub use crate::clock::freeze as freeze_time;
 pub use crate::directory::{
     Locations, config_dir, config_dir_from, defaults_file, plugins_dir, plugins_dir_from, prepare,
     user_dir, user_file,
@@ -40,20 +42,27 @@ pub use crate::error::ConfigError;
 pub use crate::events::Event;
 pub use crate::options::{NotifyStyle, OptValue, Options, StatusLineOptions, StatusLinePosition};
 pub use crate::runtime::{API_VERSION, Outcome, Runtime};
+pub use crate::sides::install_test;
 pub use crate::ui::{
     BandState, Color, ColumnState, PaneStates, Span, StatusLine, Style, ViewState,
 };
 pub use crate::version::{Requirement, Version};
 pub use crate::watch::{Watcher, watch};
 
+pub mod plain {
+    pub use crate::value::{from_lua, into_lua};
+}
+
 pub const DEFAULTS: &str = include_str!("defaults.lua");
 pub const DEFAULTS_SERVER: &str = include_str!("defaults_server.lua");
 pub const BUDGET: u64 = 100_000_000;
+const TEST_SIDE: &str = "the test side loads no configuration and has no counterpart";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Side {
     Client,
     Server,
+    Test,
 }
 
 impl Side {
@@ -61,6 +70,7 @@ impl Side {
         match self {
             Side::Client => "client",
             Side::Server => "server",
+            Side::Test => "test",
         }
     }
 
@@ -68,6 +78,7 @@ impl Side {
         match self {
             Side::Client => Side::Server,
             Side::Server => Side::Client,
+            Side::Test => unreachable!("{TEST_SIDE}"),
         }
     }
 
@@ -75,6 +86,7 @@ impl Side {
         match self {
             Side::Client => "init.lua",
             Side::Server => "server.lua",
+            Side::Test => unreachable!("{TEST_SIDE}"),
         }
     }
 
@@ -82,6 +94,7 @@ impl Side {
         match self {
             Side::Client => "client.lua",
             Side::Server => "server.lua",
+            Side::Test => unreachable!("{TEST_SIDE}"),
         }
     }
 
@@ -89,6 +102,7 @@ impl Side {
         match self {
             Side::Client => DEFAULTS,
             Side::Server => DEFAULTS_SERVER,
+            Side::Test => unreachable!("{TEST_SIDE}"),
         }
     }
 }

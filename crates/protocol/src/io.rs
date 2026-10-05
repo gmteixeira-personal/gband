@@ -1,3 +1,6 @@
+use std::future::Future;
+use std::task::Poll;
+
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -62,6 +65,24 @@ impl<R: AsyncRead + Unpin> MessageReader<R> {
         }
         self.decoder.feed(&self.buffer[..n])?;
         Ok(true)
+    }
+
+    pub async fn fill_ready(&mut self) -> Result<bool, IoError> {
+        loop {
+            let filled = std::future::poll_fn(|context| {
+                let fill = std::pin::pin!(self.fill());
+                Poll::Ready(match fill.poll(context) {
+                    Poll::Ready(filled) => Some(filled),
+                    Poll::Pending => None,
+                })
+            })
+            .await;
+            match filled {
+                None => return Ok(true),
+                Some(Ok(true)) => {}
+                Some(other) => return other,
+            }
+        }
     }
 }
 

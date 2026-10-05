@@ -1,0 +1,15 @@
+[package]
+name = "gband-harness"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+gband-core.workspace = true
+gband-emulator.workspace = true
+gband-lua.workspace = true
+gband-protocol.workspace = true
+mlua.workspace = true
+portable-pty.workspace = true
+rustix.workspace = true
+vt100.workspace = true

@@ -7,6 +7,7 @@ Plugins can add actions, commands, options, key bindings, event handlers, status
 The [sample plugin](../examples/plugins/hello) uses most of what the client API offers.
 The [status line sample](../examples/plugins/pane) adds a component, a highlight group and a colorscheme.
 The [agent status sample](../examples/plugins/agent-status) has both sides: its server half watches panes, and its client half notifies, counts and jumps.
+[Testing a plugin](testing.md) describes `gband test`, which runs a plugin against a real client and server and checks what it draws.
 
 ## Two sides
 
@@ -22,7 +23,7 @@ The rule for where code goes:
 The sides talk through plain data only: the server emits events and publishes pane state, and a client calls server commands and gets their results.
 No code ever crosses the connection, as "Trust" below describes.
 
-`gband.side` is `"client"` in a client and `"server"` in the server.
+`gband.side` is `"client"` in a client and `"server"` in the server, and `"test"` in a test file that [`gband test`](testing.md) runs.
 `gband.api_version` is `1` on both.
 
 ## Where gband looks
@@ -122,6 +123,7 @@ user/server.lua:3: `gband.keymap` is a client API; this is the server
 
 Every other field exists on both sides: `on`, `augroup`, `emit`, `cmd`, `opt`, `set`, `plugin`, `plugins`, `runtimepath`, `side`, `api_version`, `pane_state` and `action`.
 `emit`, `pane_state`, `action` and the events differ between the sides, as their sections describe.
+A test file's `gband` holds only `side` and `api_version`, and reading any other field names the sides that provide it, such as ``tests/a_spec.lua:4: `gband.opt` is a client and server API; this is the test side``.
 In the server, `gband.action` holds the session actions only; reading a view or client action, such as `gband.action.focus_column_left`, is the same kind of error.
 
 ## Plugin modules and `gband.plugin`
@@ -209,7 +211,8 @@ In the server, a handler that runs long delays the next events and commands; it 
 
 `print` writes its arguments, converted with `tostring` and separated by tabs, to the process log at the info level, naming the plugin when the calling code belongs to one.
 It never writes to the terminal, so it cannot corrupt the client's screen.
-The logs are in `$XDG_STATE_HOME/gband/log/`, or `~/.local/state/gband/log/`, one file per client and one for the server.
+The logs are in `/gband/log/`, or `~/.local/state/gband/log/`, one file per client and one for the server.
+In a test file, `print` writes its line to the standard output of `gband test` instead.
 
 ## Register only at top level
 
@@ -1052,6 +1055,7 @@ The session works as it does without the check.
 The server never sends code.
 A client runs only the Lua files of its own machine, and treats every value from a server as data: an event whose data is the string `os.exit(1)` is just that string.
 Attaching to a server, including a remote one, cannot run code in the client.
+The one other Lua a client runs is a chunk from a test runner that its own environment named with `GBAND_TEST_SOCKET`, as [the testing guide](testing.md#the-test-channel) describes; a server never forwards such a chunk.
 
 ## Still to come
 

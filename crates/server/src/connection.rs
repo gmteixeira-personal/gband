@@ -15,6 +15,7 @@ use serde::Serialize;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::{mpsc, oneshot};
 
+use crate::channel::{Barrier, Settling};
 use crate::event::SessionEvent;
 use crate::hub::Hub;
 use crate::pane::{Contents, Input, Seen};
@@ -37,6 +38,7 @@ struct Registration<'a> {
 impl Drop for Registration<'_> {
     fn drop(&mut self) {
         self.hub.detach(self.client);
+        self.hub.settling.unregister(self.client);
     }
 }
 
@@ -217,16 +219,19 @@ async fn attach(
     let mut changed = session.changed.clone();
     changed.borrow_and_update();
     let mut sent = Sent::default();
-    sync(&mut link.writer, &session, &mut sent).await?;
+    sync(&mut link.writer, &session, &mut sent, &context.hub.settling).await?;
 
     let (deliveries_tx, mut deliveries) = mpsc::unbounded_channel();
     let attached = context.hub.attach(client, &session.name, deliveries_tx);
+    let (barriers_tx, mut barriers) = mpsc::unbounded_channel();
+    context.hub.settling.register(client, barriers_tx);
     let _registration = Registration {
         hub: &context.hub,
         client,
     };
+    let settling = &context.hub.settling;
     for message in &attached.messages {
-        link.send(message).await?;
+        deliver(&mut link.writer, message, settling).await?;
     }
 
     let (reply_tx, mut replies) = mpsc::unbounded_channel();
@@ -238,23 +243,40 @@ async fn attach(
         tokio::select! {
             _ = changed.changed() => {
                 changed.borrow_and_update();
-                sync(&mut link.writer, &session, &mut sent).await?;
+                sync(&mut link.writer, &session, &mut sent, settling).await?;
             }
             Some(reply) = replies.recv() => {
-                sync(&mut link.writer, &session, &mut sent).await?;
-                let message = match reply {
-                    Reply::Focus(pane) => ServerMessage::Focus(pane),
-                    Reply::Opened { request, pane } => ServerMessage::Opened { request, pane },
-                    Reply::Result { call, result } => ServerMessage::Result { call, result },
-                };
-                link.send(&message).await?;
+                sync(&mut link.writer, &session, &mut sent, settling).await?;
+                deliver(&mut link.writer, &replied(reply), settling).await?;
             }
             Some(message) = deliveries.recv() => {
-                sync(&mut link.writer, &session, &mut sent).await?;
-                link.send(&message).await?;
+                sync(&mut link.writer, &session, &mut sent, settling).await?;
+                deliver(&mut link.writer, &message, settling).await?;
             }
+            Some(barrier) = barriers.recv() => match barrier {
+                Barrier::Read(reached) => {
+                    if !link.reader.fill_ready().await.context("cannot read from the client")? {
+                        return Ok(());
+                    }
+                    if dispatch(&mut link.reader, &session, client, &reply_tx, context)? {
+                        return Ok(());
+                    }
+                    session.command(Command::Barrier(reached));
+                }
+                Barrier::Flush(reached) => {
+                    while let Ok(reply) = replies.try_recv() {
+                        deliver(&mut link.writer, &replied(reply), settling).await?;
+                    }
+                    while let Ok(message) = deliveries.try_recv() {
+                        deliver(&mut link.writer, &message, settling).await?;
+                    }
+                    changed.borrow_and_update();
+                    sync(&mut link.writer, &session, &mut sent, settling).await?;
+                    let _ = reached.send(());
+                }
+            },
             _ = async { ended.wait_for(|ended| *ended).await.is_ok() } => {
-                sync(&mut link.writer, &session, &mut sent).await?;
+                sync(&mut link.writer, &session, &mut sent, settling).await?;
                 link.send(&ServerMessage::Exited).await?;
                 return Ok(());
             }
@@ -330,6 +352,23 @@ fn dispatch(
     Ok(false)
 }
 
+fn replied(reply: Reply) -> ServerMessage {
+    match reply {
+        Reply::Focus(pane) => ServerMessage::Focus(pane),
+        Reply::Opened { request, pane } => ServerMessage::Opened { request, pane },
+        Reply::Result { call, result } => ServerMessage::Result { call, result },
+    }
+}
+
+async fn deliver(
+    writer: &mut MessageWriter<impl AsyncWrite + Unpin>,
+    message: &ServerMessage,
+    settling: &Settling,
+) -> Result<()> {
+    settling.sent(message);
+    send(writer, message).await
+}
+
 fn forward(session: &SessionHandle, pane: PaneId, input: Input) -> bool {
     let state = session.state.borrow();
     let Some(entry) = state.panes.get(&pane) else {
@@ -347,6 +386,7 @@ async fn sync(
     writer: &mut MessageWriter<impl AsyncWrite + Unpin>,
     session: &SessionHandle,
     sent: &mut Sent,
+    settling: &Settling,
 ) -> Result<()> {
     let state = Arc::clone(&session.state.borrow());
     if !sent
@@ -354,13 +394,14 @@ async fn sync(
         .as_ref()
         .is_some_and(|last| Arc::ptr_eq(last, &state))
     {
-        send(
+        deliver(
             writer,
             &ServerMessage::Layout {
                 cols: state.area.cols,
                 rows: state.area.rows,
                 layout: state.layout.clone(),
             },
+            settling,
         )
         .await?;
         sent.panes.retain(|pane, _| state.panes.contains_key(pane));
@@ -392,7 +433,7 @@ async fn sync(
                 contents,
             },
         };
-        send(writer, &message).await?;
+        deliver(writer, &message, settling).await?;
     }
     Ok(())
 }

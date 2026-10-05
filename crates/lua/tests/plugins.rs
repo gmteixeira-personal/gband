@@ -1,11 +1,13 @@
 mod common;
 
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
 use common::*;
 use gband_core::action::Action;
 use gband_core::view::ViewAction;
 use gband_lua::{Binding, Chord, ConfigError, Dispatch, LoadOptions, Locations};
+use gband_protocol::Value as Data;
 
 fn plugin_error<'a>(errors: &'a [ConfigError], plugin: &str) -> &'a ConfigError {
     errors
@@ -753,4 +755,137 @@ fn errors_in_a_bundled_module_name_its_path() {
     let (path, _) = error.location.clone().unwrap();
     assert_eq!(path, PathBuf::from("gband/statusline/band.lua"));
     assert!(error.message.contains("align"), "{error}");
+}
+
+fn test_side() -> (gband_lua::Lua, Arc<Mutex<String>>) {
+    let printed = Arc::new(Mutex::new(String::new()));
+    let output = Arc::clone(&printed);
+    let lua = gband_lua::Lua::new();
+    gband_lua::install_test(&lua, move |line| {
+        let mut output = output.lock().unwrap();
+        output.push_str(line);
+        output.push('\n');
+    })
+    .unwrap();
+    (lua, printed)
+}
+
+#[test]
+fn test_side_holds_only_the_side_and_version() {
+    let (lua, printed) = test_side();
+    lua.load("print(gband.side, gband.api_version)")
+        .exec()
+        .unwrap();
+    assert_eq!(*printed.lock().unwrap(), "test\t1\n");
+    let fields: Vec<String> = lua
+        .load(
+            "local names = {} for name in pairs(gband) do names[#names + 1] = name end \
+             table.sort(names) return names",
+        )
+        .eval()
+        .unwrap();
+    assert_eq!(fields, ["api_version", "side"]);
+}
+
+#[test]
+fn client_api_in_a_test_file() {
+    let (lua, _) = test_side();
+    let error = lua
+        .load("local a = 1\nlocal b = 2\nlocal c = 3\nreturn gband.opt")
+        .set_name("@spec_test.lua")
+        .exec()
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("spec_test.lua:4:"), "{error}");
+    assert!(
+        error.contains("`gband.opt` is a client and server API"),
+        "{error}"
+    );
+    let error = lua
+        .load("return gband.keymap")
+        .exec()
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("`gband.keymap` is a client API"), "{error}");
+    let error = lua
+        .load("return gband.sessions")
+        .exec()
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.contains("`gband.sessions` is a server API"),
+        "{error}"
+    );
+    let unknown: Option<String> = lua.load("return gband.nothing").eval().unwrap();
+    assert_eq!(unknown, None);
+}
+
+#[test]
+fn frozen_time() {
+    let scratch = Scratch::new("frozen-time");
+    gband_lua::freeze_time(None);
+    let before = scratch.loaded();
+    let real: i64 = eval(&before, "return os.time()");
+    assert!(real > 1_735_733_100, "{real}");
+    gband_lua::freeze_time(Some(1_735_732_800));
+    let now: i64 = eval(&before, "return os.time()");
+    assert_eq!(now, 1_735_732_800, "a state created earlier was not frozen");
+    let reloaded = scratch.loaded();
+    let now: i64 = eval(&reloaded, "return os.time()");
+    assert_eq!(now, 1_735_732_800);
+    let year: String = eval(&reloaded, "return os.date('!%Y-%m-%d %H:%M')");
+    assert_eq!(year, "2025-01-01 12:00");
+    let explicit: String = eval(&reloaded, "return os.date('%Y', 0)");
+    assert_eq!(explicit, "1970");
+    let table: i64 = eval(
+        &reloaded,
+        "return os.time({ year = 2000, month = 1, day = 1, hour = 0 })",
+    );
+    assert_ne!(table, 1_735_732_800);
+    gband_lua::freeze_time(Some(1_735_733_100));
+    let moved: String = eval(&reloaded, "return os.date('!%H:%M')");
+    assert_eq!(moved, "12:05");
+    gband_lua::freeze_time(None);
+    let real: i64 = eval(&reloaded, "return os.time()");
+    assert!(real > 1_735_733_100, "{real}");
+}
+
+#[test]
+fn chunks_answer_with_plain_data() {
+    let config = Scratch::new("eval").loaded();
+    let (answer, outcome) = config.runtime.eval(
+        "return gband.side, select('#', ...)",
+        &[Data::Int(1), Data::Int(2)],
+    );
+    assert_eq!(
+        answer,
+        Ok(vec![Data::Bytes(b"client".to_vec()), Data::Int(2)])
+    );
+    assert!(outcome.errors.is_empty(), "{:?}", outcome.errors);
+    let (answer, outcome) = config.runtime.eval("error('boom')", &[]);
+    assert!(answer.unwrap_err().contains("boom"));
+    assert!(outcome.errors.is_empty(), "{:?}", outcome.errors);
+    let (answer, _) = config.runtime.eval("return function() end", &[]);
+    assert!(
+        answer.as_ref().unwrap_err().contains("not plain data"),
+        "{answer:?}"
+    );
+    let (answer, _) = config.runtime.eval("while true do end", &[]);
+    assert!(
+        answer.as_ref().unwrap_err().contains("instruction limit"),
+        "{answer:?}"
+    );
+    let (answer, _) = config.runtime.eval("return (", &[]);
+    assert!(answer.is_err(), "{answer:?}");
+    let (_, outcome) = config.runtime.eval("gband.action.focus_column_left()", &[]);
+    assert_eq!(outcome.dispatched.len(), 1, "{:?}", outcome.dispatched);
+}
+
+#[test]
+fn print_in_a_test() {
+    let (lua, printed) = test_side();
+    lua.load("print('step', 2) print(nil, true)")
+        .exec()
+        .unwrap();
+    assert_eq!(*printed.lock().unwrap(), "step\t2\nnil\ttrue\n");
 }

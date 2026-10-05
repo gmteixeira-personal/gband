@@ -7,6 +7,7 @@ use gband_core::layout::{
     Direction, Layout, LayoutOptions, PaneContent, PaneHeight, PaneId, Program, Proportion,
     SessionAction, Step, Weight,
 };
+use gband_protocol::test::{FromProcess, Role, ToProcess};
 use gband_protocol::{
     ClientMessage, Decoder, ExecutableId, Hello, HelloReply, Key as ValueKey, PROTOCOL_VERSION,
     Requirement, ServerMessage, SessionName, SessionSummary, Value, encode,
@@ -453,4 +454,43 @@ fn bridge_messages_round_trip() {
         requirement: ">= 0.1".to_owned(),
     }]));
     round_trip(ServerMessage::ServerError("server: boom".to_owned()));
+}
+
+#[test]
+fn test_channel_messages_round_trip() {
+    round_trip(ToProcess::Start {
+        time: Some(1_735_732_800),
+    });
+    round_trip(ToProcess::Start { time: None });
+    round_trip(ToProcess::Eval {
+        id: 1,
+        source: "return gband.side, select('#', ...)".to_owned(),
+        args: vec![Value::Int(1), Value::Int(2)],
+    });
+    round_trip(ToProcess::Settle {
+        round: 1,
+        markers: Some(3),
+    });
+    round_trip(ToProcess::Settle {
+        round: 2,
+        markers: None,
+    });
+    round_trip(ToProcess::Reload { id: 4 });
+    round_trip(ToProcess::SetTime { time: Some(0) });
+    round_trip(FromProcess::Hello { role: Role::Client });
+    round_trip(FromProcess::Hello { role: Role::Server });
+    round_trip(FromProcess::Answer {
+        id: 1,
+        result: Ok(vec![text("client"), Value::Int(2), Value::Nil]),
+    });
+    round_trip(FromProcess::Answer {
+        id: 2,
+        result: Err("boom".to_owned()),
+    });
+    round_trip(FromProcess::Settled { round: 1, sent: 0 });
+    round_trip(FromProcess::Reloaded { id: 4, error: None });
+    round_trip(FromProcess::Reloaded {
+        id: 5,
+        error: Some("init.lua:1: bad".to_owned()),
+    });
 }
