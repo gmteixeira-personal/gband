@@ -47,8 +47,8 @@ The fourth line SHALL be present only when the third line shows `modal`. When th
 The cursor line SHALL start on the first line, except as "Reopen after a save" defines. The window's width SHALL be the smaller of 31 and the ribbon area's width. Its height SHALL be the smaller of the number of its lines plus 2 and the ribbon area's height. It SHALL be centered in the ribbon area, rounding the left and top offsets down. A line wider than the content area SHALL be cut at the content area's edge, as the plugin-windows capability defines.
 
 #### Scenario: Window opens
-- **WHEN** no setting is saved, the active colorscheme is `gruvbox`, and a binding function calls `gband.settings.open()`
-- **THEN** a focused floating plugin window titled `settings` shows `theme    gruvbox`, `sidebar  on`, `keys     modal` and `I on new on`, with the cursor line on the first line
+- **WHEN** no setting is saved, the active colorscheme is `default`, and a binding function calls `gband.settings.open()`
+- **THEN** a focused floating plugin window titled `settings` shows `theme    default`, `sidebar  on`, `keys     modal` and `I on new on`, with the cursor line on the first line
 
 #### Scenario: Window beside the default sidebar
 - **WHEN** the default configuration is in use with the modal style on an 80×24 terminal and the settings window opens
@@ -119,7 +119,7 @@ When `gband.config_dir` is nil, or a file cannot be written, the key SHALL save 
 - **THEN** `gband.colorscheme()` returns `one-dark` and `user/theme.lua` holds `return "one-dark"`
 
 #### Scenario: Theme wraps
-- **WHEN** the active colorscheme is `terminal`, the settings window is open on its first line, and the user presses `h`
+- **WHEN** the active colorscheme is `default`, the settings window is open on its first line, and the user presses `h`
 - **THEN** the last name `gband.settings.themes()` returns is the active colorscheme and is saved
 
 #### Scenario: Dismiss

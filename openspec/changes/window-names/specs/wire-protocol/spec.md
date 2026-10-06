@@ -211,6 +211,10 @@ The first frame a client sends SHALL be a hello. The hello's payload SHALL begin
 - **WHEN** a client speaking protocol version 7 sends its hello to a server speaking version 8
 - **THEN** the server rejects it with version 8 and closes the connection
 
+#### Scenario: Version 8 client meets a version 9 server
+- **WHEN** a client speaking protocol version 8 sends its hello to a server speaking version 9
+- **THEN** the server rejects it with version 9 and closes the connection
+
 #### Scenario: Version 9 client meets a version 10 server
 - **WHEN** a client speaking protocol version 9 sends its hello to a server speaking version 10
 - **THEN** the server rejects it with version 10 and closes the connection

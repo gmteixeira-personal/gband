@@ -11,9 +11,11 @@ Every option SHALL have a name, a type, a declared default and a description, an
 | `window_titles` | a boolean: whether windows show their names on their top borders, as the window-names capability defines | `true` |
 | `notify_style` | `"osc9"`, `"osc777"`, `"bell"` or `"none"` | `"osc9"` |
 | `tile_border_sides` | a list of side names, as the borders capability defines them | `{ "top", "right", "bottom", "left" }` |
-| `tile_border_chars` | a character set, as the borders capability defines it | `"plain"` |
+| `tile_border_chars` | a character set, as the borders capability defines it | `"rounded"` |
+| `focused_tile_border_chars` | a character set, for the focused tiled window's border | `"rounded"` |
 | `floating_border_sides` | a list of side names | `{ "top", "right", "bottom", "left" }` |
-| `floating_border_chars` | a character set | `"plain"` |
+| `floating_border_chars` | a character set | `"rounded"` |
+| `focused_floating_border_chars` | a character set, for the focused floating window's border | `"rounded"` |
 | `width_step` | a number greater than 0 and at most 10000 | `1/10` |
 | `height_step` | a number greater than 0 and at most 1 | `1/10` |
 
@@ -28,7 +30,7 @@ A process SHALL know only the options of its own side, and options declared in i
 
 `gband.set` SHALL take one table of options. Each call SHALL change only the options the table names, and a later call SHALL override an earlier one. An unknown option name, a value of the wrong type, a value out of range or an unknown camera policy given to `gband.set` SHALL be a configuration error naming the option.
 
-Reading `gband.opt.<name>` SHALL return the option's current value: a key name for `prefix`, a number for a width or a step, a list of numbers in ascending order for `width_presets`, a string for `center_focused_column` and `notify_style`, a list of side names in the held order for `tile_border_sides` and `floating_border_sides`, the name or a new list of the eight strings for `tile_border_chars` and `floating_border_chars`, a boolean for `loop_bands` and `window_titles`, and the value as set for a declared option. Assigning `gband.opt.<name>` SHALL set the option. A value that the option's type rejects SHALL be reported as a configuration error at the line of the assignment, SHALL NOT fail the load, and SHALL set the option to its declared default. An assignment to a name no option declares SHALL be held until an option of that name is declared later in the same load, and then validated; one still undeclared when loading finishes SHALL be reported as a configuration error at the line of the assignment, and SHALL NOT fail the load. The error for a built-in option of the other side SHALL name the side that owns it.
+Reading `gband.opt.<name>` SHALL return the option's current value: a key name for `prefix`, a number for a width or a step, a list of numbers in ascending order for `width_presets`, a string for `center_focused_column` and `notify_style`, a list of side names in the held order for `tile_border_sides` and `floating_border_sides`, the name or a new list of the eight strings for `tile_border_chars`, `focused_tile_border_chars`, `floating_border_chars` and `focused_floating_border_chars`, a boolean for `loop_bands` and `window_titles`, and the value as set for a declared option. Assigning `gband.opt.<name>` SHALL set the option. A value that the option's type rejects SHALL be reported as a configuration error at the line of the assignment, SHALL NOT fail the load, and SHALL set the option to its declared default. An assignment to a name no option declares SHALL be held until an option of that name is declared later in the same load, and then validated; one still undeclared when loading finishes SHALL be reported as a configuration error at the line of the assignment, and SHALL NOT fail the load. The error for a built-in option of the other side SHALL name the side that owns it.
 
 `gband.opt.declare(name, spec)` SHALL declare an option under its full name, as the plugins capability defines, and return that full name. `spec.type` SHALL be `"boolean"`, `"integer"`, `"number"` or `"string"`. `spec.values`, optional, SHALL list the only values allowed. `spec.default` SHALL be a valid value, and `spec.desc` an optional description. Declaring a name already declared, an unknown type, or an invalid default SHALL be an error at the line of the call. `gband.opt.list()` SHALL return one table per option of its side, built-in and declared, in ascending byte order of names, each holding `name`, `type`, `default`, `value` and `desc`.
 
@@ -120,6 +122,15 @@ Options SHALL be set and declared only while the configuration loads. Setting or
 - **WHEN** line 3 of `user/init.lua` sets `gband.opt.loop_bands = "yes"`
 - **THEN** loading succeeds with `loop_bands` set to `true`
 - **AND** an error at `user/init.lua` line 3 naming `loop_bands` is reported
+
+#### Scenario: Rounded borders by default
+- **WHEN** `user/init.lua` sets no border option and reads `gband.opt.tile_border_chars`, `gband.opt.focused_tile_border_chars`, `gband.opt.floating_border_chars` and `gband.opt.focused_floating_border_chars`
+- **THEN** each value read is `"rounded"`
+
+#### Scenario: Focused border characters of the wrong type
+- **WHEN** line 2 of `user/init.lua` sets `gband.opt.focused_tile_border_chars = "heavy"`
+- **THEN** loading succeeds with `focused_tile_border_chars` set to `"rounded"`
+- **AND** an error at `user/init.lua` line 2 naming `focused_tile_border_chars` is reported
 
 #### Scenario: Window titles off
 - **WHEN** `user/init.lua` calls `gband.set({ window_titles = false })` and then reads `gband.opt.window_titles`
