@@ -308,6 +308,9 @@ fn dispatch(
                     context.taps.notice(&session.name, window, client);
                 }
             }
+            ClientMessage::Mouse { window, event } => {
+                forward(session, window, Input::Mouse(event));
+            }
             ClientMessage::Command { call, name, args } => {
                 let call_input = scripting::Input::Call {
                     session: session.name.clone(),

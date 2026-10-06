@@ -1,4 +1,5 @@
 use gband_core::geometry::Size;
+use gband_core::input::{MouseEncoding, MouseTracking};
 use gband_emulator::{Emulator, Grid};
 use ratatui::buffer::Cell;
 use ratatui::style::{Color, Modifier};
@@ -137,6 +138,73 @@ fn plain_output_asks_nothing<E: Emulator>() {
     let mut emulator = E::new(SIZE);
     emulator.process(b"hello\r\n");
     assert!(emulator.take_write_back().is_empty());
+}
+
+fn mouse_modes<E: Emulator>()
+where
+    E::Screen: Screen,
+{
+    let mut emulator = E::new(SIZE);
+    assert_eq!(emulator.modes().mouse_tracking, MouseTracking::None);
+    assert_eq!(emulator.modes().mouse_encoding, MouseEncoding::Default);
+    emulator.process(b"\x1b[?1002h\x1b[?1006h");
+    assert_eq!(emulator.modes().mouse_tracking, MouseTracking::ButtonMotion);
+    assert_eq!(emulator.modes().mouse_encoding, MouseEncoding::Sgr);
+    emulator.process(b"\x1b[?1003h");
+    assert_eq!(emulator.modes().mouse_tracking, MouseTracking::AnyMotion);
+    let copy = reproduced(&emulator);
+    assert_eq!(copy.modes().mouse_tracking, MouseTracking::AnyMotion);
+    assert_eq!(copy.modes().mouse_encoding, MouseEncoding::Sgr);
+    assert_same(&emulator, &copy);
+    emulator.process(b"\x1b[?1003l\x1b[?1006l");
+    assert_eq!(emulator.modes().mouse_tracking, MouseTracking::None);
+    assert_eq!(emulator.modes().mouse_encoding, MouseEncoding::Default);
+    emulator.process(b"\x1b[?1000h\x1b[?1000l");
+    assert_eq!(emulator.modes().mouse_tracking, MouseTracking::None);
+    emulator.process(b"\x1b[?9h\x1b[?1005h");
+    assert_eq!(emulator.modes().mouse_tracking, MouseTracking::Press);
+    assert_eq!(emulator.modes().mouse_encoding, MouseEncoding::Utf8);
+    emulator.process(b"\x1bc");
+    assert_eq!(emulator.modes().mouse_tracking, MouseTracking::None);
+    assert_eq!(emulator.modes().mouse_encoding, MouseEncoding::Default);
+}
+
+fn mouse_modes_after_a_checkpoint<E: Emulator>()
+where
+    E::Screen: Screen,
+{
+    let mut emulator = E::new(SIZE);
+    let checkpoint = emulator.checkpoint();
+    let mut copy = reproduced(&emulator);
+    emulator.process(b"\x1b[?1000h\x1b[?1006h");
+    copy.process(&emulator.diff(&checkpoint));
+    assert_eq!(copy.modes().mouse_tracking, MouseTracking::PressRelease);
+    assert_same(&emulator, &copy);
+}
+
+fn text_between_cells<E: Emulator>() {
+    let mut emulator = E::new(Size::new(10, 5));
+    emulator.process(b"hello world\r\nsecond  \r\nabcdef");
+    assert_eq!(emulator.text_between((6, 0), (5, 2)), "world\nsecond");
+    assert_eq!(emulator.text_between((0, 2), (9, 3)), "second\nabcdef");
+    assert_eq!(emulator.text_between((1, 3), (4, 3)), "bcde");
+    assert_eq!(emulator.text_between((0, 2), (9, 2)), "second");
+    assert_eq!(emulator.text_between((2, 0), (6, 0)), "llo w");
+}
+
+#[test]
+fn grid_reports_mouse_modes() {
+    mouse_modes::<Grid>();
+}
+
+#[test]
+fn grid_diff_reproduces_mouse_modes() {
+    mouse_modes_after_a_checkpoint::<Grid>();
+}
+
+#[test]
+fn grid_reads_text_between_cells() {
+    text_between_cells::<Grid>();
 }
 
 #[test]

@@ -1,0 +1,26 @@
+size 40x8 cursor 4:3 shown
+0|┌──────────────────┐
+1|│$ printf 'hello wo│
+2|│hello world       │
+3|│second line       │
+4|│$                 │
+5|│                  │
+6|│                  │
+7|└──────────────────┘
+--
+0:0-19 bold
+1:0 bold
+1:19 bold
+2:0 bold
+2:7-18 inverse
+2:19 bold
+3:0 bold
+3:1-6 inverse
+3:19 bold
+4:0 bold
+4:19 bold
+5:0 bold
+5:19 bold
+6:0 bold
+6:19 bold
+7:0-19 bold

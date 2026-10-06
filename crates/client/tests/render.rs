@@ -3,7 +3,10 @@ use std::time::Instant;
 
 use gband_client::animation::{Animations, Drawn, DrawnBand, Presentation, Targets};
 use gband_client::color::ColorSupport;
-use gband_client::render::{Ribbon, Shown, draw_border, draw_frame, interior};
+use gband_client::mouse::{Hit, Target, hit};
+use gband_client::render::{
+    Lifted, Overlay, Ribbon, Selected, Shown, draw_border, draw_frame, interior, regions,
+};
 use gband_core::geometry::{Size, boxes, tiles};
 use gband_core::layout::{
     Direction, Layout, LayoutOptions, Proportion, SessionAction, Step, WindowHeight, WindowId,
@@ -30,6 +33,7 @@ struct Fixture {
     floating_border: Border,
     bars: Vec<(Bar, Rect)>,
     region: Option<Rect>,
+    overlay: Overlay,
 }
 
 impl Fixture {
@@ -65,6 +69,7 @@ impl Fixture {
             floating_border: Border::default(),
             bars: Vec::new(),
             region: None,
+            overlay: Overlay::default(),
         };
         fixture.reset_grids();
         (fixture, windows)
@@ -123,10 +128,33 @@ impl Fixture {
         self.render_drawn(terminal, &self.at_rest(terminal))
     }
 
+    fn hit(&self, terminal: Size, col: u16, row: u16) -> Hit {
+        let drawn = self.at_rest(terminal);
+        let area = Rect::new(0, 0, terminal.cols, terminal.rows);
+        let ribbon = self.ribbon(area, &drawn);
+        let regions = regions(&ribbon, area);
+        hit(
+            &regions,
+            ribbon.region,
+            self.view.band(),
+            |_| None,
+            col,
+            row,
+        )
+    }
+
     fn render_drawn(&self, terminal: Size, drawn: &Drawn) -> String {
         let mut terminal = Terminal::new(TestBackend::new(terminal.cols, terminal.rows)).unwrap();
         let terminal_area = terminal.size().unwrap();
-        let ribbon = Ribbon {
+        let ribbon = self.ribbon(terminal_area.into(), drawn);
+        terminal.draw(|frame| draw_frame(frame, &ribbon)).unwrap();
+        let backend = terminal.backend();
+        let cursor = backend.cursor_visible().then(|| backend.cursor_position());
+        format!("{:?}\ncursor: {cursor:?}", backend.buffer())
+    }
+
+    fn ribbon<'a>(&'a self, terminal_area: Rect, drawn: &'a Drawn) -> Ribbon<'a> {
+        Ribbon {
             layout: &self.layout,
             area: self.area,
             view: &self.view,
@@ -140,7 +168,12 @@ impl Fixture {
             )),
             tile_border: &self.tile_border,
             floating_border: &self.floating_border,
-            floats: self.floats.iter().collect(),
+            floats: self
+                .floats
+                .iter()
+                .enumerate()
+                .map(|(index, float)| (index as u32 + 1, float))
+                .collect(),
             float_focused: self.float_focused,
             colors: ColorSupport::Indexed,
             banner: self.banner.as_deref(),
@@ -149,11 +182,8 @@ impl Fixture {
                 .iter()
                 .map(|(bar, area)| Shown { bar, area: *area })
                 .collect(),
-        };
-        terminal.draw(|frame| draw_frame(frame, &ribbon)).unwrap();
-        let backend = terminal.backend();
-        let cursor = backend.cursor_visible().then(|| backend.cursor_position());
-        format!("{:?}\ncursor: {cursor:?}", backend.buffer())
+            overlay: self.overlay,
+        }
     }
 }
 
@@ -838,4 +868,83 @@ fn line_cut_at_the_bars_edge() {
     ));
     fixture.region = Some(Rect::new(4, 0, 16, 6));
     assert_snapshot!(fixture.render(Size::new(20, 6)));
+}
+
+#[test]
+fn click_inside_a_tile() {
+    let (fixture, windows) = Fixture::new(Size::new(80, 24), 2, 80);
+    let hit = fixture.hit(Size::new(80, 24), 45, 3);
+    assert_eq!(hit.target, Target::Window(windows[1]));
+    assert_eq!(hit.content, Some((4, 2)));
+}
+
+#[test]
+fn floating_window_over_a_tile_is_the_target() {
+    let (mut fixture, windows) = Fixture::new(Size::new(80, 24), 3, 80);
+    floating_at(&mut fixture, windows[2], 40, 2, 80);
+    let hit = fixture.hit(Size::new(80, 24), 45, 3);
+    assert_eq!(hit.target, Target::Window(windows[2]));
+    assert_eq!(hit.content, Some((4, 0)));
+}
+
+#[test]
+fn border_cell_has_no_content_cell() {
+    let (fixture, windows) = Fixture::new(Size::new(80, 24), 2, 80);
+    let hit = fixture.hit(Size::new(80, 24), 50, 0);
+    assert_eq!(hit.target, Target::Window(windows[1]));
+    assert_eq!(hit.content, None);
+}
+
+#[test]
+fn empty_ribbon_left_of_the_first_column() {
+    let (mut fixture, _) = Fixture::new(Size::new(80, 24), 1, 80);
+    fixture.view = View::with_policy(
+        Scene {
+            layout: &fixture.layout,
+            area: fixture.area,
+            viewport: Size::new(80, 24),
+        },
+        CenterFocusedColumn::Always,
+    );
+    assert_eq!(fixture.view.camera(), -20);
+    assert_eq!(fixture.hit(Size::new(80, 24), 5, 3).target, Target::Ribbon);
+}
+
+#[test]
+fn plugin_float_is_above_windows_and_outside_is_outside() {
+    let (mut fixture, _) = Fixture::new(Size::new(80, 24), 2, 80);
+    fixture.floats.push(float(6, 20, 40, 11, &[]));
+    fixture.region = Some(Rect::new(10, 0, 70, 24));
+    let hit = fixture.hit(Size::new(80, 24), 31, 7);
+    assert_eq!(hit.target, Target::PluginFloat(1));
+    assert_eq!(hit.content, Some((0, 0)));
+    assert_eq!(fixture.hit(Size::new(80, 24), 3, 3).target, Target::Outside);
+}
+
+#[test]
+fn selection_is_drawn_reversed() {
+    let (mut fixture, windows) = Fixture::new(Size::new(40, 6), 1, 40);
+    fixture.write(windows[0], b"hello world\r\nsecond line");
+    fixture.overlay.selection = Some(Selected {
+        window: windows[0],
+        start: (6, 0),
+        end: (5, 1),
+    });
+    assert_snapshot!(fixture.render(Size::new(40, 6)));
+}
+
+#[test]
+fn lifted_tile_with_its_drop_outline() {
+    let (mut fixture, windows) = Fixture::new(Size::new(80, 12), 2, 80);
+    fixture.write(windows[0], b"lifted");
+    fixture.write(windows[1], b"stays");
+    fixture.overlay.lifted = Some(Lifted {
+        window: windows[0],
+        x: 50,
+        y: 2,
+        width: 20,
+        height: 6,
+        outline: Some(Rect::new(70, 0, 10, 12)),
+    });
+    assert_snapshot!(fixture.render(Size::new(80, 12)));
 }

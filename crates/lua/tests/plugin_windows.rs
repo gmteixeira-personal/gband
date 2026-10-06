@@ -5,10 +5,12 @@ use std::sync::Arc;
 use common::*;
 use gband_core::action::Action;
 use gband_core::geometry::Size;
-use gband_core::input::{Key, KeyCode, Modifiers};
+use gband_core::input::{Key, KeyCode, Modifiers, MouseButton, WheelDirection};
 use gband_core::layout::{Layout, LayoutOptions, Proportion, WindowId};
 use gband_core::view::ViewAction;
-use gband_lua::plugin_windows::{FloatingFrame, Frame, Run, TiledFrame};
+use gband_lua::plugin_windows::{
+    FloatingFrame, Frame, PluginBox, PluginMouse, PluginMouseKind, Run, TiledFrame,
+};
 use gband_lua::{
     BandState, Binding, Border, BorderChars, CharSet, Chord, Color, Config, Dispatch, Event,
     Outcome, PluginWindowRequest, Sides, Style, ViewState,
@@ -87,6 +89,17 @@ impl Client {
         }
     }
 
+    fn mouse(&self, plugin_window: u32, kind: PluginMouseKind, row: u16) -> Outcome {
+        self.config.runtime.plugin_window_mouse(
+            plugin_window,
+            &PluginMouse {
+                kind,
+                content: Some((1, row)),
+                modifiers: Modifiers::NONE,
+            },
+        )
+    }
+
     fn key(&self, plugin_window: u32, name: &str) -> Outcome {
         self.config
             .runtime
@@ -162,12 +175,17 @@ fn bad_options_are_errors() {
             "gband.win.open({ keys = { ['ctrl+shift+1'] = print } })",
             "ctrl+shift+1",
         ),
+        (
+            "gband.win.open({ keys = { leftmouse = print } })",
+            "leftmouse",
+        ),
         ("gband.win.open({ kind = 'popup' })", "kind"),
         ("gband.win.open({ width = 0 })", "width"),
         ("gband.win.open({ col = -1 })", "col"),
         ("gband.win.open({ lines = { 5 } })", "line 1"),
         ("gband.win.open({ colour = 1 })", "colour"),
         ("gband.win.open({ on_input = 'text' })", "on_input"),
+        ("gband.win.open({ on_mouse = 3 })", "on_mouse"),
         ("gband.win.open({ kind = 'tiled', after = 9 })", "9"),
         (
             "gband.win.open({ kind = 'tiled', column_width = 0 })",
@@ -1074,4 +1092,91 @@ fn guide_examples_run() {
             }
         }
     }
+}
+
+#[test]
+fn click_a_line_runs_on_mouse() {
+    let client = Client::new("win-on-mouse", "");
+    client.run(&format!(
+        "win = gband.win.open({{ height = 12, lines = {}, on_mouse = function(id, e) got = {{ id = id, kind = e.kind, button = e.button, line = e.line, col = e.content_col }} end }})\n\
+         gband.win.scroll(win, 4)",
+        numbered(25)
+    ));
+    let win: u32 = client.global("win");
+    assert_eq!(client.eval::<u32>("return gband.win.info(win).top"), 5);
+    clean(&client.mouse(win, PluginMouseKind::Press(MouseButton::Left), 2));
+    let got: String = client
+        .eval("return table.concat({ got.id, got.kind, got.button, got.line, got.col }, ',')");
+    assert_eq!(got, format!("{win},press,left,7,1"));
+    assert_eq!(client.eval::<u32>("return gband.win.info(win).cursor"), 1);
+    clean(&client.mouse(win, PluginMouseKind::Scroll(WheelDirection::Down), 2));
+    let got: String = client.eval(
+        "return table.concat({ got.kind, gband.win.info(win).top, tostring(got.button) }, ',')",
+    );
+    assert_eq!(got, "scroll,5,nil");
+}
+
+#[test]
+fn wheel_scrolls_without_on_mouse() {
+    let client = Client::new("win-wheel", "");
+    client.run(&format!(
+        "win = gband.win.open({{ height = 12, focus = false, lines = {} }})",
+        numbered(25)
+    ));
+    let win: u32 = client.global("win");
+    clean(&client.mouse(win, PluginMouseKind::Scroll(WheelDirection::Down), 0));
+    assert_eq!(client.eval::<u32>("return gband.win.info(win).top"), 2);
+    assert!(!client.eval::<bool>("return gband.win.info(win).focused"));
+    assert_eq!(trimmed(&client.float().lines)[..2], ["2", "3"]);
+    clean(&client.mouse(win, PluginMouseKind::Scroll(WheelDirection::Up), 0));
+    assert_eq!(client.eval::<u32>("return gband.win.info(win).top"), 1);
+}
+
+#[test]
+fn click_moves_the_cursor_line() {
+    let client = Client::new("win-click", "");
+    client.run(&format!(
+        "win = gband.win.open({{ height = 12, focus = false, cursorline = true, lines = {} }})",
+        numbered(10)
+    ));
+    let win: u32 = client.global("win");
+    clean(&client.mouse(win, PluginMouseKind::Press(MouseButton::Left), 3));
+    assert_eq!(client.eval::<u32>("return gband.win.info(win).cursor"), 4);
+    assert!(client.eval::<bool>("return gband.win.info(win).focused"));
+    clean(&client.mouse(win, PluginMouseKind::Press(MouseButton::Right), 5));
+    assert_eq!(client.eval::<u32>("return gband.win.info(win).cursor"), 4);
+    clean(&client.mouse(win, PluginMouseKind::Press(MouseButton::Left), 9));
+    assert_eq!(client.eval::<u32>("return gband.win.info(win).cursor"), 10);
+}
+
+#[test]
+fn set_box_moves_and_resizes_in_one_step() {
+    let client = Client::new("win-set-box", "resized = 0\n");
+    client.run(
+        "win = gband.win.open({ width = 20, height = 10, col = 5, row = 3, on_resize = function() resized = resized + 1 end })",
+    );
+    let win: u32 = client.global("win");
+    let placed = PluginBox {
+        col: 9,
+        row: 5,
+        width: 20,
+        height: 10,
+    };
+    clean(&client.config.runtime.set_plugin_window_box(win, placed));
+    let info = || -> String {
+        client.eval(
+            "local i = gband.win.info(win) return table.concat({ i.col, i.row, i.width, i.height, resized }, ',')",
+        )
+    };
+    assert_eq!(info(), "9,5,20,10,0");
+    let resized = PluginBox {
+        width: 30,
+        height: 12,
+        ..placed
+    };
+    clean(&client.config.runtime.set_plugin_window_box(win, resized));
+    assert_eq!(info(), "9,5,30,12,1");
+    let beyond = PluginBox { col: 75, ..resized };
+    clean(&client.config.runtime.set_plugin_window_box(win, beyond));
+    assert_eq!(info(), "50,5,30,12,1");
 }

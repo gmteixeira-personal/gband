@@ -1,5 +1,5 @@
 use gband_core::action::Steps;
-use gband_core::input::{Key, KeyCode};
+use gband_core::input::{Key, KeyCode, MouseKey};
 use gband_lua::{Binding, Chord, KeyTables, Modes};
 
 pub const ROOT: &str = "root";
@@ -26,17 +26,29 @@ impl Keymap {
         self.tables.get(name).map_or(&[], Vec::as_slice)
     }
 
-    fn chord_key(&self, chord: Chord) -> Key {
+    fn chord_key(&self, chord: Chord) -> Option<Key> {
         match chord {
-            Chord::Key(key) => key,
-            Chord::Prefix => self.prefix,
+            Chord::Key(key) => Some(key),
+            Chord::Prefix => Some(self.prefix),
+            Chord::Mouse(_) => None,
         }
     }
 
     fn find(&self, table: &str, key: Key) -> Option<Binding> {
+        self.find_by(table, |chord| {
+            self.chord_key(chord)
+                .is_some_and(|bound| matches(bound, key))
+        })
+    }
+
+    fn find_mouse(&self, table: &str, key: MouseKey) -> Option<Binding> {
+        self.find_by(table, |chord| chord == Chord::Mouse(key))
+    }
+
+    fn find_by(&self, table: &str, matching: impl Fn(Chord) -> bool) -> Option<Binding> {
         self.table(table)
             .iter()
-            .find(|&&(chord, _)| matches(self.chord_key(chord), key))
+            .find(|&&(chord, _)| matching(chord))
             .map(|&(_, binding)| match binding {
                 Binding::Action(action) => Binding::Action(action.stepped(self.steps)),
                 binding => binding,
@@ -47,6 +59,13 @@ impl Keymap {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Command {
     Send(Key),
+    Run(Binding),
+    Discard,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MouseCommand {
+    Default,
     Run(Binding),
     Discard,
 }
@@ -89,6 +108,24 @@ impl Leader {
             return Command::Discard;
         }
         Command::Send(key)
+    }
+
+    pub fn handle_mouse(&mut self, keymap: &Keymap, key: MouseKey) -> MouseCommand {
+        let found = |table: &str| {
+            keymap
+                .find_mouse(table, key)
+                .map_or(MouseCommand::Discard, MouseCommand::Run)
+        };
+        if keymap.modes.contains(&self.active) {
+            return found(&self.active);
+        }
+        if self.active != ROOT {
+            let table = std::mem::replace(&mut self.active, ROOT.to_owned());
+            return found(&table);
+        }
+        keymap
+            .find_mouse(ROOT, key)
+            .map_or(MouseCommand::Default, MouseCommand::Run)
     }
 
     pub fn enter(&mut self, table: String) {
@@ -359,7 +396,8 @@ mod tests {
             .map(|(key, _, _)| key)
             .collect();
         let order = "h l j k u i c n q [ ] r f - = _ + R v V ctrl+h ctrl+l ctrl+j ctrl+k \
-            ctrl+left ctrl+right ctrl+down ctrl+up ? : D escape enter left right down up prefix";
+            ctrl+left ctrl+right ctrl+down ctrl+up ? : D escape enter left right down up prefix \
+            leftmouse rightmouse middlemouse";
         assert_eq!(keys, order.split_whitespace().collect::<Vec<_>>());
         assert!(keymap.table(ROOT).is_empty());
         assert_eq!(keymap.table(PREFIX).len(), keys.len());
@@ -382,7 +420,12 @@ mod tests {
         let expected: Vec<&str> = modal_entries
             .iter()
             .map(|(key, _, _)| key.as_str())
-            .filter(|key| !matches!(*key, "escape" | "enter"))
+            .filter(|key| {
+                !matches!(
+                    *key,
+                    "escape" | "enter" | "leftmouse" | "rightmouse" | "middlemouse"
+                )
+            })
             .collect();
         assert_eq!(keys, expected);
         assert!(keymap.table(ROOT).is_empty());

@@ -530,6 +530,31 @@ t.case("paste and type", function(g)
   g.wait_text("pasted")
 end)
 
+t.case("click a window", function(g)
+  g.start({ size = "60x12" })
+  g.keys("ctrl+space n")
+  g.settle()
+  local first = g.client("return gband.layout().bands[1].columns[1].windows[1].id")
+  t.ok(g.client("return gband.view().window") ~= first, "the second window is focused")
+  local left = g.screen().cols - g.client("return gband.view().cols")
+  g.mouse("press", "left", left + 2, 2)
+  g.mouse("release", "left", left + 2, 2)
+  g.settle()
+  t.eq(g.client("return gband.view().window"), first)
+end)
+
+t.case("invalid mouse kind", function(g)
+  g.start({ size = "20x4" })
+  local ok, err = pcall(g.mouse, "hover", "left", 0, 0)
+  t.ok(not ok, "hover is refused")
+  t.match(err, "hover")
+  ok, err = pcall(g.mouse, "scroll", "middle", 0, 0)
+  t.ok(not ok, "a wheel step needs a direction")
+  t.match(err, "scroll")
+  ok = pcall(g.mouse, "press", "left", 0, 0, "hyper")
+  t.ok(not ok, "unknown modifiers are refused")
+end)
+
 t.case("resize", function(g)
   g.start({ size = "60x12" })
   g.resize("50x10")
@@ -551,6 +576,8 @@ end)
         "wait for program output",
         "open a window by key",
         "paste and type",
+        "click a window",
+        "invalid mouse kind",
         "resize",
     ] {
         line_with(&text, &format!("PASS tests/driving_spec.lua > {case} ("));
@@ -566,7 +593,7 @@ end)
     assert!((0.9..3.0).contains(&seconds), "{failed}");
     line_with(
         &text,
-        "driving_spec.lua:40: g.wait_text gave up waiting for \"never\" after 1 second",
+        "driving_spec.lua:65: g.wait_text gave up waiting for \"never\" after 1 second",
     );
     line_with(&text, "size 20x4 cursor");
 }

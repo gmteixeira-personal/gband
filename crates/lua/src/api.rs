@@ -1,5 +1,5 @@
 use gband_core::action::Action;
-use gband_core::input::Key;
+use gband_core::input::{Key, MouseKey};
 use gband_core::layout::{BandId, Program, Proportion, SessionAction, WindowContent, WindowId};
 use gband_protocol::Value as Data;
 use mlua::{Lua, Table, Value};
@@ -8,14 +8,24 @@ use crate::Side;
 use crate::callbacks::CallbackId;
 use crate::error::ConfigError;
 use crate::keymap;
-use crate::keys::parse_key;
+use crate::keys::{Pressed, parse_pressed};
 use crate::options;
 use crate::runtime::is_loading;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Chord {
     Key(Key),
+    Mouse(MouseKey),
     Prefix,
+}
+
+impl From<Pressed> for Chord {
+    fn from(pressed: Pressed) -> Self {
+        match pressed {
+            Pressed::Key(key) => Chord::Key(key),
+            Pressed::Mouse(key) => Chord::Mouse(key),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -172,11 +182,15 @@ fn set(lua: &Lua, options: Value) -> mlua::Result<()> {
 
 pub(crate) fn parse_keys(text: &str) -> Result<(&'static str, Chord), String> {
     let words: Vec<&str> = text.split(' ').collect();
-    let key = |name: &str| parse_key(name).map_err(|error| error.to_string());
+    let chord = |name: &str| {
+        parse_pressed(name)
+            .map(Chord::from)
+            .map_err(|error| error.to_string())
+    };
     match words.as_slice() {
-        [name] => key(name).map(|key| (keymap::ROOT, Chord::Key(key))),
+        [name] => chord(name).map(|chord| (keymap::ROOT, chord)),
         ["prefix", "prefix"] => Ok((keymap::PREFIX, Chord::Prefix)),
-        ["prefix", name] => key(name).map(|key| (keymap::PREFIX, Chord::Key(key))),
+        ["prefix", name] => chord(name).map(|chord| (keymap::PREFIX, chord)),
         _ => Err(format!("invalid key list `{text}`")),
     }
 }

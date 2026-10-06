@@ -183,6 +183,25 @@ impl TileSprings {
         self.height.retarget(f64::from(tile.height), now);
     }
 
+    fn placed(tile: &DrawnTile, now: Instant) -> Self {
+        Self {
+            x: Spring::at_rest(tile.x as f64, now),
+            y: Spring::at_rest(tile.y as f64, now),
+            width: Spring::at_rest(f64::from(tile.width), now),
+            height: Spring::at_rest(f64::from(tile.height), now),
+        }
+    }
+
+    fn snap(&mut self, now: Instant) {
+        for spring in [&mut self.x, &mut self.y, &mut self.width, &mut self.height] {
+            spring.snap(now);
+        }
+    }
+
+    fn target(&self) -> [i64; 4] {
+        self.springs().map(|spring| spring.target().round() as i64)
+    }
+
     fn springs(&self) -> [&Spring; 4] {
         [&self.x, &self.y, &self.width, &self.height]
     }
@@ -238,7 +257,14 @@ struct Shown {
     strip: Option<u32>,
     vertical: Spring,
     tiles: HashMap<WindowId, TileSprings>,
+    parked: HashMap<WindowId, [i64; 4]>,
     leaving: Vec<(BandId, i64, Option<u32>)>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Hold {
+    pub camera: bool,
+    pub windows: Vec<WindowId>,
 }
 
 #[derive(Clone, Debug)]
@@ -246,6 +272,7 @@ pub struct Presentation {
     animations: Animations,
     snap: bool,
     shown: Option<Shown>,
+    hold: Hold,
 }
 
 impl Presentation {
@@ -254,6 +281,7 @@ impl Presentation {
             animations,
             snap: true,
             shown: None,
+            hold: Hold::default(),
         }
     }
 
@@ -261,11 +289,42 @@ impl Presentation {
         self.snap = true;
     }
 
+    pub fn hold(&mut self, hold: Hold) {
+        self.hold = hold;
+    }
+
+    pub fn park(&mut self, window: WindowId, tile: DrawnTile, now: Instant) {
+        if let Some(shown) = &mut self.shown
+            && let Some(springs) = shown.tiles.get_mut(&window)
+        {
+            let target = springs.target();
+            *springs = TileSprings::placed(&tile, now);
+            shown.parked.insert(window, target);
+        }
+    }
+
+    pub fn release(&mut self, window: WindowId, tile: DrawnTile, now: Instant) {
+        if let Some(shown) = &mut self.shown {
+            shown.tiles.insert(window, TileSprings::placed(&tile, now));
+            shown.parked.remove(&window);
+        }
+    }
+
     pub fn update(&mut self, now: Instant, targets: &Targets) {
         let snap = std::mem::take(&mut self.snap) || self.animations == Animations::Off;
         match &mut self.shown {
             Some(shown) if !snap => shown.update(now, targets),
             _ => self.shown = Some(Shown::at_rest(now, targets)),
+        }
+        if let Some(shown) = &mut self.shown {
+            if self.hold.camera {
+                shown.camera.snap(now);
+            }
+            for window in &self.hold.windows {
+                if let Some(springs) = shown.tiles.get_mut(window) {
+                    springs.snap(now);
+                }
+            }
         }
     }
 
@@ -340,6 +399,7 @@ impl Shown {
                 .iter()
                 .map(|tile| (tile.window, TileSprings::at_rest(tile, now)))
                 .collect(),
+            parked: HashMap::new(),
             leaving: Vec::new(),
         }
     }
@@ -371,6 +431,7 @@ impl Shown {
             self.leaving.retain(|&(band, _, _)| band != targets.band);
             self.camera = Spring::at_rest(targets.camera as f64, now);
             self.tiles.clear();
+            self.parked.clear();
             self.retarget_tiles(now, targets);
         }
         self.vertical.retarget(top, now);
@@ -390,7 +451,22 @@ impl Shown {
     fn retarget_tiles(&mut self, now: Instant, targets: &Targets) {
         self.tiles
             .retain(|window, _| targets.tiles.iter().any(|tile| tile.window == *window));
+        self.parked
+            .retain(|window, _| targets.tiles.iter().any(|tile| tile.window == *window));
         for tile in &targets.tiles {
+            let target = [
+                i64::from(tile.x),
+                i64::from(tile.y),
+                i64::from(tile.width),
+                i64::from(tile.height),
+            ];
+            match self.parked.get(&tile.window) {
+                Some(parked) if *parked == target => continue,
+                Some(_) => {
+                    self.parked.remove(&tile.window);
+                }
+                None => {}
+            }
             self.tiles
                 .entry(tile.window)
                 .and_modify(|springs| springs.retarget(tile, now))

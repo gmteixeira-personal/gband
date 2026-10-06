@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
 use gband_core::geometry::{BORDER, Size, Tile, WindowBox, drawn_copy, placed, tiles};
-use gband_core::layout::{Layout, WindowId};
+use gband_core::layout::{BandId, Layout, WindowId};
 use gband_core::view::{Scene, View};
 use gband_emulator::{Emulator, Grid};
 use gband_lua::plugin_windows::{FloatingFrame, Run};
-use gband_lua::{Bar, Border};
+use gband_lua::{Bar, Border, Sides};
 use ratatui::Frame;
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Position, Rect};
@@ -25,6 +25,93 @@ pub struct Shown<'a> {
     pub area: Rect,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RegionKind {
+    Tile { column: usize, row: usize },
+    Lifted,
+    Floating,
+    PluginFloat(u32),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Region {
+    pub kind: RegionKind,
+    pub window: Option<WindowId>,
+    pub band: Option<BandId>,
+    pub x: i64,
+    pub y: i64,
+    pub width: u16,
+    pub height: u16,
+    pub visible: Rect,
+    pub border: bool,
+}
+
+impl Region {
+    pub fn contains(&self, col: u16, row: u16) -> bool {
+        self.visible.contains(Position::new(col, row))
+    }
+
+    fn inset(&self) -> u16 {
+        if self.border { BORDER } else { 0 }
+    }
+
+    pub fn content_size(&self) -> (u16, u16) {
+        let inset = 2 * self.inset();
+        (
+            self.width.saturating_sub(inset).max(1),
+            self.height.saturating_sub(inset).max(1),
+        )
+    }
+
+    pub fn content_cell(&self, col: u16, row: u16) -> Option<(u16, u16)> {
+        let inset = i64::from(self.inset());
+        let (cols, rows) = self.content_size();
+        let x = i64::from(col) - self.x - inset;
+        let y = i64::from(row) - self.y - inset;
+        ((0..i64::from(cols)).contains(&x) && (0..i64::from(rows)).contains(&y))
+            .then_some((x as u16, y as u16))
+    }
+
+    pub fn nearest_content(&self, col: i64, row: i64) -> (u16, u16) {
+        let inset = i64::from(self.inset());
+        let (cols, rows) = self.content_size();
+        let x = (col - self.x - inset).clamp(0, i64::from(cols) - 1);
+        let y = (row - self.y - inset).clamp(0, i64::from(rows) - 1);
+        (x as u16, y as u16)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Selected {
+    pub window: WindowId,
+    pub start: (u16, u16),
+    pub end: (u16, u16),
+}
+
+impl Selected {
+    fn holds(&self, (col, row): (u16, u16)) -> bool {
+        let at = (row, col);
+        at >= (self.start.1, self.start.0) && at <= (self.end.1, self.end.0)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Lifted {
+    pub window: WindowId,
+    pub x: i64,
+    pub y: i64,
+    pub width: u16,
+    pub height: u16,
+    pub outline: Option<Rect>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Overlay {
+    pub selection: Option<Selected>,
+    pub lifted: Option<Lifted>,
+    pub floating: Option<WindowBox>,
+}
+
 pub struct Ribbon<'a> {
     pub layout: &'a Layout,
     pub area: Size,
@@ -34,16 +121,17 @@ pub struct Ribbon<'a> {
     pub region: Rect,
     pub tile_border: &'a Border,
     pub floating_border: &'a Border,
-    pub floats: Vec<&'a FloatingFrame>,
+    pub floats: Vec<(u32, &'a FloatingFrame)>,
     pub float_focused: bool,
     pub colors: ColorSupport,
     pub banner: Option<&'a str>,
     pub bars: Vec<Shown<'a>>,
+    pub overlay: Overlay,
 }
 
 pub fn draw_frame(frame: &mut Frame<'_>, ribbon: &Ribbon<'_>) {
     let cursor = render(ribbon, frame.buffer_mut());
-    for float in &ribbon.floats {
+    for (_, float) in &ribbon.floats {
         draw_float(frame.buffer_mut(), ribbon.region, float, ribbon.colors);
     }
     for shown in &ribbon.bars {
@@ -213,35 +301,96 @@ fn draw_banner(buffer: &mut Buffer, region: Rect, text: &str) {
     buffer.set_stringn(area.x, row, first_line, usize::from(area.width), BANNER);
 }
 
-pub fn render(ribbon: &Ribbon<'_>, buffer: &mut Buffer) -> Option<Position> {
-    let target = ribbon.region.intersection(buffer.area);
+struct Layer {
+    region: Region,
+    tile: DrawnTile,
+    placement: Placement,
+    border: Border,
+    focused: bool,
+}
+
+fn layers(ribbon: &Ribbon<'_>, target: Rect) -> Vec<Layer> {
     let focused = ribbon.view.focused();
-    let mut cursor = None;
+    let lifted = ribbon.overlay.lifted;
+    let mut layers = Vec::new();
+    let mut layer = |kind, window, band, tile: DrawnTile, placement: Placement, border: &Border| {
+        let clip = &placement.clip;
+        let x = i64::from(target.x) + placement.left;
+        let y = i64::from(target.y) + placement.top;
+        let visible = Rect::new(
+            (x + i64::from(clip.start)) as u16,
+            (y + i64::from(clip.top)) as u16,
+            clip.end - clip.start,
+            clip.bottom - clip.top,
+        );
+        layers.push(Layer {
+            region: Region {
+                kind,
+                window: Some(window),
+                band,
+                x,
+                y,
+                width: tile.width,
+                height: tile.height,
+                visible,
+                border: true,
+            },
+            tile,
+            placement,
+            border: border.clone(),
+            focused: focused == Some(window),
+        });
+    };
     for drawn in &ribbon.drawn.bands {
         let Some(band) = ribbon.layout.band(drawn.band) else {
             continue;
         };
-        let mut placed: Vec<(WindowId, DrawnTile)> = tiles(band, ribbon.area)
+        let band_tiles = tiles(band, ribbon.area);
+        let mut placed: Vec<(&Tile, DrawnTile)> = band_tiles
             .iter()
+            .filter(|tile| lifted.is_none_or(|lifted| lifted.window != tile.window))
             .map(|tile| {
                 let moving = ribbon.drawn.tiles.get(&tile.window).copied();
-                (tile.window, moving.unwrap_or_else(|| DrawnTile::from(tile)))
+                (tile, moving.unwrap_or_else(|| DrawnTile::from(tile)))
             })
             .collect();
-        placed.sort_by_key(|&(window, _)| focused == Some(window));
-        for (window, tile) in placed {
+        placed.sort_by_key(|&(tile, _)| focused == Some(tile.window));
+        for (tile, drawn_tile) in placed {
             let Some(placement) =
-                Placement::new(&tile, drawn.camera, drawn.strip, drawn.top, target)
+                Placement::new(&drawn_tile, drawn.camera, drawn.strip, drawn.top, target)
             else {
                 continue;
             };
-            let is_focused = focused == Some(window);
-            let grid = ribbon.grids.get(&window);
-            let border = (ribbon.tile_border, is_focused);
-            paint(buffer, target, &tile, &placement, grid, border);
-            if is_focused && ribbon.drawn.settled {
-                cursor = grid.and_then(|grid| cursor_position(&tile, &placement, grid, target));
-            }
+            let kind = RegionKind::Tile {
+                column: tile.column,
+                row: tile.row,
+            };
+            layer(
+                kind,
+                tile.window,
+                Some(drawn.band),
+                drawn_tile,
+                placement,
+                ribbon.tile_border,
+            );
+        }
+    }
+    if let Some(lifted) = lifted {
+        let tile = DrawnTile {
+            x: lifted.x - i64::from(target.x),
+            y: lifted.y - i64::from(target.y),
+            width: lifted.width,
+            height: lifted.height,
+        };
+        if let Some(placement) = Placement::new(&tile, 0, None, 0, target) {
+            layer(
+                RegionKind::Lifted,
+                lifted.window,
+                Some(ribbon.view.band()),
+                tile,
+                placement,
+                ribbon.tile_border,
+            );
         }
     }
     let scene = Scene {
@@ -253,29 +402,127 @@ pub fn render(ribbon: &Ribbon<'_>, buffer: &mut Buffer) -> Option<Position> {
         let Some(floating) = ribbon.layout.floating(window) else {
             continue;
         };
-        let placed = placed(floating, ribbon.area);
+        let placed = ribbon
+            .overlay
+            .floating
+            .filter(|moved| moved.window == window)
+            .unwrap_or_else(|| placed(floating, ribbon.area));
         let tile = DrawnTile::from(&placed);
         let Some(placement) = Placement::new(&tile, 0, None, 0, target) else {
             continue;
         };
-        if cursor.is_some_and(|cursor| covers(&placed, target, cursor)) {
+        layer(
+            RegionKind::Floating,
+            window,
+            Some(ribbon.view.band()),
+            tile,
+            placement,
+            ribbon.floating_border,
+        );
+    }
+    layers
+}
+
+pub fn regions(ribbon: &Ribbon<'_>, area: Rect) -> Vec<Region> {
+    let target = ribbon.region.intersection(area);
+    let mut regions: Vec<Region> = layers(ribbon, target)
+        .into_iter()
+        .map(|layer| layer.region)
+        .collect();
+    for &(id, float) in &ribbon.floats {
+        let placed = Rect::new(
+            ribbon.region.x.saturating_add(float.col),
+            ribbon.region.y.saturating_add(float.row),
+            float.width,
+            float.height,
+        );
+        let visible = placed.intersection(ribbon.region).intersection(area);
+        if visible.is_empty() {
+            continue;
+        }
+        regions.push(Region {
+            kind: RegionKind::PluginFloat(id),
+            window: None,
+            band: None,
+            x: i64::from(placed.x),
+            y: i64::from(placed.y),
+            width: placed.width,
+            height: placed.height,
+            visible,
+            border: float.border.is_some(),
+        });
+    }
+    regions
+}
+
+pub fn render(ribbon: &Ribbon<'_>, buffer: &mut Buffer) -> Option<Position> {
+    let target = ribbon.region.intersection(buffer.area);
+    let mut cursor = None;
+    let mut outlined = false;
+    for layer in layers(ribbon, target) {
+        let Layer {
+            region,
+            tile,
+            placement,
+            border,
+            focused,
+        } = layer;
+        let Some(window) = region.window else {
+            continue;
+        };
+        if region.kind == RegionKind::Floating && !outlined {
+            outlined = true;
+            draw_outline(ribbon, buffer, target);
+        }
+        if region.kind == RegionKind::Floating
+            && cursor.is_some_and(|cursor| covers(&tile, &placement, target, cursor))
+        {
             cursor = None;
         }
-        let is_focused = focused == Some(window);
         let grid = ribbon.grids.get(&window);
-        let border = (ribbon.floating_border, is_focused);
-        paint(buffer, target, &tile, &placement, grid, border);
-        if is_focused && ribbon.drawn.settled {
+        let selection = ribbon
+            .overlay
+            .selection
+            .filter(|selected| selected.window == window);
+        paint(
+            buffer,
+            target,
+            &tile,
+            &placement,
+            grid,
+            (&border, focused),
+            selection,
+        );
+        if focused && region.kind != RegionKind::Lifted && ribbon.drawn.settled {
             cursor = grid.and_then(|grid| cursor_position(&tile, &placement, grid, target));
         }
+    }
+    if !outlined {
+        draw_outline(ribbon, buffer, target);
     }
     cursor
 }
 
-fn covers(placed: &WindowBox, target: Rect, cursor: Position) -> bool {
-    let x = cursor.x.checked_sub(target.x);
-    let y = cursor.y.checked_sub(target.y);
-    x.zip(y).is_some_and(|(x, y)| placed.contains(x, y))
+fn draw_outline(ribbon: &Ribbon<'_>, buffer: &mut Buffer, target: Rect) {
+    let Some(outline) = ribbon.overlay.lifted.and_then(|lifted| lifted.outline) else {
+        return;
+    };
+    let sides = Border {
+        sides: Sides::ALL,
+        chars: ribbon.tile_border.chars.clone(),
+    };
+    draw_border(
+        buffer,
+        outline.intersection(target),
+        &sides,
+        Style::reset().patch(FOCUSED_BORDER),
+    );
+}
+
+fn covers(tile: &DrawnTile, placement: &Placement, target: Rect, cursor: Position) -> bool {
+    let x = i64::from(cursor.x) - i64::from(target.x) - placement.left;
+    let y = i64::from(cursor.y) - i64::from(target.y) - placement.top;
+    (0..i64::from(tile.width)).contains(&x) && (0..i64::from(tile.height)).contains(&y)
 }
 
 fn paint(
@@ -285,6 +532,7 @@ fn paint(
     placement: &Placement,
     grid: Option<&Grid>,
     border: (&Border, bool),
+    selection: Option<Selected>,
 ) {
     let (scratch, shift) = draw_tile(tile, grid, border, &placement.clip);
     let clip = &placement.clip;
@@ -292,8 +540,15 @@ fn paint(
         for column in clip.start..clip.end {
             let x = (placement.left + i64::from(column)) as u16;
             let y = (placement.top + i64::from(row)) as u16;
-            buffer[(target.x + x, target.y + y)] =
-                scratch[(column - shift.cols, row - shift.rows)].clone();
+            let cell = &mut buffer[(target.x + x, target.y + y)];
+            *cell = scratch[(column - shift.cols, row - shift.rows)].clone();
+            let interior = (BORDER..tile.width.saturating_sub(BORDER)).contains(&column)
+                && (BORDER..tile.height.saturating_sub(BORDER)).contains(&row);
+            if interior
+                && selection.is_some_and(|selected| selected.holds((column - BORDER, row - BORDER)))
+            {
+                cell.modifier.toggle(Modifier::REVERSED);
+            }
         }
     }
 }

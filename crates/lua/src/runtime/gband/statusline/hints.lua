@@ -70,7 +70,7 @@ local function hints(active, labels)
     list[1] = { key = prefix, label = gband.keymap.label("prefix") }
   end
   for _, binding in ipairs(gband.keymap.list(active)) do
-    local text = label(binding, descs, labels)
+    local text = not key_form.is_mouse(binding.key) and label(binding, descs, labels)
     if text then
       local key = binding.key == "prefix" and prefix or key_form(binding.key)
       list[#list + 1] = { key = key, label = text }

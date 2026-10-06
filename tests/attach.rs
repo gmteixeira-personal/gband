@@ -7,6 +7,7 @@ use std::thread;
 use std::time::Duration;
 
 use common::*;
+use gband_core::input::{MouseEncoding, MouseTracking};
 use rustix::process::{Pid, Signal};
 
 #[test]
@@ -65,6 +66,24 @@ fn detach_leaves_the_session_running() {
         let last = lines.iter().rfind(|line| !line.is_empty());
         last.is_some_and(|line| line.ends_with("$ sleep 100"))
     });
+}
+
+#[test]
+fn mouse_reporting_is_on_while_attached() {
+    let env = TestEnv::new("mouse-capture");
+    let mut client = Attached::start(&env, 80, 24);
+    client.wait_for_prompt();
+    {
+        let modes = client.screen().modes();
+        assert_eq!(modes.mouse_tracking, MouseTracking::AnyMotion);
+        assert_eq!(modes.mouse_encoding, MouseEncoding::Sgr);
+    }
+    client.send(b"\x00D");
+    assert_eq!(client.wait_exit(), 0);
+    client.wait_for_text("[detached]");
+    let modes = client.screen().modes();
+    assert_eq!(modes.mouse_tracking, MouseTracking::None);
+    assert_eq!(modes.mouse_encoding, MouseEncoding::Default);
 }
 
 #[test]

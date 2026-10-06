@@ -8,7 +8,9 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use gband_core::geometry::Size;
-use gband_core::input::{Key, encode_key, encode_paste};
+use gband_core::input::{
+    Key, Modes, MouseEncoding, MouseEvent, MouseTracking, encode_key, encode_mouse, encode_paste,
+};
 use gband_emulator::{Emulator, Grid, Record};
 use gband_protocol::Value;
 use gband_protocol::test::SOCKET_VARIABLE;
@@ -293,6 +295,15 @@ impl Case {
             }
             thread::sleep(Duration::from_millis(2));
         }
+    }
+
+    pub fn mouse(&self, event: MouseEvent) -> Result<(), String> {
+        let xterm = Modes {
+            mouse_tracking: MouseTracking::AnyMotion,
+            mouse_encoding: MouseEncoding::Sgr,
+            ..Modes::DEFAULT
+        };
+        self.write(&encode_mouse(event, xterm))
     }
 
     pub fn type_text(&self, text: &str) -> Result<(), String> {

@@ -43,6 +43,7 @@ struct BandView {
     floating: Option<WindowId>,
     camera: i64,
     travel: i64,
+    pinned: bool,
 }
 
 impl BandView {
@@ -134,6 +135,67 @@ impl View {
 
     pub fn travel(&self) -> i64 {
         self.bands.get(&self.band).map_or(0, |state| state.travel)
+    }
+
+    pub fn recent_in(&self, windows: &[WindowId]) -> Option<WindowId> {
+        let recent = windows
+            .iter()
+            .filter_map(|window| self.recency.get(window).map(|&tick| (tick, *window)))
+            .max()
+            .map(|(_, window)| window);
+        recent.or_else(|| windows.first().copied())
+    }
+
+    pub fn slide(&mut self, travel: i64, scene: Scene<'_>) {
+        let strip = self.strip(scene);
+        let state = self.bands.entry(self.band).or_default();
+        state.travel = travel;
+        state.camera = strip.map_or(travel, |strip| travel.rem_euclid(i64::from(strip)));
+        state.pinned = true;
+    }
+
+    pub fn unpin(&mut self) {
+        if let Some(state) = self.bands.get_mut(&self.band) {
+            state.pinned = false;
+        }
+    }
+
+    pub fn release_slide(&mut self, scene: Scene<'_>, press_travel: i64) {
+        let Some(band) = scene.layout.band(self.band) else {
+            return;
+        };
+        if band.columns.is_empty() {
+            self.slide(press_travel, scene);
+            self.unpin();
+            return;
+        }
+        self.unpin();
+        let spans = column_spans(band, scene.area);
+        let mut middle = self.camera() + i64::from(scene.viewport.cols / 2);
+        if let Some(strip) = self.looping(&spans, scene.viewport.cols) {
+            middle = middle.rem_euclid(i64::from(strip));
+        }
+        let distance = |span: &Span| {
+            let (start, end) = (i64::from(span.x), i64::from(span.end()));
+            if middle < start {
+                start - middle
+            } else if middle >= end {
+                middle - end + 1
+            } else {
+                0
+            }
+        };
+        let Some(column) = (0..spans.len()).min_by_key(|&index| distance(&spans[index])) else {
+            return;
+        };
+        let Some(window) = self.recent_in(&band.columns[column].windows) else {
+            return;
+        };
+        self.focus(band, window);
+        if let Some(location) = scene.layout.locate(window) {
+            self.position = location;
+        }
+        self.aim(band.id, &spans, column, scene.viewport.cols, false, None);
     }
 
     pub fn strip(&self, scene: Scene<'_>) -> Option<u32> {
@@ -421,13 +483,7 @@ impl View {
         if target == column {
             return None;
         }
-        let windows = &band.columns.get(target)?.windows;
-        let recent = windows
-            .iter()
-            .filter_map(|window| self.recency.get(window).map(|&tick| (tick, *window)))
-            .max()
-            .map(|(_, window)| window);
-        Some(recent.unwrap_or(windows[0]))
+        self.recent_in(&band.columns.get(target)?.windows)
     }
 
     fn neighbour_row(&self, band: &Band, action: ViewAction) -> Option<WindowId> {
@@ -502,6 +558,9 @@ impl View {
         previous: Option<WindowId>,
         heading: Option<Direction>,
     ) {
+        if self.bands.get(&band.id).is_some_and(|state| state.pinned) {
+            return;
+        }
         let Some((column, _)) = self.tiled_focus().and_then(|window| band.locate(window)) else {
             return;
         };

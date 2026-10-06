@@ -247,6 +247,18 @@ fn prefix_table_with_the_defaults() {
 }
 
 #[test]
+fn mouse_bindings_are_not_hinted() {
+    let (_scratch, config) = keys("mouse-hints", &["leftmouse", "h", "alt+RightMouse", "l"]);
+    assert_eq!(shown(&config, "keys"), "h x  l x");
+    let (_scratch, wide) = defaults_with("mouse-hints-wide", "{}");
+    let hints = hints(&wide, "prefix");
+    assert!(
+        hints.iter().all(|hint| !hint.contains("mouse")),
+        "{hints:?}"
+    );
+}
+
+#[test]
 fn named_table() {
     let (_scratch, config) = loaded(
         "named",

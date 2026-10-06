@@ -254,19 +254,18 @@ fn clipboard(lua: &Lua, text: Value) -> mlua::Result<()> {
             ),
         ));
     };
-    if text.as_bytes().len() > MAX_CLIPBOARD {
+    let Some(sequence) = clipboard_sequence(&text.as_bytes()) else {
         return Err(ConfigError::raise(
             lua,
             "gband.clipboard takes at most 1 MiB of text",
         ));
-    }
+    };
     require_callback(lua, "gband.clipboard")?;
-    let sequence = format!("\x1b]52;c;{}\x07", base64(&text.as_bytes()));
-    api::queue(
-        lua,
-        Dispatch::Write(sequence.into_bytes()),
-        "gband.clipboard",
-    )
+    api::queue(lua, Dispatch::Write(sequence), "gband.clipboard")
+}
+
+pub fn clipboard_sequence(text: &[u8]) -> Option<Vec<u8>> {
+    (text.len() <= MAX_CLIPBOARD).then(|| format!("\x1b]52;c;{}\x07", base64(text)).into_bytes())
 }
 
 const OPENER: &str = if cfg!(target_os = "macos") {

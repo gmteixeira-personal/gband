@@ -1,11 +1,20 @@
 use std::time::{Duration, Instant};
 
 use gband_client::animation::{
-    Animations, DrawnBand, DrawnTile, Presentation, Spring, Targets, parse_animations,
+    Animations, DrawnBand, DrawnTile, Hold, Presentation, Spring, Targets, parse_animations,
 };
+use gband_client::render::RegionKind;
+use gband_client::{Controls, Display};
 use gband_core::geometry::{Size, Tile, drawn_copy};
-use gband_core::layout::{BandId, Direction, Layout, LayoutOptions, SessionAction, WindowId};
+use gband_core::input::{Modifiers, MouseButton, MouseEvent, MouseKind};
+use gband_core::layout::{
+    BandId, Direction, Layout, LayoutOptions, Proportion, SessionAction, WindowHeight, WindowId,
+};
 use gband_core::view::{Scene, View, ViewAction};
+use gband_lua::keys::parse_key;
+use gband_protocol::ServerMessage;
+use ratatui::Terminal;
+use ratatui::backend::TestBackend;
 
 fn ms(millis: u64) -> Duration {
     Duration::from_millis(millis)
@@ -490,4 +499,145 @@ fn animations_variable() {
     assert_eq!(parse_animations(Some("off")), Animations::Off);
     assert_eq!(parse_animations(Some("fast")), Animations::On);
     assert_eq!(parse_animations(Some("")), Animations::On);
+}
+
+#[test]
+fn parked_tile_stays_until_its_target_changes_then_animates() {
+    let now = Instant::now();
+    let old = vec![tile(1, 0, 40), tile(2, 40, 40)];
+    let mut presentation = settled(1, &[1], 0, old.clone());
+    let released = DrawnTile {
+        x: 55,
+        y: 2,
+        width: 40,
+        height: 24,
+    };
+    presentation.park(WindowId(1), released, now);
+    presentation.update(now + ms(16), &targets(1, &[1], 0, old));
+    assert_eq!(drawn_tile(&presentation, now + ms(16), 1), Some(released));
+    let moved = vec![tile(2, 0, 40), tile(1, 40, 40)];
+    presentation.update(now + ms(32), &targets(1, &[1], 0, moved));
+    let midway = drawn_tile(&presentation, now + ms(80), 1).unwrap();
+    assert!(midway.x < 55 && midway.x > 40, "{midway:?}");
+    assert!(midway.y < 2, "{midway:?}");
+    assert_eq!(
+        drawn_tile(&presentation, now + ms(1000), 1).map(|drawn| drawn.x),
+        Some(40)
+    );
+}
+
+#[test]
+fn released_tile_glides_back_to_its_slot() {
+    let now = Instant::now();
+    let slots = vec![tile(1, 0, 40), tile(2, 40, 40)];
+    let mut presentation = settled(1, &[1], 0, slots.clone());
+    let released = DrawnTile {
+        x: 30,
+        y: 0,
+        width: 40,
+        height: 24,
+    };
+    presentation.release(WindowId(1), released, now);
+    presentation.update(now + ms(16), &targets(1, &[1], 0, slots));
+    let midway = drawn_tile(&presentation, now + ms(32), 1).unwrap();
+    assert!(midway.x > 0 && midway.x < 30, "{midway:?}");
+}
+
+#[test]
+fn held_camera_and_windows_draw_at_once() {
+    let now = Instant::now();
+    let mut presentation = settled(1, &[1], 0, vec![tile(1, 0, 40)]);
+    presentation.hold(Hold {
+        camera: true,
+        windows: vec![WindowId(1)],
+    });
+    presentation.update(now + ms(16), &targets(1, &[1], 25, vec![tile(1, 0, 48)]));
+    assert_eq!(camera(&presentation, now + ms(16)), 25);
+    assert_eq!(
+        drawn_tile(&presentation, now + ms(16), 1).map(|drawn| drawn.width),
+        Some(48)
+    );
+    presentation.hold(Hold::default());
+    presentation.update(now + ms(32), &targets(1, &[1], 0, vec![tile(1, 0, 40)]));
+    assert_ne!(camera(&presentation, now + ms(48)), 0);
+}
+
+fn draw(display: &mut Display) {
+    let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+    terminal
+        .draw(|frame| display.draw(frame, Instant::now()))
+        .unwrap();
+}
+
+#[test]
+fn floating_box_follows_the_pointer_at_once() {
+    let area = Size::new(80, 24);
+    let mut layout = Layout::new();
+    let band = layout.bands()[0].id;
+    let tiled = layout.allocate_window();
+    let floating = layout.allocate_window();
+    for window in [tiled, floating] {
+        layout.open(
+            window,
+            band,
+            (window != tiled).then_some(tiled),
+            None,
+            &LayoutOptions::default(),
+        );
+    }
+    for action in [
+        SessionAction::ToggleFloating {
+            window: floating,
+            after: None,
+        },
+        SessionAction::SetWidth {
+            window: floating,
+            width: Proportion::new(1, 4),
+        },
+        SessionAction::SetHeight {
+            window: floating,
+            height: WindowHeight::Fixed(8),
+        },
+        SessionAction::SetPosition {
+            window: floating,
+            col: 10,
+            row: 4,
+        },
+    ] {
+        layout.apply(action, area, &LayoutOptions::default());
+    }
+    let mut display = Display::new(area, Animations::On);
+    display.apply(ServerMessage::Layout {
+        cols: area.cols,
+        rows: area.rows,
+        layout,
+    });
+    let mut controls = Controls::new(gband_lua::defaults(gband_lua::Side::Client), &mut display);
+    controls.refresh(&mut display);
+    controls.press(&mut display, parse_key("ctrl+space").unwrap());
+    draw(&mut display);
+    let boxed = |display: &Display| {
+        display
+            .regions()
+            .iter()
+            .find(|region| region.kind == RegionKind::Floating)
+            .map(|region| (region.x, region.y))
+            .unwrap()
+    };
+    let (x, y) = boxed(&display);
+    let (col, row) = (x as u16 + 2, y as u16 + 2);
+    let left = MouseButton::Left;
+    let at = |kind, col| MouseEvent::new(kind, col, row, Modifiers::NONE);
+    controls.mouse(
+        &mut display,
+        at(MouseKind::Press(left), col),
+        Instant::now(),
+    );
+    controls.mouse(
+        &mut display,
+        at(MouseKind::Motion(Some(left)), col + 5),
+        Instant::now(),
+    );
+    draw(&mut display);
+    assert_eq!(boxed(&display), (x + 5, y));
 }

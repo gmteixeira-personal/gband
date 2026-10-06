@@ -8,7 +8,7 @@ use std::sync::atomic::AtomicU32;
 use std::time::Instant;
 
 use gband_core::geometry::Size;
-use gband_core::input::{Key, KeyCode};
+use gband_core::input::{Key, KeyCode, MouseButton};
 use gband_core::layout::WindowId;
 use gband_protocol::Value as Data;
 
@@ -17,11 +17,11 @@ use mlua::{Function, IntoLuaMulti, Lua, MultiValue, Table, Value};
 use crate::api::{self, Dispatch, Queue};
 use crate::callbacks::{self, CallbackId, Callbacks, Ran};
 use crate::error::{ConfigError, caller};
-use crate::events::{self, Event};
+use crate::events::{self, Event, Pointer};
 use crate::guard::{self, Failure};
 use crate::keys::key_name;
 use crate::owner::{self, Owners};
-use crate::plugin_windows::{self, Frame};
+use crate::plugin_windows::{self, Frame, PluginBox, PluginMouse};
 use crate::removed;
 use crate::server::{self, Caller, Host};
 use crate::ui::{self, ViewState};
@@ -546,6 +546,21 @@ impl Runtime {
         })
     }
 
+    pub fn call_pressed(
+        &self,
+        callback: CallbackId,
+        button: MouseButton,
+        pointer: &Pointer,
+    ) -> Outcome {
+        self.within_callback(|lua| {
+            let payload = pointer.pressed(lua, button)?;
+            Ok(matches!(
+                callbacks::run::<()>(lua, callback, payload)?,
+                Ran::Disabled
+            ))
+        })
+    }
+
     pub fn emit(&self, event: &Event) -> Outcome {
         self.within_callback(|lua| {
             events::emit_event(lua, event)?;
@@ -575,6 +590,40 @@ impl Runtime {
             plugin_windows::call::<()>(lua, "key", (plugin_window, key_name(key), typed(key)))
                 .map(|()| false)
         })
+    }
+
+    pub fn plugin_window_mouse(&self, plugin_window: u32, mouse: &PluginMouse) -> Outcome {
+        self.within_callback(|lua| {
+            let event = mouse.to_lua(lua)?;
+            plugin_windows::call::<()>(lua, "mouse", (plugin_window, event)).map(|()| false)
+        })
+    }
+
+    pub fn set_plugin_window_box(&self, plugin_window: u32, placed: PluginBox) -> Outcome {
+        self.within_callback(|lua| {
+            plugin_windows::call::<()>(
+                lua,
+                "set_box",
+                (
+                    plugin_window,
+                    placed.col,
+                    placed.row,
+                    placed.width,
+                    placed.height,
+                ),
+            )
+            .map(|()| false)
+        })
+    }
+
+    pub fn raise_plugin_window(&self, plugin_window: u32) -> Outcome {
+        self.within_callback(|lua| {
+            plugin_windows::call::<()>(lua, "raise", plugin_window).map(|()| false)
+        })
+    }
+
+    pub fn unfocus_plugin_windows(&self) -> Outcome {
+        self.within_callback(|lua| plugin_windows::call::<()>(lua, "unfocus", ()).map(|()| false))
     }
 
     pub fn plugin_window_paste(&self, plugin_window: u32, text: &str) -> Outcome {

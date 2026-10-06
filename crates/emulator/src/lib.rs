@@ -1,7 +1,7 @@
 mod callbacks;
 
 use gband_core::geometry::Size;
-use gband_core::input::Modes;
+use gband_core::input::{Modes, MouseEncoding, MouseTracking};
 
 use crate::callbacks::Callbacks;
 pub use crate::callbacks::{Record, decode_base64};
@@ -18,6 +18,7 @@ pub trait Emulator: Send + 'static {
     fn cursor(&self) -> Option<(u16, u16)>;
     fn alternate_screen(&self) -> bool;
     fn contents(&self) -> String;
+    fn text_between(&self, start: (u16, u16), end: (u16, u16)) -> String;
     fn screen(&self) -> &Self::Screen;
     fn checkpoint(&self) -> Self::Checkpoint;
     fn snapshot(&self) -> Vec<u8>;
@@ -82,6 +83,18 @@ impl Emulator for Vt100 {
         Modes {
             application_cursor: screen.application_cursor(),
             bracketed_paste: screen.bracketed_paste(),
+            mouse_tracking: match screen.mouse_protocol_mode() {
+                vt100::MouseProtocolMode::None => MouseTracking::None,
+                vt100::MouseProtocolMode::Press => MouseTracking::Press,
+                vt100::MouseProtocolMode::PressRelease => MouseTracking::PressRelease,
+                vt100::MouseProtocolMode::ButtonMotion => MouseTracking::ButtonMotion,
+                vt100::MouseProtocolMode::AnyMotion => MouseTracking::AnyMotion,
+            },
+            mouse_encoding: match screen.mouse_protocol_encoding() {
+                vt100::MouseProtocolEncoding::Default => MouseEncoding::Default,
+                vt100::MouseProtocolEncoding::Utf8 => MouseEncoding::Utf8,
+                vt100::MouseProtocolEncoding::Sgr => MouseEncoding::Sgr,
+            },
         }
     }
 
@@ -96,6 +109,29 @@ impl Emulator for Vt100 {
 
     fn contents(&self) -> String {
         self.parser.screen().contents()
+    }
+
+    fn text_between(&self, start: (u16, u16), end: (u16, u16)) -> String {
+        let screen = self.parser.screen();
+        let (rows, cols) = screen.size();
+        let mut text = String::new();
+        for row in start.1..=end.1.min(rows.saturating_sub(1)) {
+            let from = if row == start.1 { start.0 } else { 0 }.min(cols);
+            let to = if row == end.1 { end.0 + 1 } else { cols }.min(cols);
+            let line = screen
+                .rows(from, to.saturating_sub(from))
+                .nth(usize::from(row))
+                .unwrap_or_default();
+            if row != end.1 && screen.row_wrapped(row) {
+                text.push_str(&line);
+            } else {
+                text.push_str(line.trim_end_matches(' '));
+                if row != end.1 {
+                    text.push('\n');
+                }
+            }
+        }
+        text
     }
 
     fn screen(&self) -> &vt100::Screen {

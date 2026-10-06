@@ -2,9 +2,10 @@ mod common;
 
 use common::*;
 use gband_core::action::Action;
+use gband_core::input::{Modifiers, MouseButton, WheelDirection};
 use gband_core::layout::{BandId, WindowId};
 use gband_core::view::ViewAction;
-use gband_lua::{Binding, Config, Dispatch, Event};
+use gband_lua::{Binding, Config, Dispatch, Event, Pointer, PointerTarget};
 
 fn focus(window: u32, previous: u32) -> Event {
     Event::FocusChanged {
@@ -295,4 +296,112 @@ fn error_in_a_callback() {
     let again = config.runtime.emit(&focus(2, 1));
     assert_eq!(again.errors.len(), 1);
     assert_eq!(log(&config), ["first", "second", "first", "second"]);
+}
+
+const RECORD: &str = "log = {}
+function record(e)
+  local keys = {}
+  for k, v in pairs(e) do keys[#keys + 1] = k .. '=' .. tostring(v) end
+  table.sort(keys)
+  log[#log + 1] = table.concat(keys, ',')
+end
+";
+
+fn pointer(target: PointerTarget) -> Pointer {
+    Pointer {
+        col: 45,
+        row: 3,
+        modifiers: Modifiers::CTRL,
+        target,
+        window: Some(WindowId(1)),
+        plugin_window: None,
+        content: Some((4, 2)),
+        table: "root".to_owned(),
+    }
+}
+
+#[test]
+fn mouse_event_payloads() {
+    let scratch = Scratch::new("mouse-payloads");
+    scratch.write(&format!(
+        "{RECORD}for _, name in ipairs({{ 'MousePressed', 'MouseReleased', 'MouseDragged', 'MouseScrolled' }}) do gband.on(name, record) end"
+    ));
+    let config = scratch.loaded();
+    let ribbon = Pointer {
+        window: None,
+        content: None,
+        modifiers: Modifiers::NONE,
+        ..pointer(PointerTarget::Ribbon)
+    };
+    for event in [
+        Event::MousePressed {
+            button: MouseButton::Left,
+            pointer: pointer(PointerTarget::Window),
+        },
+        Event::MouseReleased {
+            button: MouseButton::Right,
+            pointer: pointer(PointerTarget::Window),
+        },
+        Event::MouseDragged {
+            button: MouseButton::Middle,
+            pointer: Pointer {
+                plugin_window: Some(7),
+                ..pointer(PointerTarget::PluginWindow)
+            },
+        },
+        Event::MouseScrolled {
+            direction: WheelDirection::Up,
+            pointer: ribbon,
+        },
+    ] {
+        clean(&config.runtime.emit(&event));
+    }
+    let cells = "col=45,content_col=4,content_row=2,ctrl=true";
+    assert_eq!(
+        log(&config),
+        [
+            format!(
+                "alt=false,button=left,{cells},row=3,shift=false,table=root,target=window,window=1"
+            ),
+            format!(
+                "alt=false,button=right,{cells},row=3,shift=false,table=root,target=window,window=1"
+            ),
+            format!(
+                "alt=false,button=middle,{cells},plugin_window=7,row=3,shift=false,table=root,target=plugin_window,window=1"
+            ),
+            "alt=false,col=45,ctrl=false,direction=up,row=3,shift=false,table=root,target=ribbon"
+                .to_owned(),
+        ]
+    );
+}
+
+#[test]
+fn mouse_binding_function_receives_the_payload() {
+    let scratch = Scratch::new("mouse-binding");
+    scratch.write(&format!(
+        "{RECORD}gband.keymap.set('prefix', 'leftmouse', record)"
+    ));
+    let config = scratch.loaded();
+    let Some(Binding::Callback(callback)) =
+        config.keymap["prefix"].first().map(|(_, binding)| *binding)
+    else {
+        panic!("{:?}", config.keymap);
+    };
+    let at = Pointer {
+        col: 12,
+        row: 3,
+        table: "prefix".to_owned(),
+        ..pointer(PointerTarget::Window)
+    };
+    clean(
+        &config
+            .runtime
+            .call_pressed(callback, MouseButton::Left, &at),
+    );
+    assert_eq!(
+        log(&config),
+        [
+            "alt=false,button=left,col=12,content_col=4,content_row=2,ctrl=true,row=3,shift=false,table=prefix,target=window,window=1"
+        ]
+    );
 }

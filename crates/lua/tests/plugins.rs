@@ -274,7 +274,7 @@ fn default_configuration_with_a_plugin() {
         "gband.keymap.set('root', 'alt+g', gband.action.focus_column_left)",
     );
     let config = scratch.loaded();
-    assert_eq!(config.keymap["prefix"].len(), 38);
+    assert_eq!(config.keymap["prefix"].len(), 41);
     assert_eq!(
         config.keymap["root"],
         [(

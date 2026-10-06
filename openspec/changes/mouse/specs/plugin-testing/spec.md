@@ -39,7 +39,7 @@ The handle SHALL provide:
 - **AND** the failure holds the screenshot taken when it gave up
 
 #### Scenario: Click a window
-- **WHEN** a case with the default configuration has two windows open with the second focused and calls `g.mouse("press", "left", 2, 2)`, `g.mouse("release", "left", 2, 2)` and `g.settle()`
+- **WHEN** a case with the default configuration has two windows open with the second focused, `col` is a terminal column inside the first window, and the case calls `g.mouse("press", "left", col, 2)`, `g.mouse("release", "left", col, 2)` and `g.settle()`
 - **THEN** `g.client("return gband.view().window")` returns the first window's number
 
 #### Scenario: Invalid mouse kind

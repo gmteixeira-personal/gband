@@ -1,10 +1,23 @@
-use gband_core::input::{Key, KeyCode, Modifiers};
+use gband_core::input::{Key, KeyCode, Modifiers, MouseButton, MouseKey};
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("invalid key name `{0}`")]
 pub struct KeyError(pub String);
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Pressed {
+    Key(Key),
+    Mouse(MouseKey),
+}
+
 pub fn parse_key(name: &str) -> Result<Key, KeyError> {
+    match parse_pressed(name)? {
+        Pressed::Key(key) => Ok(key),
+        Pressed::Mouse(_) => Err(KeyError(name.to_owned())),
+    }
+}
+
+pub fn parse_pressed(name: &str) -> Result<Pressed, KeyError> {
     let invalid = || KeyError(name.to_owned());
     let (modifiers, key) = if name == "+" {
         (None, "+")
@@ -28,22 +41,53 @@ pub fn parse_key(name: &str) -> Result<Key, KeyError> {
             _ => return Err(invalid()),
         }
     }
+    if let Some(button) = mouse_button(&key.to_ascii_lowercase()) {
+        return Ok(Pressed::Mouse(MouseKey::new(button, held)));
+    }
     let mut chars = key.chars();
     let code = match (chars.next(), chars.next()) {
         (Some(c), None) => KeyCode::Char(c),
         _ => named(&key.to_ascii_lowercase()).ok_or_else(invalid)?,
     };
     match code {
-        KeyCode::Char(c) if held.shift && c.is_ascii_lowercase() => Ok(Key::new(
+        KeyCode::Char(c) if held.shift && c.is_ascii_lowercase() => Ok(Pressed::Key(Key::new(
             KeyCode::Char(c.to_ascii_uppercase()),
             Modifiers {
                 shift: false,
                 ..held
             },
-        )),
+        ))),
         KeyCode::Char(_) if held.shift && key.chars().count() == 1 => Err(invalid()),
-        code => Ok(Key::new(code, held)),
+        code => Ok(Pressed::Key(Key::new(code, held))),
     }
+}
+
+fn mouse_button(name: &str) -> Option<MouseButton> {
+    match name {
+        "leftmouse" => Some(MouseButton::Left),
+        "middlemouse" => Some(MouseButton::Middle),
+        "rightmouse" => Some(MouseButton::Right),
+        _ => None,
+    }
+}
+
+pub fn mouse_name(key: MouseKey) -> String {
+    let mut name = String::new();
+    for (held, modifier) in [
+        (key.modifiers.ctrl, "ctrl+"),
+        (key.modifiers.alt, "alt+"),
+        (key.modifiers.shift, "shift+"),
+    ] {
+        if held {
+            name.push_str(modifier);
+        }
+    }
+    name.push_str(match key.button {
+        MouseButton::Left => "leftmouse",
+        MouseButton::Middle => "middlemouse",
+        MouseButton::Right => "rightmouse",
+    });
+    name
 }
 
 pub fn key_name(key: Key) -> String {
@@ -186,6 +230,44 @@ mod tests {
             assert_eq!(parse_key(&key_name(key)), Ok(key), "{name}");
         }
         assert_eq!(key_name(parse_key("ctrl+space").unwrap()), "ctrl+space");
+    }
+
+    #[test]
+    fn mouse_names_with_modifiers() {
+        assert_eq!(
+            parse_pressed("Shift+RightMouse"),
+            Ok(Pressed::Mouse(MouseKey::new(
+                MouseButton::Right,
+                Modifiers::SHIFT
+            )))
+        );
+        assert_eq!(
+            parse_pressed("leftmouse"),
+            Ok(Pressed::Mouse(MouseKey::new(
+                MouseButton::Left,
+                Modifiers::NONE
+            )))
+        );
+        let key = MouseKey::new(
+            MouseButton::Middle,
+            Modifiers {
+                ctrl: true,
+                alt: true,
+                shift: true,
+            },
+        );
+        assert_eq!(mouse_name(key), "ctrl+alt+shift+middlemouse");
+        assert_eq!(parse_pressed(&mouse_name(key)), Ok(Pressed::Mouse(key)));
+    }
+
+    #[test]
+    fn mouse_names_are_not_keys() {
+        for name in ["leftmouse", "alt+rightmouse"] {
+            assert_eq!(parse_key(name), Err(KeyError(name.to_owned())));
+        }
+        for name in ["wheelup", "scrollwheelup", "wheeldown", "mouse"] {
+            assert_eq!(parse_pressed(name), Err(KeyError(name.to_owned())));
+        }
     }
 
     #[test]

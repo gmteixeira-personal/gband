@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use gband_core::action::Action;
+use gband_core::input::{Modifiers, MouseButton, WheelDirection};
 use gband_core::layout::{BandId, Proportion, WindowId};
 use gband_core::view::ViewAction;
 use mlua::{Function, IntoLuaMulti, Lua, MultiValue, RegistryKey, Table, Value};
@@ -10,6 +11,7 @@ use mlua::{Function, IntoLuaMulti, Lua, MultiValue, RegistryKey, Table, Value};
 use crate::api::{self, Dispatch, PluginWindowRequest};
 use crate::border::{Border, BorderChars, Sides};
 use crate::control;
+use crate::events::{button_name, direction_name};
 use crate::keys::{key_name, parse_key};
 use crate::ui::{self, Style, strip};
 
@@ -33,6 +35,52 @@ pub struct FloatingFrame {
     pub lines: Vec<Vec<Run>>,
     pub z: u64,
     pub focused: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PluginBox {
+    pub col: u16,
+    pub row: u16,
+    pub width: u16,
+    pub height: u16,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PluginMouseKind {
+    Press(MouseButton),
+    Release(MouseButton),
+    Drag(MouseButton),
+    Scroll(WheelDirection),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PluginMouse {
+    pub kind: PluginMouseKind,
+    pub content: Option<(u16, u16)>,
+    pub modifiers: Modifiers,
+}
+
+impl PluginMouse {
+    pub(crate) fn to_lua(self, lua: &Lua) -> mlua::Result<Table> {
+        let event = lua.create_table()?;
+        let (kind, button) = match self.kind {
+            PluginMouseKind::Press(button) => ("press", Some(button)),
+            PluginMouseKind::Release(button) => ("release", Some(button)),
+            PluginMouseKind::Drag(button) => ("drag", Some(button)),
+            PluginMouseKind::Scroll(direction) => {
+                event.set("direction", direction_name(direction))?;
+                ("scroll", None)
+            }
+        };
+        event.set("kind", kind)?;
+        event.set("button", button.map(button_name))?;
+        event.set("content_col", self.content.map(|(col, _)| col))?;
+        event.set("content_row", self.content.map(|(_, row)| row))?;
+        event.set("ctrl", self.modifiers.ctrl)?;
+        event.set("alt", self.modifiers.alt)?;
+        event.set("shift", self.modifiers.shift)?;
+        Ok(event)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

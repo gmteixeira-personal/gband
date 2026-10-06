@@ -2,6 +2,7 @@ mod common;
 
 use common::*;
 use gband_core::action::{Action, ClientAction, SessionCommand};
+use gband_core::input::{Modifiers, MouseButton, MouseKey};
 use gband_core::view::ViewAction;
 use gband_lua::{Binding, Chord, Dispatch};
 
@@ -43,6 +44,27 @@ fn old_and_new_forms_agree() {
         )]
     );
     assert!(!config.keymap.contains_key("root"));
+}
+
+#[test]
+fn keymap_binds_mouse_names() {
+    let scratch = Scratch::new("mouse-keymap");
+    scratch.write(
+        "gband.keymap.set('prefix', 'alt+rightmouse', gband.action.detach)
+gband.keymap.set('prefix', 'MiddleMouse', gband.action.detach)
+gband.keymap.del('prefix', 'middlemouse')
+entry = gband.keymap.list('prefix')[1]",
+    );
+    let config = scratch.loaded();
+    assert_eq!(
+        config.keymap["prefix"],
+        [(
+            Chord::Mouse(MouseKey::new(MouseButton::Right, Modifiers::ALT)),
+            Binding::Action(Action::Client(ClientAction::Detach))
+        )]
+    );
+    let key: String = eval(&config, "return entry.key");
+    assert_eq!(key, "alt+rightmouse");
 }
 
 #[test]

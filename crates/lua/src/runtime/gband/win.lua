@@ -7,7 +7,7 @@ gband.hl.default("PluginWindowCursorLine", { reverse = true })
 
 local COMMON = {
   kind = true, lines = true, focus = true, cursorline = true,
-  keys = true, on_input = true, on_close = true, on_resize = true,
+  keys = true, on_input = true, on_close = true, on_resize = true, on_mouse = true,
 }
 local FLOATING = { row = true, col = true, width = true, height = true, border = true, title = true }
 local TILED = { band = true, after = true, column_width = true }
@@ -412,6 +412,7 @@ function api.open(opts)
     on_input = check_function(opts, "on_input"),
     on_close = check_function(opts, "on_close"),
     on_resize = check_function(opts, "on_resize"),
+    on_mouse = check_function(opts, "on_mouse"),
   }
   local focus = check_boolean(opts, "focus", true)
   local request = nil
@@ -646,6 +647,72 @@ function hooks.key(id, name, text)
   if (name == "escape" or name == "q") and win.kind == "floating" then
     close(win, true, true)
   end
+end
+
+local WHEEL_STEPS = { up = "up", down = "down" }
+
+local function focus_from_mouse(win)
+  if win.kind == "floating" then
+    raise(win)
+    return
+  end
+  unfocus()
+  if win.window then
+    host.focus_window(win.window)
+  end
+end
+
+function hooks.mouse(id, event)
+  local win = wins[id]
+  if not win then
+    return
+  end
+  if event.kind == "press" then
+    focus_from_mouse(win)
+  end
+  if event.content_row ~= nil and win.top + event.content_row <= #win.lines then
+    event.line = win.top + event.content_row
+  end
+  if win.on_mouse then
+    if win.kind == "floating" and event.kind ~= "scroll" then
+      hold(id)
+    end
+    host.call(win.owner, nil, win.on_mouse, id, event)
+    return
+  end
+  if event.kind == "scroll" then
+    local name = WHEEL_STEPS[event.direction]
+    if name then
+      move(win, name)
+    end
+  elseif event.kind == "press" and event.button == "left" and win.cursorline and event.line then
+    win.cursor = event.line
+    clamp(win)
+    touch(win)
+  end
+end
+
+function hooks.set_box(id, col, row, width, height)
+  local win = wins[id]
+  if not win or win.kind ~= "floating" then
+    return
+  end
+  local cols, rows = content_size(win)
+  win.col, win.row, win.width, win.height = col, row, width, height
+  place(win)
+  resized(win, cols, rows)
+  touch(win)
+end
+
+function hooks.raise(id)
+  local win = wins[id]
+  if win then
+    focus_from_mouse(win)
+  end
+end
+
+function hooks.unfocus()
+  unfocus()
 end
 
 function hooks.paste(id, text)

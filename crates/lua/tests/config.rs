@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use common::*;
 use gband_core::action::{Action, ClientAction, SessionCommand};
-use gband_core::input::{Key, KeyCode, Modifiers};
+use gband_core::input::{Key, KeyCode, Modifiers, MouseButton, MouseKey};
 use gband_core::layout::{Direction, Program, Proportion, Step, Vertical};
 use gband_core::view::{CenterFocusedColumn, ViewAction};
 use gband_lua::{
@@ -202,6 +202,12 @@ fn defaults_reproduce_the_built_in_behaviour() {
     assert_eq!(config.options, Options::default());
     let char_key = |c| ("prefix", Chord::Key(Key::plain(KeyCode::Char(c))));
     let ctrl_key = |code| ("prefix", Chord::Key(Key::new(code, Modifiers::CTRL)));
+    let mouse = |button| {
+        (
+            "prefix",
+            Chord::Mouse(MouseKey::new(button, Modifiers::NONE)),
+        )
+    };
     let expected = [
         (char_key('h'), Action::View(ViewAction::FocusLeft)),
         (char_key('l'), Action::View(ViewAction::FocusRight)),
@@ -306,6 +312,18 @@ fn defaults_reproduce_the_built_in_behaviour() {
         (
             ("prefix", Chord::Key(Key::plain(KeyCode::Up))),
             Action::View(ViewAction::FocusUp),
+        ),
+        (
+            mouse(MouseButton::Left),
+            Action::Client(ClientAction::DragWindow),
+        ),
+        (
+            mouse(MouseButton::Right),
+            Action::Client(ClientAction::DragResize),
+        ),
+        (
+            mouse(MouseButton::Middle),
+            Action::Client(ClientAction::DragBand),
         ),
     ]
     .map(|((table, chord), action)| (table.to_owned(), chord, action));
@@ -461,7 +479,7 @@ fn prefix_keys(config: &Config) -> Vec<String> {
 fn every_default_binding_is_described() {
     let (_scratch, direct) = with_saved_style("described-direct", "direct");
     for (config, count) in [
-        (gband_lua::defaults(gband_lua::Side::Client), 38),
+        (gband_lua::defaults(gband_lua::Side::Client), 41),
         (direct, 36),
     ] {
         assert_described(&config, count);
@@ -477,7 +495,9 @@ fn direct_style_from_the_saved_choice() {
     let modal = prefix_keys(&gband_lua::defaults(gband_lua::Side::Client));
     let expected: Vec<String> = modal
         .into_iter()
-        .filter(|key| key != "escape" && key != "enter")
+        .filter(|key| {
+            !["escape", "enter", "leftmouse", "rightmouse", "middlemouse"].contains(&key.as_str())
+        })
         .collect();
     assert_eq!(prefix_keys(&config), expected);
     assert_eq!(
@@ -539,6 +559,28 @@ fn assert_described(config: &Config, count: usize) {
     assert!(undescribed.is_empty(), "{undescribed:?}");
     let listed: usize = eval(config, "return #gband.keymap.list('prefix')");
     assert_eq!(listed, count);
+}
+
+#[test]
+fn navigation_mode_ends_with_the_mouse_bindings() {
+    let config = gband_lua::defaults(gband_lua::Side::Client);
+    let keys = prefix_keys(&config);
+    assert_eq!(
+        keys[keys.len() - 4..],
+        ["prefix", "leftmouse", "rightmouse", "middlemouse"]
+    );
+    let actions: Vec<String> = eval(
+        &config,
+        "local names = {} for _, entry in ipairs(gband.keymap.list('prefix')) do names[#names + 1] = entry.action or '' end return names",
+    );
+    assert_eq!(
+        actions[actions.len() - 3..],
+        ["drag_window", "drag_resize_window", "drag_band"]
+    );
+    assert!(eval::<bool>(
+        &config,
+        "return #gband.keymap.list('root') == 0"
+    ));
 }
 
 #[test]
@@ -622,6 +664,9 @@ fn every_action_is_named() {
         "reset_window_height",
         "detach",
         "send_prefix",
+        "drag_window",
+        "drag_resize_window",
+        "drag_band",
         "keylist.open",
         "errors.open",
         "errors.clear",
@@ -780,6 +825,54 @@ fn unknown_key() {
         "\n\n\n\ngband.bind('alt+hyper', gband.action.detach)",
     );
     assert_failure_at(&error, &path, 5, "alt+hyper");
+}
+
+#[test]
+fn mouse_name_with_modifiers() {
+    let config = loaded(
+        "mouse-name",
+        "gband.keymap.set('prefix', 'Shift+RightMouse', gband.action.detach)\ngband.bind('leftmouse', gband.action.detach)",
+    );
+    assert_eq!(
+        action_of(
+            &config,
+            (
+                "prefix",
+                Chord::Mouse(MouseKey::new(MouseButton::Right, Modifiers::SHIFT))
+            )
+        ),
+        Some(Action::Client(ClientAction::Detach))
+    );
+    assert_eq!(
+        action_of(
+            &config,
+            (
+                "root",
+                Chord::Mouse(MouseKey::new(MouseButton::Left, Modifiers::NONE))
+            )
+        ),
+        Some(Action::Client(ClientAction::Detach))
+    );
+}
+
+#[test]
+fn wheel_name() {
+    let (path, error) = failure(
+        "wheel-name",
+        "\n\n\ngband.bind('prefix wheelup', gband.action.detach)",
+    );
+    assert_failure_at(&error, &path, 4, "wheelup");
+}
+
+#[test]
+fn mouse_name_as_the_prefix() {
+    let (path, result) = evaluate("mouse-prefix", "\n\ngband.opt.prefix = 'leftmouse'");
+    let config = result.unwrap_or_else(|error| panic!("{error}"));
+    let [error] = config.errors.as_slice() else {
+        panic!("{:?}", config.errors);
+    };
+    assert_error_at(error, &path, 3, "leftmouse");
+    assert_eq!(config.options.prefix, Options::default().prefix);
 }
 
 #[test]

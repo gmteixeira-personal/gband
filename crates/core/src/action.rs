@@ -100,4 +100,7 @@ pub enum ClientAction {
     Detach,
     SendPrefix,
     SendKey(Key),
+    DragWindow,
+    DragResize,
+    DragBand,
 }
