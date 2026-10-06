@@ -7,7 +7,7 @@ navigation-mode makes the leader enter a mode where layout keys repeat until Esc
 - **Two key style presets**, each a bundled Lua file of plain top-level calls that reads as an example:
   - `gband.keystyle.modal`: navigation mode. It declares the `prefix` mode labelled `navigation` and makes the default bindings that navigation-mode put in the default configuration.
   - `gband.keystyle.direct`: the leader, then one key per action, then back to typing. It binds the same keys in `prefix` with no mode and no Escape or Enter binding. `n` opens a window and Ctrl+Space sends the prefix key, both as plain actions.
-  - Both set up the bundled plugins whose actions they bind, `gband.keylist` and `gband.prompt`. Both bind `?` to the key list and `:` to the Lua prompt, and bind every action they give to `h`, `j`, `k` or `l` to the matching arrow key too.
+  - Both set up the bundled plugins whose actions they bind, `gband.keylist` and `gband.prompt`, and no other. Both bind `?` to the key list and `:` to the Lua prompt, and bind every action they give to `h`, `j`, `k` or `l` to the matching arrow key too.
 - **`gband.keystyle`**, a new client API:
   - `gband.keystyle.use(style)`, while the configuration loads, makes the bindings of `"modal"` or `"direct"` and returns the style's name. With no argument it uses the saved style, or modal when none is saved. It runs once per load. A user's own `init.lua` can call it.
   - `gband.keystyle.saved()` returns the saved style, or nil.
@@ -20,6 +20,7 @@ navigation-mode makes the leader enter a mode where layout keys repeat until Esc
 - **`gband.config_dir`**: the configuration directory's path on the client and the server, or nil when there is none.
 - **Default configuration**:
   - It calls `gband.keystyle.use()` instead of binding keys itself, and no longer sets up `gband.keylist` or `gband.prompt`.
+  - It still sets up `gband.errors`, `gband.statusline` and the segment plugins, right after that call, so the plugins keep their order.
   - On `Attached`, it opens the chooser when a configuration directory exists and no style is saved. `Attached` runs once per client and never after a reload, so the offer appears once per start.
   - Dismissing the chooser keeps modal for the session, and the next start offers it again.
 - **Defaults directory**: gband writes the two presets to `defaults/keystyle/modal.lua` and `defaults/keystyle/direct.lua`, beside `defaults/init.lua`, for the user to read and copy.
@@ -48,7 +49,7 @@ Out of scope:
 ## Impact
 
 - `crates/lua/src/runtime/gband/keystyle.lua`, a new client API file, and `crates/lua/src/runtime/gband/keystyle/modal.lua` and `direct.lua`, two new bundled modules, listed in `crates/lua/src/bundled.rs`.
-- `crates/lua/src/defaults.lua`: the bindings and the `gband.keylist` and `gband.prompt` setups move into the presets, and the `Attached` offer is added.
+- `crates/lua/src/defaults.lua`: the bindings and the `gband.keylist` and `gband.prompt` setups move into the presets, the `gband.errors` and status line setups stay, and the `Attached` offer is added.
 - `crates/lua/src/runtime.rs`: `gband.config_dir`. `crates/lua/src/sides.rs`: `keystyle` is client only.
 - `crates/lua/src/directory.rs` and `lib.rs`: the presets are written to `defaults/keystyle/`.
 - `crates/client/src/bindings.rs`: the default key table tests cover both styles.
@@ -65,6 +66,7 @@ Out of scope:
 ### Depends On
 - navigation-mode
 - lua-prompt
+- clear-errors
 
 ### Expected Files
 - openspec/changes/key-style/

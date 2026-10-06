@@ -8,8 +8,8 @@ Each key style preset of the key-style capability SHALL set up `gband.prompt` wi
 - **THEN** the focused window prints `a:b` and no prompt opens
 
 #### Scenario: Hint for the prompt
-- **WHEN** the default configuration is in use with the modal key style saved, the client's terminal is 400 columns wide, and the user presses Ctrl+Space
-- **THEN** the hints segment shows `? list the keys  : run Lua  D detach`
+- **WHEN** the default configuration is in use with the modal key style saved, the client's terminal is 80×60, and the user presses Ctrl+Space
+- **THEN** the hints segment shows the hint `: run Lua` right after the hint `? list the keys` and right before the hint `D detach`
 
 #### Scenario: Prompt in the key list
 - **WHEN** the default configuration is in use and the key list opens

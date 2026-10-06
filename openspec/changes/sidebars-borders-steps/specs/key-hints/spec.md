@@ -37,7 +37,7 @@ Each hint SHALL be the key, as "Key form" shows it, in the group `KeyHintKey`, o
 
 #### Scenario: Prefix table with the defaults
 - **WHEN** the default configuration is in use, the client's terminal is 80×40, and the user presses Ctrl+Space
-- **THEN** the segment's first lines are `h left  l right`, `j down  k up`, `u band down` and `i band up`
+- **THEN** the segment's first lines are `h left  l right`, `j down  k up`, `u band down` and `i band up  c center`
 
 #### Scenario: Hints stay in navigation mode
 - **WHEN** navigation mode's hints are shown and the user presses `h`

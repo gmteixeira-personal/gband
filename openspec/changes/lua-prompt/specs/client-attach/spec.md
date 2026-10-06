@@ -17,8 +17,8 @@ The client SHALL send each key press and repeat that the key bindings do not con
 - **THEN** the window prints `33`
 
 #### Scenario: Height excludes the status line
-- **WHEN** the client's terminal is 80×24, the status line takes one row, and the only window runs `tput lines`
-- **THEN** the window prints `21`
+- **WHEN** the client's terminal is 80×24, the status line is a left bar 20 columns wide, and the only window runs `tput lines`
+- **THEN** the window prints `22`
 
 #### Scenario: Typing into a focused floating plugin window
 - **WHEN** a floating plugin window is focused and the user types `ls`
@@ -161,11 +161,11 @@ A binding to an action SHALL dispatch it. A binding to a Lua function SHALL run 
 - **AND** the window prints `46`
 
 #### Scenario: Grow the window's height
-- **WHEN** the client's 80×25 terminal, whose status line takes one row, sets the screen area, a column holds two windows with automatic heights with the top one focused, and the user presses Ctrl+Space then `+`
+- **WHEN** the client's 80×24 terminal sets the screen area, a column holds two windows with automatic heights with the top one focused, and the user presses Ctrl+Space then `+`
 - **THEN** the top tile is 14 rows high and the bottom tile is 10 rows high
 
 #### Scenario: Center the column
-- **WHEN** the client's terminal is 80 columns wide, the only window sits in a column 40 cells wide at strip position 0, and the user presses Ctrl+Space then `c`
+- **WHEN** the client's terminal is 80 columns wide, the client has no bar, the only window sits in a column 40 cells wide at strip position 0, and the user presses Ctrl+Space then `c`
 - **THEN** the tile is drawn from the terminal's column 20
 - **AND** the 20 columns left of it are drawn empty
 
@@ -237,7 +237,7 @@ A binding to an action SHALL dispatch it. A binding to a Lua function SHALL run 
 #### Scenario: Open the key list
 - **WHEN** no `user/init.lua` exists and the user presses Ctrl+Space then `?`
 - **THEN** a floating plugin window titled `navigation keys` lists the prefix bindings and has focus
-- **AND** `root` is active, so a following `j` moves the list's cursor line
+- **AND** `root` is active, so a following Down moves the list's cursor line
 
 #### Scenario: Open the Lua prompt
 - **WHEN** no `user/init.lua` exists and the user presses Ctrl+Space then `:`

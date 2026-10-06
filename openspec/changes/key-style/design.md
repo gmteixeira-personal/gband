@@ -1,8 +1,8 @@
 ## Context
 
-See proposal.md for the motivation. This change starts after navigation-mode and lua-prompt are archived, and after key-list, which navigation-mode depends on. The state it builds on:
+See proposal.md for the motivation. This change starts after navigation-mode, sidebars-borders-steps, clear-errors and lua-prompt are archived, and after key-list, which navigation-mode depends on. The state it builds on:
 
-- `crates/lua/src/defaults.lua` holds navigation mode: the `prefix` mode declaration, every default binding, the setup of `gband.keylist` and `gband.prompt`, and the segment plugins. `crates/lua/src/directory.rs` writes it to `defaults/init.lua`. The client uses it only when `user/init.lua` is missing, and a `user/init.lua` replaces it wholly.
+- `crates/lua/src/defaults.lua` holds navigation mode: the `prefix` mode declaration, every default binding, the setup of `gband.keylist`, `gband.prompt` and `gband.errors`, then `gband.statusline` and the segment plugins. `crates/lua/src/directory.rs` writes it to `defaults/init.lua`. The client uses it only when `user/init.lua` is missing, and a `user/init.lua` replaces it wholly.
 - Bindings and modes can be made only while the configuration loads. A running client cannot change its bindings. It can only reload.
 - `crates/lua/src/watch.rs` watches `user/` recursively in every process, client and server. A created, written, renamed or removed file whose name ends in `.lua` reloads that process's configuration after a 100 ms debounce. A reload closes every plugin window.
 - `crates/lua/src/runtime.rs` puts the `user` directory first on `gband.runtimepath`. Module lookup looks only under `<entry>/lua/`. `source_plugins` skips the `user` entry. So a file directly in `user/`, other than `init.lua` and `server.lua`, is never evaluated.
@@ -25,7 +25,7 @@ See proposal.md for the motivation. This change starts after navigation-mode and
 ## Decisions
 
 ### Presets are bundled modules, and `use` requires one
-`crates/lua/src/runtime/gband/keystyle/modal.lua` and `direct.lua` join `MODULES` in `bundled.rs`, so `require("gband.keystyle.modal")` finds them. Each is a list of top-level calls, like a user's `init.lua`. Each first sets up `gband.keylist` and `gband.prompt`, whose actions it binds, so `gband.keystyle.use()` works in any `init.lua`. The defaults no longer set those plugins up. The modal preset then declares the mode and binds. Function bindings are local functions in the preset, so `escape` and `enter` share one `interactive` function.
+`crates/lua/src/runtime/gband/keystyle/modal.lua` and `direct.lua` join `MODULES` in `bundled.rs`, so `require("gband.keystyle.modal")` finds them. Each is a list of top-level calls, like a user's `init.lua`. Each first sets up `gband.keylist` and `gband.prompt`, whose actions it binds, so `gband.keystyle.use()` works in any `init.lua`. The defaults no longer set those plugins up. `gband.errors`, whose `errors.open` no preset binds, stays in the defaults with `gband.statusline` and the segment plugins. The defaults set it up right after `use()`, so the plugins keep the order lua-prompt left: key list, prompt, error list, status line, segments. The modal preset then declares the mode and binds. Function bindings are local functions in the preset, so `escape` and `enter` share one `interactive` function.
 
 Because lookup searches the runtimepath first, a user's `user/lua/gband/keystyle/modal.lua` shadows the bundled preset. That needs no code and is documented.
 
@@ -71,7 +71,7 @@ Alternative considered: *a flag in the Rust client that remembers the offer.* It
 `tests/common/mod.rs` writes `user/keystyle.lua` with `return "modal"` when it creates a `TestEnv`, and offers a constructor that writes none, for the first-run and offer tests. `crates/harness/src/case.rs` does the same from the `keystyle` start option, before it writes `files`. `runner.rs` parses the option. Existing cases and screenshots that use the default configuration then stay as they are.
 
 ### Order with other changes
-The deltas are written against the specs as navigation-mode and lua-prompt leave them. sidebars-borders-steps and clear-errors also modify "Defaults use the public API" and "Side guard", and depend on neither this change nor lua-prompt. Task 0.1 folds whichever of them archived first into this change's copies.
+The deltas are written against the specs as navigation-mode, sidebars-borders-steps, clear-errors and lua-prompt leave them. "Key bindings" and lua-prompt's "Default setup" are copied as lua-prompt leaves them. "Defaults use the public API" holds sidebars-borders-steps' `gband.errors` and `gband.statusline`, and lua-prompt's `:` scenario. "Side guard" holds sidebars-borders-steps' `bar` and `errors` and clear-errors' `clear_errors`. sidebars-borders-steps removes `statusline_position` without modifying plugin-testing, so the copy of "Case environment" restates the scenario "Configuration of the case" with a status line set up on the right.
 
 ## Risks / Trade-offs
 
@@ -80,7 +80,7 @@ The deltas are written against the specs as navigation-mode and lua-prompt leave
 - [A reload closes every plugin window, including another plugin's] → The user just chose, so the reload is expected. The proposal accepts it.
 - [Several clients share one configuration directory] → Each attach offers the chooser while nothing is saved. The first save reloads every client into the new style.
 - [A lone Escape can merge with following bytes into an Alt sequence] → End-to-end tests that dismiss the chooser send Escape and wait for it to close before sending more, or use `q`.
-- [lua-prompt's final wording of the `:` row, or a later change to `prompt.open`] → Task 0.1 compares this change's copies with the archived specs.
+- [The copies of "Key bindings", "Defaults use the public API", "Side guard", "Case environment" and lua-prompt's "Default setup" replace the requirements that earlier changes leave] → lua-prompt and clear-errors are declared dependencies, and through them navigation-mode and sidebars-borders-steps, so all four archive first and the copies hold their final text.
 
 ## Migration Plan
 

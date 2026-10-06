@@ -40,13 +40,13 @@ Nothing goes through `Leader`, so the active table changes only through a queued
 Alternative considered: *`gband.keymap.list` returns a callable per entry.* Callables in plain data tables leak function identity to plugins and complicate the list's shape. `run` keeps `list` as plain data.
 
 ### The key list enters `root` when it opens
-Without this, `?` pressed in navigation mode would open the list, and the following `j`, `k` and Enter would still be read by the `prefix` mode, never reaching the floating plugin window. `keylist.open` calls `gband.keymap.enter("root")` in its own callback. The decision stays in the plugin's Lua, consistent with the rest. A general rule such as "a focused floating plugin window pre-empts modes" was rejected: it would also stop navigation keys from working while any float is focused.
+Without this, `?` pressed in navigation mode would open the list, and the following `j`, `k` and Enter would still be read by the `prefix` mode, never reaching the floating plugin window. `keylist.open` calls `gband.keymap.enter("root")` in its own callback, both when it opens the list and when it focuses an open one. The decision stays in the plugin's Lua, consistent with the rest. A general rule such as "a focused floating plugin window pre-empts modes" was rejected: it would also stop navigation keys from working while any float is focused.
 
 ### Labels
 `gband.keymap.label(table)` reads the `modes` map. `mode.lua` renders `gband.keymap.label(ctx.table)`, `hints.lua` labels the root prefix hint with `gband.keymap.label("prefix")`, and `keylist.lua` titles the floating plugin window `label .. " keys"`. `KeyTableChanged` and the render context keep the table name, so existing handlers keep comparing against `"prefix"`.
 
 ### Default binding order
-The order is `h l j k u i n q [ ] r f - = _ + R`, then the floating-windows keys, then `? D escape enter left right down up prefix`. Escape, Enter and the arrow keys sit after the main keys. The arrows repeat hjkl, so placing them late keeps the hint bar's leading run informative. The key-list spec keeps `h` as the first line and `?` between `R` and `D`.
+The order is `h l j k u i c n q [ ] r f - = _ + R`, then the floating-windows keys, then `? D escape enter left right down up prefix`. Escape, Enter and the arrow keys sit after the main keys. The arrows repeat hjkl, so placing them late keeps the hint bar's leading run informative. The key-list spec keeps `h` as the first line and `?` between `R` and `D`.
 
 ## Risks / Trade-offs
 

@@ -279,7 +279,7 @@ Each SHALL take the options `align`, `priority`, `order` and `hl`, which replace
 
 #### Scenario: Reorder a segment
 - **WHEN** `user/init.lua` sets up `gband.statusline`, calls `gband.plugin("gband.statusline.mode", { align = "bottom", order = 1 })` and `gband.plugin("gband.statusline.position")`, and the user presses Ctrl+Space
-- **THEN** the bottom region shows `navigation` on one row and the position on the next
+- **THEN** the bottom region shows `prefix` on one row and the position on the next
 
 #### Scenario: Label of a mode
 - **WHEN** `user/init.lua` declares `resize` a mode with the label `RESIZE`, sets up `gband.statusline.mode`, and a binding enters `resize`

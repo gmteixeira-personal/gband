@@ -43,11 +43,11 @@ None.
 ## Impact
 
 - `crates/lua/src/keymap.rs`: mode declarations, labels, `run`, `enter("root")`, and the modes passed out with the key tables.
-- `crates/lua/src/lib.rs` and `api.rs`: the configuration carries the set of modes, and `run` queues a binding.
+- `crates/lua/src/lib.rs` and `api.rs`: the configuration carries the set of modes, and `run` queues an action binding or calls a function binding in the current callback.
 - `crates/lua/src/defaults.lua`: the `navigation` mode and its bindings.
 - `crates/lua/src/runtime/gband/statusline/mode.lua`, `hints.lua` and `keylist.lua`: labels, running bindings, entering `root`.
-- `crates/client/src/bindings.rs` and `lib.rs`: the leader keeps a mode active, and runs a binding queued by `gband.keymap.run`.
-- Tests in `crates/lua/tests/`, `crates/client/tests/` and `tests/` that press Ctrl+Space and then type, or open a window with Ctrl+Space then Enter.
+- `crates/client/src/bindings.rs` and `lib.rs`: the leader keeps a mode active, and the client passes the configuration's modes to its keymap.
+- Tests in `crates/lua/tests/`, `crates/client/tests/`, `tests/`, `tests/lua/` and `examples/plugins/agent-status/tests/` that press Ctrl+Space and then type, open a window with Ctrl+Space then Enter, or expect `C-space prefix` and `prefix keys` with the defaults.
 - `README.md` and `docs/plugins.md`: modes and the default keys.
 - No protocol change and no new dependency.
 
@@ -69,15 +69,32 @@ None.
 - crates/lua/src/runtime/gband/statusline/mode.lua
 - crates/lua/src/runtime/gband/statusline/hints.lua
 - crates/lua/src/runtime/gband/keylist.lua
-- crates/lua/tests/
+- crates/lua/tests/keymap.rs
+- crates/lua/tests/config.rs
+- crates/lua/tests/statusline.rs
+- crates/lua/tests/key_hints.rs
 - crates/client/src/bindings.rs
 - crates/client/src/lib.rs
-- crates/client/tests/
+- crates/client/tests/actions.rs
+- crates/client/tests/events.rs
+- crates/client/tests/statusline.rs
+- crates/client/tests/plugin_windows.rs
+- crates/client/tests/snapshots/statusline__default_status_line.snap
+- crates/client/tests/snapshots/statusline__prefix_hints_cut.snap
+- crates/client/tests/snapshots/statusline__top_placement.snap
 - tests/attach.rs
 - tests/config.rs
 - tests/statusline.rs
 - tests/plugin_windows.rs
+- tests/floating.rs
+- tests/plugin_runtime.rs
 - tests/navigation.rs
+- tests/lua/keylist_spec.lua
+- tests/lua/screenshots/keylist_spec/
+- tests/lua/statusline_spec.lua
+- tests/lua/screenshots/statusline_spec/default-status-line.txt
+- examples/plugins/agent-status/tests/agent_status_spec.lua
+- examples/plugins/agent-status/tests/screenshots/agent_status_spec/a-prompt-marks-the-window-waiting.txt
 - README.md
 - docs/plugins.md
 - openspec/changes/navigation-mode/

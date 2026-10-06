@@ -57,8 +57,9 @@ Out of scope:
 - `actions`: grow and shrink are sent with the client's step, or a target's.
 - `lua-control`: grow and shrink action targets accept `step`.
 - `layout`: growing and shrinking a column's width or a window's height use the step the request names.
-- `floating-windows`: growing and shrinking a floating window's box use the step the request names.
+- `floating-windows`: growing and shrinking a floating window's box use the step the request names. A new box stays two tenths of the area shorter than the area, whatever the step.
 - `plugin-windows`: a floating plugin window's `border` accepts a border table.
+- `server-runtime`: the server's grow and shrink action targets accept `step`, with the same ranges as the client's.
 - `plugins`: `bar` and `errors` are client-only fields of `gband`.
 - `wire-protocol`: grow and shrink actions carry a step, and the protocol version goes up by one.
 
@@ -78,6 +79,7 @@ Out of scope:
 
 ### Depends On
 - floating-windows
+- loop-bands
 - navigation-mode
 - rename-panes-to-windows
 

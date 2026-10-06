@@ -11,7 +11,7 @@ The Lua API is reachable only from files: to call a gband function once, the use
   - A line too long for the window shows its end, so the cursor stays in view.
 - **Running the line**: the line is compiled as Lua text and runs as code that belongs to no plugin, as a binding function of the configuration file does. It can call `gband.action.*`, `gband.win.*`, `gband.keymap.enter` and everything else a binding function can.
   - It runs with its own instruction budget. An endless loop stops only the line, and the prompt keeps working.
-  - Syntax errors, runtime errors and a stop by the instruction limit are reported like any configuration error, as `prompt:1: <message>`, so the status line's error item shows them.
+  - Syntax errors, runtime errors and a stop by the instruction limit are reported like any configuration error, as `prompt:1: <message>`, so the status line's error item shows `error` and the error list holds the message.
 - **Bundled plugin**: `gband.prompt`, plugin `prompt`, registers the action `prompt.open` with the description `run Lua`. Opening the prompt enters `root`, so typed keys reach it rather than navigation mode. Opening it while it is open focuses it.
 - **Text input for plugin windows**: `gband.win.open` takes a new option, `on_input`, a function of the plugin window's number and a text.
   - A key with no `keys` entry that types a character, without Ctrl or Alt, runs `on_input` with that character.
@@ -19,7 +19,7 @@ The Lua API is reachable only from files: to call a gband function once, the use
   - `keys` entries come first, then `on_input`, then the default keys. With `on_input` set, `j`, `k` and `q` are text and no longer scroll or close.
   - A plugin window without `on_input` behaves as today, and its pastes are still discarded.
 - **Highlight group**: `PromptCursor`, with the default `{ reverse = true }`, draws the prompt's cursor.
-- **Default configuration**: sets up `gband.prompt` after `gband.keylist`, and binds `prefix :` to `prompt.open`, between `?` and `D`. `root` still binds nothing, so `:` typed in interactive mode reaches the focused window.
+- **Default configuration**: sets up `gband.prompt` right after `gband.keylist` and before `gband.errors`, and binds `prefix :` to `prompt.open`, between `?` and `D`. `root` still binds nothing, so `:` typed in interactive mode reaches the focused window.
 
 Out of scope:
 - History, completion, moving the cursor inside the line, and multi-line input.
@@ -56,6 +56,7 @@ Out of scope:
 
 ### Depends On
 - navigation-mode
+- sidebars-borders-steps
 
 ### Expected Files
 - crates/lua/src/runtime/gband/win.lua

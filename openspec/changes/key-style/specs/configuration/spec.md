@@ -55,15 +55,16 @@ A failure to prepare the directory SHALL be recorded in the process's log, and S
 - **AND** the client attaches with the bindings of the default configuration
 
 ### Requirement: Defaults use the public API
-The default configuration SHALL use only the `gband` API that the configuration file can use. It SHALL set the options to their declared defaults. It SHALL make its key bindings only by calling `gband.keystyle.use()` with no argument, as the key-style capability defines, so the saved key style, or the modal key style when none is saved, makes them. It SHALL make no other binding and declare no mode. It SHALL set up the key list plugin `gband.keylist` and the Lua prompt plugin `gband.prompt` only through that call. It SHALL then set up, with `gband.plugin` and no options, the bundled segment plugins `gband.statusline.band`, `gband.statusline.mode`, `gband.statusline.hints` and `gband.statusline.position`, in that order, and register the offer of the key-style capability's "Offer on the first start". Evaluated alone, with no configuration directory, it SHALL produce the declared defaults of the options and the default key bindings of the client-attach capability for the modal key style.
+The default configuration SHALL use only the `gband` API that the configuration file can use. It SHALL set the options to their declared defaults. It SHALL make its key bindings only by calling `gband.keystyle.use()` with no argument, as the key-style capability defines, so the saved key style, or the modal key style when none is saved, makes them. It SHALL make no other binding and declare no mode. It SHALL set up the key list plugin `gband.keylist` and the Lua prompt plugin `gband.prompt` only through that call. It SHALL then set up, with `gband.plugin` and no options, the bundled error list plugin `gband.errors`, then the bundled status line plugin `gband.statusline`, then the bundled segment plugins `gband.statusline.band`, `gband.statusline.mode`, `gband.statusline.hints` and `gband.statusline.position`, in that order, and register the offer of the key-style capability's "Offer on the first start". Evaluated alone, with no configuration directory, it SHALL produce the declared defaults of the options and the default key bindings of the client-attach capability for the modal key style.
 
-The default key bindings and the declaration of the `navigation` mode SHALL exist only in the key style presets. The setup of the segment plugins and the offer of the chooser SHALL exist only in the default configuration.
+The default key bindings and the declaration of the `navigation` mode SHALL exist only in the key style presets. The setup of the error list, status line and segment plugins and the offer of the chooser SHALL exist only in the default configuration.
 
 #### Scenario: Defaults reproduce the built-in behaviour
 - **WHEN** the default configuration is evaluated alone
 - **THEN** the options equal the defaults in the "Options" table
 - **AND** the bindings equal the client-attach capability's default table for the modal key style, entry for entry
 - **AND** `gband.ui.statusline.list()` names exactly the components `band`, `hints`, `mode` and `position`
+- **AND** `gband.bar.list()` holds exactly one bar, `statusline`, on the side `left`, 20 columns wide on an 80×24 terminal
 
 #### Scenario: Every default binding is described
 - **WHEN** the default configuration is evaluated with either key style saved and `gband.keymap.list("prefix")` is read

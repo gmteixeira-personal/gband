@@ -19,8 +19,8 @@ Each case SHALL run in a new directory tree of its own under the system's tempor
 When the case ends, whether it passed or not, the runner SHALL stop the case's client and server and every process they started, and remove the tree.
 
 #### Scenario: Configuration of the case
-- **WHEN** a case starts with `config = [[gband.opt.statusline_position = "top"]]`
-- **THEN** the case's status line is drawn on the top row
+- **WHEN** a case starts with `config = [[gband.plugin("gband.statusline", { side = "right" })]]`
+- **THEN** the case's status line is drawn on the terminal's last 20 columns
 - **AND** the user's own `~/.config/gband/user/init.lua` is not read
 
 #### Scenario: Default configuration without the chooser

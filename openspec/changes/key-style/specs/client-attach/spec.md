@@ -131,11 +131,11 @@ Where a scenario of this requirement names no key style, the modal key style is 
 - **AND** the window prints `46`
 
 #### Scenario: Grow the window's height
-- **WHEN** the client's 80×25 terminal, whose status line takes one row, sets the screen area, a column holds two windows with automatic heights with the top one focused, and the user presses Ctrl+Space then `+`
+- **WHEN** the client's 80×24 terminal sets the screen area, a column holds two windows with automatic heights with the top one focused, and the user presses Ctrl+Space then `+`
 - **THEN** the top tile is 14 rows high and the bottom tile is 10 rows high
 
 #### Scenario: Center the column
-- **WHEN** the client's terminal is 80 columns wide, the only window sits in a column 40 cells wide at strip position 0, and the user presses Ctrl+Space then `c`
+- **WHEN** the client's terminal is 80 columns wide, the client has no bar, the only window sits in a column 40 cells wide at strip position 0, and the user presses Ctrl+Space then `c`
 - **THEN** the tile is drawn from the terminal's column 20
 - **AND** the 20 columns left of it are drawn empty
 
@@ -222,7 +222,7 @@ Where a scenario of this requirement names no key style, the modal key style is 
 #### Scenario: Open the key list
 - **WHEN** no `user/init.lua` exists and the user presses Ctrl+Space then `?`
 - **THEN** a floating plugin window titled `navigation keys` lists the prefix bindings and has focus
-- **AND** `root` is active, so a following `j` moves the list's cursor line
+- **AND** `root` is active, so a following Down moves the list's cursor line
 
 #### Scenario: Open the Lua prompt
 - **WHEN** no `user/init.lua` exists and the user presses Ctrl+Space then `:`

@@ -1,15 +1,16 @@
 ## Context
 
-See proposal.md for the motivation. This change starts after navigation-mode, and through it after key-list and center-column. The state it builds on:
+See proposal.md for the motivation. This change starts after navigation-mode and sidebars-borders-steps, and through them after key-list, center-column, floating-windows and loop-bands. The state it builds on:
 
 - `prefix` is a mode labelled `navigation`. An unbound key in it is discarded, so typed text reaches a plugin window only once `root` is active. `gband.keymap.enter("root")` is allowed in any callback.
 - `crates/lua/src/runtime/gband/win.lua` holds every plugin window in Lua. `Runtime::plugin_window_key` in `crates/lua/src/runtime.rs` calls its `key` hook with the key's name only. The hook runs a `keys` entry, then the default keys, which include `q` after key-list.
 - `Controls::paste` in `crates/client/src/lib.rs` drops a paste while a plugin window is focused, before Lua sees it.
 - The client hides the terminal cursor while a floating plugin window is focused (`render.rs`).
-- Bundled modules in `bundled::MODULES` load through `require` and receive no host table. The modules in `bundled::API` receive it. `host.call(owner, label, fn, ...)` runs `fn` through `guard::isolated`: a fresh instruction budget, the given owner, and an error reported without failing the caller. With no label, a stop by the limit marks the owner failed, and no owner means no plugin is marked.
+- The status line is a bar that the bundled `gband.statusline` plugin adds, 20 columns wide at the left by default. The ribbon area is the terminal's full height and the columns the bars leave, and `gband.view()` gives its size. Floating plugin windows are placed and cut inside it. A reported error shows as `error` in the status line, and `gband.errors()` holds its message.
+- Bundled modules in `bundled::MODULES`, `gband.errors` among them, load through `require` and receive no host table. The modules in `bundled::API` receive it. `gband/statusline.lua` is one of them, and also returns the plugin table that `require("gband.statusline")` gives. `host.call(owner, label, fn, ...)` runs `fn` through `guard::isolated`: a fresh instruction budget, the given owner, and an error reported without failing the caller. With no label, a stop by the limit marks the owner failed, and no owner means no plugin is marked.
 - `gband.keylist` and `gband.errors` open plugin windows that take typed keys, and each enters `root` itself when it opens.
 
-The client-attach delta copies "Key bindings" as navigation-mode, key-list and center-column leave it together. It also writes `navigation keys` in the scenario "Open the key list", which navigation-mode's own key-list delta requires.
+The deltas are written against the specs as navigation-mode and sidebars-borders-steps leave them. The client-attach delta copies "Key bindings" as navigation-mode leaves it. The plugin-windows delta copies "Open a plugin window" with sidebars-borders-steps' border table, and the configuration delta copies "Defaults use the public API" with its `gband.errors` and `gband.statusline` setups. sidebars-borders-steps' side bar makes three scenarios of the client-attach requirements this change copies false without modifying them, so the copies restate them: "Height excludes the status line" takes a left bar and prints 22 rows, "Grow the window's height" starts from an 80×24 terminal, and "Center the column" names a client with no bar.
 
 ## Goals / Non-Goals
 
@@ -37,7 +38,7 @@ While a plugin window is focused, `Controls::paste` runs a new `Runtime::plugin_
 Alternative: *strip line breaks for every plugin window.* Rejected. A plugin that takes several lines would lose them.
 
 ### The prompt is a bundled plugin with the host table
-The line must run as code of no plugin, with its own budget. The public API cannot do that, and it should not: a public way to run code as no plugin would let any plugin register names outside its namespace. So `install_searcher` takes the client's host table, and the bundled searcher passes it to a bundled module's chunk as its argument, as the API modules already get it. `gband/prompt.lua` keeps it with `local host = ...`. The other bundled modules ignore it. The server and test sides pass nil. The host table is never returned by `require`.
+The line must run as code of no plugin, with its own budget. The public API cannot do that, and it should not: a public way to run code as no plugin would let any plugin register names outside its namespace. So `install_searcher` takes the client's host table, and the bundled searcher passes it to a bundled module's chunk as its argument, as the API modules already get it. `gband/prompt.lua` keeps it with `local host = ...`. The other bundled modules, `gband.errors` included, ignore it. The searcher change must not run `gband/statusline.lua` a second time: the runtime runs it once with the host table, and `require("gband.statusline")` keeps returning that run's plugin table. The server and test sides pass nil. The host table is never returned by `require`.
 
 Alternatives:
 - *Run the line directly in the Enter callback.* Rejected. It shares the prompt's budget and owner: an endless loop marks `prompt` failed until the next reload, and `gband.action.register("greet", fn)` registers `prompt.greet`.
@@ -61,8 +62,8 @@ This follows `keylist.open` and `errors.open`. Any binding of `prompt.open`, fro
 
 Alternative: *a function binding in the defaults that enters `root` and calls the action.* Rejected. It gives the same result for `:` only, and every other binding of `prompt.open` would have to repeat it.
 
-### Bottom rows, full width, cursor as a span
-The box sits where Neovim's command line sits. `prompt.open` reads `gband.view().cols` and `rows`, opens with `width = cols`, `height = 3`, `row = rows` and `col = 0`. Placement cuts the row so the box ends on the ribbon area's last row, and cuts the box to the ribbon area each time it is drawn, so a smaller ribbon still shows it whole. The prompt stores the content area's width from `gband.win.info` after opening and from `on_resize`, and fits the line from it.
+### Bottom rows, full ribbon width, cursor as a span
+The box sits where Neovim's command line sits, inside the ribbon area. The ribbon area has the terminal's full height, so the box takes the terminal's last three rows, and starts right of a left bar, so it leaves the status line uncovered. `prompt.open` reads `gband.view().cols` and `rows`, opens with `width = cols`, `height = 3`, `row = rows` and `col = 0`. Placement cuts the row so the box ends on the ribbon area's last row, and cuts the box to the ribbon area each time it is drawn, so a smaller ribbon still shows it whole. The prompt stores the content area's width from `gband.win.info` after opening and from `on_resize`, and fits the line from it.
 
 The line is `{ ":" .. shown, { text = " ", hl = "PromptCursor" } }`. `shown` drops leading characters, measured with `gband.ui.width`, until the line fits. `PromptCursor` gets `gband.hl.default("PromptCursor", { reverse = true })` when the module loads, as the key list does with its groups.
 
@@ -75,8 +76,8 @@ The line is `{ ":" .. shown, { text = " ", hl = "PromptCursor" } }`. `shown` dro
 - [Joining pasted lines with spaces can change a paste's meaning: a `--` comment swallows the rest] → Multi-line input is out of scope. The docs say a paste becomes one line.
 - [Bundled modules get the host table] → It is gband's own code. A module that overrides a bundled one from the runtimepath loads through the runtimepath searcher and gets no host.
 - [A line that calls a plugin's registered action that loops forever marks that plugin failed] → This is the plugins capability's rule for that plugin's own callback. The prompt is unaffected.
-- [The prompt does not follow a ribbon area that grows while it is open] → It is open for one line. Opening it again places it anew.
-- [sidebars-borders-steps also modifies "Open a plugin window" and "Defaults use the public API", and its order with this change is not fixed] → Task 0.1 folds in whatever an earlier archive left. sidebars-borders-steps' own fold-in does the same if it archives later.
+- [The prompt does not follow a ribbon area that grows while it is open, as when the status line narrows] → It is open for one line. Opening it again places it anew.
+- [sidebars-borders-steps also modifies "Open a plugin window" and "Defaults use the public API", and changes what scenarios of "Send input" and "Key bindings" describe] → It is a declared dependency, so it archives first, and this change's copies hold its text and the restated scenarios.
 - [An error from a line stays shown until a reload or a newer error] → This is how every callback error behaves today.
 
 ## Migration Plan
