@@ -20,12 +20,13 @@ pub struct TestEnv {
 
 impl TestEnv {
     pub fn new(name: &str) -> Self {
-        let env = Self::without_key_style(name);
+        let env = Self::without_settings(name);
         env.save_key_style("modal");
+        env.save_theme("terminal");
         env
     }
 
-    pub fn without_key_style(name: &str) -> Self {
+    pub fn without_settings(name: &str) -> Self {
         let scratch = Scratch::new("e2e", name);
         Self {
             env: gband_harness::TestEnv::new(scratch.to_path_buf(), GBAND),
@@ -35,6 +36,12 @@ impl TestEnv {
 
     pub fn key_style_lua(&self) -> PathBuf {
         self.config_dir().join("user").join("keystyle.lua")
+    }
+
+    pub fn save_theme(&self, theme: &str) {
+        let path = self.config_dir().join("user").join("theme.lua");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, format!("return \"{theme}\"\n")).unwrap();
     }
 
     pub fn save_key_style(&self, style: &str) {

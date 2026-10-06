@@ -509,8 +509,8 @@ fn prefix_keys(config: &Config) -> Vec<String> {
 fn every_default_binding_is_described() {
     let (_scratch, direct) = with_saved_style("described-direct", "direct");
     for (config, count) in [
-        (gband_lua::defaults(gband_lua::Side::Client), 46),
-        (direct, 44),
+        (gband_lua::defaults(gband_lua::Side::Client), 47),
+        (direct, 45),
     ] {
         assert_described(&config, count);
     }
@@ -575,6 +575,7 @@ fn assert_described(config: &Config, count: usize) {
            escape = 'interactive mode',
            enter = 'interactive mode',
            prefix = 'send the prefix key',
+           s = 'settings',
          }
          local wrong = {}
          for _, table in ipairs({ 'prefix', 'root' }) do
@@ -674,6 +675,45 @@ fn prompt_set_up_by_the_defaults() {
     );
     assert_eq!(entry, ["prompt.open", "run Lua"]);
     assert_eq!(root_keys(&config), MOD_ROWS);
+}
+
+#[test]
+fn settings_bound_by_the_defaults() {
+    let config = gband_lua::defaults(gband_lua::Side::Client);
+    let keys: Vec<String> = eval(
+        &config,
+        "local keys = {} for _, entry in ipairs(gband.keymap.list('prefix')) do keys[#keys + 1] = entry.key end return keys",
+    );
+    let position = |key: &str| keys.iter().position(|bound| bound == key).unwrap();
+    assert_eq!(position("s"), position(":") + 1);
+    assert!(position("s") < position("D"));
+    let desc: String = eval(
+        &config,
+        "for _, entry in ipairs(gband.keymap.list('prefix')) do if entry.key == 's' then return entry.desc end end",
+    );
+    assert_eq!(desc, "settings");
+}
+
+#[test]
+fn sidebar_left_out_by_the_saved_setting() {
+    let scratch = Scratch::new("sidebar-saved-off");
+    scratch.user_file("sidebar.lua", "return false\n");
+    scratch.user_file("keystyle.lua", "return 'modal'\n");
+    let config = scratch.loaded();
+    let bars: i64 = eval(&config, "return #gband.bar.list()");
+    assert_eq!(bars, 0);
+}
+
+#[test]
+fn saved_theme_with_a_user_file() {
+    let scratch = Scratch::new("saved-theme-user");
+    scratch.user_file("theme.lua", "return \"nord\"\n");
+    scratch.write("gband.bind('alt+h', gband.action.focus_column_left)");
+    let config = scratch.loaded();
+    assert_eq!(
+        eval::<String>(&config, "return gband.colorscheme()"),
+        "nord"
+    );
 }
 
 #[test]

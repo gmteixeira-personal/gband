@@ -5,7 +5,7 @@ use gband_core::action::Steps;
 use gband_core::input::Modifiers;
 use gband_core::layout::Proportion;
 use gband_core::view::CenterFocusedColumn;
-use gband_lua::{Binding, Border, BorderChars, CharSet, ConfigError, Sides};
+use gband_lua::{Binding, BorderChars, CharSet, ConfigError, Options, Sides};
 
 fn error_naming<'a>(errors: &'a [ConfigError], name: &str) -> &'a ConfigError {
     errors
@@ -210,6 +210,8 @@ fn list_holds_built_in_and_declared_options() {
             "center_focused_column",
             "floating_border_chars",
             "floating_border_sides",
+            "focused_floating_border_chars",
+            "focused_tile_border_chars",
             "greeting",
             "height_step",
             "loop_bands",
@@ -374,15 +376,57 @@ fn invalid_step() {
 }
 
 #[test]
-fn border_options_default_to_every_plain_side() {
+fn border_options_default_to_every_side() {
     let scratch = Scratch::new("borders-default");
-    scratch.write("sides = gband.opt.tile_border_sides\nchars = gband.opt.floating_border_chars");
+    scratch.write("sides = gband.opt.tile_border_sides");
     let config = scratch.loaded();
     let sides: Vec<String> = global(&config, "sides");
     assert_eq!(sides, ["top", "right", "bottom", "left"]);
-    assert_eq!(global::<String>(&config, "chars"), "plain");
-    assert_eq!(config.options.tile_border, Border::default());
-    assert_eq!(config.options.floating_border, Border::default());
+    assert_eq!(config.options.tile_border.sides, Sides::ALL);
+    assert_eq!(config.options.floating_border.sides, Sides::ALL);
+}
+
+#[test]
+fn rounded_borders_by_default() {
+    let scratch = Scratch::new("borders-rounded");
+    scratch.write("chars = { gband.opt.tile_border_chars, gband.opt.focused_tile_border_chars, gband.opt.floating_border_chars, gband.opt.focused_floating_border_chars }");
+    let config = scratch.loaded();
+    let chars: Vec<String> = global(&config, "chars");
+    assert_eq!(chars, ["rounded"; 4]);
+    let rounded = BorderChars::Named(CharSet::Rounded);
+    assert_eq!(config.options.tile_border.chars, rounded);
+    assert_eq!(config.options.floating_border.chars, rounded);
+    assert_eq!(config.options.focused_tile_border_chars, rounded);
+    assert_eq!(config.options.focused_floating_border_chars, rounded);
+}
+
+#[test]
+fn focused_border_characters_of_the_wrong_type() {
+    let scratch = Scratch::new("focused-chars-wrong");
+    let path = scratch.write(
+        "gband.opt.focused_tile_border_chars = 'double'\ngband.opt.focused_tile_border_chars = \"heavy\"\nchars = gband.opt.focused_tile_border_chars",
+    );
+    let config = scratch.loaded();
+    assert_eq!(global::<String>(&config, "chars"), "rounded");
+    assert_eq!(
+        config.options.focused_tile_border_chars,
+        BorderChars::Named(CharSet::Rounded)
+    );
+    let error = error_naming(&config.errors, "focused_tile_border_chars");
+    assert_error_at(error, &path, 2, "focused_tile_border_chars");
+}
+
+#[test]
+fn focused_border_characters_set() {
+    let scratch = Scratch::new("focused-chars");
+    scratch.write("gband.set { focused_floating_border_chars = 'thick' }\nchars = gband.opt.focused_floating_border_chars");
+    let config = scratch.loaded();
+    assert!(config.errors.is_empty(), "{:?}", config.errors);
+    assert_eq!(global::<String>(&config, "chars"), "thick");
+    assert_eq!(
+        config.options.focused_floating_border_chars,
+        BorderChars::Named(CharSet::Thick)
+    );
 }
 
 #[test]
@@ -421,7 +465,7 @@ fn wide_character_rejected() {
     let scratch = Scratch::new("wide-chars");
     let path = scratch.write("gband.opt.tile_border_chars = 'rounded'\ngband.opt.tile_border_chars = { '日', '-', '+', '|', '+', '-', '+', '|' }\ngband.opt.floating_border_sides = { 'middle' }");
     let config = scratch.loaded();
-    assert_eq!(config.options.tile_border, Border::default());
+    assert_eq!(config.options.tile_border, Options::default().tile_border);
     let error = error_naming(&config.errors, "tile_border_chars");
     assert_error_at(error, &path, 2, "tile_border_chars");
     let error = error_naming(&config.errors, "floating_border_sides");

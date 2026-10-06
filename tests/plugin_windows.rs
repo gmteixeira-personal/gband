@@ -153,7 +153,7 @@ fn two_clients_with_different_borders() {
     borderless.wait_for_text("marker-42");
     let seen = |client: &Attached| position(&client.screen(), "marker-42");
     assert_eq!(seen(&bordered), seen(&borderless));
-    let drawn = |client: &Attached| client.contents().chars().any(|c| "┌┐└┘─│".contains(c));
+    let drawn = |client: &Attached| client.contents().chars().any(|c| "╭╮╰╯─│".contains(c));
     assert!(drawn(&bordered));
     assert!(!drawn(&borderless));
 }

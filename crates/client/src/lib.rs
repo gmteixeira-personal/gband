@@ -31,9 +31,9 @@ use gband_core::terminal_input::{Decoder, TerminalInput};
 use gband_core::view::{CenterFocusedColumn, Layer, Scene, View, ViewAction};
 use gband_emulator::{Emulator, Grid};
 use gband_lua::{
-    BandState, Bar, Binding, Border, Config, ConfigError, Dispatch, Event, Options, Outcome as Ran,
-    PluginManifest, PluginWindowRequest, Requirement as Needed, Runtime, Slot, Version, ViewState,
-    WindowInput, WindowStates,
+    BandState, Bar, Binding, Border, BorderChars, ClientStyles, Config, ConfigError, Dispatch,
+    Event, Options, Outcome as Ran, Palette, PluginManifest, PluginWindowRequest,
+    Requirement as Needed, Runtime, Slot, Version, ViewState, WindowInput, WindowStates,
 };
 use gband_protocol::{ClientMessage, ExecutableId, Requirement, ServerMessage, SessionName, Value};
 use ratatui::layout::Rect;
@@ -190,6 +190,11 @@ pub struct Display {
     ready: bool,
     tile_border: Border,
     floating_border: Border,
+    focused_tile_chars: BorderChars,
+    focused_floating_chars: BorderChars,
+    styles: ClientStyles,
+    palette: Palette,
+    settings_line: Option<u32>,
     pointer: Pointer,
     regions: Vec<Region>,
     framed: bool,
@@ -222,6 +227,11 @@ impl Display {
             ready: false,
             tile_border: Border::default(),
             floating_border: Border::default(),
+            focused_tile_chars: BorderChars::default(),
+            focused_floating_chars: BorderChars::default(),
+            styles: ClientStyles::default(),
+            palette: Palette::default(),
+            settings_line: None,
             pointer: Pointer::default(),
             regions: Vec::new(),
             framed: false,
@@ -575,6 +585,8 @@ impl Display {
         self.policy = options.center_focused_column;
         self.tile_border = options.tile_border.clone();
         self.floating_border = options.floating_border.clone();
+        self.focused_tile_chars = options.focused_tile_border_chars.clone();
+        self.focused_floating_chars = options.focused_floating_border_chars.clone();
         let looping = std::mem::replace(&mut self.loop_bands, options.loop_bands);
         if let Some(view) = &mut self.view {
             view.set_center_focused_column(self.policy);
@@ -587,6 +599,26 @@ impl Display {
 
     pub fn set_colors(&mut self, colors: ColorSupport) {
         self.colors = colors;
+    }
+
+    pub fn palette(&self) -> &Palette {
+        &self.palette
+    }
+
+    pub fn client_styles(&self) -> &ClientStyles {
+        &self.styles
+    }
+
+    fn take_look(&mut self, runtime: &Runtime) {
+        if let Some(palette) = runtime.take_palette() {
+            self.palette = palette;
+        }
+        if let Some(styles) = runtime.take_client_styles() {
+            self.styles = styles;
+        }
+        if let Some(line) = runtime.take_settings_reopen() {
+            self.settings_line = Some(line);
+        }
     }
 
     pub fn colors(&self) -> ColorSupport {
@@ -838,6 +870,10 @@ impl Display {
             region: self.ribbon,
             tile_border: &self.tile_border,
             floating_border: &self.floating_border,
+            focused_tile_chars: &self.focused_tile_chars,
+            focused_floating_chars: &self.focused_floating_chars,
+            styles: self.styles,
+            palette: self.palette,
             floats: self.plugin_windows.floats(),
             float_focused: self.plugin_windows.focused_float().is_some(),
             colors: self.colors,
@@ -1020,6 +1056,7 @@ impl Controls {
             .runtime
             .set_plugin_window_counter(display.plugin_windows.counter());
         display.configure(&config.options);
+        display.take_look(&config.runtime);
         if config.errors.is_empty() {
             display.clear_errors();
         }
@@ -1329,12 +1366,20 @@ impl Controls {
                     });
                 }
                 self.refresh_pending = true;
+                let reopen = display.settings_line.take();
                 let mut steps = closed;
                 steps.extend(self.react(display, events, |_, _, _| {}));
+                if let Some(line) = reopen {
+                    steps.extend(self.react(display, Vec::new(), |controls, display, steps| {
+                        let outcome = controls.runtime.open_settings(line);
+                        controls.apply(display, outcome, steps);
+                    }));
+                }
                 steps
             }
             Err(error) => {
                 tracing::warn!("configuration error: {error}");
+                display.settings_line = None;
                 display.report_error(error.to_string());
                 self.react(display, Vec::new(), |controls, _, _| {
                     controls.leader.reset()
@@ -1401,6 +1446,7 @@ impl Controls {
             steps.push(resize_step(size));
         }
         display.set_error_item(self.runtime.error_item_shown());
+        display.take_look(&self.runtime);
         let frames = self.runtime.take_frames();
         steps.extend(
             display

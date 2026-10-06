@@ -149,7 +149,7 @@ fn columns(row: &str, from: usize, to: usize) -> String {
 }
 
 fn tile_top(width: usize) -> String {
-    format!("┌{}┐", "─".repeat(width - 2))
+    format!("╭{}╮", "─".repeat(width - 2))
 }
 
 #[test]
@@ -192,7 +192,7 @@ fn two_bars_from_one_callback() {
 fn camera_follows_the_narrower_ribbon() {
     let mut client = Client::new("camera", "", 2, 1);
     let screen = client.screen();
-    assert_eq!(columns(&screen[0], 40, 40), "┌");
+    assert_eq!(columns(&screen[0], 40, 40), "╭");
     assert_eq!(resizes(&client.press("alt+b")), vec![Size::new(60, 24)]);
     client.settle();
     let screen = client.screen();

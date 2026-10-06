@@ -94,6 +94,14 @@ pub(crate) fn install(
             control::install(lua, &gband)?;
             bridge::install(lua, &gband)?;
             let host = ui::install(lua, &gband)?;
+            host.set(
+                "colorschemes",
+                lua.create_function(|lua, ()| colorschemes(lua))?,
+            )?;
+            host.set(
+                "bundled_themes",
+                lua.create_sequence_from(bundled::themes())?,
+            )?;
             plugin_windows::install(lua, &host)?;
             crate::bars::install(lua, &host)?;
             removed::install(lua, &host)?;
@@ -121,14 +129,28 @@ pub(crate) fn install(
                 loaded.set(name, module)?;
             }
         }
-        gband
-            .get::<Function>("colorscheme")?
-            .call::<()>(DEFAULT_COLORSCHEME)?;
+        host.get::<Function>("start_theme")?.call::<()>(())?;
     }
     sides::guard(lua, &gband, side)
 }
 
-const DEFAULT_COLORSCHEME: &str = "default";
+fn colorschemes(lua: &Lua) -> mlua::Result<Vec<String>> {
+    let mut names = BTreeSet::new();
+    for entry in current_runtimepath(lua)? {
+        let Ok(listing) = fs::read_dir(entry.join("colors")) else {
+            continue;
+        };
+        for file in listing.filter_map(Result::ok) {
+            let path = file.path();
+            if path.extension().is_some_and(|extension| extension == "lua")
+                && let Some(stem) = path.file_stem().and_then(|stem| stem.to_str())
+            {
+                names.insert(stem.to_owned());
+            }
+        }
+    }
+    Ok(names.into_iter().collect())
+}
 
 fn runtimepath(locations: Option<&Locations>) -> Vec<PathBuf> {
     let Some(locations) = locations else {
@@ -690,6 +712,25 @@ impl Runtime {
 
     pub fn take_bars(&self) -> Option<Vec<crate::bars::Bar>> {
         crate::bars::take(&self.lua)
+    }
+
+    pub fn take_settings_reopen(&self) -> Option<u32> {
+        ui::take_settings_reopen(&self.lua)
+    }
+
+    pub fn open_settings(&self, line: u32) -> Outcome {
+        self.within_callback(|lua| ui::open_settings(lua, line).map(|()| false))
+    }
+
+    pub fn take_palette(&self) -> Option<ui::Palette> {
+        ui::take_palette(&self.lua)
+    }
+
+    pub fn take_client_styles(&self) -> Option<ui::ClientStyles> {
+        ui::take_client_styles(&self.lua).unwrap_or_else(|error| {
+            tracing::warn!("cannot resolve the client groups: {error}");
+            None
+        })
     }
 
     pub fn error_item_shown(&self) -> bool {

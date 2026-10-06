@@ -60,6 +60,11 @@ fn key_styles() {
 }
 
 #[test]
+fn settings_and_themes() {
+    gband_test(root(), &["tests/lua/settings_spec.lua"]);
+}
+
+#[test]
 fn escape_key() {
     gband_test(root(), &["tests/lua/escape_spec.lua"]);
 }

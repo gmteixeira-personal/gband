@@ -737,6 +737,32 @@ fn start(_: &Lua, context: &Context, opts: Value) -> mlua::Result<MultiValue> {
             )));
         }
     };
+    let theme = match field("theme")? {
+        Value::Nil => Some("terminal".to_owned()),
+        Value::Boolean(false) => None,
+        Value::String(theme)
+            if !theme.as_bytes().is_empty()
+                && theme.as_bytes()[0].is_ascii_alphanumeric()
+                && theme
+                    .as_bytes()
+                    .iter()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-')) =>
+        {
+            Some(theme.to_str()?.to_owned())
+        }
+        Value::String(theme) => {
+            return Err(fail(format!(
+                "`theme` of g.start must be a colorscheme name or false, found {:?}",
+                theme.to_string_lossy()
+            )));
+        }
+        other => {
+            return Err(fail(format!(
+                "`theme` of g.start must be a colorscheme name or false, found {}",
+                other.type_name()
+            )));
+        }
+    };
     context.slot().started = true;
     let setup = Setup {
         executable: context.run.executable.clone(),
@@ -744,6 +770,7 @@ fn start(_: &Lua, context: &Context, opts: Value) -> mlua::Result<MultiValue> {
         config: optional_text("config")?,
         server_config: optional_text("server_config")?,
         keystyle,
+        theme,
         files,
         plugins,
         env,

@@ -81,7 +81,7 @@ fn tops(screen: &Grid) -> Vec<(u16, bool)> {
     (0..screen.size().cols)
         .filter_map(|col| {
             let cell = cell(screen, 0, col)?;
-            (cell.symbol() == "┌").then(|| (col, cell.modifier.contains(Modifier::BOLD)))
+            (cell.symbol() == "╭").then(|| (col, cell.modifier.contains(Modifier::BOLD)))
         })
         .collect()
 }
@@ -99,7 +99,7 @@ fn echo_keys(client: &mut Attached) {
 
 #[test]
 fn harness_isolates_the_configuration() {
-    let env = TestEnv::without_key_style("config-harness");
+    let env = TestEnv::without_settings("config-harness");
     let command = env.command(GBAND, &["list-sessions"]);
     let named = command
         .get_envs()
@@ -124,7 +124,7 @@ fn harness_isolates_the_configuration() {
 
 #[test]
 fn first_run() {
-    let env = TestEnv::without_key_style("config-first-run");
+    let env = TestEnv::without_settings("config-first-run");
     let client = Attached::start(&env, 80, 24);
     client.wait_for_prompt();
     assert_eq!(fs::read_to_string(env.defaults_lua()).unwrap(), DEFAULTS);

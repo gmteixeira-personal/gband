@@ -35,6 +35,7 @@ pub struct Setup {
     pub config: Option<String>,
     pub server_config: Option<String>,
     pub keystyle: Option<String>,
+    pub theme: Option<String>,
     pub files: Vec<(String, String)>,
     pub plugins: Vec<PathBuf>,
     pub env: Vec<(OsString, Option<OsString>)>,
@@ -132,6 +133,12 @@ fn prepare(env: &mut TestEnv, setup: &Setup, socket: &Path) -> Result<(), String
         write_file(
             &config.join("user").join("keystyle.lua"),
             &format!("return \"{style}\"\n"),
+        )?;
+    }
+    if let Some(theme) = &setup.theme {
+        write_file(
+            &config.join("user").join("theme.lua"),
+            &format!("return \"{theme}\"\n"),
         )?;
     }
     if let Some(source) = &setup.config {

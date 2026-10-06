@@ -48,12 +48,12 @@ fn position(screen: &Grid, text: &str) -> Option<(u16, u16)> {
         })
 }
 
-fn inverse_at(screen: &Grid, text: &str) -> bool {
+fn cursor_line_at(screen: &Grid, text: &str) -> bool {
     position(screen, text).is_some_and(|(row, col)| {
         screen
             .screen()
             .cell(row, col)
-            .is_some_and(|cell| cell.inverse())
+            .is_some_and(|cell| format!("{:?}", cell.bgcolor()) == "Idx(4)")
     })
 }
 
@@ -132,11 +132,11 @@ fn question_mark_opens_the_key_list() {
     client.send(b"\x00?");
     client.wait_for("the key list on its first line", |screen| {
         position(screen, "┌navigation keys").is_some()
-            && inverse_at(screen, "focus the column to the left")
+            && cursor_line_at(screen, "focus the column to the left")
     });
     client.send(b"\x1b[B");
     client.wait_for("the cursor line on the second line", |screen| {
-        inverse_at(screen, "focus the column to the right")
-            && !inverse_at(screen, "focus the column to the left")
+        cursor_line_at(screen, "focus the column to the right")
+            && !cursor_line_at(screen, "focus the column to the left")
     });
 }

@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::Side;
 use crate::api::require_loading;
-use crate::border::{Border, BorderChars, Sides};
+use crate::border::{Border, BorderChars, CharSet, Sides};
 use crate::error::{ConfigError, caller};
 use crate::guard;
 use crate::keys::{key_name, parse_key};
@@ -39,8 +39,17 @@ pub struct Options {
     pub notify_style: NotifyStyle,
     pub tile_border: Border,
     pub floating_border: Border,
+    pub focused_tile_border_chars: BorderChars,
+    pub focused_floating_border_chars: BorderChars,
     pub steps: Steps,
     pub mouse_mod: Modifiers,
+}
+
+fn rounded() -> Border {
+    Border {
+        chars: BorderChars::Named(CharSet::Rounded),
+        ..Border::default()
+    }
 }
 
 impl Default for Options {
@@ -51,8 +60,10 @@ impl Default for Options {
             center_focused_column: CenterFocusedColumn::default(),
             loop_bands: true,
             notify_style: NotifyStyle::default(),
-            tile_border: Border::default(),
-            floating_border: Border::default(),
+            tile_border: rounded(),
+            floating_border: rounded(),
+            focused_tile_border_chars: BorderChars::Named(CharSet::Rounded),
+            focused_floating_border_chars: BorderChars::Named(CharSet::Rounded),
             steps: Steps::default(),
             mouse_mod: Modifiers::ALT,
         }
@@ -97,6 +108,12 @@ impl Options {
         if let Some(chars) = patch.floating_border_chars {
             self.floating_border.chars = chars;
         }
+        if let Some(chars) = patch.focused_tile_border_chars {
+            self.focused_tile_border_chars = chars;
+        }
+        if let Some(chars) = patch.focused_floating_border_chars {
+            self.focused_floating_border_chars = chars;
+        }
         if let Some(WidthStep(step)) = patch.width_step {
             self.steps.width = step;
         }
@@ -123,6 +140,12 @@ impl Options {
             "tile_border_chars" => self.tile_border.chars = defaults.tile_border.chars,
             "floating_border_sides" => self.floating_border.sides = defaults.floating_border.sides,
             "floating_border_chars" => self.floating_border.chars = defaults.floating_border.chars,
+            "focused_tile_border_chars" => {
+                self.focused_tile_border_chars = defaults.focused_tile_border_chars
+            }
+            "focused_floating_border_chars" => {
+                self.focused_floating_border_chars = defaults.focused_floating_border_chars
+            }
             "width_step" => self.steps.width = defaults.steps.width,
             "height_step" => self.steps.height = defaults.steps.height,
             "mouse_mod" => self.mouse_mod = defaults.mouse_mod,
@@ -145,6 +168,8 @@ impl Options {
             "tile_border_chars" => self.tile_border.chars.to_lua(lua),
             "floating_border_sides" => self.floating_border.sides.to_lua(lua),
             "floating_border_chars" => self.floating_border.chars.to_lua(lua),
+            "focused_tile_border_chars" => self.focused_tile_border_chars.to_lua(lua),
+            "focused_floating_border_chars" => self.focused_floating_border_chars.to_lua(lua),
             "width_step" => width(self.steps.width).into_lua(lua),
             "height_step" => width(self.steps.height).into_lua(lua),
             "mouse_mod" => modifier_names(self.mouse_mod).into_lua(lua),
@@ -153,15 +178,17 @@ impl Options {
     }
 }
 
-const CLIENT_NAMES: [&str; 11] = [
+const CLIENT_NAMES: [&str; 13] = [
     "prefix",
     "center_focused_column",
     "loop_bands",
     "notify_style",
     "tile_border_sides",
     "tile_border_chars",
+    "focused_tile_border_chars",
     "floating_border_sides",
     "floating_border_chars",
+    "focused_floating_border_chars",
     "width_step",
     "height_step",
     "mouse_mod",
@@ -204,7 +231,7 @@ pub(crate) fn check_name(lua: &Lua, name: &str) -> Result<(), String> {
     Err(foreign(lua, name).unwrap_or_else(|| format!("unknown option `{name}`")))
 }
 
-const BUILTIN: [(&str, &str, &str); 13] = [
+const BUILTIN: [(&str, &str, &str); 15] = [
     ("prefix", "string", "the key that starts a key sequence"),
     (
         "default_column_width",
@@ -242,6 +269,11 @@ const BUILTIN: [(&str, &str, &str); 13] = [
         "the characters of a tiled window's border: plain, rounded, double, thick or a list of 8",
     ),
     (
+        "focused_tile_border_chars",
+        "string",
+        "the characters of the focused tiled window's border: plain, rounded, double, thick or a list of 8",
+    ),
+    (
         "floating_border_sides",
         "list",
         "the sides of a floating window's border that are drawn",
@@ -250,6 +282,11 @@ const BUILTIN: [(&str, &str, &str); 13] = [
         "floating_border_chars",
         "string",
         "the characters of a floating window's border: plain, rounded, double, thick or a list of 8",
+    ),
+    (
+        "focused_floating_border_chars",
+        "string",
+        "the characters of the focused floating window's border: plain, rounded, double, thick or a list of 8",
     ),
     (
         "width_step",
@@ -695,6 +732,8 @@ pub struct OptionsPatch {
     tile_border_chars: Option<BorderChars>,
     floating_border_sides: Option<Sides>,
     floating_border_chars: Option<BorderChars>,
+    focused_tile_border_chars: Option<BorderChars>,
+    focused_floating_border_chars: Option<BorderChars>,
     width_step: Option<WidthStep>,
     height_step: Option<HeightStep>,
     mouse_mod: Option<MouseMod>,

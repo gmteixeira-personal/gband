@@ -31,7 +31,7 @@ t.case("rows of a new session", function(g)
 end)
 
 t.case("terminal background", function(g)
-  g.start({ size = "40x8" })
+  g.start({ size = "40x8", theme = false })
   prompts(g, 1)
   local screen = g.screen()
   for row = 0, screen.rows - 1 do

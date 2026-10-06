@@ -34,6 +34,7 @@ set("prefix", "ctrl+down", action.move_window_down, { desc = "move the window do
 set("prefix", "ctrl+up", action.move_window_up, { desc = "move the window up" })
 set("prefix", "?", action["keylist.open"], { desc = "list the keys" })
 set("prefix", ":", action["prompt.open"], { desc = "run Lua" })
+set("prefix", "s", gband.settings.open, { desc = "settings" })
 set("prefix", "D", action.detach, { desc = "detach" })
 set("prefix", "left", action.focus_column_left, { desc = "focus the column to the left" })
 set("prefix", "right", action.focus_column_right, { desc = "focus the column to the right" })

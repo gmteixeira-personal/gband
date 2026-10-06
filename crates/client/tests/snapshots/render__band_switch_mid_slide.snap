@@ -1,6 +1,5 @@
 ---
 source: crates/client/tests/render.rs
-assertion_line: 299
 expression: "fixture.render_drawn(Size::new(60, 12), &drawn)"
 ---
 Buffer {
@@ -12,8 +11,8 @@ Buffer {
         "│                            │                              ",
         "│                            │                              ",
         "│                            │                              ",
-        "└────────────────────────────┘                              ",
-        "┌────────────────────────────┐                              ",
+        "╰────────────────────────────╯                              ",
+        "╭────────────────────────────╮                              ",
         "│lower                       │                              ",
         "│                            │                              ",
         "│                            │                              ",
@@ -46,23 +45,23 @@ Buffer {
         x: 30, y: 5, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
         x: 0, y: 6, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
         x: 30, y: 6, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
-        x: 0, y: 7, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 0, y: 7, fg: Indexed(147), bg: Reset, underline: Reset, modifier: BOLD,
         x: 30, y: 7, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
-        x: 0, y: 8, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 0, y: 8, fg: Indexed(147), bg: Reset, underline: Reset, modifier: BOLD,
         x: 1, y: 8, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
-        x: 29, y: 8, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 29, y: 8, fg: Indexed(147), bg: Reset, underline: Reset, modifier: BOLD,
         x: 30, y: 8, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
-        x: 0, y: 9, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 0, y: 9, fg: Indexed(147), bg: Reset, underline: Reset, modifier: BOLD,
         x: 1, y: 9, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
-        x: 29, y: 9, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 29, y: 9, fg: Indexed(147), bg: Reset, underline: Reset, modifier: BOLD,
         x: 30, y: 9, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
-        x: 0, y: 10, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 0, y: 10, fg: Indexed(147), bg: Reset, underline: Reset, modifier: BOLD,
         x: 1, y: 10, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
-        x: 29, y: 10, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 29, y: 10, fg: Indexed(147), bg: Reset, underline: Reset, modifier: BOLD,
         x: 30, y: 10, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
-        x: 0, y: 11, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 0, y: 11, fg: Indexed(147), bg: Reset, underline: Reset, modifier: BOLD,
         x: 1, y: 11, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
-        x: 29, y: 11, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 29, y: 11, fg: Indexed(147), bg: Reset, underline: Reset, modifier: BOLD,
         x: 30, y: 11, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
     ]
 }

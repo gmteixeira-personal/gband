@@ -74,6 +74,18 @@ local function is_open(win)
   return false
 end
 
+local function other_float_focused(win)
+  for _, id in ipairs(gband.win.list()) do
+    if id ~= win then
+      local info = gband.win.info(id)
+      if info.focused and info.kind == "floating" then
+        return true
+      end
+    end
+  end
+  return false
+end
+
 local function open()
   gband.keymap.enter("root")
   if current and is_open(current) then
@@ -82,22 +94,26 @@ local function open()
   end
   local list = entries()
   local lines, longest = lines_of(list)
-  local function run(index)
+  local function run(win, index)
     local entry = list[index]
-    if entry and entry.binding then
-      gband.keymap.run("prefix", entry.binding)
+    if not (entry and entry.binding) then
+      return
+    end
+    gband.keymap.run("prefix", entry.binding)
+    if is_open(win) and other_float_focused(win) then
+      gband.win.close(win)
     end
   end
   local keys = {
     enter = function(win)
-      run(gband.win.info(win).cursor)
+      run(win, gband.win.info(win).cursor)
     end,
   }
   for index, entry in ipairs(list) do
     if entry.direct then
       keys[entry.direct] = function(win)
         gband.win.set_cursor(win, index)
-        run(index)
+        run(win, index)
       end
     end
   end

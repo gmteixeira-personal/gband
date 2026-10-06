@@ -293,6 +293,13 @@ fn symbol_at(screen: &Grid, row: u16, col: u16) -> Option<(String, bool)> {
     Some((symbol(screen, row, col)?, bold))
 }
 
+const CORNERS: [[&str; 3]; 4] = [
+    ["┌", "┐", "└"],
+    ["╭", "╮", "╰"],
+    ["╔", "╗", "╚"],
+    ["┏", "┓", "┗"],
+];
+
 pub fn tiles(screen: &Grid) -> Vec<Tile> {
     let Size { cols, rows } = screen.size();
     let mut found = Vec::new();
@@ -301,13 +308,15 @@ pub fn tiles(screen: &Grid) -> Vec<Tile> {
             let Some((symbol, focused)) = symbol_at(screen, top, left) else {
                 continue;
             };
-            if symbol != "┌" {
+            let Some([_, top_right, bottom_left]) =
+                CORNERS.iter().find(|corners| corners[0] == symbol)
+            else {
                 continue;
-            }
+            };
             let right = (left + 1..cols)
-                .find(|&col| symbol_at(screen, top, col).is_some_and(|(s, _)| s == "┐"));
+                .find(|&col| symbol_at(screen, top, col).is_some_and(|(s, _)| s == *top_right));
             let bottom = (top + 1..rows)
-                .find(|&row| symbol_at(screen, row, left).is_some_and(|(s, _)| s == "└"));
+                .find(|&row| symbol_at(screen, row, left).is_some_and(|(s, _)| s == *bottom_left));
             if let (Some(right), Some(bottom)) = (right, bottom) {
                 found.push(Tile {
                     top,

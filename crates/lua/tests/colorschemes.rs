@@ -50,40 +50,95 @@ fn plugin_directory_colorscheme() {
 #[test]
 fn bundled_fallback() {
     let scratch = Scratch::new("bundled");
-    scratch.user_file("colors/plain.lua", "");
-    scratch.write("gband.colorscheme('plain')\nok = gband.colorscheme('default')");
+    scratch.write("ok = gband.colorscheme('nord')");
     let config = scratch.loaded();
+    assert!(global::<bool>(&config, "ok"));
+    assert_eq!(
+        eval::<String>(&config, "return gband.colorscheme()"),
+        "nord"
+    );
+    assert_eq!(
+        eval::<String>(&config, "return gband.palette.get().bg"),
+        "#2e3440"
+    );
+}
+
+#[test]
+fn shadowing_a_bundled_theme() {
+    let scratch = Scratch::new("shadow-theme");
+    scratch.user_file("colors/gruvbox.lua", "ran = 'user'");
+    scratch.write("gband.colorscheme('gruvbox')");
+    let config = scratch.loaded();
+    assert_eq!(global::<String>(&config, "ran"), "user");
+}
+
+#[test]
+fn default_sets_the_sidebar_groups() {
+    let scratch = Scratch::new("default-sidebar");
+    scratch.user_file("keystyle.lua", "return 'modal'");
+    let config = scratch.loaded();
+    for (group, expected) in [
+        ("SidebarMode", "{ bold = true }"),
+        ("SidebarBand", "{ dim = true }"),
+        ("SidebarBandActive", "{ bold = true }"),
+        ("SidebarError", "{ fg = 1, bold = true }"),
+    ] {
+        let same: bool = eval(
+            &config,
+            &format!(
+                "local got, want = gband.hl.get('{group}'), {expected}
+                for k, v in pairs(want) do if got[k] ~= v then return false end end
+                for k in pairs(got) do if want[k] == nil then return false end end
+                return true"
+            ),
+        );
+        assert!(same, "{group}");
+    }
+}
+
+#[test]
+fn default_sets_nothing() {
+    let scratch = Scratch::new("default-nothing");
+    scratch.user_file("keystyle.lua", "return 'modal'");
+    let config = scratch.loaded();
+    let mode: (Option<bool>, i64) = (
+        eval(&config, "return gband.hl.get('SidebarMode').bold"),
+        eval(
+            &config,
+            "local n = 0 for _ in pairs(gband.hl.get('SidebarMode')) do n = n + 1 end return n",
+        ),
+    );
+    assert_eq!(mode, (Some(true), 1));
+    let border: Vec<String> = eval(
+        &config,
+        "local s = gband.hl.get('WindowBorderFocused') return { s.fg, tostring(s.bold) }",
+    );
+    assert_eq!(border, ["#b1b9f9", "true"]);
+    let empty: bool = eval(&config, "return next(gband.palette.get()) == nil");
+    assert!(empty);
+}
+
+#[test]
+fn back_to_the_defaults() {
+    let scratch = Scratch::new("back-to-default");
+    scratch.write(&format!("gband.colorscheme('gruvbox')\n{JOB}"));
+    let config = scratch.loaded();
+    clean(&run_job(&config, "ok = gband.colorscheme('default')"));
     assert!(global::<bool>(&config, "ok"));
     assert_eq!(
         eval::<String>(&config, "return gband.colorscheme()"),
         "default"
     );
-    assert_eq!(
-        resolved_fg(&config, "SidebarMode").as_deref(),
-        Some("#7aa2f7")
-    );
-}
-
-#[test]
-fn bundled_default_sets_every_built_in_group() {
-    let scratch = Scratch::new("bundled-groups");
-    let config = scratch.loaded();
-    for group in [
-        "SidebarMode",
-        "SidebarBand",
-        "SidebarBandActive",
-        "SidebarError",
-        "KeyListKey",
-        "KeyListMuted",
-    ] {
-        let set: bool = eval(&config, &format!("return gband.hl.get('{group}') ~= nil"));
-        assert!(set, "{group}");
-    }
-    let hex: bool = eval(
+    let explicit: bool = eval(
         &config,
-        "local fg = gband.hl.get('SidebarMode').fg return type(fg) == 'string' and fg:sub(1, 1) == '#'",
+        "for _, g in ipairs({ 'Bar', 'SidebarMode', 'WindowBorder', 'ErrorBanner', 'PluginWindow' }) do
+          if gband.hl.get(g, { resolve = true }).fg == '#ebdbb2' then return true end
+        end
+        return false",
     );
-    assert!(hex);
+    assert!(!explicit);
+    let empty: bool = eval(&config, "return next(gband.palette.get()) == nil");
+    assert!(empty);
 }
 
 #[test]
@@ -106,6 +161,18 @@ fn shadowing_the_bundled_colorscheme() {
     scratch.write("gband.colorscheme('default')");
     let config = scratch.loaded();
     assert_eq!(global::<i64>(&config, "ran"), 2);
+}
+
+#[test]
+fn palette_replaced() {
+    let scratch = Scratch::new("palette-replaced");
+    scratch.user_file("theme.lua", "return \"gruvbox\"\n");
+    scratch.user_file("colors/dusk.lua", DUSK);
+    scratch.write("before = gband.palette.get().bg\ngband.colorscheme('dusk')");
+    let config = scratch.loaded();
+    assert_eq!(global::<String>(&config, "before"), "#282828");
+    let empty: bool = eval(&config, "return next(gband.palette.get()) == nil");
+    assert!(empty);
 }
 
 #[test]
@@ -179,11 +246,54 @@ fn default_at_start() {
 }
 
 #[test]
+fn saved_theme_at_start() {
+    let scratch = Scratch::new("saved-start");
+    scratch.user_file("theme.lua", "return \"nord\"\n");
+    scratch
+        .write("during = gband.colorscheme()\ngband.bind('alt+h', gband.action.focus_column_left)");
+    let config = scratch.loaded();
+    assert_eq!(global::<String>(&config, "during"), "nord");
+    assert_eq!(
+        eval::<String>(&config, "return gband.colorscheme()"),
+        "nord"
+    );
+}
+
+#[test]
+fn init_file_replaces_the_start_theme() {
+    let scratch = Scratch::new("init-replaces");
+    scratch.user_file("theme.lua", "return \"nord\"\n");
+    scratch.write("gband.colorscheme('dracula')");
+    let config = scratch.loaded();
+    assert_eq!(
+        eval::<String>(&config, "return gband.colorscheme()"),
+        "dracula"
+    );
+}
+
+#[test]
+fn saved_theme_missing() {
+    let scratch = Scratch::new("saved-missing");
+    scratch.user_file("theme.lua", "return \"absent\"\n");
+    let config = scratch.loaded();
+    assert_eq!(
+        eval::<String>(&config, "return gband.colorscheme()"),
+        "default"
+    );
+    let [error] = config.errors.as_slice() else {
+        panic!("{:?}", config.errors);
+    };
+    assert_eq!(error.plugin.as_deref(), Some("colors/absent"));
+    assert_eq!(error.location, None);
+}
+
+#[test]
 fn failing_colorscheme() {
     let scratch = Scratch::new("failing");
+    scratch.user_file("theme.lua", "return \"gruvbox\"\n");
     let broken = scratch.user_file(
         "colors/broken.lua",
-        "\n\ngband.hl.set('SidebarMode', { fg = 1 })\nerror('boom')",
+        "\n\ngband.hl.set('SidebarMode', { fg = 1 })\ngband.palette.set({})\nerror('boom')",
     );
     scratch.write(
         "ok = gband.colorscheme('broken')\ngband.bind('alt+h', gband.action.focus_column_left)",
@@ -193,18 +303,22 @@ fn failing_colorscheme() {
     assert!(config.keymap["root"].len() == 1);
     assert_eq!(
         resolved_fg(&config, "SidebarMode").as_deref(),
-        Some("#7aa2f7")
+        Some("#fabd2f")
+    );
+    assert_eq!(
+        eval::<String>(&config, "return gband.palette.get().bg"),
+        "#282828"
     );
     assert_eq!(
         eval::<String>(&config, "return gband.colorscheme()"),
-        "default"
+        "gruvbox"
     );
     let [error] = config.errors.as_slice() else {
         panic!("{:?}", config.errors);
     };
     assert_eq!(
         error.to_string(),
-        format!("colors/broken: {}:4: boom", broken.display())
+        format!("colors/broken: {}:5: boom", broken.display())
     );
 }
 

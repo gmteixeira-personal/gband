@@ -375,10 +375,10 @@ fn viewed_band() {
     let (_scratch, mut client) = defaults("viewed", "", Size::new(80, 24));
     client.attach_bands(2);
     assert!(client.style(2).bold);
-    assert_eq!(client.style(2).fg, Some(Color::Rgb(0xc0, 0xca, 0xf5)));
+    assert!(!client.style(2).dim);
     for row in [3, 4] {
         assert!(!client.style(row).bold, "{row}");
-        assert_eq!(client.style(row).fg, Some(Color::Rgb(0x56, 0x5f, 0x89)));
+        assert!(client.style(row).dim, "{row}");
     }
 }
 
@@ -401,7 +401,7 @@ fn error_reported() {
         .controls
         .reload(&mut client.display, scratch.load("local = 1"));
     assert_eq!(client.row(23), "!");
-    assert_eq!(client.style(23).fg, Some(Color::Rgb(0xf7, 0x76, 0x8e)));
+    assert_eq!(client.style(23).fg, Some(Color::Index(1)));
     assert!(client.display.banner().is_some());
     let screen = client.screen(Size::new(80, 24));
     assert!(!screen.contains("init.lua"), "{screen}");
@@ -460,7 +460,7 @@ fn turning_the_sidebar_off() {
     assert_eq!(client.display.ribbon_area(), Rect::new(0, 0, 80, 24));
     assert_eq!(client.sidebar_area(), None);
     let screen = client.screen(Size::new(80, 24));
-    let top = format!("\"┌{}┐{}\"", "─".repeat(38), " ".repeat(40));
+    let top = format!("\"╭{}╮{}\"", "─".repeat(38), " ".repeat(40));
     assert!(screen.contains(&top), "{screen}");
 }
 

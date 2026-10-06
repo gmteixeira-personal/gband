@@ -9,15 +9,17 @@ use crate::actions::ACTIONS;
 use crate::error::{ConfigError, caller};
 use crate::removed;
 
-pub(crate) const CLIENT_ONLY: [&str; 21] = [
+pub(crate) const CLIENT_ONLY: [&str; 23] = [
     "bind",
     "unbind",
     "spawn",
     "keymap",
     "keystyle",
+    "settings",
     "ui",
     "hl",
     "colorscheme",
+    "palette",
     "layout",
     "view",
     "window",
@@ -232,6 +234,29 @@ mod tests {
         let error = read_error(&test_side(), "return gband.keystyle");
         assert!(
             error.contains("`gband.keystyle` is a client API"),
+            "{error}"
+        );
+    }
+
+    fn server() -> Lua {
+        let lua = Lua::new();
+        crate::runtime::install(&lua, Side::Server, None, crate::BUDGET).unwrap();
+        lua
+    }
+
+    #[test]
+    fn palette_in_the_server() {
+        let error = read_error(&server(), "local a = 1\nlocal b = 2\ngband.palette.get()");
+        assert!(error.contains("spec_test.lua:3:"), "{error}");
+        assert!(error.contains("`gband.palette` is a client API"), "{error}");
+    }
+
+    #[test]
+    fn settings_api_in_the_server() {
+        let error = read_error(&server(), "local a = 1\ngband.settings.theme()");
+        assert!(error.contains("spec_test.lua:2:"), "{error}");
+        assert!(
+            error.contains("`gband.settings` is a client API"),
             "{error}"
         );
     }
