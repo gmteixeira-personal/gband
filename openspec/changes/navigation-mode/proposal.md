@@ -64,7 +64,7 @@ None.
 ### Expected Files
 - crates/lua/src/keymap.rs
 - crates/lua/src/lib.rs
-- crates/lua/src/api.rs
+- crates/lua/src/runtime.rs
 - crates/lua/src/defaults.lua
 - crates/lua/src/runtime/gband/statusline/mode.lua
 - crates/lua/src/runtime/gband/statusline/hints.lua
@@ -73,6 +73,7 @@ None.
 - crates/lua/tests/config.rs
 - crates/lua/tests/statusline.rs
 - crates/lua/tests/key_hints.rs
+- crates/lua/tests/plugins.rs
 - crates/client/src/bindings.rs
 - crates/client/src/lib.rs
 - crates/client/tests/actions.rs
@@ -88,13 +89,16 @@ None.
 - tests/plugin_windows.rs
 - tests/floating.rs
 - tests/plugin_runtime.rs
+- tests/plugin_testing.rs
 - tests/navigation.rs
 - tests/lua/keylist_spec.lua
 - tests/lua/screenshots/keylist_spec/
 - tests/lua/statusline_spec.lua
 - tests/lua/screenshots/statusline_spec/default-status-line.txt
+- tests/lua/loop_bands_spec.lua
 - examples/plugins/agent-status/tests/agent_status_spec.lua
 - examples/plugins/agent-status/tests/screenshots/agent_status_spec/a-prompt-marks-the-window-waiting.txt
 - README.md
 - docs/plugins.md
+- docs/testing.md
 - openspec/changes/navigation-mode/
