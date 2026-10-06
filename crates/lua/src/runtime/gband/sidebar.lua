@@ -10,6 +10,7 @@ local OPTIONS = { side = true, order = true }
 local LETTERS = "abcdefghijklmnopqrstuvwxyz"
 local MARKER_ROWS = 1
 local FIRST_BAND_ROW = 2
+local WHEEL = { down = "focus_band_down", up = "focus_band_up" }
 
 local placed = false
 
@@ -105,6 +106,17 @@ local function clicked(ev)
   end
 end
 
+local function scrolled(ev)
+  local action = WHEEL[ev.direction]
+  if not action or ev.target ~= "outside" or ev.ctrl or ev.alt or ev.shift then
+    return
+  end
+  local info = gband.bar.info(BAR)
+  if info.shown and ev.col == info.col then
+    gband.action[action]()
+  end
+end
+
 local function check_options(opts)
   if type(opts) ~= "table" then
     error("the options of `sidebar` must be a table", 2)
@@ -137,6 +149,7 @@ return {
       end,
     })
     gband.on("MousePressed", clicked)
+    gband.on("MouseScrolled", scrolled)
     placed = true
     if not host.loading() then
       draw()

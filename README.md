@@ -412,6 +412,7 @@ A label is the band's position, so the labels stay `1`, `2`, `3` after a band is
 Bands that do not fit above the last row, and bands past the 35th, are not shown.
 With the direct key style, the sidebar shows `P` after the prefix key until the key sequence ends.
 Clicking a band's label with the left button views that band, in any mode.
+Turning the wheel over the sidebar views the band below or above the viewed band, one band per step, in any mode.
 
 The sidebar is a plugin bundled with gband, `gband.sidebar`, which the default configuration sets up after `gband.errors`.
 A `user/init.lua` replaces the defaults, so it sets it up itself with the same call; a copy of `defaults/init.lua` already holds it:
