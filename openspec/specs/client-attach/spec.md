@@ -28,7 +28,7 @@ Defines `gband attach`: the client that connects the user's terminal to a sessio
 - **AND** nothing is sent on the socket
 
 ### Requirement: Start a server when none is running
-When nothing accepts connections on the socket path, `gband attach` SHALL start `gband server` from its own executable, addressing the same socket path with `-p` and passing the session name `-s` names, detached from the client's terminal and session, with the client's working directory and environment, and with standard input, output and error on `/dev/null`. It SHALL then connect to it. If no connection succeeds within 5 seconds, the client SHALL print one line to standard error naming the socket path and the server log, and exit with status 1.
+When nothing accepts connections on the socket path, `gband attach` SHALL start `gband server` from its own executable, addressing the same socket path with `-p` and passing the session name `-s` names and its reported size, as "Ribbon area beside the bars" defines, with `--size`, detached from the client's terminal and session, with the client's working directory and environment, and with standard input, output and error on `/dev/null`. It SHALL then connect to it. If no connection succeeds within 5 seconds, the client SHALL print one line to standard error naming the socket path and the server log, and exit with status 1.
 
 #### Scenario: First attach starts the session
 - **WHEN** no server is running and the user runs `gband attach` in `~/repos/gband`
@@ -44,6 +44,11 @@ When nothing accepts connections on the socket path, `gband attach` SHALL start 
 - **WHEN** no server named `feature` is running and the user runs `gband -S feature attach`
 - **THEN** a server listening on `feature.sock` in the runtime directory starts
 - **AND** `echo $GBAND` in its window prints that socket path
+
+#### Scenario: Started server at the reported size
+- **WHEN** no server is running, the default configuration is in use and the user runs `gband attach` in an 80×24 terminal
+- **THEN** the client starts `gband server` with `--size 79x24`
+- **AND** the session's first window starts with a PTY of 37 columns by 22 rows and is not resized after the client attaches
 
 #### Scenario: Started server survives its terminal
 - **WHEN** `gband attach` started the server and the terminal emulator window running the client is closed
@@ -248,7 +253,7 @@ Where a scenario of this requirement names no key style, the modal key style is 
 - **AND** the sidebar shows `N` on row 0
 
 #### Scenario: Repeated resize
-- **WHEN** the client's 80×24 terminal sets the screen area, the only window sits in a column of width 1/2, and the user presses Ctrl+Space, `=`, `=`, then Escape, waits, and runs `tput cols`
+- **WHEN** the client's 80×24 terminal sets the screen area, the client has no bar, the only window sits in a column of width 1/2, and the user presses Ctrl+Space, `=`, `=`, then Escape, waits, and runs `tput cols`
 - **THEN** the column's width is 7/10 and the tile is 56 columns wide
 - **AND** the window prints `54`, so the keys after Escape reached it
 
@@ -282,7 +287,7 @@ Where a scenario of this requirement names no key style, the modal key style is 
 - **AND** the second band holds the new window
 
 #### Scenario: Grow the column
-- **WHEN** the client's 80×24 terminal sets the screen area, the only window sits in a column of width 1/2, and the user presses Ctrl+Space, `=`, then Escape, waits, and runs `tput cols`
+- **WHEN** the client's 80×24 terminal sets the screen area, the client has no bar, the only window sits in a column of width 1/2, and the user presses Ctrl+Space, `=`, then Escape, waits, and runs `tput cols`
 - **THEN** the tile is 48 columns wide
 - **AND** the window prints `46`
 
@@ -495,7 +500,7 @@ With the modal key style, each of these keeps navigation mode active, and a disc
 - **THEN** focus does not change, and the focused window receives `x`
 
 ### Requirement: Input to the server
-The client SHALL send each key press and repeat that the key bindings do not consume to the server as a key naming the focused window, each paste as a paste naming the focused window, and each change of its reported size, as "Ribbon area beside the bars" defines it, as a resize carrying the reported size. While a plugin window is focused, the plugin-windows capability SHALL take the keys and the pastes instead, whether or not a window is focused. Otherwise, keys and pastes SHALL be dropped while no window is focused. Keys the input-encoding capability cannot represent SHALL be dropped. On attach, the client SHALL report its reported size as its terminal size.
+The client SHALL send each key press and repeat that the key bindings do not consume to the server as a key naming the focused window, each paste as a paste naming the focused window, and each change of its reported size, as "Ribbon area beside the bars" defines it, as a resize carrying the reported size. While a plugin window is focused, the plugin-windows capability SHALL take the keys and the pastes instead, whether or not a window is focused. Otherwise, keys and pastes SHALL be dropped while no window is focused. Keys the input-encoding capability cannot represent SHALL be dropped. On attach, the client SHALL send its reported size as the terminal size its hello carries, as the wire-protocol capability defines the hello. Its bars SHALL already be placed for that report, as the configuration loaded before the handshake adds them.
 
 #### Scenario: Typing runs a command
 - **WHEN** the user types `echo hi` and Enter
@@ -507,8 +512,17 @@ The client SHALL send each key press and repeat that the key bindings do not con
 - **AND** the first window's screen is unchanged
 
 #### Scenario: Resize reaches the program
-- **WHEN** the only window sits in a column of width 1/2, the user resizes the terminal to 70 columns and runs `tput cols`
+- **WHEN** the client has no bar, the only window sits in a column of width 1/2, the user resizes the terminal to 70 columns and runs `tput cols`
 - **THEN** the window prints `33`
+
+#### Scenario: Resize beside the sidebar
+- **WHEN** the sidebar is a left bar 1 column wide, the only window sits in a column of width 1/2, the user resizes the terminal to 71 columns and runs `tput cols`
+- **THEN** the client reports the size 70×24 and the window prints `33`
+
+#### Scenario: First report beside the sidebar
+- **WHEN** the default configuration is in use and the user runs `gband attach -s fresh` in an 80×24 terminal, creating the session
+- **THEN** the client's hello carries the size 79×24
+- **AND** the session's first window starts with a PTY of 37 columns by 22 rows
 
 #### Scenario: Height beside the sidebar
 - **WHEN** the client's terminal is 80×24, the sidebar is a left bar 1 column wide, and the only window runs `tput lines`
@@ -531,23 +545,28 @@ The client SHALL send each key press and repeat that the key bindings do not con
 - **THEN** `on_input` runs with `hi`
 
 ### Requirement: Ribbon area beside the bars
-The client's reported size SHALL be its terminal's size. The client's ribbon area SHALL be the cells of its terminal that its bars leave, as the bars capability places them: the terminal's full height, from the first column the left bars leave to the last column the right bars leave. Wherever the layout-view and animations capabilities speak of the client's terminal, its size, its top row or its first column, they SHALL mean the ribbon area, its size, its top row and its first column. The client's view SHALL use the ribbon area as its viewport, so the camera, the shown windows and the drawn bands follow the ribbon area, not the terminal. Tiles SHALL keep the sizes the layout gives them for the session's screen area, whatever the ribbon area's width.
+The client's ribbon area SHALL be the cells of its terminal that its bars leave, as the bars capability places them: the terminal's full height, from the first column the left bars leave to the last column the right bars leave. The client's reported size SHALL be the ribbon area's size, so the session's screen area, while this client sets it, is the space its bars leave. Wherever the layout-view and animations capabilities speak of the client's terminal, its size, its top row or its first column, they SHALL mean the ribbon area, its size, its top row and its first column. The client's view SHALL use the ribbon area as its viewport, so the camera, the shown windows and the drawn bands follow the ribbon area, not the terminal. Tiles SHALL keep the sizes the layout gives them for the session's screen area, so a tile measured for another client's screen area MAY be wider or narrower than this client's ribbon area.
 
-The reported size SHALL change only when the terminal changes size. Every change of the reported size SHALL be handled as a change of the terminal's size: the client SHALL report the new size to the server, as "Input to the server" defines, and its drawn state SHALL snap, as the animations capability defines for a terminal resize. A change of the ribbon area that the bars cause SHALL be handled as the bars capability defines.
+The reported size SHALL change when the terminal changes size and when the bars change the ribbon area's size. Every change of the reported size SHALL be reported to the server, as "Input to the server" defines, and the client's drawn state SHALL snap, as the animations capability defines for a terminal resize. A change of the ribbon area that keeps its size SHALL be handled as the bars capability defines, and SHALL NOT be reported.
 
 #### Scenario: Default sidebar
 - **WHEN** the client's terminal is 80×24 and the default configuration is in use
-- **THEN** the client reports the size 80×24
+- **THEN** the client reports the size 79×24
 - **AND** column 0 shows the sidebar and the ribbon area spans columns 1 to 79
 
 #### Scenario: Sidebar off
 - **WHEN** the client's terminal is 80×24 and the client has no bar
 - **THEN** the client reports the size 80×24 and the ribbon area is the whole terminal
 
+#### Scenario: Full width beside the sidebar
+- **WHEN** the client's terminal is 80×24, the default configuration is in use, the client sets the screen area, and the user toggles full width on the only window's column
+- **THEN** the tile is 79 columns wide, drawn on screen columns 1 to 79, with its right border on column 79
+- **AND** `tput cols` in the window prints `77`
+
 #### Scenario: Turning the sidebar off
-- **WHEN** the client's 80×24 terminal sets the screen area, the sidebar is a left bar 1 column wide, the only window sits in a column of width 1/2, and the user removes the setup of `gband.sidebar` from `user/init.lua`
-- **THEN** after the reload the client reports no resize, the ribbon area is the whole terminal, and the window's tile is still 40×24
-- **AND** `tput cols` in the window still prints `38`
+- **WHEN** the client's terminal is 80×24, the client sets the screen area, the sidebar is a left bar 1 column wide, the only window sits in a column of width 1/2, and the user removes the setup of `gband.sidebar` from `user/init.lua`
+- **THEN** after the reload the client reports the size 80×24 once, the ribbon area is the whole terminal, and the window's tile is 40×24
+- **AND** `tput cols` in the window prints `38`
 
 #### Scenario: Moving the sidebar
 - **WHEN** the sidebar is a left bar 1 column wide and the user sets it up with `gband.plugin("gband.sidebar", { side = "right" })` in `user/init.lua`
@@ -555,9 +574,13 @@ The reported size SHALL change only when the terminal changes size. Every change
 - **AND** on an 80×24 terminal the ribbon is drawn from column 0 to column 78, and the sidebar on column 79
 
 #### Scenario: Ribbon right of a left bar
-- **WHEN** the client's 80×24 terminal sets the screen area, its only bar is a left bar of size 20, and the viewed band holds one column of width 1/2
-- **THEN** the client reports 80×24
-- **AND** the tile is 40 columns wide and is drawn on screen columns 20 to 59
+- **WHEN** the client's terminal is 80×24, the client sets the screen area, its only bar is a left bar of size 20, and the viewed band holds one column of width 1/2
+- **THEN** the client reports 60×24
+- **AND** the tile is 30 columns wide and is drawn on screen columns 20 to 49
+
+#### Scenario: Another client's wider area
+- **WHEN** this client has an 80×24 terminal and a left bar of size 20, a second client with an 80×24 terminal and no bar attaches after it, and the viewed band holds one column with full width on
+- **THEN** this client draws the 80-column tile from screen column 20, cut after column 79
 
 ### Requirement: Ribbon presentation
 After the handshake, the client SHALL take the terminal full screen in raw mode with bracketed paste enabled. It SHALL keep its own grid of every window, as the wire-protocol capability defines, and its own view, as the layout-view capability defines. It SHALL draw only the viewed band, except during a band switch, when it SHALL draw the bands the animations capability places on screen. It SHALL draw the ribbon in the ribbon area and each shown bar where the bars capability places it. It SHALL draw the viewed band's floating windows over the tiles, in its stacking order, as the floating-windows capability defines. It SHALL draw the floating plugin windows it opened over the floating windows, as the plugin-windows capability defines. While the configuration capability shows a configuration error and the sidebar's error marker, as the sidebar capability defines, is not drawn, the client SHALL draw that error over the ribbon area's bottom row, after the tiles, the floating windows and the floating plugin windows.
@@ -594,8 +617,8 @@ The terminal's cursor SHALL sit where the focused window's cursor is. It SHALL b
 - **AND** column 0 shows the sidebar
 
 #### Scenario: Ribbon beside the sidebar
-- **WHEN** the client's 80×24 terminal sets the screen area, the sidebar is a left bar 1 column wide, and the viewed band holds two columns of width 1/2 with the first focused
-- **THEN** the first tile spans screen columns 1 to 40, the second is cut after column 79, and column 0 shows the sidebar
+- **WHEN** the client's terminal is 80×24, the client sets the screen area, the sidebar is a left bar 1 column wide, and the viewed band holds two columns of width 1/2 with the first focused
+- **THEN** the screen area is 79×24, the first tile spans screen columns 1 to 39 and the second spans 40 to 78, both whole, and column 0 shows the sidebar
 
 #### Scenario: Empty band
 - **WHEN** the client views an empty band

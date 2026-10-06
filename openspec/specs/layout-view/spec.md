@@ -119,7 +119,7 @@ When the layout changes, each client's view SHALL follow it:
 ### Requirement: Camera
 Each band's camera SHALL be the strip position shown at the client terminal's left edge. A camera below 0 SHALL be allowed, and strip positions left of 0 SHALL be drawn empty while the band's strip does not loop. After every change of focus, of the layout or of the client's terminal width, the camera of the viewed band SHALL move by the configuration's `center_focused_column` policy, where the view spans from the camera to the camera plus the terminal's width. While the floating layer is active, the camera SHALL move as though the tiled window this client focused most recently in the band were focused, and SHALL NOT move when there is none.
 
-A band's strip SHALL loop while the configuration's `loop_bands` is on and the strip's width, the end of its last column, less the width of its widest column is at least the terminal's width. A strip that does not loop SHALL be drawn once, so no window is ever drawn twice. While a strip loops:
+A band's strip SHALL loop while the configuration's `loop_bands` is on and the strip's width, the end of its last column, less the width of its widest column is at least the terminal's width less one. A column and its copy are the strip's width less the column's width apart, so a view at most one cell wider than that gap never shows both. A strip that does not loop SHALL be drawn once, so no window is ever drawn twice. While a strip loops:
 
 - Each column SHALL also stand at its strip position plus every whole multiple of the strip's width. Each of these positions is a copy of the column. The last column's copy ends at strip position 0 and the first column's copy starts at the strip's width, so the strip closes into a loop.
 - A tile's drawn copy SHALL be the copy of its column that has at least one cell inside the view. The strip's length ensures that a tile has at most one.
@@ -194,6 +194,11 @@ Under `"on-overflow"`, when focus moves from one column to another column C of t
 - **WHEN** `loop_bands` is on, the policy is `"always"`, the terminal is 80 columns wide, a band holds three columns of 40 cells at strip positions 0, 40 and 80, the third is focused, and the client focuses the column to the right
 - **THEN** the camera moves to 100
 - **AND** the terminal shows the last 20 cells of the third column, then the first column, then the first 20 cells of the second column
+
+#### Scenario: Strip one cell short of the terminal loops
+- **WHEN** `loop_bands` is on, the policy is `"never"`, the terminal is 79 columns wide, a band holds three columns of 39 cells at strip positions 0, 39 and 78, the third is focused with the camera at 38, and the client focuses the column to the right
+- **THEN** the client focuses the first column and the camera moves to 77
+- **AND** the terminal shows the last cell of the second column in cell 0, the third column in cells 1 to 39 and the first column in cells 40 to 78
 
 #### Scenario: Short strip does not loop
 - **WHEN** `loop_bands` is on, the policy is `"always"`, the terminal is 80 columns wide, a band holds two columns of 40 cells at strip positions 0 and 40, and focus moves from the second column to the first by the column to the right
