@@ -8,6 +8,7 @@ See proposal.md for the motivation. This change starts after settings-interactiv
 - The client draws tiles and floating windows in `draw_tile` (`crates/client/src/render.rs`) through `draw_border`, with the border styles of `WindowBorder` and `WindowBorderFocused`. Floating plugin window titles are drawn in `draw_float` with the same cut rule this change uses.
 - `gband.prompt` (`crates/lua/src/runtime/gband/prompt.lua`) holds the one-line editor privately: fitting, pastes, Backspace, Ctrl+U, Escape, Enter.
 - After mouse, the protocol version is expected to be 9. This change takes the next one.
+- The `gband test` runner builds each case's environment in `crates/harness/src/case.rs`, which already sets `GBAND_ANIMATIONS=off`. gband's own end-to-end tests build theirs in `crates/harness/src/env.rs`, which sets `SHELL=/bin/sh`. Each end-to-end terminal can change its command's environment through the `adjust` hook in `crates/harness/src/terminal.rs`.
 
 ## Goals / Non-Goals
 
@@ -15,6 +16,7 @@ See proposal.md for the motivation. This change starts after settings-interactiv
 - One source of truth for a window's names: the server. Clients only number and draw.
 - Behave like zellij where zellij defines behaviour: manual name, then the program's title, with the title stack honoured.
 - Every requirement text this change modifies starts from the text on `dev` when implementation starts, so no sibling change's edit is reverted at archive.
+- No existing screen reference gains a title. A reference shows one only when its case asks for titles.
 
 **Non-Goals:**
 - Process inspection outside Linux. Other systems fall back to the program's own command name.
@@ -75,6 +77,18 @@ The presets already set up `gband.prompt`, so binding `prefix N` needs no new pl
 Alternatives considered:
 - *A new bundled plugin `gband.rename`.* It would add a plugin to both presets and a requirement change to key-style, for about 20 lines of Lua that share the editor.
 
+### Titles off in tests: an option for users, an environment variable for tests
+Users turn titles off with `gband.set({ window_titles = false })`, which reloads like every other option. Tests cannot use the option. Most cases run the default configuration with no `user/init.lua`, and writing one would replace the defaults under test. An environment variable reaches the client in every case with no file. `GBAND_ANIMATIONS` already sets the pattern: one read at start, `off` or `on`, and a warning otherwise. `off` wins over the option, so a case whose configuration sets `window_titles = true` still draws no title unless the case asks for titles.
+
+The runner sets the variable unless `g.start{ window_titles = true }`. A named field matches `keystyle` and `theme` and keeps the variable an implementation detail of the runner. `TestEnv` sets it in gband's own base environment, beside `SHELL=/bin/sh`, and `tests/window_names.rs` removes it through `adjust`.
+
+Shipping titles off in tests together with titles themselves means no screen reference is rewritten with titles and then rewritten back.
+
+Alternatives considered:
+- *Regenerate every reference with titles.* Every later change to naming or title drawing would then touch every reference, and plugin authors' `gband test` references would carry titles their plugins never draw.
+- *Mask titles when comparing references.* It would hide a regression in the border under a title.
+- *A saved file under `user/`, as `keystyle` and `theme` are.* Those are settings-window preferences. Titles are not a settings row.
+
 ### `gband.window.rename` validated in the client
 `crates/lua/src/control.rs` checks the window number against the client's layout, rejects drawn windows and control characters, trims, and dispatches a rename item in the callback's ordered action list, as `set_position` is dispatched.
 
@@ -83,11 +97,11 @@ The delta writes 10, on the expectation that mouse takes 9. The first implementa
 
 ## Risks / Trade-offs
 
-- [Deltas written before their siblings archive] → client-attach's "Key bindings" was copied from settings-interactive-on-new's delta, and wire-protocol's "Client messages" from mouse's delta. Task 1.1 re-copies each modified requirement from the main spec on `dev`, re-applies this change's additions, and runs `openspec validate --strict`, before any code.
+- [Deltas written before their siblings archive] → client-attach's "Key bindings" was copied from settings-interactive-on-new's delta, and wire-protocol's "Client messages" from mouse's delta. plugin-testing's "Case environment" was copied from the main spec, and band-sidebar and settings-themes both modify it first. Task 1.1 re-copies each modified requirement from the main spec on `dev`, re-applies this change's additions, and runs `openspec validate --strict`, before any code.
 - [Prompt titles hide the command for most shells] → Chosen to match zellij, and documented in the README with the fish default and a zsh/bash preexec example. The manual name covers the rest.
 - [`/proc` reads race with exiting processes] → Every read failure falls back, and the next tick corrects it.
 - [Key list references shift] → The `N` line is added to the key list, so its first-page and last-page references are regenerated. Each diff is checked to hold only the new line and what moves below it.
-- [Titles change every tile's top border] → Every screen reference with a tile changes. They are regenerated in one task, and each diff is checked to hold only titles.
+- [Most screen tests never draw a title] → `window_names_spec.lua` covers titles on tiles, floating windows, numbering, the cut and both styles. `tests/window_names.rs` covers titles end to end.
 
 ## Migration Plan
 
