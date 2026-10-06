@@ -7,7 +7,8 @@ use std::sync::{Arc, Mutex};
 use common::*;
 use gband_core::geometry::Size;
 use gband_core::layout::{
-    BandId, Layout, LayoutOptions, Program, SessionAction, Vertical, WindowContent, WindowId,
+    BandId, Layout, LayoutOptions, Program, Proportion, SessionAction, Vertical, WindowContent,
+    WindowId,
 };
 use gband_lua::server::{Caller, Event, Host, SessionView};
 use gband_lua::{Config, Dispatch, Outcome};
@@ -601,6 +602,7 @@ fn open_window_target_with_a_program_list() {
                 action: SessionAction::StepWidth {
                     window: WindowId(1),
                     step: gband_core::layout::Step::Grow,
+                    by: Proportion::TENTH,
                 },
             },
         ]
@@ -646,6 +648,65 @@ fn invalid_action_targets() {
             panic!("{call}: {:?}", outcome.errors);
         };
         assert!(error.message.contains(mentions), "{call}: {error}");
+        assert_eq!(error.location.as_ref().map(|(_, line)| *line), Some(2));
+        assert!(outcome.dispatched.is_empty(), "{call}");
+    }
+}
+
+#[test]
+fn grow_by_a_step_from_the_server() {
+    let (_scratch, config) = server(
+        "gband.on('WindowOpened', function(ev)
+           gband.action.grow_column_width({ session = ev.session, window = ev.window, step = 1/4 })
+           gband.action.grow_column_width({ session = ev.session, window = ev.window })
+           gband.action.shrink_window_height({ session = ev.session, window = ev.window, step = 0.5 })
+         end)",
+        Arc::new(Fake::default()),
+    );
+    let outcome = config.runtime.emit_server(&opened("work", 1));
+    clean(&outcome);
+    let targeted = |action| Dispatch::Targeted {
+        session: "work".to_owned(),
+        action,
+    };
+    assert_eq!(
+        outcome.dispatched,
+        [
+            targeted(SessionAction::StepWidth {
+                window: WindowId(1),
+                step: gband_core::layout::Step::Grow,
+                by: Proportion::new(1, 4),
+            }),
+            targeted(SessionAction::StepWidth {
+                window: WindowId(1),
+                step: gband_core::layout::Step::Grow,
+                by: Proportion::TENTH,
+            }),
+            targeted(SessionAction::StepHeight {
+                window: WindowId(1),
+                step: gband_core::layout::Step::Shrink,
+                by: Proportion::ONE_HALF,
+            }),
+        ]
+    );
+}
+
+#[test]
+fn server_step_out_of_range_or_on_another_action() {
+    for call in [
+        "gband.action.grow_window_height({ session = 'w', window = 1, step = 2 })",
+        "gband.action.shrink_column_width({ session = 'w', window = 1, step = 0 })",
+        "gband.action.grow_column_width({ session = 'w', window = 1, step = 'big' })",
+        "gband.action.close_window({ session = 'w', window = 1, step = 1/4 })",
+        "gband.action.open_window({ session = 'w', band = 1, step = 1/4 })",
+    ] {
+        let (outcome, _) = failed_handler(&format!(
+            "gband.on('WindowOpened', function()\n{call}\nend)"
+        ));
+        let [error] = outcome.errors.as_slice() else {
+            panic!("{call}: {:?}", outcome.errors);
+        };
+        assert!(error.message.contains("step"), "{call}: {error}");
         assert_eq!(error.location.as_ref().map(|(_, line)| *line), Some(2));
         assert!(outcome.dispatched.is_empty(), "{call}");
     }

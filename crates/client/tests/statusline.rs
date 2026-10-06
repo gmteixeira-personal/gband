@@ -7,7 +7,7 @@ use gband_client::{Controls, Display, Step};
 use gband_core::geometry::Size;
 use gband_core::layout::{Layout, LayoutOptions, WindowId};
 use gband_lua::keys::parse_key;
-use gband_lua::{Config, ConfigError, DEFAULTS, LoadOptions, Locations, StatusLine};
+use gband_lua::{Config, ConfigError, DEFAULTS, LoadOptions, Locations};
 use gband_protocol::{ClientMessage, ServerMessage};
 use insta::assert_snapshot;
 use ratatui::Terminal;
@@ -119,11 +119,34 @@ impl Client {
             .press(&mut self.display, parse_key(name).unwrap())
     }
 
-    fn status(&self) -> String {
-        let width = self.display.status_area().map_or(0, |area| area.width);
+    fn status_area(&self) -> Option<Rect> {
         self.display
-            .status_line()
-            .map_or_else(String::new, |line| text(line, width))
+            .bars()
+            .find(|(bar, _)| bar.id == "statusline")
+            .map(|(_, area)| area)
+    }
+
+    fn status(&self) -> Vec<(usize, String)> {
+        self.display
+            .bars()
+            .find(|(bar, _)| bar.id == "statusline")
+            .map(|(bar, _)| {
+                bar.lines
+                    .iter()
+                    .map(|runs| runs.iter().map(|run| run.text.as_str()).collect::<String>())
+                    .enumerate()
+                    .filter(|(_, text)| !text.is_empty())
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    fn row(&self, row: usize) -> String {
+        self.status()
+            .into_iter()
+            .find(|(at, _)| *at == row)
+            .map(|(_, text)| text)
+            .unwrap_or_default()
     }
 
     fn screen(&mut self, terminal: Size) -> String {
@@ -139,31 +162,31 @@ impl Client {
     }
 }
 
-fn text(line: &StatusLine, width: u16) -> String {
-    let mut cells = vec![" ".to_owned(); usize::from(width)];
-    for span in &line.spans {
-        let mut col = usize::from(span.col);
-        for c in span.text.chars() {
-            let taken = gband_lua::ui::width(&c.to_string());
-            if col < cells.len() {
-                cells[col] = c.to_string();
-            }
-            for extra in 1..taken {
-                if col + extra < cells.len() {
-                    cells[col + extra] = String::new();
-                }
-            }
-            col += taken;
-        }
-    }
-    cells.concat()
-}
-
 fn resize(size: Size) -> Step {
     Step::Send(ClientMessage::Resize {
         cols: size.cols,
         rows: size.rows,
     })
+}
+
+fn resizes(steps: &[Step]) -> Vec<&Step> {
+    steps
+        .iter()
+        .filter(|step| matches!(step, Step::Send(ClientMessage::Resize { .. })))
+        .collect()
+}
+
+const SETUP: &str = "gband.plugin(\"gband.statusline\")";
+
+fn without_status_line() -> String {
+    DEFAULTS.replace(SETUP, "")
+}
+
+fn with_setup(opts: &str) -> String {
+    DEFAULTS.replace(
+        SETUP,
+        &format!("gband.plugin(\"gband.statusline\", {opts})"),
+    )
 }
 
 fn defaults(name: &str, extra: &str, terminal: Size) -> (Scratch, Client) {
@@ -172,65 +195,69 @@ fn defaults(name: &str, extra: &str, terminal: Size) -> (Scratch, Client) {
     (scratch, Client::new(config, terminal))
 }
 
-#[test]
-fn status_line_at_the_bottom() {
-    let (_scratch, client) = defaults("bottom", "", Size::new(80, 24));
-    assert_eq!(client.display.reported_size(), Size::new(80, 23));
-    assert_eq!(client.display.ribbon_area(), Rect::new(0, 0, 80, 23));
-    assert_eq!(client.display.status_area(), Some(Rect::new(0, 23, 80, 1)));
+fn loaded(name: &str, source: &str, terminal: Size) -> (Scratch, Client) {
+    let scratch = Scratch::new(name);
+    let config = scratch.load(source).unwrap();
+    (scratch, Client::new(config, terminal))
+}
+
+fn line(row: usize, text: &str) -> (usize, String) {
+    (row, text.to_owned())
 }
 
 #[test]
-fn status_line_on_top() {
-    let (_scratch, client) = defaults(
-        "top",
-        "gband.opt.statusline_position = 'top'",
-        Size::new(80, 24),
-    );
-    assert_eq!(client.display.reported_size(), Size::new(80, 23));
-    assert_eq!(client.display.ribbon_area(), Rect::new(0, 1, 80, 23));
-    assert_eq!(client.display.status_area(), Some(Rect::new(0, 0, 80, 1)));
-}
-
-#[test]
-fn status_line_off() {
-    let (_scratch, client) = defaults(
-        "off",
-        "gband.opt.statusline_position = 'off'",
-        Size::new(80, 24),
-    );
+fn default_placement() {
+    let (_scratch, mut client) = defaults("default-placement", "", Size::new(80, 24));
+    client.attach(1, 0);
     assert_eq!(client.display.reported_size(), Size::new(80, 24));
-    assert_eq!(client.display.status_area(), None);
+    assert_eq!(client.display.ribbon_area(), Rect::new(20, 0, 60, 24));
+    assert_eq!(client.status_area(), Some(Rect::new(0, 0, 20, 24)));
+}
+
+#[test]
+fn right_side() {
+    let (_scratch, mut client) = loaded(
+        "right-side",
+        &with_setup("{ side = \"right\" }"),
+        Size::new(80, 24),
+    );
+    client.attach(1, 0);
+    assert_eq!(client.display.ribbon_area(), Rect::new(0, 0, 60, 24));
+    assert_eq!(client.status_area(), Some(Rect::new(60, 0, 20, 24)));
+}
+
+#[test]
+fn turning_the_status_line_off() {
+    let (_scratch, mut client) = loaded("off", &without_status_line(), Size::new(80, 24));
+    client.attach(1, 0);
+    assert_eq!(client.display.reported_size(), Size::new(80, 24));
+    assert_eq!(client.display.ribbon_area(), Rect::new(0, 0, 80, 24));
+    assert_eq!(client.status_area(), None);
 }
 
 #[test]
 fn terminal_too_short() {
-    let (_scratch, client) = defaults("short", "gband.opt.statusline_height = 2", Size::new(80, 2));
-    assert_eq!(client.display.reported_size(), Size::new(80, 2));
-    assert_eq!(client.display.status_area(), None);
+    let (_scratch, mut client) = defaults("short", "", Size::new(20, 24));
+    client.attach(1, 0);
+    assert_eq!(client.display.ribbon_area(), Rect::new(0, 0, 20, 24));
+    assert_eq!(client.status_area(), None);
+    let steps = client
+        .controls
+        .resize(&mut client.display, Size::new(30, 24));
+    assert_eq!(resizes(&steps), [&resize(Size::new(30, 24))]);
+    assert_eq!(client.status_area(), Some(Rect::new(0, 0, 20, 24)));
+    assert_eq!(client.display.ribbon_area(), Rect::new(20, 0, 10, 24));
 }
 
 #[test]
-fn resize_reports_the_ribbon_area() {
+fn resize_reports_the_terminal_size() {
     let (_scratch, mut client) = defaults("resize", "", Size::new(80, 24));
     client.attach(1, 0);
     let steps = client
         .controls
         .resize(&mut client.display, Size::new(100, 30));
-    assert_eq!(steps.first(), Some(&resize(Size::new(100, 29))));
-}
-
-#[test]
-fn growing_past_the_status_height_draws_it() {
-    let (_scratch, mut client) =
-        defaults("grow", "gband.opt.statusline_height = 2", Size::new(80, 2));
-    client.attach(1, 0);
-    assert_eq!(client.status(), "");
-    let steps = client
-        .controls
-        .resize(&mut client.display, Size::new(80, 10));
-    assert_eq!(steps.first(), Some(&resize(Size::new(80, 8))));
-    assert!(client.status().starts_with("band 1"), "{}", client.status());
+    assert_eq!(steps.first(), Some(&resize(Size::new(100, 30))));
+    assert_eq!(client.display.ribbon_area(), Rect::new(20, 0, 80, 30));
 }
 
 #[test]
@@ -247,57 +274,73 @@ fn shown_windows_follow_the_ribbon() {
 fn reload_turning_the_status_line_off() {
     let (scratch, mut client) = defaults("reload-off", "", Size::new(80, 24));
     client.attach(1, 0);
-    let reloaded = scratch.load(&format!(
-        "{DEFAULTS}\ngband.opt.statusline_position = 'off'"
-    ));
-    let steps = client.controls.reload(&mut client.display, reloaded);
-    let resizes: Vec<&Step> = steps
-        .iter()
-        .filter(|step| matches!(step, Step::Send(ClientMessage::Resize { .. })))
-        .collect();
-    assert_eq!(resizes, [&resize(Size::new(80, 24))]);
-    assert_eq!(client.display.status_area(), None);
+    let steps = client
+        .controls
+        .reload(&mut client.display, scratch.load(&without_status_line()));
+    assert!(resizes(&steps).is_empty(), "{steps:?}");
+    assert_eq!(client.status_area(), None);
+    assert_eq!(client.display.ribbon_area(), Rect::new(0, 0, 80, 24));
 }
 
 #[test]
 fn reload_moving_the_status_line() {
-    let (scratch, mut client) = defaults("reload-top", "", Size::new(80, 24));
+    let (scratch, mut client) = defaults("reload-right", "", Size::new(80, 24));
     client.attach(1, 0);
-    let reloaded = scratch.load(&format!(
-        "{DEFAULTS}\ngband.opt.statusline_position = 'top'"
-    ));
-    let steps = client.controls.reload(&mut client.display, reloaded);
-    assert!(
-        !steps
-            .iter()
-            .any(|step| matches!(step, Step::Send(ClientMessage::Resize { .. }))),
-        "{steps:?}"
+    let steps = client.controls.reload(
+        &mut client.display,
+        scratch.load(&with_setup("{ side = \"right\" }")),
     );
-    assert_eq!(client.display.status_area(), Some(Rect::new(0, 0, 80, 1)));
-    assert_eq!(client.display.ribbon_area(), Rect::new(0, 1, 80, 23));
+    assert!(resizes(&steps).is_empty(), "{steps:?}");
+    assert_eq!(client.status_area(), Some(Rect::new(60, 0, 20, 24)));
+    assert_eq!(client.display.ribbon_area(), Rect::new(0, 0, 60, 24));
+}
+
+#[test]
+fn reload_keeps_an_unchanged_status_line() {
+    let (scratch, mut client) = defaults("reload-same", "", Size::new(80, 24));
+    client.attach(2, 1);
+    let steps = client
+        .controls
+        .reload(&mut client.display, scratch.load(DEFAULTS));
+    assert!(resizes(&steps).is_empty(), "{steps:?}");
+    assert_eq!(client.display.ribbon_area(), Rect::new(20, 0, 60, 24));
+    assert_eq!(client.row(23), "2/2");
 }
 
 #[test]
 fn reload_turning_the_status_line_on_renders_it() {
-    let (scratch, mut client) = defaults(
-        "reload-on",
-        "gband.opt.statusline_position = 'off'",
-        Size::new(80, 24),
-    );
+    let (scratch, mut client) = loaded("reload-on", &without_status_line(), Size::new(80, 24));
     client.attach(2, 1);
-    let reloaded = scratch.load(DEFAULTS);
-    let steps = client.controls.reload(&mut client.display, reloaded);
-    assert_eq!(steps.first(), Some(&resize(Size::new(80, 23))));
-    assert!(client.status().ends_with(" 2/2"), "{}", client.status());
+    let steps = client
+        .controls
+        .reload(&mut client.display, scratch.load(DEFAULTS));
+    assert!(resizes(&steps).is_empty(), "{steps:?}");
+    assert_eq!(client.row(23), "2/2");
+}
+
+#[test]
+fn failed_reload_keeps_the_bars() {
+    let (scratch, mut client) = defaults("reload-failed", "", Size::new(80, 24));
+    client.attach(1, 0);
+    client
+        .controls
+        .reload(&mut client.display, scratch.load("local = 1"));
+    assert_eq!(client.status_area(), Some(Rect::new(0, 0, 20, 24)));
+    assert_eq!(client.row(0), "error");
 }
 
 #[test]
 fn default_segments_after_attach() {
     let (_scratch, mut client) = defaults("segments", "", Size::new(80, 24));
     client.attach(3, 1);
-    let status = client.status();
-    assert!(status.starts_with("band 1 "), "{status:?}");
-    assert!(status.ends_with(" 2/3"), "{status:?}");
+    assert_eq!(
+        client.status(),
+        [
+            line(0, "band 1"),
+            line(1, "C-space navigation"),
+            line(23, "2/3")
+        ]
+    );
 }
 
 #[test]
@@ -306,7 +349,7 @@ fn position_follows_focus() {
     client.attach(3, 1);
     client.press("ctrl+space");
     client.press("h");
-    assert!(client.status().ends_with(" 1/3"), "{}", client.status());
+    assert_eq!(client.row(23), "1/3");
 }
 
 #[test]
@@ -314,50 +357,25 @@ fn mode_segment_after_the_prefix() {
     let (_scratch, mut client) = defaults("mode", "", Size::new(80, 24));
     client.attach(3, 1);
     client.press("ctrl+space");
-    assert!(
-        client.status().starts_with("band 1 │ navigation │ "),
-        "{}",
-        client.status()
-    );
+    assert_eq!(client.row(1), "navigation");
     client.press("h");
-    assert!(
-        client.status().starts_with("band 1 │ navigation │ "),
-        "{}",
-        client.status()
-    );
+    assert_eq!(client.row(1), "navigation");
     client.press("escape");
-    assert!(
-        client.status().starts_with("band 1 │ C-space navigation "),
-        "{}",
-        client.status()
-    );
-    assert!(
-        !client.status().contains("│ navigation │"),
-        "{}",
-        client.status()
-    );
+    assert_eq!(client.row(1), "C-space navigation");
 }
 
 #[test]
 fn hints_after_the_prefix() {
     let (_scratch, mut client) = defaults("hints", "", Size::new(80, 24));
     client.attach(3, 1);
-    assert!(
-        client.status().starts_with("band 1 │ C-space navigation "),
-        "{}",
-        client.status()
-    );
     client.press("ctrl+space");
-    let status = client.status();
-    assert!(
-        status.starts_with("band 1 │ navigation │ h left  l right  j down"),
-        "{status}"
-    );
-    assert!(
-        status.trim_end_matches(" 2/3").trim_end().ends_with(" …"),
-        "{status}"
-    );
-    assert_eq!(status.chars().count(), 80);
+    assert_eq!(client.row(2), "h left  l right");
+    assert_eq!(client.row(3), "j down  k up");
+    let rows = client.status();
+    let (last, text) = &rows[rows.len() - 2];
+    assert!(text.ends_with(" …"), "{rows:?}");
+    assert_eq!(*last, 21);
+    assert_eq!(rows.last().unwrap(), &line(23, "2/3"));
 }
 
 #[test]
@@ -366,25 +384,23 @@ fn back_to_root() {
     client.attach(3, 1);
     client.press("ctrl+space");
     client.press("h");
-    assert!(
-        client.status().starts_with("band 1 │ navigation │ h left"),
-        "{}",
-        client.status()
-    );
+    assert_eq!(client.row(2), "h left  l right");
     client.press("escape");
-    assert!(
-        client.status().starts_with("band 1 │ C-space navigation "),
-        "{}",
-        client.status()
+    assert_eq!(
+        client.status(),
+        [
+            line(0, "band 1"),
+            line(1, "C-space navigation"),
+            line(23, "1/3")
+        ]
     );
-    assert!(!client.status().contains("left"), "{}", client.status());
 }
 
 #[test]
-fn width_change_renders_each_component() {
+fn height_change_renders_each_component() {
     let (_scratch, mut client) = defaults(
-        "width",
-        "renders = 0\ngband.ui.statusline.add({ id = 'w', render = function(ctx) renders = renders + 1 width = ctx.total_width end })",
+        "height",
+        "renders = 0\ngband.ui.statusline.add({ id = 'w', render = function(ctx) renders = renders + 1 height = ctx.total_height end })",
         Size::new(80, 24),
     );
     client.attach(1, 0);
@@ -392,12 +408,12 @@ fn width_change_renders_each_component() {
     client
         .controls
         .resize(&mut client.display, Size::new(60, 24));
-    assert_eq!(client.number("renders"), 2);
-    assert_eq!(client.number("width"), 60);
+    assert_eq!(client.number("renders"), 1);
     client
         .controls
         .resize(&mut client.display, Size::new(60, 30));
     assert_eq!(client.number("renders"), 2);
+    assert_eq!(client.number("height"), 30);
 }
 
 #[test]
@@ -427,7 +443,11 @@ fn timers_drive_interval_components() {
         .controls
         .fire_timers(&mut client.display, deadline + Duration::from_millis(1));
     assert_eq!(client.number("ticks"), 2);
-    assert!(client.status().contains("tick 2"), "{}", client.status());
+    assert!(
+        client.status().iter().any(|(_, text)| text == "tick 2"),
+        "{:?}",
+        client.status()
+    );
 }
 
 #[test]
@@ -435,15 +455,37 @@ fn plugin_error_at_start() {
     let scratch = Scratch::new("error-start");
     let file = scratch.client_plugin("hello", "\n\nerror('boom')");
     let config = scratch.load(DEFAULTS).unwrap();
-    let mut client = Client::new(config, Size::new(400, 24));
+    let mut client = Client::new(config, Size::new(200, 24));
     client.attach(1, 0);
     let expected = format!("hello: {}:3: boom", file.display());
-    assert!(
-        client.status().starts_with(&format!("{expected} │ band 1")),
-        "{}",
-        client.status()
-    );
-    assert_eq!(client.display.reported_size(), Size::new(400, 23));
+    assert_eq!(client.row(0), "error");
+    assert_eq!(client.row(1), "band 1");
+    assert_eq!(client.display.errors(), std::slice::from_ref(&expected));
+    let listed: Vec<String> = client
+        .controls
+        .runtime()
+        .lua()
+        .load("return gband.errors()")
+        .eval()
+        .unwrap();
+    assert_eq!(listed, std::slice::from_ref(&expected));
+    assert_eq!(client.display.reported_size(), Size::new(200, 24));
+    let screen = client.screen(Size::new(200, 24));
+    assert!(!screen.contains("boom"), "{screen}");
+}
+
+#[test]
+fn errors_kept_in_order() {
+    let scratch = Scratch::new("error-order");
+    scratch.client_plugin("alpha", "error('first')");
+    scratch.client_plugin("beta", "error('second')");
+    let config = scratch.load(DEFAULTS).unwrap();
+    let mut client = Client::new(config, Size::new(80, 24));
+    client.attach(1, 0);
+    let errors = client.display.errors();
+    assert_eq!(errors.len(), 2, "{errors:?}");
+    assert!(errors[0].starts_with("alpha: "), "{errors:?}");
+    assert!(errors[1].starts_with("beta: "), "{errors:?}");
 }
 
 #[test]
@@ -453,15 +495,12 @@ fn cleared_by_a_good_load() {
     let config = scratch.load(DEFAULTS).unwrap();
     let mut client = Client::new(config, Size::new(200, 24));
     client.attach(1, 0);
-    assert!(
-        client.status().starts_with("hello: "),
-        "{}",
-        client.status()
-    );
+    assert_eq!(client.row(0), "error");
     fs::remove_dir_all(scratch.0.join("plugins")).unwrap();
     let reloaded = scratch.load(DEFAULTS);
     client.controls.reload(&mut client.display, reloaded);
-    assert!(client.status().starts_with("band 1"), "{}", client.status());
+    assert_eq!(client.row(0), "band 1");
+    assert!(client.display.errors().is_empty());
 }
 
 #[test]
@@ -473,11 +512,9 @@ fn error_from_a_binding_reaches_the_status_line() {
     );
     client.attach(1, 0);
     client.press("alt+e");
-    assert!(
-        client.status().contains("bad binding"),
-        "{}",
-        client.status()
-    );
+    assert_eq!(client.row(0), "error");
+    let last = client.display.errors().last().unwrap().clone();
+    assert!(last.contains("bad binding"), "{last}");
 }
 
 #[test]
@@ -488,29 +525,36 @@ fn failing_component_reaches_the_status_line() {
         Size::new(200, 24),
     );
     client.attach(1, 0);
-    assert!(
-        client.status().contains("render boom"),
-        "{}",
-        client.status()
-    );
-    assert!(client.status().contains("band 1"), "{}", client.status());
+    assert_eq!(client.row(0), "error");
+    assert_eq!(client.row(1), "band 1");
+    let last = client.display.errors().last().unwrap().clone();
+    assert!(last.contains("render boom"), "{last}");
 }
 
 #[test]
 fn plugin_error_on_the_banner() {
     let scratch = Scratch::new("error-banner");
     let file = scratch.client_plugin("hello", "\n\nerror('boom')");
-    let config = scratch
-        .load(&format!(
-            "{DEFAULTS}\ngband.opt.statusline_position = 'off'"
-        ))
-        .unwrap();
+    let config = scratch.load(&without_status_line()).unwrap();
     let mut client = Client::new(config, Size::new(200, 6));
     client.attach(1, 0);
     let expected = format!("hello: {}:3: boom", file.display());
     assert_eq!(client.display.banner(), Some(expected.as_str()));
     let screen = client.screen(Size::new(200, 6));
     assert!(screen.contains(&expected), "{screen}");
+}
+
+#[test]
+fn banner_without_a_status_line() {
+    let (_scratch, mut client) = defaults("banner-narrow", "", Size::new(20, 6));
+    client.attach(1, 0);
+    client
+        .display
+        .report_error("user/init.lua:3: boom".to_owned());
+    client.controls.refresh(&mut client.display);
+    assert_eq!(client.status_area(), None);
+    let screen = client.screen(Size::new(20, 6));
+    assert!(screen.contains("user/init.lua:3: bo"), "{screen}");
 }
 
 #[test]
@@ -529,10 +573,10 @@ fn prefix_hints_cut() {
 }
 
 #[test]
-fn top_placement() {
-    let (_scratch, mut client) = defaults(
-        "snapshot-top",
-        "gband.opt.statusline_position = 'top'",
+fn right_placement() {
+    let (_scratch, mut client) = loaded(
+        "snapshot-right",
+        &with_setup("{ side = \"right\" }"),
         Size::new(40, 8),
     );
     client.attach(2, 1);
@@ -540,17 +584,17 @@ fn top_placement() {
 }
 
 #[test]
-fn narrow_width_drops_and_cuts() {
-    let scratch = Scratch::new("snapshot-narrow");
+fn short_terminal_drops_and_cuts() {
+    let scratch = Scratch::new("snapshot-short");
     let config = scratch
         .load(
-            "gband.ui.statusline.add({ id = 'low', priority = 1, render = function() return 'dropped' end })\ngband.ui.statusline.add({ id = 'high', priority = 2, align = 'right', render = function() return 'a segment too long to fit' end })",
+            "gband.plugin('gband.statusline', { min_width = 1, max_width = 10 })\ngband.ui.statusline.add({ id = 'low', priority = 1, render = function() return 'dropped' end })\ngband.ui.statusline.add({ id = 'high', priority = 2, align = 'bottom', render = function() return 'a segment too long to fit' end })",
         )
         .unwrap();
-    let mut client = Client::new(config, Size::new(16, 5));
+    let mut client = Client::new(config, Size::new(30, 2));
     client.attach(1, 0);
-    assert_eq!(client.status(), "a segment too l…");
-    assert_snapshot!(client.screen(Size::new(16, 5)));
+    assert_eq!(client.status(), [line(1, "a segment…")]);
+    assert_snapshot!(client.screen(Size::new(30, 2)));
 }
 
 #[test]
@@ -559,13 +603,16 @@ fn error_item() {
     client.attach(1, 0);
     client
         .display
-        .set_banner(Some("user/init.lua:3: boom\nmore".to_owned()));
+        .report_error("user/init.lua:3: boom\nmore".to_owned());
     client.controls.refresh(&mut client.display);
-    let status = client.status();
-    assert!(
-        status.starts_with("user/init.lua:3: boom │ band 1 "),
-        "{status:?}"
+    assert_eq!(
+        client.status(),
+        [
+            line(0, "error"),
+            line(1, "band 1"),
+            line(2, "C-space navigation"),
+            line(5, "1/1")
+        ]
     );
-    assert!(status.ends_with(" 1/1"), "{status:?}");
     assert_snapshot!(client.screen(Size::new(40, 6)));
 }

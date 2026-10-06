@@ -22,6 +22,7 @@ Then load the colorscheme and set the plugin up in `~/.config/gband/user/init.lu
 
 ```lua
 gband.colorscheme("dusk")
+gband.plugin("gband.statusline")
 gband.plugin("gband.statusline.band")
 gband.plugin("gband.statusline.mode")
 gband.plugin("gband.statusline.position")
@@ -29,7 +30,7 @@ gband.plugin("window")
 ```
 
 A `user/init.lua` replaces the default configuration, so start from a copy of `defaults/init.lua` to keep the default bindings and segments.
-The right of the status line then shows `window 1`, in the colors `dusk` gives `WindowSegment`.
+The bottom of the status line then shows `window 1`, in the colors `dusk` gives `WindowSegment`.
 
 `dusk` uses 24-bit colors.
 gband draws them as such when the client's `COLORTERM` is `truecolor` or `24bit`, and as the nearest of the 256 palette colors otherwise.

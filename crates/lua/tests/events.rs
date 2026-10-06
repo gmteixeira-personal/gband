@@ -289,7 +289,7 @@ fn error_in_a_callback() {
     );
     let config = scratch.loaded();
     let outcome = config.runtime.emit(&focus(1, 2));
-    assert_eq!(outcome.errors.len(), 1);
+    assert_eq!(outcome.errors.len(), 1, "{:?}", outcome.errors);
     assert_eq!(outcome.errors[0].plugin.as_deref(), Some("first"));
     assert_error_at(&outcome.errors[0], &file, 4, "handler failed");
     let again = config.runtime.emit(&focus(2, 1));

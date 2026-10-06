@@ -24,7 +24,7 @@ use crate::owner::{self, Owners};
 use crate::plugin_windows::{self, Frame};
 use crate::removed;
 use crate::server::{self, Caller, Host};
-use crate::ui::{self, StatusLine, ViewState};
+use crate::ui::{self, ViewState};
 use crate::version::{Requirement, Version};
 use crate::{
     Config, Locations, PluginManifest, Side, actions, bridge, bundled, clock, commands, control,
@@ -91,6 +91,7 @@ pub(crate) fn install(
             bridge::install(lua, &gband)?;
             let host = ui::install(lua, &gband)?;
             plugin_windows::install(lua, &host)?;
+            crate::bars::install(lua, &host)?;
             removed::install(lua, &host)?;
             Some(host)
         }
@@ -108,8 +109,13 @@ pub(crate) fn install(
     insert.call::<()>((searchers, 2, lua.create_function(search)?))?;
     bundled::install_searcher(lua, 3)?;
     if let Some(host) = host {
+        let loaded: Table = lua.globals().get::<Table>("package")?.get("loaded")?;
         for (path, source) in bundled::API {
-            bundled::chunk(lua, path, source)?.call::<()>(host.clone())?;
+            let module = bundled::chunk(lua, path, source)?.call::<Value>(host.clone())?;
+            if let Value::Table(module) = module {
+                let name = format!("gband.{}", path.trim_end_matches(".lua"));
+                loaded.set(name, module)?;
+            }
         }
         gband
             .get::<Function>("colorscheme")?
@@ -552,10 +558,6 @@ impl Runtime {
         self.within_callback(|lua| ui::after_event(lua, None).map(|()| false))
     }
 
-    pub fn take_line(&self) -> Option<StatusLine> {
-        ui::take_line(&self.lua)
-    }
-
     pub fn next_timer(&self) -> Option<Instant> {
         ui::next_timer(&self.lua)
     }
@@ -609,6 +611,14 @@ impl Runtime {
 
     pub fn take_frames(&self) -> Vec<(u32, Option<Frame>)> {
         plugin_windows::take(&self.lua)
+    }
+
+    pub fn take_bars(&self) -> Option<Vec<crate::bars::Bar>> {
+        crate::bars::take(&self.lua)
+    }
+
+    pub fn error_item_shown(&self) -> bool {
+        crate::bars::error_item_shown(&self.lua)
     }
 
     pub fn set_plugin_window_counter(&self, counter: Arc<AtomicU32>) {
@@ -688,7 +698,9 @@ impl Runtime {
             .expect("the queue is installed with the runtime")
             .0 = Some(Vec::new());
         let result = run(lua).and_then(|disabled| match side(lua) {
-            Side::Client => plugin_windows::flush(lua).map(|()| disabled),
+            Side::Client => plugin_windows::flush(lua)
+                .and_then(|()| crate::bars::flush(lua))
+                .map(|()| disabled),
             Side::Server | Side::Test => Ok(disabled),
         });
         let dispatched = lua

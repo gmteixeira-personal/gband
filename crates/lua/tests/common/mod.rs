@@ -6,8 +6,8 @@ use std::path::{Path, PathBuf};
 use gband_core::input::Key;
 use gband_lua::keys::parse_key;
 use gband_lua::{
-    BandState, Binding, Chord, Config, ConfigError, LoadOptions, Locations, Outcome, Side,
-    StatusLine, ViewState,
+    BandState, Bar, Binding, Chord, Config, ConfigError, LoadOptions, Locations, Outcome, Side,
+    ViewState,
 };
 use mlua::FromLua;
 
@@ -153,6 +153,10 @@ pub fn run_job(config: &Config, code: &str) -> Outcome {
 }
 
 pub fn drawn(width: u16) -> ViewState {
+    sized(width, 24)
+}
+
+pub fn sized(width: u16, height: u16) -> ViewState {
     ViewState {
         table: "root".to_owned(),
         band: BandState {
@@ -163,34 +167,37 @@ pub fn drawn(width: u16) -> ViewState {
         column: None,
         window: None,
         width,
-        drawn: true,
+        height,
         error: None,
         ..ViewState::default()
     }
 }
 
-pub fn text(line: &StatusLine, width: u16) -> String {
-    let mut cells = vec![" ".to_owned(); usize::from(width)];
-    for span in &line.spans {
-        let mut col = usize::from(span.col);
-        for c in span.text.chars() {
-            let cells_taken = gband_lua::ui::width(&c.to_string());
-            if col < cells.len() {
-                cells[col] = c.to_string();
-            }
-            for extra in 1..cells_taken {
-                if col + extra < cells.len() {
-                    cells[col + extra] = String::new();
-                }
-            }
-            col += cells_taken;
-        }
-    }
-    cells.concat()
+pub fn rows(bar: &Bar) -> Vec<String> {
+    bar.lines
+        .iter()
+        .map(|runs| runs.iter().map(|run| run.text.as_str()).collect())
+        .collect()
 }
 
-pub fn presented(config: &Config, state: ViewState) -> StatusLine {
+pub fn shown_rows(bar: &Bar) -> Vec<(usize, String)> {
+    rows(bar)
+        .into_iter()
+        .enumerate()
+        .filter(|(_, row)| !row.is_empty())
+        .collect()
+}
+
+pub fn status_bar(config: &Config) -> Option<Bar> {
+    config
+        .runtime
+        .take_bars()?
+        .into_iter()
+        .find(|bar| bar.id == "statusline")
+}
+
+pub fn presented(config: &Config, state: ViewState) -> Bar {
     clean(&config.runtime.set_state(state));
     clean(&config.runtime.refresh_statusline());
-    config.runtime.take_line().expect("a line is presented")
+    status_bar(config).expect("the status line is presented")
 }

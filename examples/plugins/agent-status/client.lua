@@ -4,7 +4,7 @@ end, { pattern = "agent.waiting" })
 
 gband.ui.statusline.add({
   id = "waiting",
-  align = "right",
+  align = "bottom",
   redraw_on = { "WindowStateChanged", "LayoutChanged" },
   render = function(ctx)
     local waiting = 0

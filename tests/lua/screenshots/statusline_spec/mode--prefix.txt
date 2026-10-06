@@ -1,14 +1,25 @@
-size 60x4 cursor 1:3 shown
-0|┌────────────────────────────┐
-1|│$                           │
-2|└────────────────────────────┘
-3|band 1 │ prefix
+size 60x6 cursor 1:23 shown
+0|band 1              ┌────────────────────────────┐
+1|prefix              │$                           │
+2|                    │                            │
+3|                    │                            │
+4|                    │                            │
+5|                    └────────────────────────────┘
 --
-0:0-29 bold
-1:0 bold
-1:29 bold
-2:0-29 bold
-3:0-5 fg=#c0caf5 bg=#24283b
-3:6-8 fg=#565f89 bg=#24283b
-3:9-14 fg=#7aa2f7 bg=#24283b bold
-3:15-59 fg=#c0caf5 bg=#24283b
+0:0-19 fg=#c0caf5 bg=#24283b
+0:20-49 bold
+1:0-5 fg=#7aa2f7 bg=#24283b bold
+1:6-19 fg=#c0caf5 bg=#24283b
+1:20 bold
+1:49 bold
+2:0-19 fg=#c0caf5 bg=#24283b
+2:20 bold
+2:49 bold
+3:0-19 fg=#c0caf5 bg=#24283b
+3:20 bold
+3:49 bold
+4:0-19 fg=#c0caf5 bg=#24283b
+4:20 bold
+4:49 bold
+5:0-19 fg=#c0caf5 bg=#24283b
+5:20-49 bold

@@ -29,8 +29,8 @@ fn session(name: &str) -> SessionName {
 }
 
 #[test]
-fn protocol_version_is_seven() {
-    assert_eq!(PROTOCOL_VERSION, 7);
+fn protocol_version_is_eight() {
+    assert_eq!(PROTOCOL_VERSION, 8);
 }
 
 #[test]
@@ -192,14 +192,22 @@ fn session_actions_round_trip() {
         SessionAction::StepWidth {
             window: WindowId(8),
             step: Step::Grow,
+            by: Proportion::TENTH,
+        },
+        SessionAction::StepWidth {
+            window: WindowId(8),
+            step: Step::Shrink,
+            by: Proportion::new(1, 4),
         },
         SessionAction::StepHeight {
             window: WindowId(2),
             step: Step::Grow,
+            by: Proportion::TENTH,
         },
         SessionAction::StepHeight {
             window: WindowId(2),
             step: Step::Shrink,
+            by: Proportion::TENTH,
         },
         SessionAction::ResetHeight(WindowId(9)),
         SessionAction::OpenWindow {
@@ -386,6 +394,7 @@ fn heights_in_the_layout_round_trip() {
     let grow = |window| SessionAction::StepHeight {
         window,
         step: Step::Grow,
+        by: Proportion::TENTH,
     };
     layout.apply(grow(windows[1]), AREA, &LayoutOptions::default());
     layout.apply(grow(windows[0]), AREA, &LayoutOptions::default());

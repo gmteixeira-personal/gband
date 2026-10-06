@@ -51,9 +51,9 @@ impl Proportion {
     pub const ONE_HALF: Self = Self::new(1, 2);
     pub const TWO_THIRDS: Self = Self::new(2, 3);
     pub const WHOLE: Self = Self::new(1, 1);
+    pub const TENTH: Self = Self::new(1, 10);
 
     pub const MAX: u32 = 10000;
-    const STEP_TENTHS: u64 = 10;
 
     pub const fn new(num: u32, den: u32) -> Self {
         Self { num, den }
@@ -64,16 +64,30 @@ impl Proportion {
         cells.min(u64::from(u16::MAX)) as u16
     }
 
-    pub fn step(self, step: Step) -> Self {
-        let den = u64::from(self.den) * Self::STEP_TENTHS;
-        let num = u64::from(self.num) * Self::STEP_TENTHS;
+    pub fn step(self, step: Step, by: Self) -> Self {
+        let den = u64::from(self.den) * u64::from(by.den);
+        let num = u64::from(self.num) * u64::from(by.den);
+        let delta = u64::from(by.num) * u64::from(self.den);
         let num = match step {
-            Step::Grow => num + u64::from(self.den),
-            Step::Shrink => num.saturating_sub(u64::from(self.den)),
+            Step::Grow => num + delta,
+            Step::Shrink => num.saturating_sub(delta),
         };
         let num = num.min(u64::from(Self::MAX) * den);
-        let divisor = gcd(num, den);
-        Self::new((num / divisor) as u32, (den / divisor) as u32)
+        let divisor = gcd(num, den).max(1);
+        let (mut num, mut den) = (num / divisor, den / divisor);
+        while den > u64::from(u32::MAX) {
+            num /= 2;
+            den /= 2;
+            let divisor = gcd(num, den).max(1);
+            (num, den) = (num / divisor, den / divisor);
+        }
+        Self::new(num as u32, den as u32)
+    }
+
+    pub fn rows_of(self, rows: u16) -> u16 {
+        let scaled = u64::from(rows) * u64::from(self.num) * 2 + u64::from(self.den);
+        let rows = scaled / (2 * u64::from(self.den));
+        rows.clamp(1, u64::from(u16::MAX)) as u16
     }
 
     pub fn lowest(self) -> Self {
@@ -116,8 +130,8 @@ pub fn cycle_width(current: (Proportion, bool), presets: &[Proportion]) -> (Prop
     }
 }
 
-pub fn step_width(current: (Proportion, bool), step: Step) -> (Proportion, bool) {
-    (effective_width(current).step(step), false)
+pub fn step_width(current: (Proportion, bool), step: Step, by: Proportion) -> (Proportion, bool) {
+    (effective_width(current).step(step, by), false)
 }
 
 pub fn set_width(width: Proportion) -> (Proportion, bool) {
@@ -220,17 +234,17 @@ impl Column {
         (self.width, self.full_width)
     }
 
-    pub fn step_width(&mut self, step: Step) {
-        (self.width, self.full_width) = step_width(self.width(), step);
+    pub fn step_width(&mut self, step: Step, by: Proportion) {
+        (self.width, self.full_width) = step_width(self.width(), step, by);
     }
 
     pub fn set_width(&mut self, width: Proportion) {
         (self.width, self.full_width) = set_width(width);
     }
 
-    fn step_height(&mut self, row: usize, step: Step, area: Size) {
+    fn step_height(&mut self, row: usize, step: Step, by: Proportion, area: Size) {
         let rows = window_heights(self, area.rows);
-        let step_rows = height_step(area);
+        let step_rows = by.rows_of(area.rows);
         let target = match step {
             Step::Grow => rows[row].saturating_add(step_rows),
             Step::Shrink => rows[row].saturating_sub(step_rows),
@@ -390,10 +404,12 @@ pub enum SessionAction {
     StepWidth {
         window: WindowId,
         step: Step,
+        by: Proportion,
     },
     StepHeight {
         window: WindowId,
         step: Step,
+        by: Proportion,
     },
     ResetHeight(WindowId),
     SetWidth {
@@ -647,20 +663,20 @@ impl Layout {
             SessionAction::ToggleFullWidth(window) => {
                 self.with_width(window, area, |(width, full_width)| (width, !full_width))
             }
-            SessionAction::StepWidth { window, step } => {
-                self.with_width(window, area, |width| step_width(width, step))
+            SessionAction::StepWidth { window, step, by } => {
+                self.with_width(window, area, |width| step_width(width, step, by))
             }
             SessionAction::SetWidth { window, width } => {
                 self.with_width(window, area, |_| set_width(width))
             }
-            SessionAction::StepHeight { window, step } => self.with_height(
+            SessionAction::StepHeight { window, step, by } => self.with_height(
                 window,
                 area,
-                |column, row| column.step_height(row, step, area),
+                |column, row| column.step_height(row, step, by, area),
                 |height| {
                     Some(match step {
-                        Step::Grow => height.saturating_add(height_step(area)),
-                        Step::Shrink => height.saturating_sub(height_step(area)),
+                        Step::Grow => height.saturating_add(by.rows_of(area.rows)),
+                        Step::Shrink => height.saturating_sub(by.rows_of(area.rows)),
                     })
                 },
             ),

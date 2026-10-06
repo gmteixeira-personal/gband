@@ -587,6 +587,40 @@ fn targeted_session_actions_send_their_target() {
 }
 
 #[test]
+fn step_from_the_clients_option() {
+    let scratch = Scratch::new("step-option");
+    let config = scratch
+        .load(
+            "gband.opt.width_step = 1/20\ngband.keymap.set('root', 'alt+g', gband.action.grow_column_width)\ngband.bind('alt+h', function() gband.action.shrink_window_height({ step = 1/4 }) end)\ngband.bind('alt+w', function() gband.action.grow_column_width() end)",
+        )
+        .unwrap();
+    let (mut display, windows) = three_columns();
+    let mut controls = Controls::new(config, &mut display);
+    dispatch(&mut display, Action::View(ViewAction::FocusRight));
+    dispatch(&mut display, Action::View(ViewAction::FocusRight));
+    assert_eq!(display.focused(), Some(windows[2]));
+    let grow = || {
+        Step::Send(ClientMessage::Action(SessionAction::StepWidth {
+            window: windows[2],
+            step: gband_core::layout::Step::Grow,
+            by: Proportion::new(1, 20),
+        }))
+    };
+    assert_eq!(controls.press(&mut display, key("alt+g")), [grow()]);
+    assert_eq!(controls.press(&mut display, key("alt+w")), [grow()]);
+    assert_eq!(
+        controls.press(&mut display, key("alt+h")),
+        [Step::Send(ClientMessage::Action(
+            SessionAction::StepHeight {
+                window: windows[2],
+                step: gband_core::layout::Step::Shrink,
+                by: Proportion::new(1, 4),
+            }
+        ))]
+    );
+}
+
+#[test]
 fn input_to_a_named_window_is_sent_as_keys_and_pastes() {
     let (_scratch, mut display, mut controls, windows) = bound(
         "input",

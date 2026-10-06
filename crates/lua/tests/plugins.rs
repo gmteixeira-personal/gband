@@ -325,6 +325,23 @@ fn client_api_in_the_server() {
 }
 
 #[test]
+fn bars_in_the_server() {
+    for field in ["bar", "errors"] {
+        let scratch = Scratch::new(&format!("{field}-in-the-server"));
+        scratch.plugin("tabs", &manifest("tabs"));
+        let file = scratch.plugin_file(
+            "tabs",
+            "server.lua",
+            &format!("local a = 1\nlocal b = gband.{field}"),
+        );
+        let config = scratch.loaded_server();
+        let error = plugin_error(&config.errors, "tabs");
+        assert_error_at(error, &file, 2, &format!("`gband.{field}`"));
+        assert!(error.message.contains("client"), "{error}");
+    }
+}
+
+#[test]
 fn server_api_in_the_client() {
     let scratch = Scratch::new("server-api");
     let file = scratch.write("local a = 1\ngband.sessions()");
@@ -479,7 +496,7 @@ fn setup_error_disables_the_plugin() {
 end }",
     );
     scratch.write(
-        "result = gband.plugin('broken')\ngband.bind('alt+h', gband.action.focus_column_left)\ngband.opt.statusline_height = 3",
+        "result = gband.plugin('broken')\ngband.bind('alt+h', gband.action.focus_column_left)\ngband.opt.width_step = 1/4",
     );
     let config = scratch.loaded();
     assert!(!global::<bool>(&config, "result"));
@@ -489,7 +506,10 @@ end }",
         6,
         "setup failed",
     );
-    assert_eq!(config.options.statusline.height, 3);
+    assert_eq!(
+        config.options.steps.width,
+        gband_core::layout::Proportion::new(1, 4)
+    );
     let root = &config.keymap["root"];
     assert_eq!(root.len(), 2);
     let Binding::Callback(go) = root[0].1 else {
@@ -537,8 +557,11 @@ fn plugin_action_is_namespaced() {
         "return { type(gband.action['hello.greet']), type(gband.action.greet) }",
     );
     assert_eq!(kinds, ["userdata", "nil"]);
-    let command: String = eval(&config, "return gband.cmd.list()[1].name");
-    assert_eq!(command, "hello.say");
+    let commands: Vec<String> = eval(
+        &config,
+        "local names = {} for _, c in ipairs(gband.cmd.list()) do names[#names + 1] = c.name end return names",
+    );
+    assert!(commands.contains(&"hello.say".to_owned()), "{commands:?}");
 }
 
 #[test]

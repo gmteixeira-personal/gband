@@ -4,25 +4,43 @@ use std::time::{Duration, Instant};
 
 use common::*;
 use gband_core::layout::{BandId, WindowId};
-use gband_lua::{Color, ColumnState, Config, Event, StatusLine, Style, ViewState};
+use gband_lua::{Bar, BarSide, Color, ColumnState, Config, Event, Style, ViewState};
 
-const COUNT: &str = "renders = {}\nlocal function counted(id, output)\n  return function(ctx)\n    renders[id] = (renders[id] or 0) + 1\n    widths = widths or {}\n    widths[id] = ctx.total_width\n    return output\n  end\nend\n";
+const COUNT: &str = "renders = {}\nlocal function counted(id, output)\n  return function(ctx)\n    renders[id] = (renders[id] or 0) + 1\n    heights = heights or {}\n    heights[id] = ctx.total_height\n    return output\n  end\nend\n";
 
-fn loaded(name: &str, source: &str) -> (Scratch, Config) {
+const SETUP: &str = "gband.plugin('gband.statusline')\n";
+
+fn loaded_with(name: &str, setup: &str, source: &str) -> (Scratch, Config) {
     let scratch = Scratch::new(name);
-    scratch.write(&format!("{JOB}{COUNT}{source}"));
+    scratch.write(&format!("{JOB}{COUNT}{setup}{source}"));
     let config = scratch.loaded();
     (scratch, config)
+}
+
+fn loaded(name: &str, source: &str) -> (Scratch, Config) {
+    loaded_with(name, SETUP, source)
+}
+
+fn sized_by(min_width: u16, max_width: u16) -> String {
+    format!(
+        "gband.plugin('gband.statusline', {{ min_width = {min_width}, max_width = {max_width} }})\n"
+    )
 }
 
 fn renders(config: &Config, id: &str) -> i64 {
     eval::<Option<i64>>(config, &format!("return renders['{id}']")).unwrap_or(0)
 }
 
-fn shown(config: &Config, state: ViewState) -> String {
-    let width = state.width;
-    let line = presented(config, state);
-    text(&line, width)
+fn shown(config: &Config, state: ViewState) -> Vec<(usize, String)> {
+    shown_rows(&presented(config, state))
+}
+
+fn latest(config: &Config) -> Bar {
+    status_bar(config).expect("the status line is presented again")
+}
+
+fn row(bar: &Bar, row: usize) -> String {
+    rows(bar).get(row).cloned().unwrap_or_default()
 }
 
 fn ids(config: &Config) -> Vec<String> {
@@ -32,19 +50,15 @@ fn ids(config: &Config) -> Vec<String> {
     )
 }
 
-fn style_at(line: &StatusLine, col: u16) -> Style {
-    line.spans
-        .iter()
-        .find(|span| span.col == col)
-        .map(|span| span.style)
-        .unwrap_or_else(|| panic!("no span at {col}: {line:?}"))
-}
-
 fn plugin_error(config: &Config) -> &gband_lua::ConfigError {
     config
         .errors
         .first()
         .unwrap_or_else(|| panic!("no error was reported"))
+}
+
+fn line(row: usize, text: &str) -> (usize, String) {
+    (row, text.to_owned())
 }
 
 #[test]
@@ -82,6 +96,22 @@ fn user_component() {
 }
 
 #[test]
+fn components_without_the_plugin() {
+    let (_scratch, config) = loaded_with(
+        "without-plugin",
+        "",
+        "added = gband.ui.statusline.add({ id = 'host', render = counted('host', 'x') })",
+    );
+    assert_eq!(global::<String>(&config, "added"), "host");
+    clean(&config.runtime.set_state(drawn(80)));
+    clean(&config.runtime.refresh_statusline());
+    assert_eq!(renders(&config, "host"), 0);
+    assert!(status_bar(&config).is_none());
+    assert_eq!(config.runtime.next_timer(), None);
+    assert!(!config.runtime.error_item_shown());
+}
+
+#[test]
 fn duplicate_id() {
     let scratch = Scratch::new("duplicate");
     let path = scratch.write(
@@ -115,6 +145,10 @@ fn invalid_specs_add_nothing() {
         ("{ id = '', render = function() end }", "id"),
         (
             "{ id = 'a', align = 'middle', render = function() end }",
+            "align",
+        ),
+        (
+            "{ id = 'a', align = 'right', render = function() end }",
             "align",
         ),
         (
@@ -162,7 +196,7 @@ fn user_events_and_built_in_events_are_accepted() {
 fn list_entries() {
     let scratch = Scratch::new("list");
     scratch.client_plugin("window",
-        "gband.ui.statusline.add({ align = 'right', priority = 3, order = 4, hl = 'WindowSegment', render = function() end })",
+        "gband.ui.statusline.add({ align = 'bottom', priority = 3, order = 4, hl = 'WindowSegment', render = function() end })",
     );
     scratch.write("gband.ui.statusline.add({ id = 'zeta', render = function() end })\ngband.ui.statusline.add({ id = 'alpha', render = function() end })");
     let config = scratch.loaded();
@@ -175,7 +209,7 @@ fn list_entries() {
         entry,
         [
             "window",
-            "right",
+            "bottom",
             "3",
             "4",
             "WindowSegment",
@@ -187,26 +221,145 @@ fn list_entries() {
         &config,
         "local e = gband.ui.statusline.list()[1]\nreturn { e.align, tostring(e.priority), tostring(e.order), e.hl }",
     );
-    assert_eq!(defaults, ["left", "0", "0", "StatusLineSegment"]);
+    assert_eq!(defaults, ["top", "0", "0", "StatusLineSegment"]);
     let copy: String = eval(
         &config,
-        "gband.ui.statusline.list()[1].align = 'right'\nreturn gband.ui.statusline.list()[1].align",
+        "gband.ui.statusline.list()[1].align = 'bottom'\nreturn gband.ui.statusline.list()[1].align",
     );
-    assert_eq!(copy, "left");
+    assert_eq!(copy, "top");
 }
 
-#[test]
-fn remove_a_bundled_segment() {
-    let scratch = Scratch::new("remove");
+fn default_config(name: &str) -> (Scratch, Config) {
+    let scratch = Scratch::new(name);
     let config = gband_lua::load_defaults(
         &scratch.locations(),
         gband_lua::Side::Client,
         &gband_lua::LoadOptions::default(),
     )
     .unwrap();
+    (scratch, config)
+}
+
+fn default_state() -> ViewState {
+    let mut state = drawn(80);
+    state.column = Some(ColumnState { index: 2, count: 3 });
+    state.window = Some(2);
+    state
+}
+
+#[test]
+fn default_placement() {
+    let (_scratch, config) = default_config("default-placement");
+    let bar = presented(&config, default_state());
+    assert_eq!(bar.slot.side, BarSide::Left);
+    assert_eq!(bar.slot.size, 20);
+    assert_eq!(rows(&bar).len(), 24);
+    let placed: Vec<i64> = eval(
+        &config,
+        "local info = gband.bar.info('statusline') return { info.col, info.width, info.height }",
+    );
+    assert_eq!(placed, [0, 20, 24]);
+}
+
+#[test]
+fn right_side() {
+    let (_scratch, config) = loaded_with(
+        "right-side",
+        "gband.plugin('gband.statusline', { side = 'right' })\n",
+        "",
+    );
+    let bar = presented(&config, drawn(80));
+    assert_eq!(bar.slot.side, BarSide::Right);
+    let col: i64 = eval(&config, "return gband.bar.info('statusline').col");
+    assert_eq!(col, 60);
+}
+
+#[test]
+fn top_placement() {
+    let (_scratch, config) = loaded_with(
+        "top-placement",
+        "ok = gband.plugin('gband.statusline', { position = 'top' })\n",
+        "",
+    );
+    assert!(!global::<bool>(&config, "ok"));
+    let error = plugin_error(&config);
+    assert_eq!(error.plugin.as_deref(), Some("statusline"));
+    assert!(error.message.contains("position"), "{error}");
+}
+
+#[test]
+fn invalid_setup_options() {
+    for (opts, mentions) in [
+        ("{ side = 'top' }", "side"),
+        ("{ min_width = 0 }", "min_width"),
+        ("{ min_width = 2.5 }", "min_width"),
+        ("{ min_width = 30, max_width = 20 }", "max_width"),
+        ("{ order = 'first' }", "order"),
+        ("'left'", "statusline"),
+    ] {
+        let scratch = Scratch::new("invalid-setup");
+        scratch.write(&format!("ok = gband.plugin('gband.statusline', {opts})"));
+        let config = scratch.loaded();
+        assert!(!global::<bool>(&config, "ok"), "{opts}");
+        assert!(plugin_error(&config).message.contains(mentions), "{opts}");
+        let count: i64 = eval(&config, "return #gband.bar.list()");
+        assert_eq!(count, 0, "{opts}");
+    }
+}
+
+#[test]
+fn off() {
+    let (_scratch, config) = loaded_with("off", "", "");
+    clean(&config.runtime.set_state(drawn(80)));
+    clean(&config.runtime.refresh_statusline());
+    let count: i64 = eval(&config, "return #gband.bar.list()");
+    assert_eq!(count, 0);
+}
+
+#[test]
+fn terminal_too_short() {
+    let (_scratch, config) = default_config("too-short");
+    let mut state = default_state();
+    state.width = 20;
+    presented(&config, state);
+    let placed: bool = eval(&config, "return gband.bar.info('statusline').shown");
+    assert!(!placed);
+}
+
+#[test]
+fn grows_with_its_content() {
+    let (_scratch, config) = loaded_with(
+        "grows",
+        &sized_by(10, 30),
+        "gband.ui.statusline.add({ id = 'a', render = function() return string.rep('a', 25) end })",
+    );
+    let bar = presented(&config, drawn(80));
+    assert_eq!(bar.slot.size, 25);
+    assert_eq!(row(&bar, 0), "a".repeat(25));
+}
+
+#[test]
+fn capped_width() {
+    let (_scratch, config) = loaded_with(
+        "capped",
+        &sized_by(10, 30),
+        "gband.ui.statusline.add({ id = 'a', render = function() return string.rep('a', 50) end })",
+    );
+    let bar = presented(&config, drawn(80));
+    assert_eq!(bar.slot.size, 30);
+    assert_eq!(row(&bar, 0), format!("{}…", "a".repeat(29)));
+}
+
+#[test]
+fn remove_a_bundled_segment() {
+    let (_scratch, config) = default_config("remove");
     let mut state = drawn(80);
     state.table = "prefix".to_owned();
-    assert!(shown(&config, state.clone()).contains("navigation"));
+    assert!(
+        shown(&config, state.clone())
+            .iter()
+            .any(|(_, text)| text == "navigation")
+    );
     clean(&config.runtime.set_state(state.clone()));
     let lua = config.runtime.lua();
     lua.load("gband.bind = nil").exec().unwrap();
@@ -215,11 +368,12 @@ fn remove_a_bundled_segment() {
         .eval()
         .unwrap();
     assert!(removed);
-    let line = config.runtime.take_line().unwrap();
+    clean(&config.runtime.set_state(state));
+    let bar = latest(&config);
     assert!(
-        !text(&line, 80).contains("navigation"),
-        "{}",
-        text(&line, 80)
+        !rows(&bar).iter().any(|text| text == "navigation"),
+        "{:?}",
+        rows(&bar)
     );
     let again: bool = lua
         .load("return gband.ui.statusline.remove('mode')")
@@ -232,16 +386,16 @@ fn remove_a_bundled_segment() {
 fn defaults_without_a_colorscheme_setting() {
     let scratch = Scratch::new("defaults");
     scratch.user_file("colors/plain.lua", "");
-    scratch.write("gband.colorscheme('plain')");
+    scratch.write(&format!("{SETUP}gband.colorscheme('plain')"));
     let config = scratch.loaded();
     let accent: Vec<String> = eval(
         &config,
         "local s = gband.hl.get('StatusLineAccent', { resolve = true })\nlocal out = {} for k, v in pairs(s) do out[#out + 1] = k .. '=' .. tostring(v) end\nreturn out",
     );
     assert_eq!(accent, ["bold=true"]);
-    let line = presented(&config, drawn(10));
-    assert!(line.base.reverse);
-    assert_eq!(line.base.fg, None);
+    let bar = presented(&config, drawn(30));
+    assert!(bar.base.reverse);
+    assert_eq!(bar.base.fg, None);
 }
 
 #[test]
@@ -250,14 +404,14 @@ fn plain_string() {
         "plain",
         "gband.colorscheme('none-such')\ngband.hl.set('StatusLine', { fg = 7, bg = 236 })\ngband.hl.set('StatusLineMuted', { fg = 3, bold = true })\ngband.ui.statusline.add({ id = 'a', hl = 'StatusLineMuted', render = function() return 'hi' end })",
     );
-    let line = presented(&config, drawn(20));
-    assert_eq!(text(&line, 20).trim_end(), "hi");
-    let style = style_at(&line, 0);
+    let bar = presented(&config, drawn(30));
+    assert_eq!(row(&bar, 0), "hi");
+    let style = bar.lines[0][0].style;
     assert_eq!(style.fg, Some(Color::Index(3)));
     assert_eq!(style.bg, Some(Color::Index(236)));
     assert!(style.bold);
-    assert_eq!(line.base.fg, Some(Color::Index(7)));
-    assert_eq!(line.base.bg, Some(Color::Index(236)));
+    assert_eq!(bar.base.fg, Some(Color::Index(7)));
+    assert_eq!(bar.base.bg, Some(Color::Index(236)));
 }
 
 #[test]
@@ -266,7 +420,7 @@ fn escape_sequence_removed() {
         "escape",
         "gband.ui.statusline.add({ id = 'a', render = function() return { { text = 'a\\27[31mb\\194\\133' } } end })",
     );
-    assert_eq!(shown(&config, drawn(20)).trim_end(), "a[31mb");
+    assert_eq!(shown(&config, drawn(30)), [line(0, "a[31mb")]);
 }
 
 #[test]
@@ -275,18 +429,46 @@ fn spans_with_their_own_groups() {
         "spans",
         "gband.hl.set('One', { fg = 1 })\ngband.ui.statusline.add({ id = 'a', render = function() return { 'x', { text = 'y', hl = 'One' } } end })",
     );
-    let line = presented(&config, drawn(20));
-    assert_eq!(text(&line, 20).trim_end(), "xy");
-    assert_eq!(style_at(&line, 1).fg, Some(Color::Index(1)));
+    let bar = presented(&config, drawn(30));
+    assert_eq!(row(&bar, 0), "xy");
+    assert_eq!(bar.lines[0][1].style.fg, Some(Color::Index(1)));
 }
 
 #[test]
 fn hidden_component() {
     let (_scratch, config) = loaded(
         "hidden",
-        "for _, pair in ipairs({ { 'a', 'A' }, { 'b', '' }, { 'c', 'C' }, { 'd', { { text = '' } } }, { 'e', nil } }) do\n  gband.ui.statusline.add({ id = pair[1], render = counted(pair[1], pair[2]) })\nend",
+        "for _, pair in ipairs({ { 'a', 'A' }, { 'b', '' }, { 'c', 'C' }, { 'd', { { text = '' } } }, { 'e', nil }, { 'f', { lines = {} } }, { 'g', { lines = { '', {} } } } }) do\n  gband.ui.statusline.add({ id = pair[1], render = counted(pair[1], pair[2]) })\nend",
     );
-    assert_eq!(shown(&config, drawn(20)).trim_end(), "A │ C");
+    assert_eq!(shown(&config, drawn(30)), [line(0, "A"), line(1, "C")]);
+}
+
+#[test]
+fn several_lines() {
+    let (_scratch, config) = loaded(
+        "several",
+        "gband.ui.statusline.add({ id = 'a', render = function() return { lines = { 'one', { 'tw', { text = 'o', hl = 'One' } } } } end })\ngband.ui.statusline.add({ id = 'b', render = function() return 'three' end })",
+    );
+    assert_eq!(
+        shown(&config, drawn(30)),
+        [line(0, "one"), line(1, "two"), line(2, "three")]
+    );
+}
+
+#[test]
+fn invalid_lines_disable() {
+    let (_scratch, config) = loaded(
+        "invalid-lines",
+        "gband.ui.statusline.add({ id = 'a', render = counted('a', { lines = 'one' }) })\ngband.ui.statusline.add({ id = 'b', render = counted('b', { lines = { 3 } }) })",
+    );
+    clean(&config.runtime.set_state(drawn(30)));
+    let outcome = config.runtime.refresh_statusline();
+    assert_eq!(outcome.errors.len(), 2, "{:?}", outcome.errors);
+    let enabled: Vec<bool> = eval(
+        &config,
+        "local l = gband.ui.statusline.list() return { l[1].enabled, l[2].enabled }",
+    );
+    assert_eq!(enabled, [false, false]);
 }
 
 #[test]
@@ -305,21 +487,21 @@ fn context_values() {
         column: Some(ColumnState { index: 3, count: 5 }),
         window: Some(7),
         width: 100,
-        drawn: true,
+        height: 30,
         error: None,
         ..ViewState::default()
     };
     presented(&config, state);
     let seen: Vec<String> = eval(
         &config,
-        "return { seen.id, seen.side, tostring(seen.total_width), seen.table, tostring(seen.band.number), tostring(seen.band.index), tostring(seen.band.count), tostring(seen.column.index), tostring(seen.column.count), tostring(seen.window) }",
+        "return { seen.id, seen.side, tostring(seen.total_width), tostring(seen.total_height), seen.table, tostring(seen.band.number), tostring(seen.band.index), tostring(seen.band.count), tostring(seen.column.index), tostring(seen.column.count), tostring(seen.window), tostring(seen.width), tostring(seen.height) }",
     );
     assert_eq!(
         seen,
-        ["a", "client", "100", "prefix", "5", "2", "3", "3", "5", "7"]
+        [
+            "a", "client", "40", "30", "prefix", "5", "2", "3", "3", "5", "7", "40", "30"
+        ]
     );
-    let empty: bool = eval(&config, "return seen.width == 100");
-    assert!(empty);
 }
 
 #[test]
@@ -328,7 +510,7 @@ fn context_without_a_column() {
         "context-empty",
         "gband.ui.statusline.add({ id = 'a', render = function(ctx) column, window = ctx.column, ctx.window end })",
     );
-    presented(&config, drawn(20));
+    presented(&config, drawn(30));
     let column: Option<mlua::Table> = global(&config, "column");
     assert!(column.is_none());
     let window: Option<i64> = global(&config, "window");
@@ -337,13 +519,25 @@ fn context_without_a_column() {
 
 #[test]
 fn available_width() {
-    let (_scratch, config) = loaded(
+    let (_scratch, config) = loaded_with(
         "available",
-        "gband.ui.statusline.add({ id = 'a', order = 1, render = function() return '0123456789' end })\ngband.ui.statusline.add({ id = 'b', order = 2, render = function(ctx) width = ctx.width end })",
+        &sized_by(10, 40),
+        "gband.ui.statusline.add({ id = 'a', order = 1, render = function() return string.rep('a', 14) end })\ngband.ui.statusline.add({ id = 'b', order = 2, fill = true, render = function(ctx) width = ctx.width return string.rep('b', 30) end })",
+    );
+    let bar = presented(&config, drawn(80));
+    assert_eq!(global::<i64>(&config, "width"), 14);
+    assert_eq!(bar.slot.size, 14);
+    assert_eq!(row(&bar, 1), format!("{}…", "b".repeat(13)));
+}
+
+#[test]
+fn available_height() {
+    let (_scratch, config) = loaded(
+        "available-height",
+        "gband.ui.statusline.add({ id = 'a', order = 1, render = function() return 'a' end })\ngband.ui.statusline.add({ id = 'f', order = 2, fill = true, render = function(ctx) height = ctx.height end })\ngband.ui.statusline.add({ id = 'z', align = 'bottom', render = function() return 'z' end })",
     );
     presented(&config, drawn(80));
-    clean(&config.runtime.refresh_statusline());
-    assert_eq!(global::<i64>(&config, "width"), 67);
+    assert_eq!(global::<i64>(&config, "height"), 21);
 }
 
 #[test]
@@ -383,18 +577,18 @@ fn focus(config: &Config, state: ViewState) {
     }));
 }
 
-const POSITION: &str = "gband.ui.statusline.add({ id = 'p', align = 'right', redraw_on = { 'FocusChanged' }, render = function(ctx) return ctx.column.index .. '/' .. ctx.column.count end })\n";
+const POSITION: &str = "gband.ui.statusline.add({ id = 'p', align = 'bottom', redraw_on = { 'FocusChanged' }, render = function(ctx) return ctx.column.index .. '/' .. ctx.column.count end })\n";
 
 #[test]
 fn fill_renders_after_the_others() {
     let (_scratch, config) = loaded(
         "fill-after",
-        "order = {}\ngband.ui.statusline.add({ id = 'f', fill = true, order = 2, redraw_on = { 'KeyTableChanged' }, render = function(ctx) order[#order + 1] = 'f' fill_width = ctx.width return 'f' end })\ngband.ui.statusline.add({ id = 'm', order = 1, redraw_on = { 'KeyTableChanged' }, render = function(ctx) order[#order + 1] = 'm' if ctx.table ~= 'root' then return ctx.table end end })",
+        "order = {}\ngband.ui.statusline.add({ id = 'f', fill = true, order = 2, redraw_on = { 'KeyTableChanged' }, render = function(ctx) order[#order + 1] = 'f' fill_height = ctx.height return 'f' end })\ngband.ui.statusline.add({ id = 'm', order = 1, redraw_on = { 'KeyTableChanged' }, render = function(ctx) order[#order + 1] = 'm' if ctx.table ~= 'root' then return 'navigation' end end })",
     );
-    presented(&config, drawn(40));
-    assert_eq!(global::<i64>(&config, "fill_width"), 40);
+    presented(&config, drawn(80));
+    assert_eq!(global::<i64>(&config, "fill_height"), 24);
     clean(&run_job(&config, "order = {}"));
-    let mut state = drawn(40);
+    let mut state = drawn(80);
     state.table = "prefix".to_owned();
     clean(&config.runtime.set_state(state));
     clean(&config.runtime.emit(&Event::KeyTableChanged {
@@ -403,24 +597,22 @@ fn fill_renders_after_the_others() {
     }));
     let order: Vec<String> = global(&config, "order");
     assert_eq!(order, ["m", "f"]);
-    assert_eq!(global::<i64>(&config, "fill_width"), 40 - 6 - 3);
+    assert_eq!(global::<i64>(&config, "fill_height"), 23);
 }
 
 #[test]
 fn fill_follows_another_components_width() {
-    let (_scratch, config) = loaded(
+    let (_scratch, config) = loaded_with(
         "fill-follows",
-        &format!(
-            "{POSITION}gband.ui.statusline.add({{ id = 'f', fill = true, render = function(ctx) renders.f = (renders.f or 0) + 1 fill_width = ctx.width return 'f' end }})"
-        ),
+        &sized_by(10, 40),
+        "gband.ui.statusline.add({ id = 'p', redraw_on = { 'FocusChanged' }, render = function(ctx) return string.rep('p', 18 + ctx.column.index) end })\ngband.ui.statusline.add({ id = 'f', fill = true, render = function(ctx) renders.f = (renders.f or 0) + 1 fill_width = ctx.width return 'f' end })",
     );
     presented(&config, column_state(2, 3));
     assert_eq!(renders(&config, "f"), 1);
-    let before = global::<i64>(&config, "fill_width");
-    assert_eq!(before, 80 - 3 - 1);
-    focus(&config, column_state(10, 12));
+    assert_eq!(global::<i64>(&config, "fill_width"), 20);
+    focus(&config, column_state(4, 12));
     assert_eq!(renders(&config, "f"), 2);
-    assert_eq!(global::<i64>(&config, "fill_width"), before - 2);
+    assert_eq!(global::<i64>(&config, "fill_width"), 22);
 }
 
 #[test]
@@ -446,37 +638,23 @@ fn fill_pass_renders_once_more_at_most() {
     );
     presented(&config, column_state(2, 3));
     assert_eq!(renders(&config, "f1"), 2);
-    assert_eq!(renders(&config, "f2"), 2);
+    assert_eq!(renders(&config, "f2"), 1);
     focus(&config, column_state(10, 12));
-    assert_eq!(renders(&config, "f1"), 3);
-    assert_eq!(renders(&config, "f2"), 3);
-}
-
-fn default_config(name: &str) -> (Scratch, Config) {
-    let scratch = Scratch::new(name);
-    let config = gband_lua::load_defaults(
-        &scratch.locations(),
-        gband_lua::Side::Client,
-        &gband_lua::LoadOptions::default(),
-    )
-    .unwrap();
-    (scratch, config)
-}
-
-fn default_state() -> ViewState {
-    let mut state = drawn(80);
-    state.column = Some(ColumnState { index: 2, count: 3 });
-    state.window = Some(2);
-    state
+    assert_eq!(renders(&config, "f1"), 2);
+    assert_eq!(renders(&config, "f2"), 1);
 }
 
 #[test]
 fn default_segments() {
     let (_scratch, config) = default_config("default-segments");
-    let shown = shown(&config, default_state());
-    assert!(shown.starts_with("band 1 "), "{shown:?}");
-    assert!(shown.ends_with(" 2/3"), "{shown:?}");
-    assert_eq!(shown.chars().count(), 80);
+    assert_eq!(
+        shown(&config, default_state()),
+        [
+            line(0, "band 1"),
+            line(1, "C-space navigation"),
+            line(23, "2/3")
+        ]
+    );
 }
 
 #[test]
@@ -490,13 +668,11 @@ fn mode_shown() {
         table: "prefix".to_owned(),
         previous: "root".to_owned(),
     }));
-    let line = config.runtime.take_line().unwrap();
-    assert!(
-        text(&line, 80).starts_with("band 1 │ navigation "),
-        "{}",
-        text(&line, 80)
-    );
-    assert!(style_at(&line, 9).bold);
+    let bar = latest(&config);
+    assert_eq!(row(&bar, 0), "band 1");
+    assert_eq!(row(&bar, 1), "navigation");
+    assert!(row(&bar, 2).starts_with("h left"), "{:?}", rows(&bar));
+    assert!(bar.lines[1][0].style.bold);
 }
 
 #[test]
@@ -509,28 +685,31 @@ gband.plugin('gband.statusline.mode')",
     );
     let mut state = default_state();
     state.table = "resize".to_owned();
-    assert_eq!(shown(&config, state).trim_end(), "RESIZE");
+    assert_eq!(shown(&config, state), [line(0, "RESIZE")]);
 }
 
 #[test]
 fn reorder_a_segment() {
     let (_scratch, config) = loaded(
         "reorder",
-        "gband.plugin('gband.statusline.mode', { align = 'right', order = 1 })\ngband.plugin('gband.statusline.position')",
+        "gband.plugin('gband.statusline.mode', { align = 'bottom', order = 1 })\ngband.plugin('gband.statusline.position')",
     );
     let mut state = default_state();
     state.table = "prefix".to_owned();
-    assert!(shown(&config, state).ends_with("prefix │ 2/3"));
+    assert_eq!(shown(&config, state), [line(22, "prefix"), line(23, "2/3")]);
 }
 
 #[test]
 fn lowest_priority_dropped_first() {
     let (_scratch, config) = loaded(
         "dropped",
-        "gband.ui.statusline.add({ id = 'a', priority = 1, render = function() return 'aaaaaaaa' end })\ngband.ui.statusline.add({ id = 'b', priority = 2, render = function() return 'bbbbbbbb' end })",
+        "gband.ui.statusline.add({ id = 'a', priority = 1, render = function() return 'aaa' end })\ngband.ui.statusline.add({ id = 'b', priority = 2, render = function() return 'bbb' end })",
     );
-    assert_eq!(shown(&config, drawn(18)).trim_end(), "bbbbbbbb");
-    assert_eq!(shown(&config, drawn(19)).trim_end(), "aaaaaaaa │ bbbbbbbb");
+    assert_eq!(shown(&config, sized(40, 1)), [line(0, "bbb")]);
+    assert_eq!(
+        shown(&config, sized(40, 2)),
+        [line(0, "aaa"), line(1, "bbb")]
+    );
     let enabled: bool = eval(&config, "return gband.ui.statusline.list()[1].enabled");
     assert!(enabled);
 }
@@ -539,39 +718,61 @@ fn lowest_priority_dropped_first() {
 fn equal_priority_drops_the_last_added() {
     let (_scratch, config) = loaded(
         "dropped-tie",
-        "gband.ui.statusline.add({ id = 'a', render = function() return 'aaaa' end })\ngband.ui.statusline.add({ id = 'b', align = 'right', render = function() return 'bbbb' end })",
+        "gband.ui.statusline.add({ id = 'a', render = function() return 'aaaa' end })\ngband.ui.statusline.add({ id = 'b', align = 'bottom', render = function() return 'bbbb' end })",
     );
-    assert_eq!(shown(&config, drawn(8)).trim_end(), "aaaa");
+    assert_eq!(shown(&config, sized(40, 2)), [line(0, "aaaa")]);
+    assert_eq!(
+        shown(&config, sized(40, 3)),
+        [line(0, "aaaa"), line(2, "bbbb")]
+    );
+}
+
+#[test]
+fn last_component_lines_cut_at_the_last_row() {
+    let (_scratch, config) = loaded(
+        "rows-cut",
+        "gband.ui.statusline.add({ id = 'a', render = function() return { lines = { 'one', 'two', 'three' } } end })",
+    );
+    assert_eq!(
+        shown(&config, sized(40, 2)),
+        [line(0, "one"), line(1, "two")]
+    );
 }
 
 #[test]
 fn last_component_cut() {
-    let (_scratch, config) = loaded(
+    let (_scratch, config) = loaded_with(
         "cut",
+        &sized_by(1, 6),
         "gband.ui.statusline.add({ id = 'a', render = function() return 'abcdefghij' end })",
     );
-    assert_eq!(shown(&config, drawn(6)), "abcde…");
+    let bar = presented(&config, drawn(30));
+    assert_eq!(bar.slot.size, 6);
+    assert_eq!(row(&bar, 0), "abcde…");
 }
 
 #[test]
 fn spans_cut_across_groups() {
-    let (_scratch, config) = loaded(
-        "cut-spans",
-        "gband.ui.statusline.add({ id = 'a', render = function() return { 'abc', 'defgh' } end })",
-    );
-    assert_eq!(shown(&config, drawn(6)), "abcde…");
-    assert_eq!(shown(&config, drawn(4)), "abc…");
+    for (max_width, expected) in [(6, "abcde…"), (4, "abc…")] {
+        let (_scratch, config) = loaded_with(
+            "cut-spans",
+            &sized_by(1, max_width),
+            "gband.ui.statusline.add({ id = 'a', render = function() return { 'abc', 'defgh' } end })",
+        );
+        assert_eq!(row(&presented(&config, drawn(30)), 0), expected);
+    }
 }
 
 #[test]
 fn wide_characters() {
-    let (_scratch, config) = loaded(
+    let (_scratch, config) = loaded_with(
         "wide",
+        &sized_by(1, 5),
         "gband.ui.statusline.add({ id = 'a', render = function() return '日本語' end })",
     );
-    let line = presented(&config, drawn(5));
-    assert_eq!(text(&line, 5), "日本…");
-    assert_eq!(gband_lua::ui::width(&line.spans[0].text), 5);
+    let bar = presented(&config, drawn(30));
+    assert_eq!(row(&bar, 0), "日本…");
+    assert_eq!(gband_lua::ui::width(&row(&bar, 0)), 5);
 }
 
 #[test]
@@ -580,30 +781,18 @@ fn center_region() {
         "center",
         "gband.ui.statusline.add({ id = 'a', align = 'center', render = function() return 'mid' end })",
     );
-    let line = presented(&config, drawn(40));
-    assert_eq!(line.spans[0].col, 18);
+    assert_eq!(shown(&config, drawn(40)), [line(11, "mid")]);
 }
 
 #[test]
-fn center_region_keeps_clear_of_the_sides() {
+fn center_region_keeps_clear_of_the_others() {
     let (_scratch, config) = loaded(
         "center-clear",
-        "gband.ui.statusline.add({ id = 'l', render = function() return 'llllllllllllllllll' end })\ngband.ui.statusline.add({ id = 'c', align = 'center', render = function() return 'mid' end })\ngband.ui.statusline.add({ id = 'r', align = 'right', render = function() return 'r' end })",
+        "gband.ui.statusline.add({ id = 't', render = function() local l = {} for i = 1, 12 do l[i] = 't' end return { lines = l } end })\ngband.ui.statusline.add({ id = 'c', align = 'center', render = function() return 'mid' end })\ngband.ui.statusline.add({ id = 'b', align = 'bottom', render = function() return 'b' end })",
     );
-    let line = presented(&config, drawn(40));
-    let center = line.spans.iter().find(|span| span.text == "mid").unwrap();
-    assert_eq!(center.col, 19);
-}
-
-#[test]
-fn separator_option() {
-    let (_scratch, config) = loaded(
-        "separator",
-        "gband.opt.statusline_separator = ' | '\ngband.hl.set('StatusLineSeparator', { fg = 2 })\ngband.ui.statusline.add({ id = 'a', render = function() return 'a' end })\ngband.ui.statusline.add({ id = 'b', render = function() return 'b' end })",
-    );
-    let line = presented(&config, drawn(10));
-    assert_eq!(text(&line, 10).trim_end(), "a | b");
-    assert_eq!(style_at(&line, 1).fg, Some(Color::Index(2)));
+    let shown = shown(&config, drawn(40));
+    assert!(shown.contains(&line(13, "mid")), "{shown:?}");
+    assert!(shown.contains(&line(23, "b")), "{shown:?}");
 }
 
 #[test]
@@ -614,15 +803,21 @@ fn error_item_first_and_kept() {
     );
     let mut state = drawn(30);
     state.error = Some("hello: boom\nmore".to_owned());
-    let line = presented(&config, state.clone());
-    assert_eq!(text(&line, 30).trim_end(), "hello: boom │ aaaa");
-    assert_eq!(style_at(&line, 0).fg, Some(Color::Index(1)));
-    state.width = 8;
-    assert_eq!(shown(&config, state.clone()), "hello: …");
+    let bar = presented(&config, state.clone());
+    assert_eq!(shown_rows(&bar), [line(0, "error"), line(1, "aaaa")]);
+    assert_eq!(bar.lines[0][0].style.fg, Some(Color::Index(1)));
+    assert!(config.runtime.error_item_shown());
+    state.height = 1;
+    assert_eq!(shown(&config, state.clone()), [line(0, "error")]);
+    state.height = 24;
+    state.width = 20;
+    presented(&config, state.clone());
+    assert!(!config.runtime.error_item_shown());
+    state.width = 30;
     state.error = None;
     clean(&config.runtime.set_state(state));
-    let line = config.runtime.take_line().unwrap();
-    assert_eq!(text(&line, 8).trim_end(), "aaaa");
+    assert_eq!(shown_rows(&latest(&config)), [line(0, "aaaa")]);
+    assert!(!config.runtime.error_item_shown());
 }
 
 #[test]
@@ -635,17 +830,19 @@ fn error_change_relays_the_line_without_renders() {
     let mut state = drawn(30);
     state.error = Some("bad".to_owned());
     clean(&config.runtime.set_state(state));
-    let line = config.runtime.take_line().unwrap();
-    assert_eq!(text(&line, 30).trim_end(), "bad │ a");
+    assert_eq!(
+        shown_rows(&latest(&config)),
+        [line(0, "error"), line(1, "a")]
+    );
     assert_eq!(renders(&config, "a"), 1);
 }
 
 #[test]
 fn user_file_without_segments() {
     let (_scratch, config) = loaded("no-segments", "");
-    let line = presented(&config, drawn(20));
-    assert!(line.spans.is_empty());
-    assert_eq!(line.height, 1);
+    let bar = presented(&config, drawn(30));
+    assert!(shown_rows(&bar).is_empty());
+    assert_eq!(bar.slot.size, 20);
 }
 
 #[test]
@@ -654,7 +851,7 @@ fn redraw_on_an_event() {
         "redraw-event",
         "gband.ui.statusline.add({ id = 'a', redraw_on = { 'FocusChanged' }, render = counted('a', 'a') })\ngband.ui.statusline.add({ id = 'b', render = counted('b', 'b') })",
     );
-    presented(&config, drawn(20));
+    presented(&config, drawn(30));
     let focus = Event::FocusChanged {
         window: Some(WindowId(1)),
         previous: Some(WindowId(2)),
@@ -674,13 +871,12 @@ fn render_follows_the_handlers() {
         "after-handlers",
         "gband.on('FocusChanged', function() mark = 'handled' end)\ngband.ui.statusline.add({ id = 'a', redraw_on = { 'FocusChanged' }, render = function() return mark end })",
     );
-    presented(&config, drawn(20));
+    presented(&config, drawn(30));
     clean(&config.runtime.emit(&Event::FocusChanged {
         window: Some(WindowId(1)),
         previous: None,
     }));
-    let line = config.runtime.take_line().unwrap();
-    assert_eq!(text(&line, 20).trim_end(), "handled");
+    assert_eq!(row(&latest(&config), 0), "handled");
 }
 
 #[test]
@@ -689,7 +885,7 @@ fn user_event_trigger() {
         "user-event",
         "gband.ui.statusline.add({ id = 'a', redraw_on = { 'User' }, render = counted('a', 'a') })",
     );
-    presented(&config, drawn(20));
+    presented(&config, drawn(30));
     clean(&run_job(&config, "gband.emit('mine')"));
     assert_eq!(renders(&config, "a"), 2);
 }
@@ -700,9 +896,10 @@ fn not_on_frames_or_takes() {
         "takes",
         "gband.ui.statusline.add({ id = 'a', render = counted('a', 'a') })",
     );
-    presented(&config, drawn(20));
+    presented(&config, drawn(30));
     for _ in 0..20 {
-        config.runtime.take_line();
+        config.runtime.take_bars();
+        clean(&config.runtime.set_state(drawn(30)));
     }
     assert_eq!(renders(&config, "a"), 1);
 }
@@ -714,7 +911,7 @@ fn interval() {
         "gband.ui.statusline.add({ id = 'a', redraw_interval = 1000, render = counted('a', 'a') })",
     );
     let start = Instant::now();
-    presented(&config, drawn(20));
+    presented(&config, drawn(30));
     for step in 0..=35 {
         clean(
             &config
@@ -726,63 +923,35 @@ fn interval() {
 }
 
 #[test]
-fn no_timer_while_not_drawn() {
+fn no_timer_until_the_first_render() {
     let (_scratch, config) = loaded(
         "interval-off",
         "gband.ui.statusline.add({ id = 'a', redraw_interval = 100, render = counted('a', 'a') })",
     );
     assert_eq!(config.runtime.next_timer(), None);
-    presented(&config, drawn(20));
+    presented(&config, drawn(30));
     assert!(config.runtime.next_timer().is_some());
-    let mut state = drawn(20);
-    state.drawn = false;
-    clean(&config.runtime.set_state(state));
-    assert_eq!(config.runtime.next_timer(), None);
-    clean(&config.runtime.refresh_statusline());
-    assert_eq!(renders(&config, "a"), 1);
 }
 
 #[test]
-fn no_render_while_not_drawn() {
+fn height_change() {
     let (_scratch, config) = loaded(
-        "not-drawn",
-        "gband.ui.statusline.add({ id = 'a', redraw_on = { 'FocusChanged' }, render = counted('a', 'a') })",
-    );
-    let mut state = drawn(20);
-    state.drawn = false;
-    clean(&config.runtime.set_state(state));
-    clean(&config.runtime.refresh_statusline());
-    clean(&config.runtime.emit(&Event::FocusChanged {
-        window: None,
-        previous: None,
-    }));
-    assert_eq!(renders(&config, "a"), 0);
-    assert_eq!(config.runtime.take_line(), None);
-}
-
-#[test]
-fn width_change() {
-    let (_scratch, config) = loaded(
-        "width",
+        "height",
         "gband.ui.statusline.add({ id = 'a', render = counted('a', 'a') })\ngband.ui.statusline.add({ id = 'b', render = counted('b', 'b') })",
     );
     presented(&config, drawn(80));
+    clean(&config.runtime.set_state(sized(60, 24)));
     clean(
         &config
             .runtime
-            .emit(&Event::TerminalResized { cols: 80, rows: 30 }),
+            .emit(&Event::TerminalResized { cols: 60, rows: 24 }),
     );
     assert_eq!(renders(&config, "a"), 1);
-    clean(&config.runtime.set_state(drawn(60)));
-    clean(
-        &config
-            .runtime
-            .emit(&Event::TerminalResized { cols: 60, rows: 30 }),
-    );
+    clean(&config.runtime.set_state(sized(60, 30)));
     assert_eq!(renders(&config, "a"), 2);
     assert_eq!(renders(&config, "b"), 2);
-    let widths: Vec<i64> = eval(&config, "return { widths.a, widths.b }");
-    assert_eq!(widths, [60, 60]);
+    let heights: Vec<i64> = eval(&config, "return { heights.a, heights.b }");
+    assert_eq!(heights, [30, 30]);
 }
 
 #[test]
@@ -791,24 +960,22 @@ fn highlight_change_renders_every_component() {
         "highlight-change",
         "gband.ui.statusline.add({ id = 'a', render = counted('a', 'a') })",
     );
-    presented(&config, drawn(20));
+    presented(&config, drawn(30));
     clean(&run_job(&config, "gband.hl.set('StatusLine', { fg = 1 })"));
     assert_eq!(renders(&config, "a"), 2);
-    let line = config.runtime.take_line().unwrap();
-    assert_eq!(line.base.fg, Some(Color::Index(1)));
+    assert_eq!(latest(&config).base.fg, Some(Color::Index(1)));
 }
 
 #[test]
 fn added_after_the_load() {
     let (_scratch, config) = loaded("added-later", "");
-    presented(&config, drawn(20));
+    presented(&config, drawn(30));
     clean(&run_job(
         &config,
         "gband.ui.statusline.add({ id = 'late', render = function() renders.late = (renders.late or 0) + 1 return 'late' end })",
     ));
     assert_eq!(renders(&config, "late"), 1);
-    let line = config.runtime.take_line().unwrap();
-    assert_eq!(text(&line, 20).trim_end(), "late");
+    assert_eq!(row(&latest(&config), 0), "late");
 }
 
 #[test]
@@ -817,9 +984,9 @@ fn failing_component() {
     let file = scratch.client_plugin("window",
         "gband.ui.statusline.add({\n  order = 1,\n  render = function()\n\n\n\n\n\n    error('boom')\n  end,\n})",
     );
-    scratch.write(
-        "gband.ui.statusline.add({ id = 'ok', order = 2, render = function() return 'ok' end })",
-    );
+    scratch.write(&format!(
+        "{SETUP}gband.ui.statusline.add({{ id = 'ok', order = 2, render = function() return 'ok' end }})"
+    ));
     let config = scratch.loaded();
     clean(&config.runtime.set_state(drawn(40)));
     let outcome = config.runtime.refresh_statusline();
@@ -828,14 +995,13 @@ fn failing_component() {
     };
     let message = format!("window: {}:9: boom", file.display());
     assert_eq!(error.to_string(), message);
-    let line = config.runtime.take_line().unwrap();
-    assert_eq!(text(&line, 40).trim_end(), "ok");
+    assert_eq!(shown_rows(&latest(&config)), [line(0, "ok")]);
     let enabled: bool = eval(&config, "return gband.ui.statusline.list()[2].enabled");
     assert!(!enabled);
-    let mut state = drawn(400);
+    let mut state = drawn(40);
     state.error = Some(message.clone());
-    let shown = shown(&config, state);
-    assert!(shown.starts_with(&format!("{message} │ ok")), "{shown}");
+    state.errors = vec![message];
+    assert_eq!(shown(&config, state), [line(0, "error"), line(1, "ok")]);
 }
 
 #[test]
@@ -844,7 +1010,7 @@ fn invalid_return_disables() {
         "invalid-return",
         "gband.ui.statusline.add({ id = 'a', render = counted('a', 42) })",
     );
-    clean(&config.runtime.set_state(drawn(20)));
+    clean(&config.runtime.set_state(drawn(30)));
     let outcome = config.runtime.refresh_statusline();
     assert_eq!(outcome.errors.len(), 1);
     assert!(
@@ -863,7 +1029,7 @@ fn looping_render() {
         "gband.ui.statusline.add({ order = 1, render = function() while true do end end })\ngband.on('FocusChanged', function() spin_handled = true end)",
     );
     scratch.write(&format!(
-        "{JOB}{COUNT}gband.ui.statusline.add({{ id = 'b', order = 2, render = counted('b', 'b') }})"
+        "{JOB}{COUNT}{SETUP}gband.ui.statusline.add({{ id = 'b', order = 2, render = counted('b', 'b') }})"
     ));
     let config = scratch.load_with_budget(500_000).unwrap();
     clean(&config.runtime.set_state(drawn(40)));
@@ -874,8 +1040,7 @@ fn looping_render() {
     assert_eq!(error.plugin.as_deref(), Some("spin"));
     assert!(error.message.contains("instruction limit"), "{error}");
     assert_eq!(renders(&config, "b"), 1);
-    let line = config.runtime.take_line().unwrap();
-    assert_eq!(text(&line, 40).trim_end(), "b");
+    assert_eq!(shown_rows(&latest(&config)), [line(0, "b")]);
     clean(&config.runtime.emit(&Event::FocusChanged {
         window: None,
         previous: None,
@@ -890,9 +1055,9 @@ fn failed_plugin_components_are_hidden() {
     scratch.client_plugin("window",
         "gband.ui.statusline.add({ render = function() return 'window' end })\ngband.bind('alt+p', function() while true do end end)",
     );
-    scratch.write(JOB);
+    scratch.write(&format!("{JOB}{SETUP}"));
     let config = scratch.load_with_budget(500_000).unwrap();
-    assert_eq!(shown(&config, drawn(20)).trim_end(), "window");
+    assert_eq!(shown(&config, drawn(30)), [line(0, "window")]);
     let gband_lua::Binding::Callback(spin) = config.keymap["root"]
         .iter()
         .find(|(chord, _)| *chord == gband_lua::Chord::Key(key("alt+p")))
@@ -903,8 +1068,7 @@ fn failed_plugin_components_are_hidden() {
     };
     assert!(!config.runtime.call(spin).errors.is_empty());
     clean(&config.runtime.refresh_statusline());
-    let line = config.runtime.take_line().unwrap();
-    assert!(line.spans.is_empty(), "{line:?}");
+    assert!(shown_rows(&latest(&config)).is_empty());
 }
 
 #[test]
@@ -916,12 +1080,12 @@ fn band_segment() {
     );
     assert_eq!(
         entry,
-        ["band", "left", "20", "10", "StatusLineSegment", "band"]
+        ["band", "top", "20", "10", "StatusLineSegment", "band"]
     );
-    let mut state = drawn(20);
+    let mut state = drawn(30);
     state.band.index = 2;
     state.band.number = 7;
-    assert_eq!(shown(&config, state).trim_end(), "band 2");
+    assert_eq!(shown(&config, state), [line(0, "band 2")]);
 }
 
 #[test]
@@ -931,11 +1095,11 @@ fn mode_segment() {
         &config,
         "local e = gband.ui.statusline.list()[1]\nreturn { e.id, e.align, tostring(e.priority), tostring(e.order), e.hl }",
     );
-    assert_eq!(entry, ["mode", "left", "30", "20", "StatusLineAccent"]);
-    assert_eq!(shown(&config, drawn(20)).trim_end(), "");
-    let mut state = drawn(20);
+    assert_eq!(entry, ["mode", "top", "30", "20", "StatusLineAccent"]);
+    assert!(shown(&config, drawn(30)).is_empty());
+    let mut state = drawn(30);
     state.table = "move".to_owned();
-    assert_eq!(shown(&config, state).trim_end(), "move");
+    assert_eq!(shown(&config, state), [line(0, "move")]);
 }
 
 #[test]
@@ -945,28 +1109,35 @@ fn position_segment() {
         &config,
         "local e = gband.ui.statusline.list()[1]\nreturn { e.id, e.align, tostring(e.priority), tostring(e.order), e.hl }",
     );
-    assert_eq!(entry, ["position", "right", "10", "10", "StatusLineMuted"]);
-    assert_eq!(shown(&config, drawn(20)).trim(), "");
-    let mut state = drawn(20);
+    assert_eq!(entry, ["position", "bottom", "10", "10", "StatusLineMuted"]);
+    assert!(shown(&config, drawn(30)).is_empty());
+    let mut state = drawn(30);
     state.column = Some(ColumnState { index: 3, count: 7 });
-    assert_eq!(shown(&config, state).trim_start(), "3/7");
+    assert_eq!(shown(&config, state), [line(23, "3/7")]);
 }
 
 #[test]
 fn clock_segment() {
     let (_scratch, config) = loaded(
         "clock",
-        "gband.plugin('gband.statusline.clock', { format = '<%Y>', interval = 500, align = 'left' })",
+        "gband.plugin('gband.statusline.clock', { format = '<%Y>', interval = 500, align = 'top' })",
     );
     let entry: Vec<String> = eval(
         &config,
         "local e = gband.ui.statusline.list()[1]\nreturn { e.id, e.align, tostring(e.priority), tostring(e.order), e.hl }",
     );
-    assert_eq!(entry, ["clock", "left", "5", "20", "StatusLineMuted"]);
+    assert_eq!(entry, ["clock", "top", "5", "20", "StatusLineMuted"]);
     let year: String = eval(&config, "return os.date('<%Y>')");
-    assert_eq!(shown(&config, drawn(20)).trim_end(), year);
+    assert_eq!(shown(&config, drawn(30)), [(0, year)]);
     let next = config.runtime.next_timer().unwrap();
     assert!(next <= Instant::now() + Duration::from_millis(500));
+}
+
+#[test]
+fn clock_defaults_to_the_bottom() {
+    let (_scratch, config) = loaded("clock-bottom", "gband.plugin('gband.statusline.clock')");
+    let align: String = eval(&config, "return gband.ui.statusline.list()[1].align");
+    assert_eq!(align, "bottom");
 }
 
 #[test]
@@ -979,6 +1150,7 @@ fn clock_is_not_a_default() {
 fn invalid_segment_options_fail_setup() {
     for (module, opts, mentions) in [
         ("band", "{ align = 'middle' }", "align"),
+        ("band", "{ align = 'left' }", "align"),
         ("mode", "{ priority = 'high' }", "priority"),
         ("position", "{ hl = 3 }", "hl"),
         ("clock", "{ format = 3 }", "format"),
@@ -1006,7 +1178,7 @@ fn sample_window_plugin() {
         .unwrap();
     let scratch = Scratch::new("sample-window");
     scratch.write(&format!(
-        "table.insert(gband.runtimepath, {:?})\ngband.colorscheme('dusk')\ngband.plugin('window')",
+        "{SETUP}table.insert(gband.runtimepath, {:?})\ngband.colorscheme('dusk')\ngband.plugin('window')",
         example.display().to_string()
     ));
     let config = scratch.loaded();
@@ -1022,9 +1194,13 @@ fn sample_window_plugin() {
     assert_eq!(style, ["#f6c177", "true"]);
     let mut state = drawn(30);
     state.window = Some(3);
-    let line = presented(&config, state);
-    assert_eq!(text(&line, 30).trim_start(), "window 3");
-    assert_eq!(line.spans[0].style.fg, Some(Color::Rgb(0xf6, 0xc1, 0x77)));
+    let bar = presented(&config, state);
+    let (row, text) = shown_rows(&bar).pop().unwrap();
+    assert_eq!(text, "window 3");
+    assert_eq!(
+        bar.lines[row][0].style.fg,
+        Some(Color::Rgb(0xf6, 0xc1, 0x77))
+    );
     let mut state = drawn(30);
     state.window = Some(4);
     clean(&config.runtime.set_state(state));
@@ -1032,8 +1208,7 @@ fn sample_window_plugin() {
         window: Some(WindowId(4)),
         previous: Some(WindowId(3)),
     }));
-    let line = config.runtime.take_line().unwrap();
-    assert_eq!(text(&line, 30).trim_start(), "window 4");
+    assert_eq!(shown_rows(&latest(&config)).pop().unwrap().1, "window 4");
 }
 
 #[test]
@@ -1099,7 +1274,25 @@ fn waiting_agents_counted() {
         ])),
         ..drawn(40)
     };
-    let line = presented(&config, state);
-    assert!(text(&line, 40).contains("waiting 2"), "{}", text(&line, 40));
+    assert_eq!(shown(&config, state), [line(0, "waiting 2")]);
     assert_eq!(eval::<String>(&config, "return first"), "1/1");
+}
+
+#[test]
+fn span_over_the_base() {
+    let (_scratch, config) = loaded(
+        "span-over-base",
+        "gband.hl.set('StatusLine', { fg = 7, bg = 236 })\ngband.hl.set('Three', { fg = 3, bold = true })\ngband.ui.statusline.add({ id = 'a', hl = 'Three', render = function() return 'x' end })",
+    );
+    let bar = presented(&config, drawn(30));
+    assert_eq!(
+        bar.lines[0][0].style,
+        Style {
+            fg: Some(Color::Index(3)),
+            bg: Some(Color::Index(236)),
+            bold: true,
+            ..Style::default()
+        }
+    );
+    assert_eq!(bar.base.fg, Some(Color::Index(7)));
 }

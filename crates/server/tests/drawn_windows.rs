@@ -287,6 +287,7 @@ async fn plugin_window_is_resized_like_a_pty() {
         .act(SessionAction::StepWidth {
             window,
             step: Step::Grow,
+            by: Proportion::TENTH,
         })
         .await;
     client

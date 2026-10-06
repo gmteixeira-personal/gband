@@ -20,7 +20,10 @@ gband.bind('alt+t', function() gband.window.send_text(1, 'echo sent-$((40 + 2))\
 
 fn env(name: &str) -> TestEnv {
     let env = TestEnv::new(name);
-    env.write_config(&format!("{DEFAULTS}\n{BINDINGS}"));
+    env.write_config(&format!(
+        "{}\n{BINDINGS}",
+        DEFAULTS.replace("gband.plugin(\"gband.statusline\")", "")
+    ));
     env
 }
 
@@ -121,4 +124,36 @@ fn plugin_window_leaves_when_its_owner_detaches() {
     second.wait_for("the plugin window gone", |screen| {
         tiles(screen).len() == 1 && !has_tile_line(screen, "hello from a plugin")
     });
+}
+
+fn position(screen: &Grid, text: &str) -> Option<(usize, usize)> {
+    screen
+        .contents()
+        .lines()
+        .enumerate()
+        .find_map(|(row, line)| line.find(text).map(|at| (row, line[..at].chars().count())))
+}
+
+#[test]
+fn two_clients_with_different_borders() {
+    let env = TestEnv::new("windows-borders");
+    env.write_config("");
+    let mut bordered = Attached::start(&env, 80, 24);
+    bordered.wait_for_prompt();
+    bordered.shell_pid(&env);
+    let borderless_home = env.config_home().with_file_name("config-borderless");
+    let borderless_file = borderless_home.join("gband").join("user").join("init.lua");
+    std::fs::create_dir_all(borderless_file.parent().unwrap()).unwrap();
+    std::fs::write(&borderless_file, "gband.opt.tile_border_sides = {}").unwrap();
+    let borderless = Attached::start_with(&env, GBAND, &["attach"], 80, 24, |command| {
+        command.env("XDG_CONFIG_HOME", &borderless_home);
+    });
+    bordered.run("echo marker-$((40 + 2))");
+    bordered.wait_for_text("marker-42");
+    borderless.wait_for_text("marker-42");
+    let seen = |client: &Attached| position(&client.screen(), "marker-42");
+    assert_eq!(seen(&bordered), seen(&borderless));
+    let drawn = |client: &Attached| client.contents().chars().any(|c| "┌┐└┘─│".contains(c));
+    assert!(drawn(&bordered));
+    assert!(!drawn(&borderless));
 }

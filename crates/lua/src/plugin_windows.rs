@@ -8,6 +8,7 @@ use gband_core::view::ViewAction;
 use mlua::{Function, IntoLuaMulti, Lua, MultiValue, RegistryKey, Table, Value};
 
 use crate::api::{self, Dispatch, PluginWindowRequest};
+use crate::border::{Border, BorderChars, Sides};
 use crate::control;
 use crate::keys::{key_name, parse_key};
 use crate::ui::{self, Style, strip};
@@ -24,7 +25,7 @@ pub struct FloatingFrame {
     pub col: u16,
     pub width: u16,
     pub height: u16,
-    pub border: bool,
+    pub border: Option<Border>,
     pub title: Option<String>,
     pub base: Style,
     pub border_style: Style,
@@ -100,6 +101,13 @@ pub(crate) fn install(lua: &Lua, host: &Table) -> mlua::Result<()> {
     )?;
     host.set("open_target", lua.create_function(open_target)?)?;
     host.set(
+        "border",
+        lua.create_function(|lua, table: Table| match border_table(&table) {
+            Ok(border) => border_value(lua, &border)?.into_lua_multi(lua),
+            Err(message) => (Value::Nil, message).into_lua_multi(lua),
+        })?,
+    )?;
+    host.set(
         "width",
         lua.create_function(|lua, value: Value| match control::width(&value) {
             Ok(width) => (width.num, width.den).into_lua_multi(lua),
@@ -165,7 +173,7 @@ fn request(lua: &Lua, entry: Table) -> mlua::Result<()> {
     api::queue(lua, Dispatch::PluginWindow(request), "gband.win")
 }
 
-fn read_runs(lines: &Table) -> mlua::Result<Vec<Vec<Run>>> {
+pub(crate) fn read_runs(lines: &Table) -> mlua::Result<Vec<Vec<Run>>> {
     lines
         .sequence_values::<Table>()
         .map(|line| {
@@ -183,6 +191,74 @@ fn read_runs(lines: &Table) -> mlua::Result<Vec<Vec<Run>>> {
         .collect()
 }
 
+fn border_table(table: &Table) -> Result<Border, String> {
+    let mut border = Border::default();
+    for pair in table.pairs::<Value, Value>() {
+        let (field, value) = pair.map_err(|error| error.to_string())?;
+        let name = match &field {
+            Value::String(name) => Some(name.to_string_lossy()),
+            _ => None,
+        };
+        match name.as_deref() {
+            Some("sides") => {
+                let Value::Table(list) = value else {
+                    return Err("`sides` must be a list of side names".to_owned());
+                };
+                let names = list
+                    .sequence_values::<String>()
+                    .collect::<mlua::Result<Vec<_>>>()
+                    .map_err(|_| "`sides` must be a list of side names".to_owned())?;
+                border.sides = Sides::parse(names.iter().map(String::as_str))?;
+            }
+            Some("chars") => {
+                border.chars = match value {
+                    Value::String(name) => BorderChars::named(&name.to_string_lossy()),
+                    Value::Table(list) => BorderChars::custom(
+                        list.sequence_values::<String>()
+                            .collect::<mlua::Result<Vec<_>>>()
+                            .map_err(|_| "`chars` must be a list of 8 strings".to_owned())?,
+                    ),
+                    _ => {
+                        return Err(
+                            "`chars` must be a character set name or a list of 8 strings"
+                                .to_owned(),
+                        );
+                    }
+                }
+                .map_err(|reason| format!("`chars`: {reason}"))?;
+            }
+            _ => {
+                return Err(format!(
+                    "a border table takes no field `{}`",
+                    control::field_name(&field)
+                ));
+            }
+        }
+    }
+    Ok(border)
+}
+
+fn border_value(lua: &Lua, border: &Border) -> mlua::Result<Table> {
+    let table = lua.create_table()?;
+    table.set("sides", border.sides.to_lua(lua)?)?;
+    table.set("chars", border.chars.to_lua(lua)?)?;
+    Ok(table)
+}
+
+fn read_border(value: Value) -> mlua::Result<Option<Border>> {
+    Ok(match value {
+        Value::Nil | Value::Boolean(false) => None,
+        Value::Boolean(true) => Some(Border::default()),
+        Value::Table(table) => Some(border_table(&table).map_err(mlua::Error::runtime)?),
+        other => {
+            return Err(mlua::Error::runtime(format!(
+                "a frame border must be a boolean or a table, found {}",
+                other.type_name()
+            )));
+        }
+    })
+}
+
 fn read_frame(frame: &Table) -> mlua::Result<Frame> {
     let base = ui::style(&frame.get("base")?)?;
     let lines = read_runs(&frame.get("lines")?)?;
@@ -192,7 +268,7 @@ fn read_frame(frame: &Table) -> mlua::Result<Frame> {
             col: frame.get("col")?,
             width: frame.get("width")?,
             height: frame.get("height")?,
-            border: frame.get("border")?,
+            border: read_border(frame.get("border")?)?,
             title: frame
                 .get::<Option<mlua::LuaString>>("title")?
                 .map(|title| strip(&title.to_string_lossy())),

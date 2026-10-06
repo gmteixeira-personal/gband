@@ -129,11 +129,12 @@ async fn held_resize_key_gives_a_layout_per_action_and_one_sigwinch() {
     assert!(client.pump(BEYOND_SETTLE).await);
     let mut width = Proportion::ONE_HALF;
     for _ in 0..4 {
-        width = width.step(Step::Grow);
+        width = width.step(Step::Grow, Proportion::TENTH);
         client
             .act(SessionAction::StepWidth {
                 window,
                 step: Step::Grow,
+                by: Proportion::TENTH,
             })
             .await;
         loop {
@@ -268,9 +269,33 @@ async fn floating_window_takes_its_box_size() {
         .act(SessionAction::StepHeight {
             window,
             step: Step::Grow,
+            by: Proportion::TENTH,
         })
         .await;
     winches
         .settled(&mut client, window, Size::new(24, 12))
+        .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn step_named_by_a_client_reaches_every_client() {
+    let server = TestServer::start("step-from-client", &["/bin/sh"]).await;
+    let mut first = server.attach(80, 24).await;
+    let mut second = server.attach(80, 24).await;
+    let window = first.first();
+    let width = |client: &TestClient| client.layout.bands()[0].columns[0].width;
+    assert_eq!(width(&first), Proportion::ONE_HALF);
+    first
+        .act(SessionAction::StepWidth {
+            window,
+            step: Step::Grow,
+            by: Proportion::new(1, 4),
+        })
+        .await;
+    first
+        .wait_until(|client| width(client) == Proportion::new(3, 4))
+        .await;
+    second
+        .wait_until(|client| width(client) == Proportion::new(3, 4))
         .await;
 }

@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::path::PathBuf;
 
+use gband_core::action::Steps;
 use gband_core::input::{Key, KeyCode, Modifiers};
 use gband_core::layout::{LayoutOptions, Proportion};
 use gband_core::view::CenterFocusedColumn;
@@ -11,22 +12,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::Side;
 use crate::api::require_loading;
+use crate::border::{Border, BorderChars, Sides};
 use crate::error::{ConfigError, caller};
 use crate::guard;
 use crate::keys::{key_name, parse_key};
 use crate::owner;
 
 const MAX_DENOMINATOR: u64 = 100;
-const MAX_STATUSLINE_HEIGHT: u16 = 8;
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum StatusLinePosition {
-    #[default]
-    Bottom,
-    Top,
-    Off,
-}
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -39,30 +31,15 @@ pub enum NotifyStyle {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct StatusLineOptions {
-    pub position: StatusLinePosition,
-    pub height: u16,
-    pub separator: String,
-}
-
-impl Default for StatusLineOptions {
-    fn default() -> Self {
-        Self {
-            position: StatusLinePosition::default(),
-            height: 1,
-            separator: " │ ".to_owned(),
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Options {
     pub prefix: Key,
     pub layout: LayoutOptions,
     pub center_focused_column: CenterFocusedColumn,
     pub loop_bands: bool,
-    pub statusline: StatusLineOptions,
     pub notify_style: NotifyStyle,
+    pub tile_border: Border,
+    pub floating_border: Border,
+    pub steps: Steps,
 }
 
 impl Default for Options {
@@ -72,8 +49,10 @@ impl Default for Options {
             layout: LayoutOptions::default(),
             center_focused_column: CenterFocusedColumn::default(),
             loop_bands: true,
-            statusline: StatusLineOptions::default(),
             notify_style: NotifyStyle::default(),
+            tile_border: Border::default(),
+            floating_border: Border::default(),
+            steps: Steps::default(),
         }
     }
 }
@@ -101,17 +80,26 @@ impl Options {
         if let Some(loop_bands) = patch.loop_bands {
             self.loop_bands = loop_bands;
         }
-        if let Some(position) = patch.statusline_position {
-            self.statusline.position = position;
-        }
-        if let Some(Height(height)) = patch.statusline_height {
-            self.statusline.height = height;
-        }
-        if let Some(separator) = patch.statusline_separator {
-            self.statusline.separator = separator;
-        }
         if let Some(style) = patch.notify_style {
             self.notify_style = style;
+        }
+        if let Some(sides) = patch.tile_border_sides {
+            self.tile_border.sides = sides;
+        }
+        if let Some(chars) = patch.tile_border_chars {
+            self.tile_border.chars = chars;
+        }
+        if let Some(sides) = patch.floating_border_sides {
+            self.floating_border.sides = sides;
+        }
+        if let Some(chars) = patch.floating_border_chars {
+            self.floating_border.chars = chars;
+        }
+        if let Some(WidthStep(step)) = patch.width_step {
+            self.steps.width = step;
+        }
+        if let Some(HeightStep(step)) = patch.height_step {
+            self.steps.height = step;
         }
     }
 }
@@ -125,10 +113,13 @@ impl Options {
             "width_presets" => self.layout.presets = defaults.layout.presets,
             "center_focused_column" => self.center_focused_column = defaults.center_focused_column,
             "loop_bands" => self.loop_bands = defaults.loop_bands,
-            "statusline_position" => self.statusline.position = defaults.statusline.position,
-            "statusline_height" => self.statusline.height = defaults.statusline.height,
-            "statusline_separator" => self.statusline.separator = defaults.statusline.separator,
             "notify_style" => self.notify_style = defaults.notify_style,
+            "tile_border_sides" => self.tile_border.sides = defaults.tile_border.sides,
+            "tile_border_chars" => self.tile_border.chars = defaults.tile_border.chars,
+            "floating_border_sides" => self.floating_border.sides = defaults.floating_border.sides,
+            "floating_border_chars" => self.floating_border.chars = defaults.floating_border.chars,
+            "width_step" => self.steps.width = defaults.steps.width,
+            "height_step" => self.steps.height = defaults.steps.height,
             _ => {}
         }
     }
@@ -143,23 +134,29 @@ impl Options {
                 .into_lua(lua),
             "center_focused_column" => lua.to_value(&self.center_focused_column),
             "loop_bands" => self.loop_bands.into_lua(lua),
-            "statusline_position" => lua.to_value(&self.statusline.position),
-            "statusline_height" => self.statusline.height.into_lua(lua),
-            "statusline_separator" => self.statusline.separator.as_str().into_lua(lua),
             "notify_style" => lua.to_value(&self.notify_style),
+            "tile_border_sides" => self.tile_border.sides.to_lua(lua),
+            "tile_border_chars" => self.tile_border.chars.to_lua(lua),
+            "floating_border_sides" => self.floating_border.sides.to_lua(lua),
+            "floating_border_chars" => self.floating_border.chars.to_lua(lua),
+            "width_step" => width(self.steps.width).into_lua(lua),
+            "height_step" => width(self.steps.height).into_lua(lua),
             _ => Ok(Value::Nil),
         }
     }
 }
 
-const CLIENT_NAMES: [&str; 7] = [
+const CLIENT_NAMES: [&str; 10] = [
     "prefix",
     "center_focused_column",
     "loop_bands",
-    "statusline_position",
-    "statusline_height",
-    "statusline_separator",
     "notify_style",
+    "tile_border_sides",
+    "tile_border_chars",
+    "floating_border_sides",
+    "floating_border_chars",
+    "width_step",
+    "height_step",
 ];
 
 const SERVER_NAMES: [&str; 2] = ["default_column_width", "width_presets"];
@@ -192,6 +189,27 @@ fn foreign(lua: &Lua, name: &str) -> Option<String> {
     })
 }
 
+const REMOVED: [&str; 3] = [
+    "statusline_position",
+    "statusline_height",
+    "statusline_separator",
+];
+
+pub(crate) fn report_removed(lua: &Lua, name: &str) -> bool {
+    if crate::runtime::side(lua) != Side::Client || !REMOVED.contains(&name) {
+        return false;
+    }
+    report(
+        lua,
+        caller(lua),
+        owner::current(lua),
+        format!(
+            "the option `{name}` was removed; set up the status line with gband.plugin(\"gband.statusline\", {{ side = \"left\" }}), or leave it out for no status line"
+        ),
+    );
+    true
+}
+
 pub(crate) fn check_name(lua: &Lua, name: &str) -> Result<(), String> {
     if own(lua, name) {
         return Ok(());
@@ -199,7 +217,7 @@ pub(crate) fn check_name(lua: &Lua, name: &str) -> Result<(), String> {
     Err(foreign(lua, name).unwrap_or_else(|| format!("unknown option `{name}`")))
 }
 
-const BUILTIN: [(&str, &str, &str); 9] = [
+const BUILTIN: [(&str, &str, &str); 12] = [
     ("prefix", "string", "the key that starts a key sequence"),
     (
         "default_column_width",
@@ -227,19 +245,34 @@ const BUILTIN: [(&str, &str, &str); 9] = [
         "whether focus and the strip go round from a band's last column to its first",
     ),
     (
-        "statusline_position",
-        "string",
-        "where the status line sits: bottom, top or off",
+        "tile_border_sides",
+        "list",
+        "the sides of a tiled window's border that are drawn",
     ),
     (
-        "statusline_height",
-        "integer",
-        "the number of rows the status line takes, from 1 to 8",
+        "tile_border_chars",
+        "string",
+        "the characters of a tiled window's border: plain, rounded, double, thick or a list of 8",
     ),
     (
-        "statusline_separator",
+        "floating_border_sides",
+        "list",
+        "the sides of a floating window's border that are drawn",
+    ),
+    (
+        "floating_border_chars",
         "string",
-        "the text drawn between adjacent status line components",
+        "the characters of a floating window's border: plain, rounded, double, thick or a list of 8",
+    ),
+    (
+        "width_step",
+        "number",
+        "how much growing or shrinking changes a column's width, as a fraction of the screen",
+    ),
+    (
+        "height_step",
+        "number",
+        "how much growing or shrinking changes a window's height, as a fraction of the screen",
     ),
 ];
 
@@ -466,6 +499,9 @@ fn assign(lua: &Lua, (_, name, value): (Value, Value, Value)) -> mlua::Result<()
         ));
     }
     require_loading(lua, "setting an option")?;
+    if report_removed(lua, &name) {
+        return Ok(());
+    }
     let location = caller(lua);
     let owner = owner::current(lua);
     if let Some(message) = foreign(lua, &name) {
@@ -665,53 +701,69 @@ pub struct OptionsPatch {
     width_presets: Option<Presets>,
     center_focused_column: Option<CenterFocusedColumn>,
     loop_bands: Option<bool>,
-    statusline_position: Option<StatusLinePosition>,
-    statusline_height: Option<Height>,
-    statusline_separator: Option<String>,
     notify_style: Option<NotifyStyle>,
+    tile_border_sides: Option<Sides>,
+    tile_border_chars: Option<BorderChars>,
+    floating_border_sides: Option<Sides>,
+    floating_border_chars: Option<BorderChars>,
+    width_step: Option<WidthStep>,
+    height_step: Option<HeightStep>,
+}
+
+pub(crate) fn step(value: f64, limit: u32) -> Result<Proportion, String> {
+    let read = (value.is_finite() && value > 0.0 && value <= f64::from(limit))
+        .then(|| Width::from_number(value).ok())
+        .flatten();
+    read.map(|Width(step)| step)
+        .ok_or_else(|| format!("expected a step greater than 0 and at most {limit}, found {value}"))
+}
+
+pub(crate) const WIDTH_STEP_LIMIT: u32 = Proportion::MAX;
+pub(crate) const HEIGHT_STEP_LIMIT: u32 = 1;
+
+#[derive(Debug)]
+struct WidthStep(Proportion);
+
+impl<'de> Deserialize<'de> for WidthStep {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = deserializer.deserialize_f64(Number)?;
+        step(value, WIDTH_STEP_LIMIT)
+            .map(WidthStep)
+            .map_err(de::Error::custom)
+    }
 }
 
 #[derive(Debug)]
-struct Height(u16);
+struct HeightStep(Proportion);
 
-impl<'de> Deserialize<'de> for Height {
+impl<'de> Deserialize<'de> for HeightStep {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        struct Integer;
+        let value = deserializer.deserialize_f64(Number)?;
+        step(value, HEIGHT_STEP_LIMIT)
+            .map(HeightStep)
+            .map_err(de::Error::custom)
+    }
+}
 
-        impl Visitor<'_> for Integer {
-            type Value = i64;
+struct Number;
 
-            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-                formatter.write_str("an integer")
-            }
+impl Visitor<'_> for Number {
+    type Value = f64;
 
-            fn visit_i64<E: de::Error>(self, value: i64) -> Result<i64, E> {
-                Ok(value)
-            }
+    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("a number")
+    }
 
-            fn visit_u64<E: de::Error>(self, value: u64) -> Result<i64, E> {
-                i64::try_from(value).map_err(|_| E::custom("the integer is too large"))
-            }
+    fn visit_f64<E: de::Error>(self, value: f64) -> Result<f64, E> {
+        Ok(value)
+    }
 
-            fn visit_f64<E: de::Error>(self, value: f64) -> Result<i64, E> {
-                if value.fract() == 0.0 && value.abs() < 1e15 {
-                    Ok(value as i64)
-                } else {
-                    Err(E::custom(format!("expected an integer, found {value}")))
-                }
-            }
-        }
+    fn visit_i64<E: de::Error>(self, value: i64) -> Result<f64, E> {
+        Ok(value as f64)
+    }
 
-        let value = deserializer.deserialize_i64(Integer)?;
-        u16::try_from(value)
-            .ok()
-            .filter(|height| (1..=MAX_STATUSLINE_HEIGHT).contains(height))
-            .map(Height)
-            .ok_or_else(|| {
-                de::Error::custom(format!(
-                    "expected an integer from 1 to {MAX_STATUSLINE_HEIGHT}, found {value}"
-                ))
-            })
+    fn visit_u64<E: de::Error>(self, value: u64) -> Result<f64, E> {
+        Ok(value as f64)
     }
 }
 
@@ -759,28 +811,6 @@ impl Width {
 
 impl<'de> Deserialize<'de> for Width {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        struct Number;
-
-        impl Visitor<'_> for Number {
-            type Value = f64;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-                formatter.write_str("a number")
-            }
-
-            fn visit_f64<E: de::Error>(self, value: f64) -> Result<f64, E> {
-                Ok(value)
-            }
-
-            fn visit_i64<E: de::Error>(self, value: i64) -> Result<f64, E> {
-                Ok(value as f64)
-            }
-
-            fn visit_u64<E: de::Error>(self, value: u64) -> Result<f64, E> {
-                Ok(value as f64)
-            }
-        }
-
         let value = deserializer.deserialize_f64(Number)?;
         Width::from_number(value).map_err(de::Error::custom)
     }
@@ -885,7 +915,7 @@ mod tests {
     #[test]
     fn every_option_is_read() {
         let options = patched(
-            "{ prefix = 'ctrl+b', default_column_width = 0.35, width_presets = { 1/2 }, center_focused_column = 'on-overflow', loop_bands = false, statusline_position = 'top', statusline_height = 2, statusline_separator = ' | ', notify_style = 'osc777' }",
+            "{ prefix = 'ctrl+b', default_column_width = 0.35, width_presets = { 1/2 }, center_focused_column = 'on-overflow', loop_bands = false, notify_style = 'osc777' }",
         )
         .unwrap();
         assert_eq!(
@@ -898,13 +928,34 @@ mod tests {
                 },
                 center_focused_column: CenterFocusedColumn::OnOverflow,
                 loop_bands: false,
-                statusline: StatusLineOptions {
-                    position: StatusLinePosition::Top,
-                    height: 2,
-                    separator: " | ".to_owned(),
-                },
                 notify_style: NotifyStyle::Osc777,
+                ..Options::default()
             }
+        );
+    }
+
+    #[test]
+    fn steps_and_borders_are_read() {
+        let options = patched(
+            "{ width_step = 1/4, height_step = 0.05, tile_border_sides = { 'left', 'top', 'left' }, tile_border_chars = 'rounded', floating_border_sides = {}, floating_border_chars = { '+', '-', '+', '|', '+', '-', '+', '|' } }",
+        )
+        .unwrap();
+        assert_eq!(
+            options.steps,
+            Steps {
+                width: Proportion::new(1, 4),
+                height: Proportion::new(1, 20),
+            }
+        );
+        assert_eq!(options.tile_border.sides.names(), ["top", "left"]);
+        assert_eq!(
+            options.tile_border.chars,
+            BorderChars::Named(crate::border::CharSet::Rounded)
+        );
+        assert_eq!(options.floating_border.sides, Sides::NONE);
+        assert_eq!(
+            options.floating_border.chars.glyphs(),
+            ["+", "-", "+", "|", "+", "-", "+", "|"]
         );
     }
 
@@ -919,12 +970,19 @@ mod tests {
             "{ center_focused_column = 'sometimes' }",
             "{ prefix = 'ctrl+hyper' }",
             "{ statusline_position = 'left' }",
-            "{ statusline_height = 0 }",
-            "{ statusline_height = 9 }",
-            "{ statusline_height = 1.5 }",
-            "{ statusline_separator = 3 }",
+            "{ statusline_height = 2 }",
+            "{ statusline_separator = ' | ' }",
             "{ notify_style = 'osc8' }",
             "{ loop_bands = 'yes' }",
+            "{ width_step = 0 }",
+            "{ width_step = 10001 }",
+            "{ height_step = 2 }",
+            "{ height_step = 'tenth' }",
+            "{ tile_border_sides = { 'middle' } }",
+            "{ tile_border_sides = 'top' }",
+            "{ tile_border_chars = 'dotted' }",
+            "{ tile_border_chars = { '+', '-' } }",
+            "{ floating_border_chars = { '日', '-', '+', '|', '+', '-', '+', '|' } }",
         ] {
             assert!(patched(source).is_err(), "{source}");
         }

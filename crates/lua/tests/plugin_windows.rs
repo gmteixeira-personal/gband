@@ -9,8 +9,8 @@ use gband_core::layout::{Layout, LayoutOptions, Proportion, WindowId};
 use gband_core::view::ViewAction;
 use gband_lua::plugin_windows::{FloatingFrame, Frame, Run, TiledFrame};
 use gband_lua::{
-    BandState, Binding, Chord, Color, Config, Dispatch, Event, Outcome, PluginWindowRequest, Style,
-    ViewState,
+    BandState, Binding, Border, BorderChars, CharSet, Chord, Color, Config, Dispatch, Event,
+    Outcome, PluginWindowRequest, Sides, Style, ViewState,
 };
 use mlua::Table;
 
@@ -181,6 +181,63 @@ fn bad_options_are_errors() {
     }
     let listed: Vec<u32> = client.eval("return gband.win.list()");
     assert!(listed.is_empty());
+}
+
+#[test]
+fn invalid_border_table() {
+    let client = Client::new("win-border-table-errors", "");
+    for (code, mentions) in [
+        (
+            "gband.win.open({ border = { sides = { 'middle' } } })",
+            "middle",
+        ),
+        (
+            "gband.win.open({ border = { chars = 'dotted' } })",
+            "dotted",
+        ),
+        ("gband.win.open({ border = { chars = { '+' } } })", "chars"),
+        ("gband.win.open({ border = { colour = 1 } })", "colour"),
+        ("gband.win.open({ border = 'rounded' })", "border"),
+    ] {
+        let outcome = run_job(&client.config, code);
+        let [error] = outcome.errors.as_slice() else {
+            panic!("{code}: {:?}", outcome.errors);
+        };
+        assert!(error.message.contains(mentions), "{code}: {error}");
+    }
+    let listed: Vec<u32> = client.eval("return gband.win.list()");
+    assert!(listed.is_empty());
+}
+
+#[test]
+fn border_table_frames_its_window() {
+    let client = Client::new("win-border-table", "");
+    client.run(
+        "win = gband.win.open({ width = 20, height = 5, border = { sides = { 'top' }, chars = 'rounded' } })",
+    );
+    let frame = client.float();
+    assert_eq!(
+        frame.border,
+        Some(Border {
+            sides: Sides::parse(["top"]).unwrap(),
+            chars: BorderChars::Named(CharSet::Rounded),
+        })
+    );
+    let size: Vec<u32> =
+        client.eval("local info = gband.win.info(win) return { info.cols, info.rows }");
+    assert_eq!(size, [18, 3]);
+    client.run("gband.win.set_config(win, { border = { chars = 'double' } })");
+    assert_eq!(
+        client.float().border,
+        Some(Border {
+            sides: Sides::ALL,
+            chars: BorderChars::Named(CharSet::Double),
+        })
+    );
+    client.run("gband.win.set_config(win, { border = false })");
+    assert_eq!(client.float().border, None);
+    client.run("gband.win.set_config(win, { border = true })");
+    assert_eq!(client.float().border, Some(Border::default()));
 }
 
 #[test]
@@ -836,7 +893,7 @@ fn guide_examples() -> Vec<String> {
     )
     .unwrap();
     let start = guide.find("## Layout and view").unwrap();
-    let end = guide.find("## Status line").unwrap();
+    let end = guide.find("## Side bars").unwrap();
     guide[start..end]
         .split("```lua\n")
         .skip(1)

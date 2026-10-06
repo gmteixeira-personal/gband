@@ -4,7 +4,6 @@ mod channel;
 pub mod color;
 mod connect;
 pub mod input;
-pub mod placement;
 pub mod plugin_windows;
 pub mod render;
 mod requests;
@@ -29,9 +28,9 @@ use gband_core::layout::{
 use gband_core::view::{CenterFocusedColumn, Layer, Scene, View, ViewAction};
 use gband_emulator::{Emulator, Grid};
 use gband_lua::{
-    BandState, Binding, ColumnState, Config, ConfigError, Dispatch, Event, Options, Outcome as Ran,
-    PluginManifest, PluginWindowRequest, Requirement as Needed, Runtime, StatusLine, Version,
-    ViewState, WindowInput, WindowStates,
+    BandState, Bar, Binding, Border, ColumnState, Config, ConfigError, Dispatch, Event, Options,
+    Outcome as Ran, PluginManifest, PluginWindowRequest, Requirement as Needed, Runtime, Slot,
+    Version, ViewState, WindowInput, WindowStates,
 };
 use gband_protocol::{ClientMessage, ExecutableId, Requirement, ServerMessage, SessionName, Value};
 use ratatui::layout::Rect;
@@ -45,11 +44,10 @@ use crate::bindings::{Command, Keymap, Leader, ROOT};
 use crate::channel::{Channel, Served};
 pub use crate::channel::{Loader, TestChannel};
 use crate::color::ColorSupport;
-pub use crate::connect::{Connection, connect, connect_reporting};
+pub use crate::connect::{Connection, connect};
 use crate::input::key_from_event;
-use crate::placement::Placement;
 use crate::plugin_windows::{OpenRequest, Opened, PluginWindows};
-use crate::render::{Ribbon, StatusArea, draw_frame};
+use crate::render::{Ribbon, Shown, draw_frame};
 pub use crate::requests::{kill_session, list_sessions};
 pub use crate::transport::{Link, Transport, UnixTransport};
 
@@ -94,9 +92,8 @@ pub fn run(
 ) -> Result<Report> {
     let cwd = std::env::current_dir().context("cannot read the current directory")?;
     let animations = parse_animations(std::env::var(ANIMATIONS_VARIABLE).ok().as_deref());
-    let placement = Placement::new(&configuration.config.options.statusline);
     runtime()?.block_on(async {
-        let mut connection = connect_reporting(&config, &transport, placement).await?;
+        let mut connection = connect(&config, &transport).await?;
         connection
             .send(&ClientMessage::Attach {
                 session: config.session.clone(),
@@ -146,9 +143,10 @@ pub struct Display {
     layout: Arc<Layout>,
     area: Size,
     terminal: Size,
-    placement: Placement,
     ribbon: Rect,
-    status: Option<Rect>,
+    bars: Vec<Bar>,
+    placed: Vec<Option<Rect>>,
+    error_item: bool,
     grids: HashMap<WindowId, Grid>,
     view: Option<View>,
     shown: Option<Vec<WindowId>>,
@@ -157,23 +155,25 @@ pub struct Display {
     policy: CenterFocusedColumn,
     loop_bands: bool,
     banner: Option<String>,
+    errors: Vec<String>,
     colors: ColorSupport,
-    line: Option<StatusLine>,
     plugin_windows: PluginWindows,
     states: Arc<WindowStates>,
     ready: bool,
+    tile_border: Border,
+    floating_border: Border,
 }
 
 impl Display {
     pub fn new(terminal: Size, animations: Animations) -> Self {
-        let (ribbon, status) = Placement::OFF.split(terminal);
         Self {
             layout: Arc::new(Layout::new()),
             area: terminal,
             terminal,
-            placement: Placement::OFF,
-            ribbon,
-            status,
+            ribbon: Rect::new(0, 0, terminal.cols, terminal.rows),
+            bars: Vec::new(),
+            placed: Vec::new(),
+            error_item: false,
             grids: HashMap::new(),
             view: None,
             shown: None,
@@ -182,11 +182,13 @@ impl Display {
             policy: CenterFocusedColumn::default(),
             loop_bands: true,
             banner: None,
+            errors: Vec::new(),
             colors: ColorSupport::default(),
-            line: None,
             plugin_windows: PluginWindows::new(),
             states: Arc::new(WindowStates::new()),
             ready: false,
+            tile_border: Border::default(),
+            floating_border: Border::default(),
         }
     }
 
@@ -229,6 +231,8 @@ impl Display {
     pub fn configure(&mut self, options: &Options) {
         self.prefix = Some(options.prefix);
         self.policy = options.center_focused_column;
+        self.tile_border = options.tile_border.clone();
+        self.floating_border = options.floating_border.clone();
         let looping = std::mem::replace(&mut self.loop_bands, options.loop_bands);
         if let Some(view) = &mut self.view {
             view.set_center_focused_column(self.policy);
@@ -237,7 +241,6 @@ impl Display {
         if looping != self.loop_bands {
             self.with_view(View::sync);
         }
-        self.set_placement(Placement::new(&options.statusline));
     }
 
     pub fn set_colors(&mut self, colors: ColorSupport) {
@@ -249,41 +252,59 @@ impl Display {
     }
 
     pub fn reported_size(&self) -> Size {
-        Size::new(self.ribbon.width, self.ribbon.height)
+        self.terminal
     }
 
     pub fn ribbon_area(&self) -> Rect {
         self.ribbon
     }
 
-    pub fn status_area(&self) -> Option<Rect> {
-        self.status
+    fn ribbon_size(&self) -> Size {
+        Size::new(self.ribbon.width, self.ribbon.height)
     }
 
-    pub fn status_line(&self) -> Option<&StatusLine> {
-        self.line.as_ref()
+    pub fn bars(&self) -> impl Iterator<Item = (&Bar, Rect)> {
+        self.bars
+            .iter()
+            .zip(&self.placed)
+            .filter_map(|(bar, placed)| placed.map(|placed| (bar, placed)))
     }
 
-    pub fn set_status_line(&mut self, line: StatusLine) {
-        self.line = Some(line);
+    pub fn set_error_item(&mut self, shown: bool) {
+        self.error_item = shown;
     }
 
-    pub fn set_size(&mut self, terminal: Size, placement: Placement) -> Option<Size> {
-        let before = self.reported_size();
-        self.terminal = terminal;
-        self.placement = placement;
-        (self.ribbon, self.status) = placement.split(terminal);
-        let after = self.reported_size();
-        if after == before {
+    fn place_bars(&mut self) -> bool {
+        let slots: Vec<Slot> = self.bars.iter().map(|bar| bar.slot).collect();
+        let (placed, ribbon) = gband_lua::bars::place(&slots, self.terminal.cols);
+        let rows = self.terminal.rows;
+        self.placed = placed
+            .into_iter()
+            .map(|columns| columns.map(|columns| Rect::new(columns.col, 0, columns.width, rows)))
+            .collect();
+        let ribbon = Rect::new(ribbon.col, 0, ribbon.width, rows);
+        std::mem::replace(&mut self.ribbon, ribbon) != ribbon
+    }
+
+    pub fn set_size(&mut self, terminal: Size) -> Option<Size> {
+        let resized = std::mem::replace(&mut self.terminal, terminal) != terminal;
+        let moved = self.place_bars();
+        if !resized && !moved {
             return None;
         }
         self.presentation.snap();
         self.with_view(View::sync);
-        Some(after)
+        resized.then_some(terminal)
     }
 
-    pub fn set_placement(&mut self, placement: Placement) -> Option<Size> {
-        self.set_size(self.terminal, placement)
+    pub fn set_bars(&mut self, bars: Vec<Bar>) -> bool {
+        self.bars = bars;
+        let moved = self.place_bars();
+        if moved {
+            self.presentation.snap();
+            self.with_view(View::sync);
+        }
+        moved
     }
 
     fn tiled_beside(&self, window: WindowId) -> Option<WindowId> {
@@ -317,11 +338,12 @@ impl Display {
             column,
             window: self.focused().map(|window| window.0),
             width: self.terminal.cols,
-            drawn: self.status.is_some(),
+            height: self.terminal.rows,
             error: self.banner.clone(),
+            errors: self.errors.clone(),
             layout: Arc::clone(&self.layout),
             area: self.area,
-            ribbon: self.reported_size(),
+            ribbon: self.ribbon_size(),
             states: Arc::clone(&self.states),
         }
     }
@@ -330,8 +352,18 @@ impl Display {
         self.banner.as_deref()
     }
 
-    pub fn set_banner(&mut self, banner: Option<String>) {
-        self.banner = banner;
+    pub fn errors(&self) -> &[String] {
+        &self.errors
+    }
+
+    pub fn report_error(&mut self, error: String) {
+        self.errors.push(error.clone());
+        self.banner = Some(error);
+    }
+
+    pub fn clear_errors(&mut self) {
+        self.errors.clear();
+        self.banner = None;
     }
 
     pub fn report_shown(&mut self) -> Option<ClientMessage> {
@@ -450,7 +482,7 @@ impl Display {
 
     pub fn present(&mut self, now: Instant) -> Option<Drawn> {
         let view = self.view.as_ref()?;
-        let targets = Targets::new(&self.layout, self.area, view, self.reported_size());
+        let targets = Targets::new(&self.layout, self.area, view, self.ribbon_size());
         self.presentation.update(now, &targets);
         Some(self.presentation.drawn(now))
     }
@@ -467,15 +499,13 @@ impl Display {
             grids: &self.grids,
             drawn,
             region: self.ribbon,
+            tile_border: &self.tile_border,
+            floating_border: &self.floating_border,
             floats: self.plugin_windows.floats(),
             float_focused: self.plugin_windows.focused_float().is_some(),
             colors: self.colors,
-            banner: self.banner.as_deref(),
-            status: self.status.map(|area| StatusArea {
-                area,
-                line: self.line.as_ref(),
-                colors: self.colors,
-            }),
+            banner: self.banner.as_deref().filter(|_| !self.error_item),
+            bars: self.bars().map(|(bar, area)| Shown { bar, area }).collect(),
         };
         draw_frame(frame, &ribbon);
     }
@@ -488,7 +518,7 @@ impl Display {
         Scene {
             layout: &self.layout,
             area: self.area,
-            viewport: self.reported_size(),
+            viewport: self.ribbon_size(),
         }
     }
 
@@ -496,7 +526,7 @@ impl Display {
         let scene = Scene {
             layout: &self.layout,
             area: self.area,
-            viewport: Size::new(self.ribbon.width, self.ribbon.height),
+            viewport: self.ribbon_size(),
         };
         if let Some(view) = &mut self.view {
             change(view, scene);
@@ -625,9 +655,19 @@ impl Controls {
             .runtime
             .set_plugin_window_counter(display.plugin_windows.counter());
         display.configure(&config.options);
-        display.set_banner(config.errors.last().map(ToString::to_string));
+        if config.errors.is_empty() {
+            display.clear_errors();
+        }
+        for error in &config.errors {
+            display.report_error(error.to_string());
+        }
         Self {
-            keymap: Keymap::new(config.options.prefix, config.keymap, config.modes),
+            keymap: Keymap::new(
+                config.options.prefix,
+                config.options.steps,
+                config.keymap,
+                config.modes,
+            ),
             runtime: config.runtime,
             leader: Leader::default(),
             refresh_pending: false,
@@ -647,7 +687,7 @@ impl Controls {
 
     fn report(&mut self, display: &mut Display, error: String) {
         tracing::warn!("configuration error: {error}");
-        display.set_banner(Some(error));
+        display.report_error(error);
     }
 
     fn bridge(&mut self, display: &mut Display, message: ServerMessage, steps: &mut Vec<Step>) {
@@ -778,8 +818,7 @@ impl Controls {
 
     pub fn resize(&mut self, display: &mut Display, terminal: Size) -> Vec<Step> {
         self.react(display, Vec::new(), |_, display, steps| {
-            let placement = display.placement;
-            if let Some(size) = display.set_size(terminal, placement) {
+            if let Some(size) = display.set_size(terminal) {
                 steps.push(resize_step(size));
             }
         })
@@ -896,7 +935,6 @@ impl Controls {
                     .into_iter()
                     .map(Step::Send)
                     .collect();
-                let resized = display.set_placement(Placement::new(&config.options.statusline));
                 let awaiting = self.awaiting.take();
                 let pending = std::mem::take(&mut self.pending);
                 *self = Self::new(config, display);
@@ -911,13 +949,12 @@ impl Controls {
                 }
                 self.refresh_pending = true;
                 let mut steps = closed;
-                steps.extend(resized.map(resize_step));
                 steps.extend(self.react(display, events, |_, _, _| {}));
                 steps
             }
             Err(error) => {
                 tracing::warn!("configuration error: {error}");
-                display.set_banner(Some(error.to_string()));
+                display.report_error(error.to_string());
                 self.react(display, Vec::new(), |controls, _, _| {
                     controls.leader.reset()
                 })
@@ -934,7 +971,6 @@ impl Controls {
         let mut steps = Vec::new();
         let mut before = display.observe();
         let mut table = self.leader.active().to_owned();
-        let drawn = display.status_area().is_some();
         self.push_state(display, &mut steps);
         change(self, display, &mut steps);
         for depth in 0.. {
@@ -959,17 +995,20 @@ impl Controls {
                 self.apply(display, outcome, &mut steps);
             }
         }
-        if !drawn && display.status_area().is_some() {
-            self.refresh_pending = true;
-        }
         if self.refresh_pending && display.view.is_some() {
             self.refresh_pending = false;
             self.refresh_now(display, &mut steps);
         }
         self.push_state(display, &mut steps);
-        if let Some(line) = self.runtime.take_line() {
-            display.set_status_line(line);
+        if let Some(bars) = self.runtime.take_bars()
+            && display.set_bars(bars)
+        {
+            self.push_state(display, &mut steps);
+            if let Some(bars) = self.runtime.take_bars() {
+                display.set_bars(bars);
+            }
         }
+        display.set_error_item(self.runtime.error_item_shown());
         let frames = self.runtime.take_frames();
         steps.extend(
             display
@@ -1050,8 +1089,8 @@ impl Controls {
         for error in &outcome.errors {
             tracing::warn!("configuration error: {error}");
         }
-        if let Some(error) = outcome.errors.last() {
-            display.set_banner(Some(error.to_string()));
+        for error in &outcome.errors {
+            display.report_error(error.to_string());
         }
     }
 }
@@ -1174,7 +1213,7 @@ async fn attach(
     display.set_colors(ColorSupport::detect());
     let mut controls = Controls::new(configuration.config, &mut display);
     if let Some(error) = configuration.error {
-        display.set_banner(Some(error.to_string()));
+        display.report_error(error.to_string());
     }
     let mut reloads = configuration.reloads;
     let mut channel = configuration.channel.map(Channel::new).transpose()?;

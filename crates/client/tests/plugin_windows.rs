@@ -30,7 +30,10 @@ impl Scratch {
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(
             &path,
-            format!("{DEFAULTS}\ngband.opt.statusline_position = 'off'\n{source}"),
+            format!(
+                "{}\n{source}",
+                DEFAULTS.replace("gband.plugin(\"gband.statusline\")", "")
+            ),
         )
         .unwrap();
         let locations = Locations {

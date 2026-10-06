@@ -3,7 +3,7 @@ use std::time::Instant;
 
 use gband_client::animation::{Animations, Drawn, DrawnBand, Presentation, Targets};
 use gband_client::color::ColorSupport;
-use gband_client::render::{Ribbon, draw_frame};
+use gband_client::render::{Ribbon, Shown, draw_border, draw_frame, interior};
 use gband_core::geometry::{Size, boxes, tiles};
 use gband_core::layout::{
     Direction, Layout, LayoutOptions, Proportion, SessionAction, Step, WindowHeight, WindowId,
@@ -11,10 +11,11 @@ use gband_core::layout::{
 use gband_core::view::{CenterFocusedColumn, Scene, View, ViewAction};
 use gband_emulator::{Emulator, Grid};
 use gband_lua::plugin_windows::{FloatingFrame, Run};
-use gband_lua::{Color, Style};
+use gband_lua::{Bar, BarSide, Border, BorderChars, CharSet, Color, Sides, Slot, Style};
 use insta::assert_snapshot;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
+use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 
 struct Fixture {
@@ -25,6 +26,10 @@ struct Fixture {
     banner: Option<String>,
     floats: Vec<FloatingFrame>,
     float_focused: bool,
+    tile_border: Border,
+    floating_border: Border,
+    bars: Vec<(Bar, Rect)>,
+    region: Option<Rect>,
 }
 
 impl Fixture {
@@ -56,6 +61,10 @@ impl Fixture {
             banner: None,
             floats: Vec::new(),
             float_focused: false,
+            tile_border: Border::default(),
+            floating_border: Border::default(),
+            bars: Vec::new(),
+            region: None,
         };
         fixture.reset_grids();
         (fixture, windows)
@@ -123,12 +132,23 @@ impl Fixture {
             view: &self.view,
             grids: &self.grids,
             drawn,
-            region: Rect::new(0, 0, terminal_area.width, terminal_area.height),
+            region: self.region.unwrap_or(Rect::new(
+                0,
+                0,
+                terminal_area.width,
+                terminal_area.height,
+            )),
+            tile_border: &self.tile_border,
+            floating_border: &self.floating_border,
             floats: self.floats.iter().collect(),
             float_focused: self.float_focused,
             colors: ColorSupport::Indexed,
             banner: self.banner.as_deref(),
-            status: None,
+            bars: self
+                .bars
+                .iter()
+                .map(|(bar, area)| Shown { bar, area: *area })
+                .collect(),
         };
         terminal.draw(|frame| draw_frame(frame, &ribbon)).unwrap();
         let backend = terminal.backend();
@@ -233,6 +253,7 @@ fn column_wider_than_the_terminal_shows_its_left_border() {
             SessionAction::StepWidth {
                 window: windows[0],
                 step: Step::Grow,
+                by: Proportion::TENTH,
             },
             80,
         );
@@ -383,7 +404,7 @@ fn float(row: u16, col: u16, width: u16, height: u16, lines: &[&str]) -> Floatin
         col,
         width,
         height,
-        border: true,
+        border: Some(Border::default()),
         title: Some("Keys".to_owned()),
         base,
         border_style: Style {
@@ -622,4 +643,199 @@ fn cursor_under_a_floating_window() {
             .render(Size::new(80, 24))
             .ends_with("cursor: Some(Position { x: 3, y: 1 })")
     );
+}
+
+fn sides(names: &[&str]) -> Sides {
+    Sides::parse(names.iter().copied()).unwrap()
+}
+
+fn bordered(width: u16, height: u16, sides: Sides, chars: CharSet) -> (Buffer, Rect) {
+    let area = Rect::new(0, 0, width, height);
+    let mut buffer = Buffer::filled(area, ratatui::buffer::Cell::new("x"));
+    let border = Border {
+        sides,
+        chars: BorderChars::Named(chars),
+    };
+    draw_border(&mut buffer, area, &border, ratatui::style::Style::default());
+    (buffer, interior(area))
+}
+
+fn rows(buffer: &Buffer) -> Vec<String> {
+    let area = buffer.area;
+    (area.top()..area.bottom())
+        .map(|y| {
+            (area.left()..area.right())
+                .map(|x| buffer[(x, y)].symbol())
+                .collect()
+        })
+        .collect()
+}
+
+#[test]
+fn only_the_left_side() {
+    let (buffer, inner) = bordered(10, 5, sides(&["left"]), CharSet::Plain);
+    assert_eq!(
+        rows(&buffer),
+        [
+            "│         ",
+            "│xxxxxxxx ",
+            "│xxxxxxxx ",
+            "│xxxxxxxx ",
+            "│         ",
+        ]
+    );
+    assert_eq!(inner, Rect::new(1, 1, 8, 3));
+}
+
+#[test]
+fn top_and_left_sides() {
+    let (buffer, _) = bordered(10, 5, sides(&["top", "left"]), CharSet::Rounded);
+    assert_eq!(
+        rows(&buffer),
+        [
+            "╭─────────",
+            "│xxxxxxxx ",
+            "│xxxxxxxx ",
+            "│xxxxxxxx ",
+            "│         ",
+        ]
+    );
+}
+
+#[test]
+fn no_sides() {
+    let (buffer, inner) = bordered(6, 4, Sides::NONE, CharSet::Double);
+    assert_eq!(rows(&buffer), ["      ", " xxxx ", " xxxx ", "      "]);
+    assert_eq!(inner, Rect::new(1, 1, 4, 2));
+}
+
+#[test]
+fn every_named_set() {
+    for (chars, expected) in [
+        (CharSet::Plain, ["┌──┐", "│xx│", "└──┘"]),
+        (CharSet::Rounded, ["╭──╮", "│xx│", "╰──╯"]),
+        (CharSet::Double, ["╔══╗", "║xx║", "╚══╝"]),
+        (CharSet::Thick, ["┏━━┓", "┃xx┃", "┗━━┛"]),
+    ] {
+        let (buffer, _) = bordered(4, 3, Sides::ALL, chars);
+        assert_eq!(rows(&buffer), expected, "{chars:?}");
+    }
+}
+
+#[test]
+fn custom_characters() {
+    let area = Rect::new(0, 0, 4, 3);
+    let mut buffer = Buffer::filled(area, ratatui::buffer::Cell::new("x"));
+    let border = Border {
+        sides: Sides::ALL,
+        chars: BorderChars::custom(
+            ["+", "-", "+", "|", "+", "-", "+", "|"]
+                .map(str::to_owned)
+                .to_vec(),
+        )
+        .unwrap(),
+    };
+    draw_border(&mut buffer, area, &border, ratatui::style::Style::default());
+    assert_eq!(rows(&buffer), ["+--+", "|xx|", "+--+"]);
+}
+
+#[test]
+fn tiles_without_side_borders() {
+    let (mut fixture, windows) = Fixture::new(Size::new(80, 24), 1, 80);
+    fixture.tile_border.sides = sides(&["top", "bottom"]);
+    fixture.write(windows[0], b"$ ");
+    assert_eq!(fixture.grids[&windows[0]].size(), Size::new(38, 22));
+    assert_snapshot!(fixture.render(Size::new(80, 24)));
+}
+
+#[test]
+fn floating_windows_differ_from_tiles() {
+    let (mut fixture, windows) = Fixture::new(Size::new(80, 24), 3, 80);
+    floating_at(&mut fixture, windows[2], 20, 6, 80);
+    fixture.floating_border.chars = BorderChars::Named(CharSet::Double);
+    fixture.write(windows[2], b"floating");
+    assert_snapshot!(fixture.render(Size::new(80, 24)));
+}
+
+#[test]
+fn floating_plugin_window_with_a_rounded_top_only() {
+    let (mut fixture, _) = Fixture::new(Size::new(40, 10), 1, 40);
+    let mut frame = float(2, 10, 20, 5, &["inside"]);
+    frame.title = None;
+    frame.border = Some(Border {
+        sides: sides(&["top"]),
+        chars: BorderChars::Named(CharSet::Rounded),
+    });
+    fixture.floats.push(frame);
+    fixture.float_focused = true;
+    assert_snapshot!(fixture.render(Size::new(40, 10)));
+}
+
+#[test]
+fn title_over_an_undrawn_top_side() {
+    let (mut fixture, _) = Fixture::new(Size::new(40, 10), 1, 40);
+    let mut frame = float(2, 10, 20, 5, &["inside"]);
+    frame.title = Some("list".to_owned());
+    frame.border = Some(Border {
+        sides: sides(&["left", "right"]),
+        chars: BorderChars::default(),
+    });
+    fixture.floats.push(frame);
+    fixture.float_focused = true;
+    assert_snapshot!(fixture.render(Size::new(40, 10)));
+}
+
+fn bar(size: u16, base: Style, lines: Vec<Vec<Run>>) -> Bar {
+    Bar {
+        id: "side".to_owned(),
+        slot: Slot {
+            side: BarSide::Left,
+            size,
+            order: 0.0,
+            seq: 1,
+        },
+        base,
+        lines,
+    }
+}
+
+#[test]
+fn styled_bar() {
+    let (mut fixture, windows) = Fixture::new(Size::new(40, 6), 1, 30);
+    fixture.write(windows[0], b"$ ");
+    let base = Style {
+        bg: Some(Color::Index(236)),
+        ..Style::default()
+    };
+    let title = Style { bold: true, ..base };
+    fixture.bars.push((
+        bar(
+            10,
+            base,
+            vec![vec![Run {
+                text: "gband".to_owned(),
+                style: title,
+            }]],
+        ),
+        Rect::new(0, 0, 10, 6),
+    ));
+    fixture.region = Some(Rect::new(10, 0, 30, 6));
+    assert_snapshot!(fixture.render(Size::new(40, 6)));
+}
+
+#[test]
+fn line_cut_at_the_bars_edge() {
+    let (mut fixture, _) = Fixture::new(Size::new(20, 6), 1, 16);
+    let run = |text: &str| {
+        vec![Run {
+            text: text.to_owned(),
+            style: Style::default(),
+        }]
+    };
+    fixture.bars.push((
+        bar(4, Style::default(), vec![run("one"), run("thre"), run("x")]),
+        Rect::new(0, 0, 4, 6),
+    ));
+    fixture.region = Some(Rect::new(4, 0, 16, 6));
+    assert_snapshot!(fixture.render(Size::new(20, 6)));
 }

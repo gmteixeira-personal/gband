@@ -1,5 +1,7 @@
 mod actions;
 mod api;
+pub mod bars;
+mod border;
 mod bridge;
 mod bundled;
 mod callbacks;
@@ -32,6 +34,8 @@ pub use mlua::Lua;
 
 pub use crate::actions::{ACTIONS, BuiltinAction};
 pub use crate::api::{Binding, Chord, Dispatch, PluginWindowRequest, WindowInput};
+pub use crate::bars::{Bar, BarSide, Columns, Slot};
+pub use crate::border::{Border, BorderChars, CharSet, Sides};
 pub use crate::bridge::{base64, notification};
 pub use crate::callbacks::CallbackId;
 pub use crate::clock::freeze as freeze_time;
@@ -41,12 +45,10 @@ pub use crate::directory::{
 };
 pub use crate::error::ConfigError;
 pub use crate::events::Event;
-pub use crate::options::{NotifyStyle, OptValue, Options, StatusLineOptions, StatusLinePosition};
+pub use crate::options::{NotifyStyle, OptValue, Options};
 pub use crate::runtime::{API_VERSION, Outcome, Runtime};
 pub use crate::sides::install_test;
-pub use crate::ui::{
-    BandState, Color, ColumnState, Span, StatusLine, Style, ViewState, WindowStates,
-};
+pub use crate::ui::{BandState, Color, ColumnState, Style, ViewState, WindowStates};
 pub use crate::version::{Requirement, Version};
 pub use crate::watch::{Watcher, watch};
 

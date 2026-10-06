@@ -1,9 +1,10 @@
 mod common;
 
 use common::*;
+use gband_core::action::Steps;
 use gband_core::layout::Proportion;
 use gband_core::view::CenterFocusedColumn;
-use gband_lua::{Binding, ConfigError, StatusLineOptions, StatusLinePosition};
+use gband_lua::{Binding, Border, BorderChars, CharSet, ConfigError, Sides};
 
 fn error_naming<'a>(errors: &'a [ConfigError], name: &str) -> &'a ConfigError {
     errors
@@ -206,13 +207,16 @@ fn list_holds_built_in_and_declared_options() {
         names,
         [
             "center_focused_column",
+            "floating_border_chars",
+            "floating_border_sides",
             "greeting",
+            "height_step",
             "loop_bands",
             "notify_style",
             "prefix",
-            "statusline_height",
-            "statusline_position",
-            "statusline_separator",
+            "tile_border_chars",
+            "tile_border_sides",
+            "width_step",
         ]
     );
     let greeting: Vec<String> = eval(
@@ -272,62 +276,57 @@ fn plugin_option_errors_name_the_plugin() {
     );
     let config = scratch.loaded();
     let error = error_naming(&config.errors, "statusline_height");
-    assert_eq!(error.plugin.as_deref(), Some("hello"));
+    assert_eq!(
+        error.plugin.as_deref(),
+        Some("hello"),
+        "{:?}",
+        config.errors
+    );
     assert_error_at(error, &file, 2, "statusline_height");
     assert!(global::<bool>(&config, "after"));
 }
 
 #[test]
-fn status_line_option_defaults() {
-    let scratch = Scratch::new("statusline-defaults");
-    scratch.write(
-        "position = gband.opt.statusline_position\nheight = gband.opt.statusline_height\nseparator = gband.opt.statusline_separator\nkind = math.type(height)",
-    );
-    let config = scratch.loaded();
-    assert_eq!(global::<String>(&config, "position"), "bottom");
-    assert_eq!(global::<i64>(&config, "height"), 1);
-    assert_eq!(global::<String>(&config, "kind"), "integer");
-    assert_eq!(global::<String>(&config, "separator"), " │ ");
-    assert_eq!(config.options.statusline, StatusLineOptions::default());
-}
-
-#[test]
-fn status_line_options_are_set() {
-    let scratch = Scratch::new("statusline-set");
-    scratch.write(
-        "gband.opt.statusline_position = 'top'\ngband.set { statusline_height = 2, statusline_separator = ' | ' }",
-    );
-    let config = scratch.loaded();
-    assert_eq!(
-        config.options.statusline,
-        StatusLineOptions {
-            position: StatusLinePosition::Top,
-            height: 2,
-            separator: " | ".to_owned(),
-        }
-    );
-}
-
-#[test]
 fn invalid_status_line_height() {
     let scratch = Scratch::new("statusline-height");
-    let path = scratch.write("\ngband.opt.statusline_height = 0");
+    let path = scratch.write("\ngband.opt.statusline_height = 2\nafter = true");
     let config = scratch.loaded();
-    assert_eq!(config.options.statusline.height, 1);
+    assert!(global::<bool>(&config, "after"));
     let error = error_naming(&config.errors, "statusline_height");
     assert_error_at(error, &path, 2, "statusline_height");
+    assert!(error.message.contains("gband.statusline"), "{error}");
 }
 
 #[test]
-fn invalid_status_line_position() {
-    let scratch = Scratch::new("statusline-position");
-    scratch.write("gband.opt.statusline_position = 'top'\ngband.opt.statusline_position = 'left'");
-    let config = scratch.loaded();
-    assert_eq!(
-        config.options.statusline.position,
-        StatusLinePosition::Bottom
+fn removed_status_line_options_through_gband_set_load_anyway() {
+    let scratch = Scratch::new("statusline-set");
+    let path = scratch.write(
+        "gband.set { statusline_position = 'top', loop_bands = false }\ngband.set { statusline_separator = ' | ' }\nafter = true",
     );
-    error_naming(&config.errors, "statusline_position");
+    let config = scratch.loaded();
+    assert!(global::<bool>(&config, "after"));
+    assert!(!config.options.loop_bands);
+    assert_error_at(
+        error_naming(&config.errors, "statusline_position"),
+        &path,
+        1,
+        "statusline_position",
+    );
+    assert_error_at(
+        error_naming(&config.errors, "statusline_separator"),
+        &path,
+        2,
+        "statusline_separator",
+    );
+    assert_eq!(config.errors.len(), 2, "{:?}", config.errors);
+}
+
+#[test]
+fn removed_status_line_options_read_nil() {
+    let scratch = Scratch::new("statusline-read");
+    scratch.write("missing = gband.opt.statusline_position == nil");
+    let config = scratch.loaded();
+    assert!(global::<bool>(&config, "missing"));
 }
 
 #[test]
@@ -382,4 +381,93 @@ fn looping_bands_of_the_wrong_type() {
     assert!(config.options.loop_bands);
     let error = error_naming(&config.errors, "loop_bands");
     assert_error_at(error, &path, 3, "loop_bands");
+}
+
+#[test]
+fn steps_default_to_a_tenth() {
+    let scratch = Scratch::new("steps-default");
+    scratch.write("width = gband.opt.width_step\nheight = gband.opt.height_step");
+    let config = scratch.loaded();
+    assert_eq!(global::<f64>(&config, "width"), 0.1);
+    assert_eq!(global::<f64>(&config, "height"), 0.1);
+    assert_eq!(config.options.steps, Steps::default());
+}
+
+#[test]
+fn steps_are_set() {
+    let scratch = Scratch::new("steps-set");
+    scratch.write("gband.set { width_step = 1/20 }\ngband.opt.height_step = 0.25\nwidth = gband.opt.width_step");
+    let config = scratch.loaded();
+    assert!(config.errors.is_empty(), "{:?}", config.errors);
+    assert_eq!(config.options.steps.width, Proportion::new(1, 20));
+    assert_eq!(config.options.steps.height, Proportion::new(1, 4));
+    assert_eq!(global::<f64>(&config, "width"), 0.05);
+}
+
+#[test]
+fn invalid_step() {
+    let scratch = Scratch::new("invalid-step");
+    let path = scratch
+        .write("gband.opt.width_step = 1/4\ngband.opt.width_step = 0\ngband.opt.height_step = 2");
+    let config = scratch.loaded();
+    assert_eq!(config.options.steps, Steps::default());
+    let error = error_naming(&config.errors, "width_step");
+    assert_error_at(error, &path, 2, "width_step");
+    let error = error_naming(&config.errors, "height_step");
+    assert_error_at(error, &path, 3, "height_step");
+}
+
+#[test]
+fn border_options_default_to_every_plain_side() {
+    let scratch = Scratch::new("borders-default");
+    scratch.write("sides = gband.opt.tile_border_sides\nchars = gband.opt.floating_border_chars");
+    let config = scratch.loaded();
+    let sides: Vec<String> = global(&config, "sides");
+    assert_eq!(sides, ["top", "right", "bottom", "left"]);
+    assert_eq!(global::<String>(&config, "chars"), "plain");
+    assert_eq!(config.options.tile_border, Border::default());
+    assert_eq!(config.options.floating_border, Border::default());
+}
+
+#[test]
+fn sides_are_held_in_order() {
+    let scratch = Scratch::new("sides-order");
+    scratch.write("gband.opt.tile_border_sides = { 'left', 'top', 'left' }\nsides = gband.opt.tile_border_sides\ngband.opt.floating_border_sides = {}\nnone = #gband.opt.floating_border_sides");
+    let config = scratch.loaded();
+    assert!(config.errors.is_empty(), "{:?}", config.errors);
+    let sides: Vec<String> = global(&config, "sides");
+    assert_eq!(sides, ["top", "left"]);
+    assert_eq!(global::<i64>(&config, "none"), 0);
+    assert_eq!(config.options.floating_border.sides, Sides::NONE);
+}
+
+#[test]
+fn custom_characters_read_back() {
+    let scratch = Scratch::new("custom-chars");
+    scratch.write("gband.opt.tile_border_chars = { '+', '-', '+', '|', '+', '-', '+', '|' }\nchars = gband.opt.tile_border_chars\ngband.opt.floating_border_chars = 'double'\nnamed = gband.opt.floating_border_chars");
+    let config = scratch.loaded();
+    assert!(config.errors.is_empty(), "{:?}", config.errors);
+    let chars: Vec<String> = global(&config, "chars");
+    assert_eq!(chars, ["+", "-", "+", "|", "+", "-", "+", "|"]);
+    assert_eq!(global::<String>(&config, "named"), "double");
+    assert_eq!(
+        config.options.tile_border.chars.glyphs(),
+        ["+", "-", "+", "|", "+", "-", "+", "|"]
+    );
+    assert_eq!(
+        config.options.floating_border.chars,
+        BorderChars::Named(CharSet::Double)
+    );
+}
+
+#[test]
+fn wide_character_rejected() {
+    let scratch = Scratch::new("wide-chars");
+    let path = scratch.write("gband.opt.tile_border_chars = 'rounded'\ngband.opt.tile_border_chars = { '日', '-', '+', '|', '+', '-', '+', '|' }\ngband.opt.floating_border_sides = { 'middle' }");
+    let config = scratch.loaded();
+    assert_eq!(config.options.tile_border, Border::default());
+    let error = error_naming(&config.errors, "tile_border_chars");
+    assert_error_at(error, &path, 2, "tile_border_chars");
+    let error = error_naming(&config.errors, "floating_border_sides");
+    assert_error_at(error, &path, 3, "middle");
 }

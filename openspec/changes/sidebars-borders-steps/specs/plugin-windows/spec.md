@@ -68,4 +68,4 @@ Floating plugin windows SHALL be drawn after the tiles and before a configuratio
 
 #### Scenario: Title over an undrawn top side
 - **WHEN** a binding function opens a floating plugin window of width 20 with `title = "list"` and `border = { sides = { "left", "right" } }`
-- **THEN** the box's top row is blank except `list` from its second column
+- **THEN** the box's top row shows `│` in its first and last columns, `list` from its second column, and blank cells between

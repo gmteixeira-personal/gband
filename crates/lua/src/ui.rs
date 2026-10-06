@@ -36,8 +36,9 @@ pub struct ViewState {
     pub column: Option<ColumnState>,
     pub window: Option<u32>,
     pub width: u16,
-    pub drawn: bool,
+    pub height: u16,
     pub error: Option<String>,
+    pub errors: Vec<String>,
     pub layout: Arc<Layout>,
     pub area: Size,
     pub ribbon: Size,
@@ -63,25 +64,8 @@ pub struct Style {
     pub dim: bool,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Span {
-    pub col: u16,
-    pub text: String,
-    pub style: Style,
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct StatusLine {
-    pub height: u16,
-    pub base: Style,
-    pub spans: Vec<Span>,
-}
-
 #[derive(Default)]
 struct State(ViewState);
-
-#[derive(Default)]
-struct Presented(Option<StatusLine>);
 
 #[derive(Default)]
 struct Hooks {
@@ -154,7 +138,6 @@ fn text_argument(lua: &Lua, value: &Value, function: &str) -> mlua::Result<Strin
 
 pub(crate) fn install(lua: &Lua, gband: &Table) -> mlua::Result<Table> {
     lua.set_app_data(State::default());
-    lua.set_app_data(Presented::default());
     lua.set_app_data(Hooks::default());
     lua.set_app_data(Timers::default());
     let ui = lua.create_table()?;
@@ -210,7 +193,6 @@ fn host(lua: &Lua) -> mlua::Result<Table> {
     )?;
     host.set("state", lua.create_function(state)?)?;
     host.set("windows", lua.create_function(windows)?)?;
-    host.set("present", lua.create_function(present)?)?;
     host.set("timer", lua.create_function(timer)?)?;
     host.set(
         "cancel",
@@ -356,7 +338,7 @@ fn state(lua: &Lua, (): ()) -> mlua::Result<Table> {
     }
     table.set("window", state.window)?;
     table.set("width", state.width)?;
-    table.set("drawn", state.drawn)?;
+    table.set("height", state.height)?;
     table.set("error", state.error)?;
     let ribbon = lua.create_table()?;
     ribbon.set("cols", state.ribbon.cols)?;
@@ -389,7 +371,7 @@ pub(crate) fn set_state(lua: &Lua, state: ViewState) -> mlua::Result<()> {
         let mut stored = lua
             .app_data_mut::<State>()
             .expect("the state is installed with the runtime");
-        let changed = stored.0.error != state.error || stored.0.drawn != state.drawn;
+        let changed = stored.0.error != state.error;
         let resized = stored.0.ribbon != state.ribbon;
         stored.0 = state;
         (changed, resized)
@@ -440,32 +422,6 @@ pub(crate) fn style(table: &Table) -> mlua::Result<Style> {
         reverse: flag("reverse")?,
         dim: flag("dim")?,
     })
-}
-
-fn present(lua: &Lua, line: Table) -> mlua::Result<()> {
-    let mut spans = Vec::new();
-    for span in line.get::<Table>("spans")?.sequence_values::<Table>() {
-        let span = span?;
-        spans.push(Span {
-            col: span.get("col")?,
-            text: strip(&span.get::<mlua::LuaString>("text")?.to_string_lossy()),
-            style: style(&span.get("style")?)?,
-        });
-    }
-    let line = StatusLine {
-        height: line.get("height")?,
-        base: style(&line.get("base")?)?,
-        spans,
-    };
-    lua.app_data_mut::<Presented>()
-        .expect("the line is installed with the runtime")
-        .0 = Some(line);
-    Ok(())
-}
-
-pub(crate) fn take_line(lua: &Lua) -> Option<StatusLine> {
-    lua.app_data_mut::<Presented>()
-        .and_then(|mut presented| presented.0.take())
 }
 
 fn timer(lua: &Lua, (period, function): (u64, Function)) -> mlua::Result<i64> {
@@ -607,7 +563,7 @@ mod tests {
     }
 
     #[test]
-    fn every_after_event_hook_runs_and_the_status_line_still_renders() {
+    fn every_after_event_hook_runs() {
         let config = config("log = {}");
         let lua = config.runtime.lua();
         assert!(hooks(lua).after_event.len() >= 2);
@@ -620,17 +576,15 @@ mod tests {
             .push(lua.create_registry_value(hook).unwrap());
         let state = ViewState {
             width: 40,
-            drawn: true,
+            height: 24,
             ..ViewState::default()
         };
         assert!(config.runtime.set_state(state).errors.is_empty());
-        config.runtime.take_line();
         let outcome = config.runtime.emit(&Event::FocusChanged {
             window: Some(WindowId(1)),
             previous: None,
         });
         assert!(outcome.errors.is_empty(), "{:?}", outcome.errors);
-        assert!(config.runtime.take_line().is_some());
         let log: Vec<String> = lua.globals().get("log").unwrap();
         assert_eq!(log, ["FocusChanged"]);
     }
