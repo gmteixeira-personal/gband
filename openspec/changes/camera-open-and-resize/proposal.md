@@ -36,5 +36,5 @@ Camera placement leaves the view in a worse spot than the layout allows in two w
 - crates/core/src/view.rs
 - crates/core/tests/view.rs
 - crates/client/tests/bars.rs
+- crates/client/tests/actions.rs
 - tests/lua/loop_bands_spec.lua
-- tests/lua/screenshots/
