@@ -1,4 +1,4 @@
-use gband_core::input::Key;
+use gband_core::input::{Key, MouseEvent};
 use gband_core::layout::{Layout, SessionAction, WindowId};
 use std::path::PathBuf;
 
@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::session::{SessionName, SessionSummary};
 use crate::value::Value;
 
-pub const PROTOCOL_VERSION: u32 = 8;
+pub const PROTOCOL_VERSION: u32 = 9;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Hello {
@@ -55,6 +55,10 @@ pub enum ClientMessage {
         call: u64,
         name: String,
         args: Value,
+    },
+    Mouse {
+        window: WindowId,
+        event: MouseEvent,
     },
 }
 

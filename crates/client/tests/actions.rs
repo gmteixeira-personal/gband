@@ -1,12 +1,14 @@
 use std::fs;
 use std::path::PathBuf;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use gband_client::animation::Animations;
+use gband_client::mouse::{Edges, pick_edges};
 use gband_client::{Controls, Display, Step, dispatch};
 use gband_core::action::{Action, SessionCommand};
 use gband_core::geometry::Size;
-use gband_core::input::Key;
+use gband_core::geometry::tiles;
+use gband_core::input::{Key, Modifiers, MouseButton, MouseEvent, MouseKind};
 use gband_core::layout::{
     BandId, Direction, Layout, LayoutOptions, Program, Proportion, SessionAction, Vertical,
     WindowContent, WindowHeight, WindowId,
@@ -682,4 +684,524 @@ fn tiled_plugin_window_sends_open_window_with_plugin_content() {
             }
         ))]
     );
+}
+
+const AREA: Size = Size::new(80, 24);
+
+fn columns_of(count: usize, width: Option<Proportion>) -> (Layout, Vec<WindowId>) {
+    let mut layout = Layout::new();
+    let band = layout.bands()[0].id;
+    let mut windows = Vec::new();
+    for _ in 0..count {
+        let window = layout.allocate_window();
+        layout.open(
+            window,
+            band,
+            windows.last().copied(),
+            width,
+            &LayoutOptions::default(),
+        );
+        windows.push(window);
+    }
+    (layout, windows)
+}
+
+fn float(layout: &mut Layout, window: WindowId, width: Proportion, rows: u16, col: u16, row: u16) {
+    for action in [
+        SessionAction::ToggleFloating {
+            window,
+            after: None,
+        },
+        SessionAction::SetWidth { window, width },
+        SessionAction::SetHeight {
+            window,
+            height: WindowHeight::Fixed(rows),
+        },
+        SessionAction::SetPosition { window, col, row },
+    ] {
+        layout.apply(action, AREA, &LayoutOptions::default());
+    }
+}
+
+struct Mouse {
+    _scratch: Scratch,
+    display: Display,
+    controls: Controls,
+    layout: Layout,
+    now: Instant,
+}
+
+impl Mouse {
+    fn new(name: &str, source: &str, layout: Layout) -> Self {
+        Self::with(name, source, layout, Animations::Off)
+    }
+
+    fn with(name: &str, source: &str, layout: Layout, animations: Animations) -> Self {
+        let scratch = Scratch::new(name);
+        let config = scratch.load(source).unwrap();
+        let mut display = Display::new(AREA, animations);
+        display.apply(ServerMessage::Layout {
+            cols: AREA.cols,
+            rows: AREA.rows,
+            layout: layout.clone(),
+        });
+        let controls = Controls::new(config, &mut display);
+        Self {
+            _scratch: scratch,
+            display,
+            controls,
+            layout,
+            now: Instant::now(),
+        }
+    }
+
+    fn event(&mut self, kind: MouseKind, col: u16, row: u16, modifiers: Modifiers) -> Vec<Step> {
+        self.now += Duration::from_millis(20);
+        let event = MouseEvent::new(kind, col, row, modifiers);
+        self.controls.mouse(&mut self.display, event, self.now)
+    }
+
+    fn drag(&mut self, button: MouseButton, from: (u16, u16), to: (u16, u16)) -> Vec<Step> {
+        self.drag_with(button, from, to, Modifiers::NONE)
+    }
+
+    fn drag_with(
+        &mut self,
+        button: MouseButton,
+        from: (u16, u16),
+        to: (u16, u16),
+        modifiers: Modifiers,
+    ) -> Vec<Step> {
+        let mut steps = self.event(MouseKind::Press(button), from.0, from.1, modifiers);
+        steps.extend(self.event(MouseKind::Motion(Some(button)), to.0, to.1, modifiers));
+        steps.extend(self.event(MouseKind::Release(button), to.0, to.1, modifiers));
+        self.now += Duration::from_millis(20);
+        steps.extend(self.controls.flush(&mut self.display, self.now));
+        steps
+    }
+
+    fn key(&mut self, name: &str) -> Vec<Step> {
+        self.controls.press(&mut self.display, key(name))
+    }
+
+    fn apply(&mut self, steps: &[Step]) {
+        for action in sent(steps) {
+            self.layout.apply(action, AREA, &LayoutOptions::default());
+        }
+        self.display.apply(ServerMessage::Layout {
+            cols: AREA.cols,
+            rows: AREA.rows,
+            layout: self.layout.clone(),
+        });
+    }
+
+    fn global<T: mlua::FromLua>(&self, name: &str) -> T {
+        self.controls.runtime().lua().globals().get(name).unwrap()
+    }
+}
+
+fn sent(steps: &[Step]) -> Vec<SessionAction> {
+    steps
+        .iter()
+        .filter_map(|step| match step {
+            Step::Send(ClientMessage::Action(action)) => Some(action.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+fn messages(steps: &[Step]) -> Vec<&ClientMessage> {
+    steps
+        .iter()
+        .filter_map(|step| match step {
+            Step::Send(message) => Some(message),
+            _ => None,
+        })
+        .collect()
+}
+
+const NAVIGATION: &str = "gband.keymap.mode('prefix')\ngband.keymap.set('prefix', 'escape', function() gband.keymap.enter('root') end)\n";
+
+#[test]
+fn mouse_binding_in_root_replaces_the_default() {
+    let (layout, windows) = columns_of(2, None);
+    let mut mouse = Mouse::new(
+        "mouse-root",
+        "gband.bind('leftmouse', function(e) got = e.button .. ' ' .. e.window end)",
+        layout,
+    );
+    assert_eq!(mouse.display.focused(), Some(windows[0]));
+    let mut steps = mouse.event(MouseKind::Press(MouseButton::Left), 45, 3, Modifiers::NONE);
+    steps.extend(mouse.event(
+        MouseKind::Release(MouseButton::Left),
+        45,
+        3,
+        Modifiers::NONE,
+    ));
+    assert_eq!(
+        mouse.global::<String>("got"),
+        format!("left {}", windows[1].0)
+    );
+    assert_eq!(mouse.display.focused(), Some(windows[0]));
+    assert!(messages(&steps).is_empty(), "{steps:?}");
+}
+
+#[test]
+fn unbound_mouse_name_in_a_mode_is_discarded() {
+    let (layout, windows) = columns_of(2, None);
+    let mut mouse = Mouse::new(
+        "mouse-mode",
+        &format!("{NAVIGATION}gband.keymap.set('prefix', 'leftmouse', gband.action.drag_window)"),
+        layout,
+    );
+    mouse.key("ctrl+space");
+    assert_eq!(mouse.controls.active_table(), "prefix");
+    let steps = mouse.drag_with(MouseButton::Left, (45, 3), (50, 5), Modifiers::CTRL);
+    assert!(messages(&steps).is_empty(), "{steps:?}");
+    assert_eq!(mouse.display.focused(), Some(windows[0]));
+    assert_eq!(mouse.controls.active_table(), "prefix");
+}
+
+#[test]
+fn modifier_with_a_mouse_name() {
+    let (layout, _) = columns_of(2, None);
+    let mut mouse = Mouse::new(
+        "mouse-modifier",
+        &format!(
+            "{NAVIGATION}gband.keymap.set('prefix', 'alt+rightmouse', function() ran = true end)"
+        ),
+        layout,
+    );
+    mouse.key("ctrl+space");
+    mouse.event(MouseKind::Press(MouseButton::Right), 45, 3, Modifiers::ALT);
+    assert!(mouse.global::<bool>("ran"));
+    assert_eq!(mouse.controls.active_table(), "prefix");
+}
+
+#[test]
+fn drag_action_from_a_key_does_nothing() {
+    let (mut layout, windows) = columns_of(2, None);
+    float(&mut layout, windows[1], Proportion::ONE_HALF, 12, 10, 4);
+    let mut mouse = Mouse::new(
+        "mouse-key-drag",
+        &format!("{NAVIGATION}gband.keymap.set('prefix', 'm', gband.action.drag_window)"),
+        layout,
+    );
+    mouse.key("ctrl+space");
+    let steps = mouse.key("m");
+    assert!(messages(&steps).is_empty(), "{steps:?}");
+    let steps = mouse.event(MouseKind::Motion(None), 30, 8, Modifiers::NONE);
+    assert!(messages(&steps).is_empty(), "{steps:?}");
+}
+
+#[test]
+fn drag_action_from_a_binding_function() {
+    let (mut layout, windows) = columns_of(2, None);
+    float(&mut layout, windows[1], Proportion::ONE_HALF, 12, 10, 4);
+    let mut mouse = Mouse::new(
+        "mouse-function-drag",
+        &format!(
+            "{NAVIGATION}gband.keymap.set('prefix', 'leftmouse', function() gband.action.drag_window() end)"
+        ),
+        layout,
+    );
+    mouse.key("ctrl+space");
+    let steps = mouse.drag(MouseButton::Left, (20, 6), (25, 6));
+    assert_eq!(
+        sent(&steps),
+        [SessionAction::SetPosition {
+            window: windows[1],
+            col: 15,
+            row: 4
+        }]
+    );
+}
+
+const DRAG: &str = "gband.keymap.mode('prefix')
+gband.keymap.set('prefix', 'leftmouse', gband.action.drag_window)
+gband.keymap.set('prefix', 'rightmouse', gband.action.drag_resize_window)
+gband.keymap.set('prefix', 'middlemouse', gband.action.drag_band)
+";
+
+fn dragging(name: &str, layout: Layout) -> Mouse {
+    let mut mouse = Mouse::new(name, DRAG, layout);
+    mouse.key("ctrl+space");
+    mouse
+}
+
+#[test]
+fn drag_a_floating_window() {
+    let (mut layout, windows) = columns_of(2, None);
+    float(&mut layout, windows[1], Proportion::ONE_HALF, 12, 10, 4);
+    let mut mouse = dragging("mouse-move-float", layout);
+    let steps = mouse.drag(MouseButton::Left, (20, 6), (35, 8));
+    assert_eq!(
+        sent(&steps),
+        [SessionAction::SetPosition {
+            window: windows[1],
+            col: 25,
+            row: 6
+        }]
+    );
+    assert_eq!(mouse.display.focused(), Some(windows[1]));
+}
+
+#[test]
+fn drag_a_floating_window_against_the_edge() {
+    let (mut layout, windows) = columns_of(2, None);
+    float(&mut layout, windows[1], Proportion::ONE_HALF, 12, 30, 4);
+    let mut mouse = dragging("mouse-move-edge", layout);
+    let steps = mouse.drag(MouseButton::Left, (40, 6), (60, 6));
+    assert_eq!(
+        sent(&steps),
+        [SessionAction::SetPosition {
+            window: windows[1],
+            col: 40,
+            row: 4
+        }]
+    );
+}
+
+#[test]
+fn gesture_sends_at_most_once_per_frame() {
+    let (mut layout, windows) = columns_of(2, None);
+    float(&mut layout, windows[1], Proportion::ONE_HALF, 12, 10, 4);
+    let mut mouse = dragging("mouse-frame", layout);
+    let now = mouse.now;
+    let event = |kind, col| MouseEvent::new(kind, col, 6, Modifiers::NONE);
+    let left = MouseButton::Left;
+    let mut steps =
+        mouse
+            .controls
+            .mouse(&mut mouse.display, event(MouseKind::Press(left), 20), now);
+    for (col, at) in [(21, 1), (22, 2), (23, 3)] {
+        steps.extend(mouse.controls.mouse(
+            &mut mouse.display,
+            event(MouseKind::Motion(Some(left)), col),
+            now + Duration::from_millis(at),
+        ));
+    }
+    assert_eq!(sent(&steps).len(), 1, "{steps:?}");
+    let later = now + Duration::from_millis(40);
+    assert_eq!(
+        sent(&mouse.controls.flush(&mut mouse.display, later)),
+        [SessionAction::SetPosition {
+            window: windows[1],
+            col: 13,
+            row: 4
+        }]
+    );
+    assert!(
+        mouse
+            .controls
+            .flush(&mut mouse.display, later + Duration::from_millis(40))
+            .is_empty()
+    );
+}
+
+#[test]
+fn pick_edges_by_thirds() {
+    let right = Edges {
+        right: true,
+        ..Edges::default()
+    };
+    assert_eq!(pick_edges(35, 12, 40, 24), right);
+    assert_eq!(
+        pick_edges(2, 10, 30, 12),
+        Edges {
+            left: true,
+            bottom: true,
+            ..Edges::default()
+        }
+    );
+    assert_eq!(
+        pick_edges(14, 5, 30, 12),
+        Edges {
+            top: true,
+            ..Edges::default()
+        }
+    );
+    assert_eq!(
+        pick_edges(15, 5, 31, 11),
+        Edges {
+            bottom: true,
+            ..Edges::default()
+        }
+    );
+}
+
+#[test]
+fn widen_a_column_from_its_right_edge() {
+    let (layout, windows) = columns_of(2, None);
+    let mut mouse = dragging("mouse-widen", layout);
+    let steps = mouse.drag(MouseButton::Right, (35, 12), (43, 12));
+    assert_eq!(
+        sent(&steps),
+        [SessionAction::SetWidth {
+            window: windows[0],
+            width: Proportion::new(3, 5)
+        }]
+    );
+}
+
+#[test]
+fn grow_a_window_down() {
+    let (mut layout, windows) = columns_of(2, None);
+    layout.apply(
+        SessionAction::ConsumeOrExpel {
+            window: windows[1],
+            direction: Direction::Left,
+        },
+        AREA,
+        &LayoutOptions::default(),
+    );
+    let mut mouse = dragging("mouse-grow-down", layout);
+    let steps = mouse.drag(MouseButton::Right, (20, 10), (20, 14));
+    assert_eq!(
+        sent(&steps),
+        [SessionAction::SetHeight {
+            window: windows[0],
+            height: WindowHeight::Fixed(16)
+        }]
+    );
+    mouse.apply(&steps);
+    let heights: Vec<u16> = tiles(&mouse.layout.bands()[0], AREA)
+        .iter()
+        .map(|tile| tile.height)
+        .collect();
+    assert_eq!(heights, [16, 8]);
+}
+
+#[test]
+fn resize_a_floating_window_from_its_left_edge() {
+    let (mut layout, windows) = columns_of(2, None);
+    float(&mut layout, windows[1], Proportion::ONE_HALF, 12, 20, 4);
+    let mut mouse = dragging("mouse-left-edge", layout);
+    let steps = mouse.drag(MouseButton::Right, (22, 9), (12, 9));
+    assert_eq!(
+        sent(&steps),
+        [
+            SessionAction::SetWidth {
+                window: windows[1],
+                width: Proportion::new(5, 8)
+            },
+            SessionAction::SetPosition {
+                window: windows[1],
+                col: 10,
+                row: 4
+            },
+        ]
+    );
+    mouse.apply(&steps);
+    let placed = gband_core::geometry::placed(mouse.layout.floating(windows[1]).unwrap(), AREA);
+    assert_eq!((placed.x, placed.width), (10, 50));
+}
+
+#[test]
+fn left_edge_of_a_tile_moves_the_camera() {
+    let (layout, windows) = columns_of(3, None);
+    let mut mouse = dragging("mouse-left-tile", layout);
+    assert_eq!(mouse.display.camera(), Some(0));
+    let steps = mouse.drag(MouseButton::Right, (42, 12), (38, 12));
+    assert_eq!(
+        sent(&steps),
+        [SessionAction::SetWidth {
+            window: windows[1],
+            width: Proportion::new(11, 20)
+        }]
+    );
+    assert_eq!(mouse.display.focused(), Some(windows[1]));
+    assert_eq!(mouse.display.camera(), Some(4));
+}
+
+#[test]
+fn slide_the_band_and_settle() {
+    let (layout, windows) = columns_of(4, None);
+    let mut mouse = dragging("mouse-slide", layout);
+    let middle = MouseButton::Middle;
+    mouse.event(MouseKind::Press(middle), 70, 5, Modifiers::NONE);
+    let steps = mouse.event(MouseKind::Motion(Some(middle)), 10, 9, Modifiers::NONE);
+    assert!(messages(&steps).is_empty(), "{steps:?}");
+    assert_eq!(mouse.display.camera(), Some(60));
+    assert_eq!(mouse.display.focused(), Some(windows[0]));
+    let steps = mouse.event(MouseKind::Release(middle), 10, 9, Modifiers::NONE);
+    assert!(messages(&steps).is_empty(), "{steps:?}");
+    assert_eq!(mouse.display.camera(), Some(60));
+    assert_eq!(mouse.display.focused(), Some(windows[2]));
+}
+
+#[test]
+fn partly_shown_column_snaps_after_a_slide() {
+    let (layout, windows) = columns_of(4, Some(Proportion::new(3, 4)));
+    let mut mouse = dragging("mouse-slide-snap", layout);
+    mouse.drag(MouseButton::Middle, (75, 5), (5, 5));
+    assert_eq!(mouse.display.focused(), Some(windows[1]));
+    assert_eq!(mouse.display.camera(), Some(60));
+}
+
+#[test]
+fn left_drag_on_empty_ribbon_slides_and_vertical_motion_does_not() {
+    let (layout, windows) = columns_of(1, Some(Proportion::new(1, 4)));
+    let mut mouse = dragging("mouse-slide-ribbon", layout);
+    mouse.event(MouseKind::Press(MouseButton::Left), 50, 5, Modifiers::NONE);
+    mouse.event(
+        MouseKind::Motion(Some(MouseButton::Left)),
+        50,
+        15,
+        Modifiers::NONE,
+    );
+    assert_eq!(mouse.display.camera(), Some(0));
+    mouse.event(
+        MouseKind::Motion(Some(MouseButton::Left)),
+        40,
+        15,
+        Modifiers::NONE,
+    );
+    assert_eq!(mouse.display.camera(), Some(10));
+    mouse.event(
+        MouseKind::Release(MouseButton::Left),
+        40,
+        15,
+        Modifiers::NONE,
+    );
+    assert_eq!(mouse.display.focused(), Some(windows[0]));
+}
+
+#[test]
+fn drag_resize_sends_set_width_from_a_mode_binding() {
+    let (layout, windows) = columns_of(2, None);
+    let mut mouse = dragging("mouse-resize-binding", layout);
+    let steps = mouse.drag(MouseButton::Right, (38, 12), (39, 12));
+    assert_eq!(
+        sent(&steps),
+        [SessionAction::SetWidth {
+            window: windows[0],
+            width: Proportion::new(41, 80)
+        }]
+    );
+}
+
+#[test]
+fn drop_between_two_columns() {
+    let (layout, windows) = columns_of(3, None);
+    let mut mouse = dragging("mouse-drop-between", layout);
+    for action in [
+        ViewAction::FocusRight,
+        ViewAction::FocusRight,
+        ViewAction::FocusLeft,
+        ViewAction::FocusLeft,
+    ] {
+        dispatch(&mut mouse.display, Action::View(action));
+    }
+    assert_eq!(mouse.display.focused(), Some(windows[0]));
+    let steps = mouse.drag(MouseButton::Left, (10, 10), (75, 10));
+    mouse.apply(&steps);
+    let order: Vec<WindowId> = mouse.layout.bands()[0]
+        .columns
+        .iter()
+        .map(|column| column.windows[0])
+        .collect();
+    assert_eq!(order, [windows[1], windows[0], windows[2]]);
+    assert_eq!(mouse.display.focused(), Some(windows[0]));
+    assert_eq!(mouse.display.camera(), Some(0));
 }

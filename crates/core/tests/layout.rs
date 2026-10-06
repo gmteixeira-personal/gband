@@ -5,7 +5,7 @@ use gband_core::geometry::{Size, placed, window_heights};
 use gband_core::layout::Step::{Grow, Shrink};
 use gband_core::layout::{
     BandId, Column, Direction, FloatingWindow, Layout, LayoutOptions, Location, Place, Proportion,
-    SessionAction, Vertical, Weight, WindowHeight, WindowId,
+    SessionAction, TargetPlace, Vertical, Weight, WindowHeight, WindowId,
 };
 
 const AREA: Size = Size::new(80, 24);
@@ -1847,4 +1847,143 @@ fn identifier_survives_floating() {
     assert!(layout.contains(windows[1]));
     toggle(&mut layout, windows[1], Some(windows[0]));
     assert_eq!(layout.windows().collect::<Vec<_>>(), windows);
+}
+
+fn move_to_place(
+    layout: &mut Layout,
+    window: WindowId,
+    reference: WindowId,
+    place: TargetPlace,
+) -> Vec<LayoutEvent> {
+    let events = layout.apply(
+        SessionAction::MoveToPlace {
+            window,
+            reference,
+            place,
+        },
+        AREA,
+        &LayoutOptions::default(),
+    );
+    assert_invariants(layout);
+    events
+}
+
+fn apply(layout: &mut Layout, action: SessionAction) {
+    layout.apply(action, AREA, &LayoutOptions::default());
+}
+
+fn heights(layout: &Layout, column: usize) -> Vec<WindowHeight> {
+    layout.bands()[0].columns[column].heights.clone()
+}
+
+#[test]
+fn move_into_a_new_column_right_of_another() {
+    let (mut layout, windows) = row_of_columns(3);
+    let [a, b, c] = windows[..] else { panic!() };
+    apply(
+        &mut layout,
+        SessionAction::SetWidth {
+            window: a,
+            width: Proportion::new(1, 3),
+        },
+    );
+    let events = move_to_place(&mut layout, a, b, TargetPlace::ColumnRight);
+    assert_eq!(columns(&layout, 0), [vec![b], vec![a], vec![c]]);
+    assert_eq!(width_of(&layout, a), (Proportion::new(1, 3), false));
+    assert_eq!(
+        events,
+        [LayoutEvent::WindowMoved {
+            window: a,
+            band: band_id(&layout, 0),
+            column: 1,
+            row: 0,
+        }]
+    );
+}
+
+#[test]
+fn move_from_a_stack_into_a_new_column() {
+    let (mut layout, windows) = row_of_columns(3);
+    let [p1, p2, p3] = windows[..] else { panic!() };
+    shift(&mut layout, p2, Direction::Left);
+    apply(
+        &mut layout,
+        SessionAction::SetHeight {
+            window: p1,
+            height: WindowHeight::Fixed(16),
+        },
+    );
+    let width = width_of(&layout, p1);
+    move_to_place(&mut layout, p1, p3, TargetPlace::ColumnLeft);
+    assert_eq!(columns(&layout, 0), [vec![p2], vec![p1], vec![p3]]);
+    assert_eq!(heights(&layout, 0), [WindowHeight::DEFAULT]);
+    assert_eq!(heights(&layout, 1), [WindowHeight::DEFAULT]);
+    assert_eq!(width_of(&layout, p1), width);
+}
+
+#[test]
+fn move_into_another_column() {
+    let (mut layout, windows) = row_of_columns(3);
+    let [p1, p2, p3] = windows[..] else { panic!() };
+    shift(&mut layout, p3, Direction::Left);
+    apply(
+        &mut layout,
+        SessionAction::SetHeight {
+            window: p2,
+            height: WindowHeight::Fixed(8),
+        },
+    );
+    move_to_place(&mut layout, p1, p2, TargetPlace::Below);
+    assert_eq!(columns(&layout, 0), [vec![p2, p1, p3]]);
+    assert_eq!(heights(&layout, 0)[0], WindowHeight::Fixed(8));
+    assert_eq!(heights(&layout, 0)[1], WindowHeight::DEFAULT);
+}
+
+#[test]
+fn move_within_its_column_keeps_its_height() {
+    let (mut layout, windows) = row_of_columns(2);
+    let [p1, p2] = windows[..] else { panic!() };
+    shift(&mut layout, p2, Direction::Left);
+    apply(
+        &mut layout,
+        SessionAction::SetHeight {
+            window: p1,
+            height: WindowHeight::Fixed(16),
+        },
+    );
+    move_to_place(&mut layout, p1, p2, TargetPlace::Below);
+    assert_eq!(columns(&layout, 0), [vec![p2, p1]]);
+    assert_eq!(heights(&layout, 0)[1], WindowHeight::Fixed(16));
+}
+
+#[test]
+fn move_back_to_its_own_place_changes_nothing() {
+    let (mut layout, windows) = row_of_columns(2);
+    let [a, b] = windows[..] else { panic!() };
+    let before = layout.clone();
+    assert!(move_to_place(&mut layout, a, b, TargetPlace::ColumnLeft).is_empty());
+    assert_eq!(layout, before);
+}
+
+#[test]
+fn move_to_place_ignores_floating_and_invalid_references() {
+    let (mut layout, windows) = row_of_columns(3);
+    let [a, b, c] = windows[..] else { panic!() };
+    apply(
+        &mut layout,
+        SessionAction::ToggleFloating {
+            window: c,
+            after: None,
+        },
+    );
+    let before = layout.clone();
+    assert!(move_to_place(&mut layout, c, a, TargetPlace::Above).is_empty());
+    assert!(move_to_place(&mut layout, a, c, TargetPlace::Above).is_empty());
+    assert!(move_to_place(&mut layout, a, a, TargetPlace::Below).is_empty());
+    assert!(move_to_place(&mut layout, a, WindowId(99), TargetPlace::Below).is_empty());
+    assert_eq!(layout, before);
+    let other = open(&mut layout, 1, None);
+    let before = layout.clone();
+    assert!(move_to_place(&mut layout, b, other, TargetPlace::Above).is_empty());
+    assert_eq!(layout, before);
 }

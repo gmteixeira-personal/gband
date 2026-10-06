@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use gband_core::geometry::Size;
-use gband_core::input::{Key, Modes, encode_key, encode_paste};
+use gband_core::input::{Key, Modes, MouseEvent, encode_key, encode_mouse, encode_paste};
 use gband_core::layout::WindowId;
 use gband_emulator::{Emulator, Grid};
 use gband_protocol::SessionName;
@@ -28,6 +28,7 @@ pub type Checkpoint = <Grid as Emulator>::Checkpoint;
 pub enum Input {
     Key(Key),
     Paste(String),
+    Mouse(MouseEvent),
     WriteBack(Vec<u8>),
 }
 
@@ -301,8 +302,12 @@ fn spawn_input(
             let bytes = match input {
                 Input::Key(key) => encode_key(key, window.modes()),
                 Input::Paste(text) => encode_paste(&text, window.modes()),
+                Input::Mouse(event) => encode_mouse(event, window.modes()),
                 Input::WriteBack(bytes) => bytes,
             };
+            if bytes.is_empty() {
+                continue;
+            }
             if let Err(error) = writer.write_all(&bytes).and_then(|()| writer.flush()) {
                 tracing::warn!("cannot write to the PTY: {error:#}");
                 break;

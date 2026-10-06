@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use gband_core::input::{Modifiers, MouseButton, WheelDirection};
 use gband_core::layout::{BandId, WindowId};
 use gband_protocol::Value as Data;
 use mlua::{Lua, Table, Value};
@@ -10,6 +11,75 @@ use crate::callbacks::{self, CallbackId};
 use crate::error::ConfigError;
 use crate::runtime::side;
 use crate::{removed, server, ui, value};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PointerTarget {
+    Window,
+    PluginWindow,
+    Ribbon,
+    Outside,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Pointer {
+    pub col: u16,
+    pub row: u16,
+    pub modifiers: Modifiers,
+    pub target: PointerTarget,
+    pub window: Option<WindowId>,
+    pub plugin_window: Option<u32>,
+    pub content: Option<(u16, u16)>,
+    pub table: String,
+}
+
+pub(crate) fn button_name(button: MouseButton) -> &'static str {
+    match button {
+        MouseButton::Left => "left",
+        MouseButton::Middle => "middle",
+        MouseButton::Right => "right",
+    }
+}
+
+pub(crate) fn direction_name(direction: WheelDirection) -> &'static str {
+    match direction {
+        WheelDirection::Up => "up",
+        WheelDirection::Down => "down",
+        WheelDirection::Left => "left",
+        WheelDirection::Right => "right",
+    }
+}
+
+impl Pointer {
+    pub(crate) fn payload(&self, lua: &Lua, payload: &Table) -> mlua::Result<()> {
+        payload.set("col", self.col)?;
+        payload.set("row", self.row)?;
+        payload.set("ctrl", self.modifiers.ctrl)?;
+        payload.set("alt", self.modifiers.alt)?;
+        payload.set("shift", self.modifiers.shift)?;
+        payload.set(
+            "target",
+            match self.target {
+                PointerTarget::Window => "window",
+                PointerTarget::PluginWindow => "plugin_window",
+                PointerTarget::Ribbon => "ribbon",
+                PointerTarget::Outside => "outside",
+            },
+        )?;
+        payload.set("window", self.window.map(|window| window.0))?;
+        payload.set("plugin_window", self.plugin_window)?;
+        payload.set("content_col", self.content.map(|(col, _)| col))?;
+        payload.set("content_row", self.content.map(|(_, row)| row))?;
+        payload.set("table", lua.create_string(&self.table)?)?;
+        Ok(())
+    }
+
+    pub(crate) fn pressed(&self, lua: &Lua, button: MouseButton) -> mlua::Result<Table> {
+        let payload = lua.create_table()?;
+        payload.set("button", button_name(button))?;
+        self.payload(lua, &payload)?;
+        Ok(payload)
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Event {
@@ -61,12 +131,28 @@ pub enum Event {
         value: Option<Data>,
         previous: Option<Data>,
     },
+    MousePressed {
+        button: MouseButton,
+        pointer: Pointer,
+    },
+    MouseReleased {
+        button: MouseButton,
+        pointer: Pointer,
+    },
+    MouseDragged {
+        button: MouseButton,
+        pointer: Pointer,
+    },
+    MouseScrolled {
+        direction: WheelDirection,
+        pointer: Pointer,
+    },
 }
 
 const USER: &str = "User";
 const SERVER_EVENT: &str = "ServerEvent";
 
-pub(crate) const NAMES: [&str; 13] = [
+pub(crate) const NAMES: [&str; 17] = [
     "Attached",
     "FocusChanged",
     "BandChanged",
@@ -80,6 +166,10 @@ pub(crate) const NAMES: [&str; 13] = [
     "ColorschemeChanged",
     "ServerEvent",
     "WindowStateChanged",
+    "MousePressed",
+    "MouseReleased",
+    "MouseDragged",
+    "MouseScrolled",
 ];
 
 fn names(side: Side) -> &'static [&'static str] {
@@ -106,6 +196,10 @@ impl Event {
             Event::ColorschemeChanged { .. } => "ColorschemeChanged",
             Event::ServerEvent { .. } => SERVER_EVENT,
             Event::WindowStateChanged { .. } => "WindowStateChanged",
+            Event::MousePressed { .. } => "MousePressed",
+            Event::MouseReleased { .. } => "MouseReleased",
+            Event::MouseDragged { .. } => "MouseDragged",
+            Event::MouseScrolled { .. } => "MouseScrolled",
         }
     }
 
@@ -171,6 +265,16 @@ impl Event {
                 payload.set("key", key.as_str())?;
                 payload.set("value", data(value)?)?;
                 payload.set("previous", data(previous)?)?;
+            }
+            Event::MousePressed { button, pointer }
+            | Event::MouseReleased { button, pointer }
+            | Event::MouseDragged { button, pointer } => {
+                payload.set("button", button_name(*button))?;
+                pointer.payload(lua, &payload)?;
+            }
+            Event::MouseScrolled { direction, pointer } => {
+                payload.set("direction", direction_name(*direction))?;
+                pointer.payload(lua, &payload)?;
             }
         }
         Ok(payload)

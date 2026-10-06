@@ -2,10 +2,12 @@ use std::fmt::Debug;
 use std::path::PathBuf;
 
 use gband_core::geometry::Size;
-use gband_core::input::{Key, KeyCode, Modifiers};
+use gband_core::input::{
+    Key, KeyCode, Modifiers, MouseButton, MouseEvent, MouseKind, WheelDirection,
+};
 use gband_core::layout::{
     Direction, FloatingWindow, Layout, LayoutOptions, Program, Proportion, SessionAction, Step,
-    Vertical, Weight, WindowContent, WindowHeight, WindowId,
+    TargetPlace, Vertical, Weight, WindowContent, WindowHeight, WindowId,
 };
 use gband_protocol::test::{FromProcess, Role, ToProcess};
 use gband_protocol::{
@@ -29,8 +31,8 @@ fn session(name: &str) -> SessionName {
 }
 
 #[test]
-fn protocol_version_is_eight() {
-    assert_eq!(PROTOCOL_VERSION, 8);
+fn protocol_version_is_nine() {
+    assert_eq!(PROTOCOL_VERSION, 9);
 }
 
 #[test]
@@ -155,6 +157,23 @@ fn client_messages_round_trip() {
         window: WindowId(4),
         output: b"\x1b[1;1Hhello".to_vec(),
     });
+    round_trip(ClientMessage::Mouse {
+        window: WindowId(2),
+        event: MouseEvent::new(MouseKind::Press(MouseButton::Left), 4, 2, Modifiers::CTRL),
+    });
+    round_trip(ClientMessage::Mouse {
+        window: WindowId(2),
+        event: MouseEvent::new(
+            MouseKind::Wheel(WheelDirection::Down),
+            0,
+            0,
+            Modifiers::NONE,
+        ),
+    });
+    round_trip(ClientMessage::Mouse {
+        window: WindowId(2),
+        event: MouseEvent::new(MouseKind::Motion(None), 300, 90, Modifiers::SHIFT),
+    });
 }
 
 #[test]
@@ -258,6 +277,16 @@ fn session_actions_round_trip() {
         SessionAction::SetHeight {
             window: WindowId(2),
             height: WindowHeight::Fixed(8),
+        },
+        SessionAction::MoveToPlace {
+            window: WindowId(3),
+            reference: WindowId(5),
+            place: TargetPlace::ColumnRight,
+        },
+        SessionAction::MoveToPlace {
+            window: WindowId(3),
+            reference: WindowId(5),
+            place: TargetPlace::Above,
         },
     ] {
         round_trip(ClientMessage::Action(action));

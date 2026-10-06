@@ -1,16 +1,16 @@
-use gband_core::input::{Key, KeyCode, Modes, Modifiers, encode_key, encode_paste};
-
-const NORMAL: Modes = Modes {
-    application_cursor: false,
-    bracketed_paste: false,
+use gband_core::input::{
+    Key, KeyCode, Modes, Modifiers, MouseButton, MouseEncoding, MouseEvent, MouseKind,
+    MouseTracking, WheelDirection, encode_key, encode_mouse, encode_paste,
 };
+
+const NORMAL: Modes = Modes::DEFAULT;
 const APPLICATION: Modes = Modes {
     application_cursor: true,
-    bracketed_paste: false,
+    ..Modes::DEFAULT
 };
 const BRACKETED: Modes = Modes {
-    application_cursor: false,
     bracketed_paste: true,
+    ..Modes::DEFAULT
 };
 
 const SHIFT_ALT_CTRL: Modifiers = Modifiers {
@@ -200,4 +200,110 @@ fn paste() {
             "{text:?} under {modes:?}"
         );
     }
+}
+
+fn mouse_modes(tracking: MouseTracking, encoding: MouseEncoding) -> Modes {
+    Modes {
+        mouse_tracking: tracking,
+        mouse_encoding: encoding,
+        ..Modes::DEFAULT
+    }
+}
+
+fn check_mouse(cases: &[(MouseKind, u16, u16, Modifiers, Modes, &[u8])]) {
+    for &(kind, col, row, modifiers, modes, expected) in cases {
+        let event = MouseEvent::new(kind, col, row, modifiers);
+        assert_eq!(
+            encode_mouse(event, modes),
+            expected,
+            "{event:?} under {modes:?}"
+        );
+    }
+}
+
+#[test]
+fn mouse_reports() {
+    use MouseButton::{Left, Middle, Right};
+    use MouseKind::{Motion, Press, Release, Wheel};
+    let sgr1000 = mouse_modes(MouseTracking::PressRelease, MouseEncoding::Sgr);
+    let sgr1002 = mouse_modes(MouseTracking::ButtonMotion, MouseEncoding::Sgr);
+    let sgr1003 = mouse_modes(MouseTracking::AnyMotion, MouseEncoding::Sgr);
+    let sgr9 = mouse_modes(MouseTracking::Press, MouseEncoding::Sgr);
+    let default1000 = mouse_modes(MouseTracking::PressRelease, MouseEncoding::Default);
+    let utf1000 = mouse_modes(MouseTracking::PressRelease, MouseEncoding::Utf8);
+    let none = mouse_modes(MouseTracking::None, MouseEncoding::Sgr);
+    let plain = Modifiers::NONE;
+    check_mouse(&[
+        (Press(Right), 0, 0, plain, sgr1000, b"\x1b[<2;1;1M"),
+        (Release(Right), 0, 0, plain, sgr1000, b"\x1b[<2;1;1m"),
+        (Press(Left), 9, 4, plain, default1000, b"\x1b[M *%"),
+        (Release(Left), 9, 4, plain, default1000, b"\x1b[M#*%"),
+        (Motion(Some(Left)), 2, 1, plain, sgr1002, b"\x1b[<32;3;2M"),
+        (Motion(Some(Left)), 2, 1, plain, sgr1000, b""),
+        (Motion(None), 2, 1, plain, sgr1002, b""),
+        (Motion(None), 2, 1, plain, sgr1003, b"\x1b[<35;3;2M"),
+        (
+            Wheel(WheelDirection::Up),
+            0,
+            0,
+            Modifiers::CTRL,
+            sgr1000,
+            b"\x1b[<80;1;1M",
+        ),
+        (
+            Wheel(WheelDirection::Up),
+            2,
+            1,
+            plain,
+            sgr1000,
+            b"\x1b[<64;3;2M",
+        ),
+        (
+            Wheel(WheelDirection::Down),
+            0,
+            0,
+            Modifiers::ALT,
+            sgr1000,
+            b"\x1b[<73;1;1M",
+        ),
+        (
+            Wheel(WheelDirection::Left),
+            0,
+            0,
+            plain,
+            sgr1000,
+            b"\x1b[<66;1;1M",
+        ),
+        (
+            Wheel(WheelDirection::Right),
+            0,
+            0,
+            Modifiers::SHIFT,
+            sgr1000,
+            b"\x1b[<71;1;1M",
+        ),
+        (Press(Left), 230, 0, plain, default1000, b""),
+        (
+            Press(Left),
+            222,
+            222,
+            plain,
+            default1000,
+            b"\x1b[M \xff\xff",
+        ),
+        (Press(Left), 0, 0, plain, none, b""),
+        (Press(Middle), 0, 0, Modifiers::CTRL, sgr9, b"\x1b[<1;1;1M"),
+        (Release(Middle), 0, 0, plain, sgr9, b""),
+        (Wheel(WheelDirection::Up), 0, 0, plain, sgr9, b""),
+        (
+            Press(Left),
+            0,
+            0,
+            Modifiers::CTRL,
+            sgr1000,
+            b"\x1b[<16;1;1M",
+        ),
+        (Press(Left), 230, 0, plain, utf1000, b"\x1b[M \xc4\x87!"),
+        (Press(Left), 2015, 0, plain, utf1000, b""),
+    ]);
 }

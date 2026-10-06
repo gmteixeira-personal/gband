@@ -1,4 +1,5 @@
 use gband_core::input::{Key, KeyCode};
+use gband_core::layout::{SessionAction, TargetPlace};
 use gband_protocol::{ClientMessage, Hello, HelloReply, PROTOCOL_VERSION};
 use gband_test_support::*;
 
@@ -65,17 +66,17 @@ async fn mismatched_version_is_rejected_and_server_keeps_serving() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn version_seven_client_is_rejected_by_version_eight() {
-    let server = TestServer::start("version-seven", &["/bin/sh"]).await;
+async fn version_eight_client_is_rejected_by_version_nine() {
+    let server = TestServer::start("version-eight", &["/bin/sh"]).await;
     let mut peer = Peer::connect(&server.socket()).await;
     peer.send(&Hello {
-        version: 7,
+        version: 8,
         cols: 80,
         rows: 24,
     })
     .await;
     let reply: HelloReply = peer.recv().await.unwrap();
-    assert_eq!(reply, HelloReply::Rejected { version: 8 });
+    assert_eq!(reply, HelloReply::Rejected { version: 9 });
     assert!(peer.closes().await);
 }
 
@@ -190,4 +191,31 @@ async fn keys_from_two_clients_reach_the_program() {
             contents.contains('a') && contents.lines().any(|line| line.contains(" b"))
         })
         .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn move_to_place_reaches_every_client() {
+    let server = TestServer::start("move-to-place", &["/bin/sh"]).await;
+    let mut first = server.attach(80, 24).await;
+    let mut second = server.attach(80, 24).await;
+    let a = first.first();
+    let b = first.open_after(a).await;
+    let c = first.open_after(b).await;
+    first
+        .act(SessionAction::MoveToPlace {
+            window: a,
+            reference: b,
+            place: TargetPlace::ColumnRight,
+        })
+        .await;
+    let moved = |client: &TestClient| {
+        client.layout.bands()[0]
+            .columns
+            .iter()
+            .map(|column| column.windows.clone())
+            .collect::<Vec<_>>()
+            == [vec![b], vec![a], vec![c]]
+    };
+    first.wait_until(moved).await;
+    second.wait_until(moved).await;
 }

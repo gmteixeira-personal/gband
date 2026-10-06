@@ -102,6 +102,33 @@ Navigation mode changed two habits.
 Enter no longer opens a window: `n` does.
 After Ctrl+Space and a layout key, what you type no longer reaches the window until Escape or Enter returns to interactive mode.
 
+### Mouse
+
+gband takes the mouse while it is attached.
+In interactive mode:
+
+- A click focuses the window under the pointer, and raises a floating window.
+- When the window's program asked for the mouse, such as `htop` or `less --mouse`, the click, its drags and its release go to the program. Hold Alt to select text instead.
+- Otherwise a left drag selects text, shown reversed. Releasing copies it to gband's copy buffer and to your terminal's clipboard with OSC 52.
+- A right click pastes the copy buffer into the window under the pointer.
+- In a plugin window, such as the key list, a click moves the cursor line.
+
+The wheel always reaches the window under the pointer, in every mode, and the program receives it when it asked for the mouse.
+gband keeps no scrollback, so the wheel scrolls nothing of its own; over a plugin window it scrolls the lines.
+
+In navigation mode, as holding niri's modifier:
+
+| button | drag |
+|---|---|
+| left | move a floating window, or lift a tiled window and drop it beside or into another column; on empty ribbon, slide the band |
+| right | resize the window from the edges nearest the press |
+| middle | slide the band; on release, the column at the middle of the view is focused |
+
+While gband has the mouse, a plain drag no longer selects text in your terminal.
+Most terminals, such as kitty, Alacritty, WezTerm, foot and those built on VTE, still select natively with Shift held.
+Copying to the clipboard needs OSC 52 allowed in the terminal: kitty's `clipboard_control` must include `write-clipboard`, and tmux needs `set-clipboard on`.
+Without it, the copy buffer still pastes inside gband.
+
 ## Scripting
 
 gband embeds a Lua runtime.
@@ -244,6 +271,7 @@ The direct key style, `gband.keystyle.use("direct")`, is the one-key prefix bind
 
 A key is a key name with optional `ctrl`, `alt` and `shift` modifiers joined by `+`, such as `alt+h`, `ctrl+PageUp` or `alt++`.
 A key name is one character, or `enter`, `tab`, `backtab`, `backspace`, `escape`, `space`, the arrow keys `up`, `down`, `left` and `right`, `home`, `end`, `insert`, `delete`, `pageup`, `pagedown`, or `f1` to `f12`.
+`leftmouse`, `middlemouse` and `rightmouse` name a press of a mouse button, with the same modifiers, such as `alt+rightmouse`. They bind in key tables only, not as the prefix or in a plugin window's `keys`, and the wheel has no name.
 `prefix prefix` binds the prefix key pressed twice.
 
 `gband.spawn { cmd = ... }` takes a command line as a string, which your shell runs, or a list of a program and its arguments.
@@ -270,6 +298,9 @@ The actions in `gband.action`:
 | `grow_window_height`, `shrink_window_height`, `reset_window_height` | change or reset the height of the focused window |
 | `detach` | detach the client |
 | `send_prefix` | send the prefix key to the focused window |
+| `drag_window` | when bound to a mouse button, move the window with the mouse |
+| `drag_resize_window` | when bound to a mouse button, resize the window with the mouse |
+| `drag_band` | when bound to a mouse button, slide the band with the mouse |
 
 `gband.action.list()` lists every action with its description.
 A target table names the window an action acts on, and the four grow and shrink actions also take a `step`, so one binding can resize by another amount than the options give:

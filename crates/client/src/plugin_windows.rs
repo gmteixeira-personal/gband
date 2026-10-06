@@ -59,9 +59,10 @@ impl PluginWindows {
             .map(|(&id, _)| id)
     }
 
-    pub fn floats(&self) -> Vec<&FloatingFrame> {
-        let mut floats: Vec<&FloatingFrame> = self.floats.values().collect();
-        floats.sort_by_key(|frame| frame.z);
+    pub fn floats(&self) -> Vec<(u32, &FloatingFrame)> {
+        let mut floats: Vec<(u32, &FloatingFrame)> =
+            self.floats.iter().map(|(&id, frame)| (id, frame)).collect();
+        floats.sort_by_key(|(_, frame)| frame.z);
         floats
     }
 

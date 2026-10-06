@@ -35,6 +35,11 @@ fn bundled_status_line_segments() {
 }
 
 #[test]
+fn mouse() {
+    gband_test(root(), &["tests/lua/mouse_spec.lua"]);
+}
+
+#[test]
 fn bundled_key_list() {
     gband_test(root(), &["tests/lua/keylist_spec.lua"]);
 }

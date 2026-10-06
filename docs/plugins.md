@@ -365,6 +365,23 @@ The built-in events of the client:
 | `ColorschemeChanged` | `name`, `previous` | a colorscheme loads after loading |
 | `ServerEvent` | `name`, `data`, `queued`, `time` | the server emits an event to this client |
 | `WindowStateChanged` | `window`, `key`, `value`, `previous` | the server changes a window's state |
+| `MousePressed` | `button`, and the mouse fields | a mouse button is pressed |
+| `MouseReleased` | `button`, and the mouse fields | a mouse button is released |
+| `MouseDragged` | `button`, and the mouse fields | the pointer moves to another cell with a button held |
+| `MouseScrolled` | `direction`, and the mouse fields | the wheel turns one step |
+
+`button` is `"left"`, `"middle"` or `"right"`, and `direction` is `"up"`, `"down"`, `"left"` or `"right"`.
+The mouse fields are:
+
+- `col`, `row`: the terminal cell under the pointer, from 0.
+- `ctrl`, `alt`, `shift`: the modifiers held.
+- `target`: `"window"`, `"plugin_window"`, `"ribbon"` or `"outside"`, what the cell shows.
+- `window`: the window under the pointer, or the window of a tiled plugin window, else nil.
+- `plugin_window`: the plugin window under the pointer, else nil.
+- `content_col`, `content_row`: the cell inside the window's border, nil on the border.
+- `table`: the key table active when the event arrived.
+
+The mouse events only report: the click, drag or wheel step still reaches the window, plugin window or gesture that takes it.
 
 `Attached` runs once the client has received the session's layout, its window states and the server's requirements, before the client handles its first key.
 Attaching to a session emits no `WindowOpened`, `LayoutChanged`, `FocusChanged`, `BandChanged` or `WindowStateChanged` for what is already there.
@@ -409,6 +426,26 @@ gband.keymap.set("prefix", "m", function() gband.keymap.enter("move") end, { des
 ```
 
 `gband.bind` and `gband.unbind` still work: `gband.bind("alt+h", ...)` binds in `root`, and `gband.bind("prefix h", ...)` binds in `prefix`.
+
+### Mouse names
+
+`leftmouse`, `middlemouse` and `rightmouse`, with `ctrl`, `alt` and `shift`, bind a press of a mouse button in a key table, as a key binds.
+They cannot be the `prefix` option or a key of a plugin window's `keys`, and the wheel has no name: every wheel step goes to the window under the pointer.
+A press matches the active table: in `root`, a bound mouse name replaces the interactive defaults, which focus, forward to a program, select or paste.
+In a mode or a key sequence it behaves as a key does.
+Hints and the key list leave mouse bindings out.
+
+A function bound to a mouse name runs with one argument, the `MousePressed` payload.
+The drag actions `drag_window`, `drag_resize_window` and `drag_band` start a gesture when a mouse press runs them, from its binding or a function it calls, and do nothing at any other time.
+The modal key style binds them to `leftmouse`, `rightmouse` and `middlemouse` in navigation mode.
+
+```lua
+gband.keymap.set("root", "ctrl+leftmouse", function(e)
+  if e.target == "window" then
+    gband.action.drag_window()
+  end
+end, { desc = "move the window under the pointer" })
+```
 
 Bindings are made only while the configuration loads.
 
@@ -551,6 +588,7 @@ It is one of two kinds:
 | `keys` | both | key names to functions | none |
 | `on_input` | both | function of the number and a text | none |
 | `on_close`, `on_resize` | both | function | none |
+| `on_mouse` | both | function of the number and a mouse table | none |
 | `row`, `col` | floating | integer of at least 0, or `"center"` | `"center"` |
 | `width`, `height` | floating | integer of at least 1 | half the ribbon |
 | `border` | floating | a boolean, or a border table `{ sides = ..., chars = ... }` | `true` |
@@ -595,6 +633,20 @@ The `keys` functions, `on_input`, `on_close` and `on_resize` run as callbacks of
 `on_close` runs once with the plugin window's number when the plugin window closes, but not when a reload closes it.
 `on_resize` runs with the number and the new columns and rows when the plugin window's content area changes size, including when a tiled plugin window's size first becomes known.
 A plugin window closes when its plugin is marked failed.
+
+Without `on_mouse`, a left click on a plugin window with `cursorline` moves the cursor line to the line under the pointer, and the wheel acts as Down and Up do, in any mode and whether or not the plugin window has focus.
+With `on_mouse`, those defaults are off.
+`on_mouse` runs for a press on the plugin window that no `root` binding takes, for that press's drags and release, and for each wheel step over it in any mode, with the plugin window's number and a table:
+
+- `kind`: `"press"`, `"release"`, `"drag"` or `"scroll"`.
+- `button`: `"left"`, `"middle"` or `"right"`, except for `"scroll"`.
+- `direction`: `"up"`, `"down"`, `"left"` or `"right"`, for `"scroll"`.
+- `content_col`, `content_row`: the cell inside the border, from 0, nil on the border.
+- `line`: the line shown at `content_row`, from 1, nil past the last line.
+- `ctrl`, `alt`, `shift`: the modifiers held.
+
+A press focuses the plugin window first, and `on_mouse` runs as a callback of the plugin that opened it.
+The drag actions move and resize floating plugin windows as they do floating windows, running `on_resize` for each new size.
 
 ```lua
 gband.keymap.set("prefix", "K", function()

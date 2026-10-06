@@ -2,7 +2,9 @@ use std::fs;
 use std::time::Duration;
 
 use gband_core::geometry::Size;
-use gband_core::input::{Key, KeyCode};
+use gband_core::input::{
+    Key, KeyCode, Modifiers, MouseButton, MouseEvent, MouseKind, WheelDirection,
+};
 use gband_core::layout::{LayoutOptions, Proportion, SessionAction, WindowContent, WindowId};
 use gband_protocol::ClientMessage;
 use gband_test_support::*;
@@ -362,4 +364,108 @@ async fn open_a_floating_window_with_focus() {
     stty_size(&mut requester, opened, "18 38").await;
     assert!(other.pump(Duration::from_millis(200)).await);
     assert!(other.focus.is_empty());
+}
+
+const READ_INPUT: &str =
+    "stty raw -echo; printf ready; dd bs=1 count=9 2>/dev/null | od -An -tx1; sleep 100";
+
+async fn send_mouse(
+    client: &mut TestClient,
+    window: WindowId,
+    kind: MouseKind,
+    col: u16,
+    row: u16,
+) {
+    client
+        .send(&ClientMessage::Mouse {
+            window,
+            event: MouseEvent::new(kind, col, row, Modifiers::NONE),
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn mouse_press_reaches_a_mouse_program() {
+    let script = format!("printf '\\033[?1000h\\033[?1006h'; {READ_INPUT}");
+    let server = TestServer::start("mouse-press", &["/bin/sh", "-c", &script]).await;
+    let mut client = server.attach(80, 24).await;
+    let window = client.first();
+    client.wait_for_text("ready").await;
+    send_mouse(
+        &mut client,
+        window,
+        MouseKind::Press(MouseButton::Left),
+        4,
+        2,
+    )
+    .await;
+    client.wait_for_text(" 1b 5b 3c 30 3b 35 3b 33 4d").await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn mouse_without_reporting_writes_nothing() {
+    let script =
+        "stty raw -echo; printf ready; dd bs=1 count=1 2>/dev/null | od -An -tx1; sleep 100";
+    let server = TestServer::start("mouse-none", &["/bin/sh", "-c", script]).await;
+    let mut client = server.attach(80, 24).await;
+    let window = client.first();
+    client.wait_for_text("ready").await;
+    send_mouse(
+        &mut client,
+        window,
+        MouseKind::Wheel(WheelDirection::Up),
+        0,
+        0,
+    )
+    .await;
+    client.key_to(window, Key::plain(KeyCode::Char('x'))).await;
+    client.wait_for_text(" 78").await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn mouse_for_a_drawn_or_missing_window_is_dropped() {
+    let server = TestServer::start("mouse-drawn", &["/bin/sh"]).await;
+    let mut client = server.attach(80, 24).await;
+    let first = client.first();
+    let band = client.layout.bands()[0].id;
+    client
+        .act(SessionAction::OpenWindow {
+            band,
+            after: Some(first),
+            width: None,
+            floating: false,
+            focus: false,
+            content: WindowContent::Plugin { request: 1 },
+        })
+        .await;
+    client
+        .wait_until(|client| client.windows().len() == 2)
+        .await;
+    let drawn = client.windows()[1];
+    client
+        .send(&ClientMessage::Content {
+            window: drawn,
+            output: b"\x1b[?1000h\x1b[?1006hdrawn".to_vec(),
+        })
+        .await;
+    client.wait_for_window_text(drawn, "drawn").await;
+    send_mouse(
+        &mut client,
+        drawn,
+        MouseKind::Press(MouseButton::Left),
+        0,
+        0,
+    )
+    .await;
+    send_mouse(
+        &mut client,
+        WindowId(99),
+        MouseKind::Press(MouseButton::Left),
+        0,
+        0,
+    )
+    .await;
+    client.type_line_to(first, "echo still-serving").await;
+    client.wait_for_window_text(first, "still-serving\n").await;
+    assert_eq!(client.window_screen(drawn).contents().trim_end(), "drawn");
 }

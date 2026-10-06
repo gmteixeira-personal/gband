@@ -2,11 +2,12 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 use gband_client::animation::Animations;
 use gband_client::{Controls, Display, Step};
 use gband_core::geometry::Size;
-use gband_core::input::Key;
+use gband_core::input::{Key, Modifiers, MouseButton, MouseEvent, MouseKind, WheelDirection};
 use gband_core::layout::{Direction, Layout, LayoutOptions, Proportion, SessionAction, WindowId};
 use gband_lua::keys::parse_key;
 use gband_lua::{Config, ConfigError, DEFAULTS, LoadOptions, Locations};
@@ -587,4 +588,118 @@ fn infinite_loop_in_a_callback() {
     client.display.clear_errors();
     assert_eq!(client.press("alt+s"), []);
     assert_eq!(client.display.banner(), None);
+}
+
+const MOUSE: &str =
+    "for _, name in ipairs({ 'MousePressed', 'MouseReleased', 'MouseDragged', 'MouseScrolled' }) do
+  gband.on(name, record(name))
+end
+";
+
+impl Client {
+    fn mouse(&mut self, kind: MouseKind, col: u16, row: u16) -> Vec<Step> {
+        let event = MouseEvent::new(kind, col, row, Modifiers::NONE);
+        self.controls
+            .mouse(&mut self.display, event, Instant::now())
+    }
+}
+
+#[test]
+fn click_event() {
+    let (_scratch, mut client) = recording("mouse-click", MOUSE);
+    let (layout, windows) = layout_of(2);
+    client.receive([shown(&layout)]);
+    client.clear();
+    client.mouse(MouseKind::Press(MouseButton::Left), 5, 3);
+    let log = client.log();
+    assert_eq!(
+        log[0],
+        format!(
+            "MousePressed alt=false,button=left,col=5,content_col=4,content_row=2,ctrl=false,row=3,shift=false,table=root,target=window,window={}",
+            windows[0].0
+        )
+    );
+    assert_eq!(log.len(), 1, "{log:?}");
+}
+
+#[test]
+fn drag_events() {
+    let (_scratch, mut client) = recording("mouse-drag", MOUSE);
+    let (layout, _) = layout_of(2);
+    client.receive([shown(&layout)]);
+    client.mouse(MouseKind::Press(MouseButton::Left), 5, 3);
+    client.clear();
+    for col in [6, 6, 7, 8] {
+        client.mouse(MouseKind::Motion(Some(MouseButton::Left)), col, 3);
+    }
+    client.mouse(MouseKind::Motion(None), 20, 3);
+    client.mouse(MouseKind::Release(MouseButton::Left), 8, 3);
+    let names: Vec<String> = client
+        .log()
+        .iter()
+        .map(|line| line.split(' ').next().unwrap().to_owned())
+        .collect();
+    assert_eq!(
+        names,
+        [
+            "MouseDragged",
+            "MouseDragged",
+            "MouseDragged",
+            "MouseReleased"
+        ]
+    );
+}
+
+#[test]
+fn wheel_event() {
+    let (_scratch, mut client) = recording("mouse-wheel", MOUSE);
+    let (layout, _) = layout_of(1);
+    client.receive([shown(&layout)]);
+    client.clear();
+    for _ in 0..2 {
+        let steps = client.mouse(MouseKind::Wheel(WheelDirection::Up), 60, 3);
+        assert!(
+            steps.iter().all(|step| !matches!(step, Step::Send(_))),
+            "{steps:?}"
+        );
+    }
+    assert_eq!(
+        client.log(),
+        ["MouseScrolled alt=false,col=60,ctrl=false,direction=up,row=3,shift=false,table=root,target=ribbon";
+            2]
+    );
+}
+
+#[test]
+fn wheel_over_a_window_reaches_it_and_changes_no_focus() {
+    let (_scratch, mut client) = recording("mouse-wheel-window", MOUSE);
+    let (layout, windows) = layout_of(2);
+    client.receive([shown(&layout)]);
+    client.clear();
+    let steps = client.mouse(MouseKind::Wheel(WheelDirection::Down), 40, 0);
+    assert_eq!(
+        steps
+            .iter()
+            .filter_map(|step| match step {
+                Step::Send(message) => Some(message.clone()),
+                _ => None,
+            })
+            .collect::<Vec<_>>(),
+        [ClientMessage::Mouse {
+            window: windows[1],
+            event: MouseEvent::new(
+                MouseKind::Wheel(WheelDirection::Down),
+                0,
+                0,
+                Modifiers::NONE
+            ),
+        }]
+    );
+    assert_eq!(client.display.focused(), Some(windows[0]));
+    assert!(
+        !client
+            .log()
+            .iter()
+            .any(|line| line.starts_with("FocusChanged"))
+    );
 }

@@ -9,7 +9,7 @@ use crate::api::{self, Binding, Chord, Dispatch, require_loading};
 use crate::callbacks;
 use crate::error::{ConfigError, caller};
 use crate::guard::{self, Failure};
-use crate::keys::parse_key;
+use crate::keys::parse_pressed;
 use crate::owner;
 use crate::{KeyTables, Modes};
 
@@ -149,8 +149,9 @@ fn chord(lua: &Lua, table: &str, key: &Value, function: &str) -> mlua::Result<(S
         }
         return Ok((text, Chord::Prefix));
     }
-    let key = parse_key(&text).map_err(|error| ConfigError::raise(lua, error.to_string()))?;
-    Ok((text, Chord::Key(key)))
+    let pressed =
+        parse_pressed(&text).map_err(|error| ConfigError::raise(lua, error.to_string()))?;
+    Ok((text, Chord::from(pressed)))
 }
 
 fn description(lua: &Lua, opts: &Value, function: &str) -> mlua::Result<Option<String>> {

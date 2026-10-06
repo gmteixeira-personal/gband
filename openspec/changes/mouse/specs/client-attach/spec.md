@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Default mouse bindings
-With no configuration file, `root` SHALL bind no mouse name, so every mouse event in interactive mode takes the mouse capability's defaults. Navigation mode, the `prefix` table, SHALL also hold these bindings, after its key bindings, in this order, each keeping navigation mode active:
+With no configuration file, `root` SHALL bind no mouse name, so every mouse event in interactive mode takes the mouse capability's defaults. With the modal key style, navigation mode, the `prefix` table, SHALL also hold these bindings, after its key bindings, in this order, each keeping navigation mode active. The direct key style SHALL bind no mouse name:
 
 | mouse name in navigation mode | Lua binding | action | kind |
 |---|---|---|---|

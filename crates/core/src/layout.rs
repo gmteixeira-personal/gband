@@ -378,6 +378,14 @@ pub enum Vertical {
     Down,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TargetPlace {
+    ColumnLeft,
+    ColumnRight,
+    Above,
+    Below,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum WindowContent {
     Program(Option<Program>),
@@ -436,6 +444,11 @@ pub enum SessionAction {
         window: WindowId,
         col: u16,
         row: u16,
+    },
+    MoveToPlace {
+        window: WindowId,
+        reference: WindowId,
+        place: TargetPlace,
     },
 }
 
@@ -730,7 +743,66 @@ impl Layout {
                     record.row = row.min(area.rows - placed.height);
                 })
             }
+            SessionAction::MoveToPlace {
+                window,
+                reference,
+                place,
+            } => self.move_to_place(window, reference, place),
         }
+    }
+
+    fn move_to_place(
+        &mut self,
+        window: WindowId,
+        reference: WindowId,
+        place: TargetPlace,
+    ) -> Vec<LayoutEvent> {
+        let (Some(from), Some(to)) = (self.locate(window), self.locate(reference)) else {
+            return Vec::new();
+        };
+        if window == reference || from.band != to.band {
+            return Vec::new();
+        }
+        let band = &mut self.bands[from.band];
+        let before = band.columns.clone();
+        let source = &mut band.columns[from.column];
+        let (width, full_width) = source.width();
+        let height = source.heights[from.row];
+        source.remove(from.row);
+        if source.windows.is_empty() {
+            band.columns.remove(from.column);
+        }
+        let (column, row) = band.locate(reference).expect("reference stays in its band");
+        let (column, row) = match place {
+            TargetPlace::ColumnLeft | TargetPlace::ColumnRight => {
+                let index = column + usize::from(place == TargetPlace::ColumnRight);
+                let mut moved = Column::new(window, width);
+                moved.full_width = full_width;
+                band.columns.insert(index, moved);
+                (index, 0)
+            }
+            TargetPlace::Above | TargetPlace::Below => {
+                let index = row + usize::from(place == TargetPlace::Below);
+                let height = if from.column == to.column {
+                    height
+                } else {
+                    WindowHeight::DEFAULT
+                };
+                let target = &mut band.columns[column];
+                target.windows.insert(index, window);
+                target.heights.insert(index, height);
+                (column, index)
+            }
+        };
+        if band.columns == before {
+            return Vec::new();
+        }
+        vec![LayoutEvent::WindowMoved {
+            window,
+            band: band.id,
+            column,
+            row,
+        }]
     }
 
     fn float(

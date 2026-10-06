@@ -144,9 +144,11 @@ t.case("default list", function(g)
     local key_form = require("gband.keyform")
     local keys, descs = 0, 0
     for _, entry in ipairs(gband.keymap.list("prefix")) do
-      local key = entry.key == "prefix" and key_form(gband.opt.prefix) or key_form(entry.key)
-      keys = math.max(keys, gband.ui.width(key))
-      descs = math.max(descs, gband.ui.width(entry.desc))
+      if not key_form.is_mouse(entry.key) then
+        local key = entry.key == "prefix" and key_form(gband.opt.prefix) or key_form(entry.key)
+        keys = math.max(keys, gband.ui.width(key))
+        descs = math.max(descs, gband.ui.width(entry.desc))
+      end
     end
     return keys + 2 + descs
   ]])
@@ -154,6 +156,8 @@ t.case("default list", function(g)
   t.eq(shown.cols, widest)
   t.ok(shown.width <= 80)
   t.eq(shown.height, 15)
+  t.eq(shown.line_count, g.client("return #gband.keymap.list('prefix')") - 3)
+  t.ok(not g.screen().text():find("mouse"), "no mouse binding is listed")
   g.expect_screenshot("last page")
 end)
 

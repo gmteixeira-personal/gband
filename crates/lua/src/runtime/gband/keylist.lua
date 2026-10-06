@@ -37,13 +37,15 @@ local function entries()
   local prefix = key_form(gband.opt.prefix)
   local list = {}
   for _, binding in ipairs(gband.keymap.list("prefix")) do
-    local form = binding.key == "prefix" and prefix or key_form(binding.key)
-    list[#list + 1] = {
-      key = form,
-      text = describe(binding, descs),
-      binding = binding.action ~= OWN and binding.key or nil,
-      direct = binding.key ~= "prefix" and not OWN_KEYS[form] and binding.key or nil,
-    }
+    if not key_form.is_mouse(binding.key) then
+      local form = binding.key == "prefix" and prefix or key_form(binding.key)
+      list[#list + 1] = {
+        key = form,
+        text = describe(binding, descs),
+        binding = binding.action ~= OWN and binding.key or nil,
+        direct = binding.key ~= "prefix" and not OWN_KEYS[form] and binding.key or nil,
+      }
+    end
   end
   return list
 end

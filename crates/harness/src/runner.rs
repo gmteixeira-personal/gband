@@ -7,6 +7,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use gband_core::geometry::Size;
+use gband_core::input::{Modifiers, MouseButton, MouseEvent, MouseKind, WheelDirection};
 use gband_lua::keys::parse_key;
 use gband_lua::plain;
 use gband_protocol::Value as Data;
@@ -555,6 +556,7 @@ fn handle(lua: &Lua, context: &Arc<Context>) -> mlua::Result<Table> {
     bind(lua, &g, "keys", context, keys)?;
     bind(lua, &g, "type", context, type_text)?;
     bind(lua, &g, "paste", context, paste)?;
+    bind(lua, &g, "mouse", context, mouse)?;
     bind(lua, &g, "run", context, run_line)?;
     bind(lua, &g, "resize", context, resize)?;
     bind(lua, &g, "write", context, write)?;
@@ -780,6 +782,81 @@ fn keys(_: &Lua, context: &Context, keys: Value) -> mlua::Result<MultiValue> {
         .map(|name| parse_key(name).map_err(|_| fail(format!("unknown key `{name}` in g.keys"))))
         .collect::<mlua::Result<Vec<_>>>()?;
     with_case(context, |case| case.keys(&parsed))?;
+    none()
+}
+
+fn mouse_button(name: Option<&str>) -> Option<MouseButton> {
+    match name? {
+        "left" => Some(MouseButton::Left),
+        "middle" => Some(MouseButton::Middle),
+        "right" => Some(MouseButton::Right),
+        _ => None,
+    }
+}
+
+fn wheel_direction(name: Option<&str>) -> Option<WheelDirection> {
+    match name? {
+        "up" => Some(WheelDirection::Up),
+        "down" => Some(WheelDirection::Down),
+        "left" => Some(WheelDirection::Left),
+        "right" => Some(WheelDirection::Right),
+        _ => None,
+    }
+}
+
+fn cell_arg(value: &Value, what: &str) -> mlua::Result<u16> {
+    match value {
+        Value::Integer(cell) => u16::try_from(*cell).ok(),
+        Value::Number(cell) if cell.fract() == 0.0 => u16::try_from(*cell as i64).ok(),
+        _ => None,
+    }
+    .ok_or_else(|| fail(format!("{what} must be a cell from 0, found {value:?}")))
+}
+
+fn mouse(
+    _: &Lua,
+    context: &Context,
+    (kind, button, col, row, mods): (Value, Value, Value, Value, Value),
+) -> mlua::Result<MultiValue> {
+    let kind = text_arg(&kind, "the kind of g.mouse")?;
+    let button = match &button {
+        Value::Nil => None,
+        other => Some(text_arg(other, "the button of g.mouse")?),
+    };
+    let invalid_button = || {
+        fail(format!(
+            "g.mouse cannot {kind} with `{}`",
+            button.as_deref().unwrap_or("nil")
+        ))
+    };
+    let pressed = || mouse_button(button.as_deref()).ok_or_else(invalid_button);
+    let kind = match kind.as_str() {
+        "press" => MouseKind::Press(pressed()?),
+        "release" => MouseKind::Release(pressed()?),
+        "drag" => MouseKind::Motion(Some(pressed()?)),
+        "move" if button.is_none() => MouseKind::Motion(None),
+        "move" => return Err(invalid_button()),
+        "scroll" => {
+            MouseKind::Wheel(wheel_direction(button.as_deref()).ok_or_else(invalid_button)?)
+        }
+        other => return Err(fail(format!("unknown mouse kind `{other}` in g.mouse"))),
+    };
+    let col = cell_arg(&col, "the column of g.mouse")?;
+    let row = cell_arg(&row, "the row of g.mouse")?;
+    let mut modifiers = Modifiers::NONE;
+    if !matches!(mods, Value::Nil) {
+        let mods = text_arg(&mods, "the modifiers of g.mouse")?;
+        for name in mods.split('+') {
+            match name.to_ascii_lowercase().as_str() {
+                "ctrl" => modifiers.ctrl = true,
+                "alt" => modifiers.alt = true,
+                "shift" => modifiers.shift = true,
+                _ => return Err(fail(format!("unknown modifier `{name}` in g.mouse"))),
+            }
+        }
+    }
+    let event = MouseEvent::new(kind, col, row, modifiers);
+    with_case(context, |case| case.mouse(event))?;
     none()
 }
 

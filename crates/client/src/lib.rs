@@ -4,6 +4,7 @@ mod channel;
 pub mod color;
 mod connect;
 pub mod input;
+pub mod mouse;
 pub mod plugin_windows;
 pub mod render;
 mod requests;
@@ -19,11 +20,12 @@ use anyhow::{Context, Result};
 use crossterm::cursor::Show;
 use crossterm::event::{self, DisableBracketedPaste, EnableBracketedPaste, Event as TerminalEvent};
 use crossterm::execute;
+use crossterm::style::Print;
 use gband_core::action::{Action, ClientAction, SessionCommand};
-use gband_core::geometry::Size;
+use gband_core::geometry::{Size, WindowBox, placed};
 use gband_core::input::Key;
 use gband_core::layout::{
-    BandId, FloatingWindow, Layout, Program, Proportion, SessionAction, WindowId,
+    BandId, FloatingWindow, Layout, LayoutOptions, Program, Proportion, SessionAction, WindowId,
 };
 use gband_core::view::{CenterFocusedColumn, Layer, Scene, View, ViewAction};
 use gband_emulator::{Emulator, Grid};
@@ -38,16 +40,20 @@ use ratatui::{DefaultTerminal, Frame};
 use tokio::sync::mpsc;
 
 use crate::animation::{
-    ANIMATIONS_VARIABLE, Animations, Drawn, FRAME, Presentation, Targets, parse_animations,
+    ANIMATIONS_VARIABLE, Animations, Drawn, FRAME, Hold, Presentation, Targets, parse_animations,
 };
 use crate::bindings::{Command, Keymap, Leader, ROOT};
 use crate::channel::{Channel, Served};
 pub use crate::channel::{Loader, TestChannel};
 use crate::color::ColorSupport;
 pub use crate::connect::{Connection, connect};
-use crate::input::key_from_event;
+use crate::input::{key_from_event, mouse_from_event};
+use crate::mouse::{
+    DropPlace, Edges, Geometry, Gesture, Held, Hit, Motion, Pointer, Pressing, Resized, Sends,
+    drop_columns, drop_place,
+};
 use crate::plugin_windows::{OpenRequest, Opened, PluginWindows};
-use crate::render::{Ribbon, Shown, draw_frame};
+use crate::render::{Lifted, Overlay, Region, RegionKind, Ribbon, Shown, draw_frame, regions};
 pub use crate::requests::{kill_session, list_sessions};
 pub use crate::transport::{Link, Transport, UnixTransport};
 
@@ -124,15 +130,20 @@ pub fn run(
 
 struct TerminalGuard;
 
+const MOUSE_ON: &str = "\x1b[?1000h\x1b[?1002h\x1b[?1003h\x1b[?1006h";
+const MOUSE_OFF: &str = "\x1b[?1006l\x1b[?1003l\x1b[?1002l\x1b[?1000l";
+
 impl TerminalGuard {
     fn enter() -> Result<Self> {
         execute!(stdout(), EnableBracketedPaste).context("cannot enable bracketed paste")?;
+        execute!(stdout(), Print(MOUSE_ON)).context("cannot enable mouse reporting")?;
         Ok(Self)
     }
 }
 
 impl Drop for TerminalGuard {
     fn drop(&mut self) {
+        let _ = execute!(stdout(), Print(MOUSE_OFF));
         let _ = execute!(stdout(), DisableBracketedPaste);
         ratatui::restore();
         let _ = execute!(stdout(), Show);
@@ -162,6 +173,10 @@ pub struct Display {
     ready: bool,
     tile_border: Border,
     floating_border: Border,
+    pointer: Pointer,
+    regions: Vec<Region>,
+    framed: bool,
+    drawn: Option<Drawn>,
 }
 
 impl Display {
@@ -189,6 +204,252 @@ impl Display {
             ready: false,
             tile_border: Border::default(),
             floating_border: Border::default(),
+            pointer: Pointer::default(),
+            regions: Vec::new(),
+            framed: false,
+            drawn: None,
+        }
+    }
+
+    pub fn copy_buffer(&self) -> &str {
+        &self.pointer.copy_buffer
+    }
+
+    pub fn selection(&self) -> Option<crate::render::Selected> {
+        self.pointer
+            .selection
+            .filter(|selection| selection.anchor != selection.head)
+            .map(|selection| selection.selected())
+    }
+
+    pub fn regions(&self) -> &[Region] {
+        &self.regions
+    }
+
+    pub fn hit(&mut self, col: u16, row: u16, now: Instant) -> Hit {
+        if !self.framed {
+            self.regions = self.current_regions(now);
+        }
+        let band = self.view.as_ref().map_or(BandId(0), View::band);
+        mouse::hit(
+            &self.regions,
+            self.ribbon,
+            band,
+            |window| self.plugin_windows.plugin_window_of(window),
+            col,
+            row,
+        )
+    }
+
+    fn region_of(&self, window: WindowId) -> Option<Region> {
+        self.regions
+            .iter()
+            .rev()
+            .find(|region| {
+                region.window == Some(window) && !matches!(region.kind, RegionKind::PluginFloat(_))
+            })
+            .copied()
+    }
+
+    fn pend(&mut self, change: impl FnOnce(&mut Geometry)) {
+        if let Some(sends) = &mut self.pointer.sends {
+            change(&mut sends.pending);
+        }
+    }
+
+    fn floating_box(&self, window: WindowId) -> Option<WindowBox> {
+        let floating = self.layout.floating(window)?;
+        Some(
+            self.pointer
+                .floating
+                .filter(|moved| moved.window == window)
+                .unwrap_or_else(|| placed(floating, self.area)),
+        )
+    }
+
+    fn window_motion(
+        &self,
+        kind: ClientAction,
+        window: WindowId,
+        region: Region,
+        edges: Edges,
+        travel: i64,
+    ) -> Option<Motion> {
+        match (kind, region.kind) {
+            (ClientAction::DragWindow, RegionKind::Floating) => Some(Motion::MoveFloating {
+                window,
+                origin: self.floating_box(window)?,
+            }),
+            (ClientAction::DragWindow, RegionKind::Tile { .. } | RegionKind::Lifted) => {
+                Some(Motion::Lift {
+                    window,
+                    region,
+                    drawn: self
+                        .drawn
+                        .as_ref()
+                        .and_then(|drawn| drawn.tiles.get(&window).copied()),
+                    columns: drop_columns(&self.regions, self.view.as_ref()?.band()),
+                    lifted: false,
+                })
+            }
+            (ClientAction::DragResize, RegionKind::Floating) => Some(Motion::Resize {
+                target: Resized::Floating {
+                    window,
+                    origin: self.floating_box(window)?,
+                },
+                edges,
+            }),
+            (ClientAction::DragResize, RegionKind::Tile { .. } | RegionKind::Lifted) => {
+                Some(Motion::Resize {
+                    target: Resized::Tile {
+                        window,
+                        width: region.width,
+                        height: region.height,
+                        travel,
+                    },
+                    edges,
+                })
+            }
+            _ => None,
+        }
+    }
+
+    fn initial_sends(&self, gesture: &Gesture) -> Option<Sends> {
+        let (window, sent) = match &gesture.motion {
+            Motion::MoveFloating { window, origin } => (
+                *window,
+                Geometry {
+                    position: Some((origin.x, origin.y)),
+                    ..Geometry::default()
+                },
+            ),
+            Motion::Resize {
+                target: Resized::Floating { window, origin },
+                ..
+            } => (
+                *window,
+                Geometry {
+                    position: Some((origin.x, origin.y)),
+                    width: Some(origin.width),
+                    height: Some(origin.height),
+                },
+            ),
+            Motion::Resize {
+                target:
+                    Resized::Tile {
+                        window,
+                        width,
+                        height,
+                        ..
+                    },
+                ..
+            } => (
+                *window,
+                Geometry {
+                    position: None,
+                    width: Some(*width),
+                    height: Some(*height),
+                },
+            ),
+            _ => return None,
+        };
+        Some(Sends {
+            window,
+            pending: Geometry::default(),
+            sent,
+        })
+    }
+
+    fn drop_action(&self, window: WindowId, place: DropPlace) -> Option<SessionAction> {
+        let view = self.view.as_ref()?;
+        let band = self.layout.band(view.band())?;
+        let column = band.columns.get(place.column)?;
+        let reference = match place.window {
+            Some(reference) => reference,
+            None => {
+                let others: Vec<WindowId> = column
+                    .windows
+                    .iter()
+                    .copied()
+                    .filter(|&other| other != window)
+                    .collect();
+                view.recent_in(&others)?
+            }
+        };
+        let action = SessionAction::MoveToPlace {
+            window,
+            reference,
+            place: place.place,
+        };
+        let mut moved = (*self.layout).clone();
+        let changed = !moved
+            .apply(action.clone(), self.area, &LayoutOptions::default())
+            .is_empty();
+        changed.then_some(action)
+    }
+
+    fn overlay(&self) -> Overlay {
+        let lifted = match self.pointer.gesture() {
+            Some(
+                gesture @ Gesture {
+                    motion:
+                        Motion::Lift {
+                            window,
+                            region,
+                            columns,
+                            lifted: true,
+                            ..
+                        },
+                    ..
+                },
+            ) => {
+                let cell = self.pointer.last_cell.unwrap_or(gesture.press);
+                let (dx, dy) = gesture.moved(cell);
+                let outline = drop_place(
+                    columns,
+                    *window,
+                    self.ribbon,
+                    i64::from(cell.0),
+                    i64::from(cell.1),
+                )
+                .map(|place| place.outline);
+                Some(Lifted {
+                    window: *window,
+                    x: region.x + dx,
+                    y: region.y + dy,
+                    width: region.width,
+                    height: region.height,
+                    outline,
+                })
+            }
+            _ => None,
+        };
+        Overlay {
+            selection: self.selection(),
+            lifted,
+            floating: self.pointer.floating,
+        }
+    }
+
+    fn end_gesture_for_layout(&mut self) {
+        if let Some(window) = self.pointer.gesture().and_then(Gesture::window)
+            && !self.layout.contains(window)
+        {
+            self.pointer.held = Held::Free;
+            self.pointer.sends = None;
+            self.pointer.floating = None;
+            self.presentation.hold(Hold::default());
+            if let Some(view) = &mut self.view {
+                view.unpin();
+            }
+        }
+        if self.pointer.gesture().is_none() && self.pointer.sends.is_none() {
+            self.pointer.floating = None;
+        }
+        if let Some(selection) = self.pointer.selection
+            && !self.layout.contains(selection.window)
+        {
+            self.pointer.selection = None;
         }
     }
 
@@ -379,6 +640,10 @@ impl Display {
         self.view.as_ref().and_then(View::focused)
     }
 
+    pub fn camera(&self) -> Option<i64> {
+        self.view.as_ref().map(View::camera)
+    }
+
     pub fn observe(&self) -> Option<Observed> {
         let view = self.view.as_ref()?;
         Some(Observed {
@@ -426,6 +691,7 @@ impl Display {
                     self.presentation.snap();
                 }
                 self.area = area;
+                self.end_gesture_for_layout();
                 self.sync();
             }
             ServerMessage::Snapshot {
@@ -487,12 +753,8 @@ impl Display {
         Some(self.presentation.drawn(now))
     }
 
-    pub fn draw(&mut self, frame: &mut Frame<'_>, now: Instant) {
-        let drawn = self.present(now);
-        let (Some(view), Some(drawn)) = (&self.view, &drawn) else {
-            return;
-        };
-        let ribbon = Ribbon {
+    fn ribbon<'a>(&'a self, view: &'a View, drawn: &'a Drawn) -> Ribbon<'a> {
+        Ribbon {
             layout: &self.layout,
             area: self.area,
             view,
@@ -506,8 +768,35 @@ impl Display {
             colors: self.colors,
             banner: self.banner.as_deref().filter(|_| !self.error_item),
             bars: self.bars().map(|(bar, area)| Shown { bar, area }).collect(),
+            overlay: self.overlay(),
+        }
+    }
+
+    fn current_regions(&mut self, now: Instant) -> Vec<Region> {
+        let drawn = self.present(now);
+        let (Some(view), Some(drawn)) = (&self.view, &drawn) else {
+            return Vec::new();
         };
+        let area = Rect::new(0, 0, self.terminal.cols, self.terminal.rows);
+        regions(&self.ribbon(view, drawn), area)
+    }
+
+    pub fn draw(&mut self, frame: &mut Frame<'_>, now: Instant) {
+        let drawn = self.present(now);
+        let (Some(view), Some(shown)) = (&self.view, &drawn) else {
+            return;
+        };
+        let ribbon = self.ribbon(view, shown);
         draw_frame(frame, &ribbon);
+        let drawn_regions = regions(&ribbon, frame.area());
+        self.regions = drawn_regions;
+        self.framed = true;
+        self.drawn = drawn;
+        if let Some(selection) = self.pointer.selection
+            && self.region_of(selection.window).is_none()
+        {
+            self.pointer.selection = None;
+        }
     }
 
     pub fn is_animating(&self, now: Instant) -> bool {
@@ -613,6 +902,7 @@ pub struct Controls {
     plugins: Vec<PluginManifest>,
     pending: Vec<Event>,
     awaiting: Option<String>,
+    pressing: Option<Pressing>,
 }
 
 fn unmet(plugins: &[PluginManifest], required: &Requirement) -> Option<ConfigError> {
@@ -674,6 +964,7 @@ impl Controls {
             plugins: config.plugins,
             pending: Vec::new(),
             awaiting: None,
+            pressing: None,
         }
     }
 
@@ -875,6 +1166,7 @@ impl Controls {
                 controls.apply(display, outcome, steps);
             });
         }
+        display.pointer.selection = None;
         display
             .focused()
             .map(|window| Step::Send(ClientMessage::Paste { window, text }))
@@ -978,6 +1270,14 @@ impl Controls {
         let mut table = self.leader.active().to_owned();
         self.push_state(display, &mut steps);
         change(self, display, &mut steps);
+        if steps.iter().any(|step| {
+            matches!(
+                step,
+                Step::Send(ClientMessage::Key { .. } | ClientMessage::Paste { .. })
+            )
+        }) {
+            display.pointer.selection = None;
+        }
         for depth in 0.. {
             self.table_changed(&mut table, &mut events);
             let after = display.observe();
@@ -1050,6 +1350,15 @@ impl Controls {
     }
 
     fn run_action(&mut self, display: &mut Display, action: Action, steps: &mut Vec<Step>) {
+        if let Action::Client(
+            kind @ (ClientAction::DragWindow | ClientAction::DragResize | ClientAction::DragBand),
+        ) = action
+        {
+            if let Some(pressing) = self.pressing.take() {
+                self.start_gesture(display, pressing, kind, steps);
+            }
+            return;
+        }
         if matches!(action, Action::Session(SessionCommand::CloseWindow)) {
             let (closed, outcome) = self.runtime.close_focused_plugin_window();
             self.apply(display, outcome, steps);
@@ -1179,6 +1488,9 @@ pub fn dispatch(display: &mut Display, action: Action) -> Step {
             .prefix
             .and_then(|prefix| display.key_to_focused(prefix)),
         Action::Client(ClientAction::SendKey(key)) => display.key_to_focused(key),
+        Action::Client(
+            ClientAction::DragWindow | ClientAction::DragResize | ClientAction::DragBand,
+        ) => None,
     };
     message.map_or(Step::Nothing, Step::Send)
 }
@@ -1253,7 +1565,17 @@ async fn attach(
             .is_animating(now)
             .then(|| tokio::time::Instant::from_std(now + FRAME));
         let timer = controls.next_timer().map(tokio::time::Instant::from_std);
+        let flush = controls
+            .next_flush(&display)
+            .map(tokio::time::Instant::from_std);
         tokio::select! {
+            () = tokio::time::sleep_until(flush.unwrap_or_else(tokio::time::Instant::now)),
+                if flush.is_some() => {
+                let steps = controls.flush(&mut display, Instant::now());
+                if let Some(outcome) = perform(connection, steps).await? {
+                    return Ok(outcome);
+                }
+            }
             () = tokio::time::sleep_until(frame.unwrap_or_else(tokio::time::Instant::now)),
                 if frame.is_some() => {}
             () = tokio::time::sleep_until(timer.unwrap_or_else(tokio::time::Instant::now)),
@@ -1289,6 +1611,13 @@ async fn attach(
                 Some(TerminalEvent::Key(key_event)) => {
                     let Some(key) = key_from_event(&key_event) else { continue };
                     let steps = controls.press(&mut display, key);
+                    if let Some(outcome) = perform(connection, steps).await? {
+                        return Ok(outcome);
+                    }
+                }
+                Some(TerminalEvent::Mouse(mouse_event)) => {
+                    let Some(event) = mouse_from_event(&mouse_event) else { continue };
+                    let steps = controls.mouse(&mut display, event, Instant::now());
                     if let Some(outcome) = perform(connection, steps).await? {
                         return Ok(outcome);
                     }
