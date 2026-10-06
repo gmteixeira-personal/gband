@@ -1,7 +1,8 @@
 use std::time::{Duration, Instant};
 
 use gband_client::animation::{
-    Animations, DrawnBand, DrawnTile, Hold, Presentation, Spring, Targets, parse_animations,
+    Animations, DrawnBand, DrawnTile, HeldBands, Hold, Presentation, Spring, Targets,
+    parse_animations,
 };
 use gband_client::render::RegionKind;
 use gband_client::{Controls, Display};
@@ -550,6 +551,7 @@ fn held_camera_and_windows_draw_at_once() {
     presentation.hold(Hold {
         camera: true,
         windows: vec![WindowId(1)],
+        ..Hold::default()
     });
     presentation.update(now + ms(16), &targets(1, &[1], 25, vec![tile(1, 0, 48)]));
     assert_eq!(camera(&presentation, now + ms(16)), 25);
@@ -560,6 +562,114 @@ fn held_camera_and_windows_draw_at_once() {
     presentation.hold(Hold::default());
     presentation.update(now + ms(32), &targets(1, &[1], 0, vec![tile(1, 0, 40)]));
     assert_ne!(camera(&presentation, now + ms(48)), 0);
+}
+
+fn held_bands(top: i64, camera: i64) -> Hold {
+    Hold {
+        vertical: Some(HeldBands {
+            top,
+            peek: Some((BandId(2), camera, None)),
+        }),
+        ..Hold::default()
+    }
+}
+
+fn tops(presentation: &Presentation, now: Instant) -> Vec<(u32, i64)> {
+    presentation
+        .drawn(now)
+        .bands
+        .iter()
+        .map(|band| (band.band.0, band.top))
+        .collect()
+}
+
+#[test]
+fn held_bands_draw_at_the_held_top() {
+    let bands = [1, 2, 3];
+    let mut presentation = settled(1, &bands, 0, vec![tile(1, 0, 40)]);
+    let now = Instant::now() + ms(16);
+    presentation.hold(held_bands(6, 7));
+    presentation.update(now, &targets(1, &bands, 0, vec![tile(1, 0, 40)]));
+    let drawn = presentation.drawn(now).bands;
+    assert_eq!(drawn.len(), 2);
+    assert_eq!(drawn[0].band, BandId(2));
+    assert_eq!(drawn[0].top, 18);
+    assert_eq!(drawn[0].camera, 7);
+    assert_eq!(drawn[1], band(1, -6));
+    assert!(!presentation.is_animating(now));
+}
+
+#[test]
+fn release_continues_the_switch() {
+    let bands = [1, 2, 3];
+    let mut presentation = settled(1, &bands, 0, vec![tile(1, 0, 40), tile(2, 40, 40)]);
+    let start = Instant::now() + ms(16);
+    presentation.update(
+        start,
+        &targets(1, &bands, 40, vec![tile(1, 0, 40), tile(2, 40, 40)]),
+    );
+    let held = start + ms(400);
+    presentation.hold(held_bands(16, 0));
+    presentation.update(
+        held,
+        &targets(1, &bands, 40, vec![tile(1, 0, 40), tile(2, 40, 40)]),
+    );
+    assert_eq!(tops(&presentation, held), [(2, 8), (1, -16)]);
+    let release = held + ms(16);
+    presentation.hold(Hold::default());
+    presentation.update(release, &targets(2, &bands, 0, vec![tile(3, 0, 40)]));
+    assert_eq!(tops(&presentation, release), [(1, -16), (2, 8)]);
+    let mut previous = 8;
+    for millis in (16..=400).step_by(16) {
+        let now = release + ms(millis);
+        let drawn = presentation.drawn(now).bands;
+        let top = drawn.last().unwrap().top;
+        assert!(top <= previous);
+        previous = top;
+        if let Some(left) = drawn.iter().find(|drawn| drawn.band == BandId(1)) {
+            assert_eq!(left.camera, 40);
+        }
+    }
+    assert_eq!(previous, 0);
+}
+
+#[test]
+fn release_slides_back() {
+    let bands = [1, 2, 3];
+    let mut presentation = settled(1, &bands, 0, vec![tile(1, 0, 40)]);
+    let held = Instant::now() + ms(16);
+    presentation.hold(held_bands(6, 0));
+    presentation.update(held, &targets(1, &bands, 0, vec![tile(1, 0, 40)]));
+    let release = held + ms(16);
+    presentation.release_bands(release);
+    presentation.hold(Hold::default());
+    presentation.update(release, &targets(1, &bands, 0, vec![tile(1, 0, 40)]));
+    assert_eq!(tops(&presentation, release), [(2, 18), (1, -6)]);
+    let mut previous = -6;
+    for millis in (16..400).step_by(16) {
+        let top = tops(&presentation, release + ms(millis)).last().unwrap().1;
+        assert!(top >= previous);
+        previous = top;
+    }
+    let end = release + ms(400);
+    presentation.update(end, &targets(1, &bands, 0, vec![tile(1, 0, 40)]));
+    assert_eq!(tops(&presentation, end), [(1, 0)]);
+    assert!(!presentation.is_animating(end));
+}
+
+#[test]
+fn release_with_animations_off_draws_only_the_new_band() {
+    let bands = [1, 2, 3];
+    let mut presentation = Presentation::new(Animations::Off);
+    let now = Instant::now();
+    presentation.update(now, &targets(1, &bands, 0, vec![tile(1, 0, 40)]));
+    presentation.hold(held_bands(16, 0));
+    presentation.update(now, &targets(1, &bands, 0, vec![tile(1, 0, 40)]));
+    assert_eq!(tops(&presentation, now), [(2, 8), (1, -16)]);
+    presentation.hold(Hold::default());
+    let next = now + ms(16);
+    presentation.update(next, &targets(2, &bands, 0, vec![tile(2, 0, 40)]));
+    assert_eq!(tops(&presentation, next), [(2, 0)]);
 }
 
 fn draw(display: &mut Display) {

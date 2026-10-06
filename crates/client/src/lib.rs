@@ -10,6 +10,7 @@ pub mod render;
 mod requests;
 mod transport;
 
+use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap};
 use std::io::{Write, stdout};
 use std::sync::Arc;
@@ -40,7 +41,8 @@ use ratatui::{DefaultTerminal, Frame};
 use tokio::sync::mpsc;
 
 use crate::animation::{
-    ANIMATIONS_VARIABLE, Animations, Drawn, FRAME, Hold, Presentation, Targets, parse_animations,
+    ANIMATIONS_VARIABLE, Animations, Drawn, FRAME, HeldBands, Hold, Presentation, Targets,
+    parse_animations,
 };
 use crate::bindings::{Command, Keymap, Leader, ROOT};
 use crate::channel::{Channel, Served};
@@ -49,8 +51,8 @@ use crate::color::ColorSupport;
 pub use crate::connect::{Connection, connect};
 use crate::input::{key_from_event, mouse_from_event};
 use crate::mouse::{
-    DropPlace, Edges, Geometry, Gesture, Held, Hit, Motion, Pointer, Pressing, Resized, Sends,
-    drop_columns, drop_place,
+    Axis, DropPlace, Edges, Geometry, Gesture, Held, Hit, Motion, Pointer, Pressing, Resized,
+    Sends, drop_columns, drop_place,
 };
 use crate::plugin_windows::{OpenRequest, Opened, PluginWindows};
 use crate::render::{Lifted, Overlay, Region, RegionKind, Ribbon, Shown, draw_frame, regions};
@@ -431,7 +433,70 @@ impl Display {
         }
     }
 
+    fn held_top(&self, band: BandId, dy: i64) -> Option<(i64, i64)> {
+        let index = self.layout.band_index(band)? as i64;
+        let height = i64::from(self.ribbon.height);
+        let last = self.layout.bands().len() as i64 - 1;
+        Some((
+            index * height,
+            (index * height - dy).clamp(0, last * height),
+        ))
+    }
+
+    fn hold_bands(&mut self, band: BandId, dy: i64) {
+        let (Some(view), Some((viewed, top))) = (&self.view, self.held_top(band, dy)) else {
+            return;
+        };
+        let toward = match top.cmp(&viewed) {
+            Ordering::Greater => Some(ViewAction::BandDown),
+            Ordering::Less => Some(ViewAction::BandUp),
+            Ordering::Equal => None,
+        };
+        let peek = toward.map(|action| {
+            let mut neighbour = view.clone();
+            neighbour.apply(action, self.scene());
+            (
+                neighbour.band(),
+                neighbour.travel(),
+                neighbour.strip(self.scene()),
+            )
+        });
+        self.presentation.hold(Hold {
+            vertical: Some(HeldBands { top, peek }),
+            ..Hold::default()
+        });
+    }
+
+    fn release_bands(&mut self, band: BandId, dy: i64, now: Instant) {
+        let Some((viewed, top)) = self.held_top(band, dy) else {
+            return;
+        };
+        let height = i64::from(self.ribbon.height).max(1);
+        let middle = (top + height / 2) / height * height;
+        let action = match middle.cmp(&viewed) {
+            Ordering::Greater => ViewAction::BandDown,
+            Ordering::Less => ViewAction::BandUp,
+            Ordering::Equal => return self.presentation.release_bands(now),
+        };
+        self.presentation.hold(Hold::default());
+        self.view_action(action);
+    }
+
     fn end_gesture_for_layout(&mut self) {
+        if let Some(gesture) = self.pointer.gesture().cloned()
+            && let Motion::Slide {
+                axis: Some(Axis::Vertical { band }),
+                ..
+            } = gesture.motion
+        {
+            if self.layout.band_index(band).is_some() {
+                let (_, dy) = gesture.moved(self.pointer.last_cell.unwrap_or(gesture.press));
+                self.hold_bands(band, dy);
+            } else {
+                self.pointer.held = Held::Free;
+                self.presentation.hold(Hold::default());
+            }
+        }
         if let Some(window) = self.pointer.gesture().and_then(Gesture::window)
             && !self.layout.contains(window)
         {

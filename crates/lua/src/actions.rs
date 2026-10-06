@@ -175,7 +175,7 @@ pub const ACTIONS: [BuiltinAction; 29] = [
     builtin(
         "drag_band",
         Action::Client(ClientAction::DragBand),
-        "slide the band with the mouse",
+        "slide the band or switch bands with the mouse",
     ),
 ];
 

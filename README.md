@@ -120,9 +120,9 @@ In navigation mode, as holding niri's modifier:
 
 | button | drag |
 |---|---|
-| left | move a floating window, or lift a tiled window and drop it beside or into another column; on empty ribbon, slide the band |
+| left | move a floating window, or lift a tiled window and drop it beside or into another column; on empty ribbon, slide the band or switch bands as the middle button does |
 | right | resize the window from the edges nearest the press |
-| middle | slide the band; on release, the column at the middle of the view is focused |
+| middle | slide the band sideways or switch bands vertically, whichever axis the drag starts on; a sideways release focuses the column at the middle of the view, and a vertical release views the band holding the middle row |
 
 While gband has the mouse, a plain drag no longer selects text in your terminal.
 Most terminals, such as kitty, Alacritty, WezTerm, foot and those built on VTE, still select natively with Shift held.
@@ -300,7 +300,7 @@ The actions in `gband.action`:
 | `send_prefix` | send the prefix key to the focused window |
 | `drag_window` | when bound to a mouse button, move the window with the mouse |
 | `drag_resize_window` | when bound to a mouse button, resize the window with the mouse |
-| `drag_band` | when bound to a mouse button, slide the band with the mouse |
+| `drag_band` | when bound to a mouse button, slide the band or switch bands with the mouse |
 
 `gband.action.list()` lists every action with its description.
 A target table names the window an action acts on, and the four grow and shrink actions also take a `step`, so one binding can resize by another amount than the options give:

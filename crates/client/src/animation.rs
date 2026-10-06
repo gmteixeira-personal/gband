@@ -261,10 +261,17 @@ struct Shown {
     leaving: Vec<(BandId, i64, Option<u32>)>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct HeldBands {
+    pub top: i64,
+    pub peek: Option<(BandId, i64, Option<u32>)>,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Hold {
     pub camera: bool,
     pub windows: Vec<WindowId>,
+    pub vertical: Option<HeldBands>,
 }
 
 #[derive(Clone, Debug)]
@@ -303,6 +310,20 @@ impl Presentation {
         }
     }
 
+    pub fn release_bands(&mut self, now: Instant) {
+        let Some(held) = self.hold.vertical.take() else {
+            return;
+        };
+        if let Some(shown) = &mut self.shown {
+            if let Some(peek) = held.peek.filter(|&(band, _, _)| band != shown.band) {
+                shown.leaving.push(peek);
+            }
+            let top = shown.top(shown.band).unwrap_or(0.0);
+            shown.vertical = Spring::at_rest(held.top as f64, now);
+            shown.vertical.retarget(top, now);
+        }
+    }
+
     pub fn release(&mut self, window: WindowId, tile: DrawnTile, now: Instant) {
         if let Some(shown) = &mut self.shown {
             shown.tiles.insert(window, TileSprings::placed(&tile, now));
@@ -324,6 +345,10 @@ impl Presentation {
                 if let Some(springs) = shown.tiles.get_mut(window) {
                     springs.snap(now);
                 }
+            }
+            if let Some(held) = self.hold.vertical {
+                shown.vertical = Spring::at_rest(held.top as f64, now);
+                shown.leaving.clear();
             }
         }
     }
@@ -366,9 +391,11 @@ impl Presentation {
                 strip,
             })
         };
+        let peek = self.hold.vertical.and_then(|held| held.peek);
         let bands = shown
             .leaving
             .iter()
+            .chain(&peek)
             .filter_map(|&(band, camera, strip)| drawn_band(band, camera, strip))
             .chain(drawn_band(shown.band, shown.camera.drawn(now), shown.strip))
             .collect();
@@ -410,10 +437,9 @@ impl Shown {
             .leaving
             .iter()
             .all(|&(band, _, _)| targets.index_of(band).is_some());
-        if let Some(previous) = targets.top(self.band) {
-            self.vertical.shift(previous - self.vertical.target());
-        } else {
-            snap_vertical = true;
+        match (targets.top(self.band), self.top(self.band)) {
+            (Some(previous), Some(before)) => self.vertical.shift(previous - before),
+            _ => snap_vertical = true,
         }
         if targets.band == self.band {
             if let (Some(strip), None) = (self.strip, targets.strip) {
@@ -446,6 +472,13 @@ impl Shown {
         self.bands.clone_from(&targets.bands);
         self.band_height = targets.band_height;
         self.focused = targets.focused;
+    }
+
+    fn top(&self, band: BandId) -> Option<f64> {
+        self.bands
+            .iter()
+            .position(|&id| id == band)
+            .map(|index| index as f64 * f64::from(self.band_height))
     }
 
     fn retarget_tiles(&mut self, now: Instant, targets: &Targets) {

@@ -13,6 +13,7 @@ const SGR_1000: &str = "\\033[?1000h\\033[?1006h";
 const SGR_1002: &str = "\\033[?1002h\\033[?1006h";
 
 const LEFT: u16 = 0;
+const MIDDLE: u16 = 1;
 const RIGHT: u16 = 2;
 const MOTION: u16 = 32;
 const ALT: u16 = 8;
@@ -418,4 +419,35 @@ fn release_without_moving_only_focuses() {
         .collect();
     assert_eq!(spans, [(0, 0), (40, 0)]);
     assert!(tile_has(&client, &tile_at(&client, 0), "AAA"));
+}
+
+fn focused_has(screen: &Grid, text: &str) -> bool {
+    tiles(screen)
+        .iter()
+        .any(|tile| tile.focused && tile.lines(screen).iter().any(|line| line == text))
+}
+
+#[test]
+fn middle_drag_up_switches_bands_in_navigation_mode() {
+    let env = env("mouse-drag-bands");
+    let mut client = attached(&env);
+    client.run("echo AAA");
+    client.wait_for_line("AAA");
+    client.send(&[PREFIX, b"un"].concat());
+    client.wait_for("a window in the second band", |screen| {
+        let shown = tiles(screen);
+        shown.len() == 1 && !focused_has(screen, "AAA")
+    });
+    client.run("echo BBB");
+    client.wait_for_line("BBB");
+    client.send(&[PREFIX, b"i"].concat());
+    client.wait_for("the first band viewed", |screen| focused_has(screen, "AAA"));
+    drag(&mut client, MIDDLE, (40, 23), (40, 0));
+    client.wait_for("the second band viewed", |screen| {
+        focused_has(screen, "BBB")
+    });
+    client.send(b"i");
+    client.wait_for("navigation mode still active", |screen| {
+        focused_has(screen, "AAA")
+    });
 }
