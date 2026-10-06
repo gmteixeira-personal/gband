@@ -387,9 +387,14 @@ impl View {
         };
         let previous = self.focused();
         let band = &scene.layout.bands()[index];
+        let heading = if self.recency.contains_key(&window) {
+            None
+        } else {
+            opened_beside(band, previous, window)
+        };
         self.band = band.id;
         self.focus(band, window);
-        self.settle(scene, previous, None);
+        self.settle(scene, previous, heading);
     }
 
     pub fn sync(&mut self, scene: Scene<'_>) {
@@ -610,7 +615,13 @@ impl View {
         };
         let x = i64::from(spans[column].x);
         let Some(strip) = strip else {
-            state.camera = place(x);
+            let placed = place(x);
+            state.camera = if centre {
+                placed
+            } else {
+                let end = spans.last().map_or(0, |span| i64::from(span.end()));
+                placed.min((end - viewport).max(0))
+            };
             state.travel = state.camera;
             return;
         };
@@ -645,6 +656,18 @@ fn tiled_target(band: &Band, state: BandView) -> Option<WindowId> {
         .tiled
         .filter(|&window| band.locate(window).is_some())
         .or_else(|| band.first_window())
+}
+
+fn opened_beside(band: &Band, previous: Option<WindowId>, window: WindowId) -> Option<Direction> {
+    let (from, _) = band.locate(previous?)?;
+    let (column, _) = band.locate(window)?;
+    if column == from + 1 {
+        Some(Direction::Right)
+    } else if column + 1 == from {
+        Some(Direction::Left)
+    } else {
+        None
+    }
 }
 
 fn centred(x: i64, width: i64, viewport: i64) -> i64 {

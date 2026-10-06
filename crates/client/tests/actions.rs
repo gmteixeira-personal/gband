@@ -1141,6 +1141,19 @@ fn partly_shown_column_snaps_after_a_slide() {
 }
 
 #[test]
+fn slide_past_the_strips_end_pulls_back() {
+    let (layout, windows) = columns_of(2, None);
+    let mut mouse = dragging("mouse-slide-end", layout);
+    let middle = MouseButton::Middle;
+    mouse.event(MouseKind::Press(middle), 70, 5, Modifiers::NONE);
+    mouse.event(MouseKind::Motion(Some(middle)), 40, 5, Modifiers::NONE);
+    assert_eq!(mouse.display.camera(), Some(30));
+    mouse.event(MouseKind::Release(middle), 40, 5, Modifiers::NONE);
+    assert_eq!(mouse.display.focused(), Some(windows[1]));
+    assert_eq!(mouse.display.camera(), Some(0));
+}
+
+#[test]
 fn left_drag_on_empty_ribbon_slides_and_later_vertical_motion_does_not() {
     let (layout, windows) = columns_of(1, Some(Proportion::new(1, 4)));
     let mut mouse = dragging("mouse-slide-ribbon", layout);

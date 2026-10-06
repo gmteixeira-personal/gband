@@ -1356,10 +1356,13 @@ fn center_column_on_an_empty_band_changes_nothing() {
 }
 
 fn drawn(view: &View, layout: &Layout) -> Vec<(WindowId, i64)> {
-    let scene = scene(layout);
+    drawn_in(view, scene(layout))
+}
+
+fn drawn_in(view: &View, scene: Scene<'_>) -> Vec<(WindowId, i64)> {
     let shown = view.shown(scene);
     let strip = view.strip(scene);
-    let mut drawn: Vec<(WindowId, i64)> = tiles(&layout.bands()[0], AREA)
+    let mut drawn: Vec<(WindowId, i64)> = tiles(&scene.layout.bands()[0], scene.area)
         .into_iter()
         .filter(|tile| shown.contains(&tile.window))
         .map(|tile| {
@@ -1627,4 +1630,117 @@ fn band_stops_looping_and_resets_the_travel() {
     view.sync(scene(&layout));
     assert_eq!(view.strip(scene(&layout)), None);
     assert_eq!(view.camera(), view.travel());
+}
+
+#[test]
+fn opening_across_the_seam() {
+    let (mut layout, windows) = row_of_columns(2);
+    let mut view = View::new(scene(&layout));
+    act(&mut view, &layout, &[ViewAction::FocusRight]);
+    assert_eq!(view.camera(), 0);
+    let opened = open(&mut layout, 0, Some(windows[1]));
+    view.sync(scene(&layout));
+    view.focus_window(opened, scene(&layout));
+    assert_eq!(view.camera(), 40);
+    assert_eq!(drawn(&view, &layout), [(windows[1], 0), (opened, 40)]);
+}
+
+#[test]
+fn opening_left_across_the_seam() {
+    let (mut layout, windows) = row_of_columns(2);
+    let mut view = View::new(scene(&layout));
+    let opened = open(&mut layout, 0, None);
+    view.sync(scene(&layout));
+    view.focus_window(opened, scene(&layout));
+    assert_eq!(drawn(&view, &layout), [(opened, 0), (windows[0], 40)]);
+}
+
+#[test]
+fn closing_the_last_column_pulls_the_camera_back() {
+    let (mut layout, windows) = row_of_columns(3);
+    let mut view = View::new(scene(&layout));
+    view.set_loop_bands(false);
+    act(&mut view, &layout, &[ViewAction::FocusWindow(windows[2])]);
+    assert_eq!(view.camera(), 40);
+    layout.remove(windows[2]);
+    view.sync(scene(&layout));
+    assert_eq!(view.focused(), Some(windows[1]));
+    assert_eq!(view.camera(), 0);
+    assert_eq!(drawn(&view, &layout), [(windows[0], 0), (windows[1], 40)]);
+}
+
+#[test]
+fn shrinking_the_last_column_pulls_the_camera_back() {
+    let (mut layout, windows) = row_of_columns(3);
+    let mut view = View::new(scene(&layout));
+    view.set_loop_bands(false);
+    act(&mut view, &layout, &[ViewAction::FocusWindow(windows[2])]);
+    assert_eq!(view.camera(), 40);
+    apply(
+        &mut layout,
+        SessionAction::SetWidth {
+            window: windows[2],
+            width: Proportion::new(1, 4),
+        },
+    );
+    view.sync(scene(&layout));
+    assert_eq!(view.camera(), 20);
+    assert_eq!(drawn(&view, &layout).last(), Some(&(windows[2], 60)));
+}
+
+#[test]
+fn narrower_area_pulls_the_camera_back() {
+    let (layout, windows) = row_of_columns(2);
+    let wide = Scene {
+        layout: &layout,
+        area: AREA,
+        viewport: Size::new(60, 24),
+    };
+    let mut view = View::new(wide);
+    view.apply(ViewAction::FocusRight, wide);
+    assert_eq!(view.camera(), 20);
+    let narrow = Scene {
+        area: Size::new(60, 24),
+        ..wide
+    };
+    view.sync(narrow);
+    assert_eq!(view.camera(), 0);
+    assert_eq!(drawn_in(&view, narrow), [(windows[0], 0), (windows[1], 30)]);
+}
+
+#[test]
+fn pulled_back_no_further_than_0() {
+    let (layout, windows) = row_of_columns(2);
+    let wide = Scene {
+        layout: &layout,
+        area: Size::new(70, 24),
+        viewport: Size::new(80, 24),
+    };
+    let mut view = View::new(wide);
+    view.apply(ViewAction::FocusRight, wide);
+    view.slide(10, wide);
+    view.unpin();
+    let narrow = Scene {
+        area: Size::new(60, 24),
+        ..wide
+    };
+    view.sync(narrow);
+    assert_eq!(view.camera(), 0);
+    assert_eq!(drawn_in(&view, narrow), [(windows[0], 0), (windows[1], 30)]);
+}
+
+#[test]
+fn centred_camera_keeps_its_blank_strip() {
+    let (layout, windows) = row_of_columns(3);
+    let mut view = view_with(&layout, CenterFocusedColumn::Always);
+    view.set_loop_bands(false);
+    act(&mut view, &layout, &[ViewAction::FocusWindow(windows[2])]);
+    let narrow = Scene {
+        layout: &layout,
+        area: Size::new(60, 24),
+        viewport: Size::new(80, 24),
+    };
+    view.sync(narrow);
+    assert_eq!(view.camera(), 35);
+    assert_eq!(drawn_in(&view, narrow).last(), Some(&(windows[2], 25)));
 }

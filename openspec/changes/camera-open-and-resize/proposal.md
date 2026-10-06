@@ -15,11 +15,12 @@ Camera placement leaves the view in a worse spot than the layout allows in two w
 ### Modified Capabilities
 - `layout-view`: the Camera requirement places an opened column next to the previously focused column's drawn copy, and, under the never placement, keeps a non-looping strip's end from leaving blank cells at the terminal's right edge.
 - `bars`: the scenario "Camera follows the narrower ribbon" shows no blank strip.
+- `mouse`: the release of a band slide that leaves the focused column in view pulls a non-looping strip's camera back to the strip's end, as the never placement does.
 
 ## Impact
 
 - Core: `crates/core/src/view.rs` (`settle`, `follow` and `aim` choose the opened column's copy, and `aim` pulls a non-looping strip's camera back under the never placement). Tests in `crates/core/tests/view.rs`.
-- Client tests: `crates/client/tests/bars.rs` ("Camera follows the narrower ribbon"); Lua spec `tests/lua/loop_bands_spec.lua` (the starting view after opening three windows).
+- Client tests: `crates/client/tests/bars.rs` ("Camera follows the narrower ribbon"), `crates/client/tests/actions.rs` ("Slide past the strip's end pulls back"); Lua spec `tests/lua/loop_bands_spec.lua` (the starting view after opening three windows).
 - This change depends on ribbon-screen-area. Both modify the layout-view Camera requirement, which ribbon-screen-area changes to loop at the terminal's width less one, and ribbon-screen-area adds the bars requirement "Bars narrow the screen area". The deltas for both requirements are therefore re-copied from `origin/dev` after ribbon-screen-area archives, at implementation time.
 
 ## Coordination

@@ -204,12 +204,8 @@ fn camera_follows_the_narrower_ribbon() {
     assert_eq!(resizes(&client.press("alt+b")), vec![Size::new(60, 24)]);
     client.settle();
     let screen = client.screen();
-    assert_eq!(columns(&screen[0], 30, 59), tile_top(30));
-    assert!(
-        screen
-            .iter()
-            .all(|row| columns(row, 60, 79) == " ".repeat(20))
-    );
+    assert_eq!(columns(&screen[0], 50, 79), tile_top(30));
+    assert!(screen.iter().all(|row| columns(row, 79, 79) != " "));
     assert_eq!(client.display.focused(), Some(client.windows[1]));
 }
 
