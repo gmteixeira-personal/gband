@@ -36,6 +36,7 @@ Out of scope:
 - `plugin-windows`: `gband.win.open` takes `on_input`. A focused plugin window gives typed text and pastes to `on_input`, after its `keys` entries and before the default keys. `on_input` runs as a callback of the plugin window's plugin.
 - `client-attach`: the default table of navigation mode gains `:`, and a paste reaches a focused plugin window's `on_input` instead of being discarded.
 - `configuration`: the default configuration sets up `gband.prompt` and binds `:` to `prompt.open`.
+- `plugins`: the bundled modules `require` finds include `gband.prompt`, and `gband.errors`, which the list had left out. A bundled module's chunk receives the client's host table, which `require` never returns.
 
 ## Impact
 
@@ -75,6 +76,7 @@ Out of scope:
 - tests/prompt.rs
 - tests/lua/prompt_spec.lua
 - tests/lua/screenshots/prompt_spec/
+- tests/lua/screenshots/keylist_spec/default-list--last-page.txt
 - tests/lua_specs.rs
 - README.md
 - docs/plugins.md

@@ -202,6 +202,41 @@ fn paste_into_a_focused_float_is_discarded() {
     );
 }
 
+const TAKES_TEXT: &str = "gband.bind('alt+o', function() win = gband.win.open({ on_input = function(id, text) got = { id, text } end }) end)\n";
+
+impl Client {
+    fn paste(&mut self, text: &str) -> Vec<Step> {
+        self.controls.paste(&mut self.display, text.to_owned())
+    }
+
+    fn got(&self) -> (u32, String) {
+        let got: mlua::Table = self.global("got");
+        (got.get(1).unwrap(), got.get(2).unwrap())
+    }
+}
+
+#[test]
+fn paste_into_a_plugin_window_that_takes_text() {
+    let mut client = Client::new("paste-text", TAKES_TEXT);
+    client.press("alt+o");
+    let steps = client.paste("hello");
+    assert!(sent(&steps).is_empty(), "{steps:?}");
+    assert_eq!(client.got(), (client.global("win"), "hello".to_owned()));
+}
+
+#[test]
+fn paste_on_a_band_with_no_window() {
+    let mut client = Client::new("paste-empty-band", TAKES_TEXT);
+    client.press("ctrl+space");
+    client.press("u");
+    client.press("escape");
+    assert_eq!(client.display.focused(), None);
+    client.press("alt+o");
+    let steps = client.paste("hi");
+    assert!(sent(&steps).is_empty(), "{steps:?}");
+    assert_eq!(client.got(), (client.global("win"), "hi".to_owned()));
+}
+
 #[test]
 fn unbound_key_goes_to_the_focused_plugin_window() {
     let mut client = Client::new("window-key", FLOAT);
