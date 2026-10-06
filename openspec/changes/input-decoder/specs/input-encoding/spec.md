@@ -18,7 +18,7 @@ gband SHALL read keys from the bytes the user's terminal sends, as legacy xterm-
 | `\x1b[[A` to `\x1b[[E` | F1 to F5 |
 | `\x1b[n~` | Home for 1 and 7, Insert for 2, Delete for 3, End for 4 and 8, PageUp for 5, PageDown for 6, F1 to F5 for 11 to 15, F6 to F10 for 17 to 21, F11 for 23 and F12 for 24 |
 
-A cursor key, F1 to F4 as `\x1b[1;mP` to `\x1b[1;mS`, or a tilde key as `\x1b[n;m~` SHALL carry its modifiers in the parameter `m`, as "Modifier parameter" defines. Higher modifier bits, such as Meta, SHALL be dropped. A complete escape sequence that names none of these keys and is no mouse report, focus report or paste SHALL become no key, and its bytes SHALL NOT reach any window.
+A cursor key, F1 to F4 as `\x1b[1;mP` to `\x1b[1;mS`, or a tilde key as `\x1b[n;m~` SHALL carry its modifiers in the parameter `m`, as "Modifier parameter" defines. Higher modifier bits, such as Meta, SHALL be dropped. A complete escape sequence that starts as one of these keys, a mouse report, a focus report or a paste does, by `\x1b[` and a digit, `?`, `<`, `[`, `M` or one of the letters `A`, `B`, `C`, `D`, `F`, `H`, `I`, `O` and `Z`, and then names none of them SHALL become no key, and its bytes SHALL NOT reach any window. A valid SGR mouse report of a button other than those "Mouse events from the terminal" names SHALL become no event in the same way.
 
 #### Scenario: Control byte becomes a key
 - **WHEN** the terminal sends `\x03`
@@ -45,7 +45,7 @@ A cursor key, F1 to F4 as `\x1b[1;mP` to `\x1b[1;mS`, or a tilde key as `\x1b[n;
 - **THEN** gband reads `a` and nothing else
 
 ### Requirement: Incomplete input from the terminal
-gband SHALL read each key, mouse report, focus report and paste as soon as its last byte arrives, however the terminal's bytes are split across reads. When the bytes read so far end in an incomplete escape sequence, gband SHALL hold them until more bytes arrive. When no byte arrives for 25 ms, gband SHALL resolve what it holds, as zellij resolves it: a lone ESC SHALL become Escape, and ESC with `[` or `O` and bytes that complete no sequence SHALL become Alt with `[` or `O`, followed by the remaining bytes read as keys. ESC with `[` or `O` followed by a byte that can continue no sequence SHALL be read the same way without waiting. An incomplete UTF-8 character SHALL stay held until its remaining bytes arrive.
+gband SHALL read each key, mouse report, focus report and paste as soon as its last byte arrives, however the terminal's bytes are split across reads. When the bytes read so far end in an incomplete escape sequence, gband SHALL hold them until more bytes arrive. When no byte arrives for 25 ms, gband SHALL resolve what it holds, as zellij resolves it: a lone ESC SHALL become Escape, and ESC with `[` or `O` and bytes that complete no sequence SHALL become Alt with `[` or `O`, followed by the remaining bytes read as keys. gband SHALL read held bytes the same way, without waiting, once a byte arrives that no sequence can continue: a byte after `\x1b[` that starts no sequence, as "Keys from the terminal's bytes" lists the bytes that do, a byte after `\x1bO` that ends none of its keys, a byte after `\x1b[[` other than `A` to `E`, a byte that breaks an SGR mouse report's `<`, three decimal numbers separated by `;`, and `M` or `m`, or any other byte that is neither a parameter, an intermediate nor a final byte of the sequence. An incomplete UTF-8 character SHALL stay held until its remaining bytes arrive.
 
 #### Scenario: Lone Escape
 - **WHEN** the terminal sends `\x1b` and nothing more
@@ -66,6 +66,14 @@ gband SHALL read each key, mouse report, focus report and paste as soon as its l
 #### Scenario: Alt with a left bracket
 - **WHEN** the terminal sends `\x1b[` and nothing more
 - **THEN** gband reads Alt+`[` about 25 ms later
+
+#### Scenario: Alt with a left bracket, then a letter
+- **WHEN** the terminal sends `\x1b[` and, 10 ms later, `x`
+- **THEN** gband reads Alt+`[` and then `x` as soon as `x` arrives
+
+#### Scenario: Malformed mouse report
+- **WHEN** the terminal sends `\x1b[<0;1M`
+- **THEN** gband reads Alt+`[`, then `<`, `0`, `;`, `1` and Shift+`M`
 
 #### Scenario: Unfinished sequence after its timeout
 - **WHEN** the terminal sends `\x1b[11` and nothing more

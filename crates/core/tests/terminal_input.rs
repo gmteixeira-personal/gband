@@ -108,12 +108,63 @@ fn linux_console_f1() {
 fn unknown_sequence_is_dropped() {
     check(&[
         (b"\x1b[99~a", vec![char('a')]),
-        (b"\x1bOxa", vec![char('a')]),
-        (b"\x1b[[Za", vec![char('a')]),
         (b"\x1b[?1;2ca", vec![char('a')]),
         (b"\x1b[1 qa", vec![char('a')]),
-        (b"\x1b[Pa", vec![char('a')]),
+        (b"\x1b[1xa", vec![char('a')]),
         (b"\x1b[201~a", vec![char('a')]),
+    ]);
+}
+
+#[test]
+fn alt_bracket_before_a_byte_that_starts_no_sequence() {
+    let alt_bracket = || key(KeyCode::Char('['), Modifiers::ALT);
+    check(&[
+        (b"\x1b[a", vec![alt_bracket(), char('a')]),
+        (b"\x1b[x", vec![alt_bracket(), char('x')]),
+        (
+            b"\x1b[Pa",
+            vec![
+                alt_bracket(),
+                key(KeyCode::Char('P'), Modifiers::SHIFT),
+                char('a'),
+            ],
+        ),
+        (
+            b"\x1b[[Za",
+            vec![
+                alt_bracket(),
+                char('['),
+                key(KeyCode::Char('Z'), Modifiers::SHIFT),
+                char('a'),
+            ],
+        ),
+        (b"\x1b[;", vec![alt_bracket(), char(';')]),
+        (b"\x1b[\x01", vec![alt_bracket(), ctrl('a')]),
+    ]);
+}
+
+#[test]
+fn alt_bracket_then_a_key_within_the_flush_time() {
+    let mut decoder = Decoder::new();
+    assert_eq!(decoder.push(b"\x1b["), vec![]);
+    assert_eq!(
+        decoder.push(b"a"),
+        vec![key(KeyCode::Char('['), Modifiers::ALT), char('a')]
+    );
+    assert!(!decoder.holds());
+}
+
+#[test]
+fn alt_shift_o_before_a_byte_that_ends_no_sequence() {
+    check(&[
+        (
+            b"\x1bOxa",
+            vec![key(KeyCode::Char('O'), ALT_SHIFT), char('x'), char('a')],
+        ),
+        (
+            b"\x1bO1",
+            vec![key(KeyCode::Char('O'), ALT_SHIFT), char('1')],
+        ),
     ]);
 }
 
@@ -355,7 +406,38 @@ fn other_mouse_buttons_are_no_event() {
     check(&[
         (b"\x1b[<128;1;1Ma", vec![char('a')]),
         (b"\x1b[<3;1;1Ma", vec![char('a')]),
-        (b"\x1b[<0;1Ma", vec![char('a')]),
+    ]);
+}
+
+#[test]
+fn malformed_mouse_report_reads_as_alt_bracket_and_keys() {
+    let alt_bracket = || key(KeyCode::Char('['), Modifiers::ALT);
+    check(&[
+        (
+            b"\x1b[<0;1Ma",
+            vec![
+                alt_bracket(),
+                char('<'),
+                char('0'),
+                char(';'),
+                char('1'),
+                key(KeyCode::Char('M'), Modifiers::SHIFT),
+                char('a'),
+            ],
+        ),
+        (b"\x1b[<x", vec![alt_bracket(), char('<'), char('x')]),
+        (
+            b"\x1b[<1;;1M",
+            vec![
+                alt_bracket(),
+                char('<'),
+                char('1'),
+                char(';'),
+                char(';'),
+                char('1'),
+                key(KeyCode::Char('M'), Modifiers::SHIFT),
+            ],
+        ),
     ]);
 }
 
@@ -915,7 +997,10 @@ fn reference_key_vectors() {
         (b"\x1b[14~", vec![plain(KeyCode::F(4))]),
         (b"\x1b[11;2~", vec![key(KeyCode::F(1), Modifiers::SHIFT)]),
         (b"\x1b[14;3~", vec![alt(KeyCode::F(4))]),
-        (b"\x1bOz", vec![]),
+        (
+            b"\x1bOz",
+            vec![key(KeyCode::Char('O'), ALT_SHIFT), char('z')],
+        ),
         (
             b"\x03\x1bJ\x7f",
             vec![
@@ -942,7 +1027,7 @@ fn reference_key_vectors() {
         (b"\x1b[2;2~", vec![key(KeyCode::Insert, Modifiers::SHIFT)]),
         (b"\x1b[1;2F", vec![key(KeyCode::End, Modifiers::SHIFT)]),
         (b"\x1b[3;2~", vec![key(KeyCode::Delete, Modifiers::SHIFT)]),
-        (b"\x1b[x", vec![]),
+        (b"\x1b[x", vec![alt(KeyCode::Char('[')), char('x')]),
         (b"\x1b\x1b[D", vec![alt(KeyCode::Left)]),
         (
             "\x1béx".as_bytes(),
@@ -1122,7 +1207,18 @@ fn reference_mouse_vectors() {
             b"\x1b\x1b[<35;42;12M",
             vec![escape(), mouse(MouseKind::Motion(None), 41, 11, none)],
         ),
-        (b"\x1b[<0;1Ma", vec![char('a')]),
+        (
+            b"\x1b[<0;1Ma",
+            vec![
+                alt(KeyCode::Char('[')),
+                char('<'),
+                char('0'),
+                char(';'),
+                char('1'),
+                key(KeyCode::Char('M'), Modifiers::SHIFT),
+                char('a'),
+            ],
+        ),
     ]);
     check_with_flushes(&[
         (

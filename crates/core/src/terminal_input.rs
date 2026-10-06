@@ -160,13 +160,10 @@ fn ss3(bytes: &[u8], last: bool) -> Step {
     let Some(&letter) = bytes.get(2) else {
         return incomplete(last);
     };
-    if !letter.is_ascii_alphabetic() {
-        return Step::Invalid;
+    match cursor_key(letter).or_else(|| function_key(letter)) {
+        Some(code) => Step::Done(vec![key(code, Modifiers::NONE)], 3),
+        None => Step::Invalid,
     }
-    let decoded = cursor_key(letter)
-        .or_else(|| function_key(letter))
-        .map(|code| key(code, Modifiers::NONE));
-    Step::Done(decoded.into_iter().collect(), 3)
 }
 
 fn cursor_key(letter: u8) -> Option<KeyCode> {
@@ -188,8 +185,10 @@ fn function_key(letter: u8) -> Option<KeyCode> {
 fn csi(bytes: &[u8], last: bool) -> Step {
     match bytes.get(2) {
         None => incomplete(last),
+        Some(&byte) if !starts_sequence(byte) => Step::Invalid,
         Some(b'[') => console_function_key(bytes, last),
         Some(b'M') => default_mouse(bytes, last),
+        Some(b'<') => sgr_mouse(bytes, last),
         Some(_) => {
             let parameters = bytes[2..]
                 .iter()
@@ -212,13 +211,17 @@ fn csi(bytes: &[u8], last: bool) -> Step {
             let params = &bytes[2..end];
             match (params, bytes[end]) {
                 (b"200", b'~') => paste(bytes, used),
-                ([b'<', sgr @ ..], end @ (b'M' | b'm')) => {
-                    Step::Done(sgr_mouse(sgr, end == b'm').into_iter().collect(), used)
-                }
                 _ => Step::Done(sequence(params, bytes[end]).into_iter().collect(), used),
             }
         }
     }
+}
+
+fn starts_sequence(byte: u8) -> bool {
+    matches!(
+        byte,
+        b'0'..=b'9' | b'?' | b'<' | b'[' | b'M' | b'A'..=b'D' | b'F' | b'H' | b'I' | b'O' | b'Z'
+    )
 }
 
 fn console_function_key(bytes: &[u8], last: bool) -> Step {
@@ -227,7 +230,6 @@ fn console_function_key(bytes: &[u8], last: bool) -> Step {
         Some(&letter @ b'A'..=b'E') => {
             Step::Done(vec![key(KeyCode::F(letter - b'A' + 1), Modifiers::NONE)], 4)
         }
-        Some(0x40..=0x7e) => Step::Done(Vec::new(), 4),
         Some(_) => Step::Invalid,
     }
 }
@@ -306,11 +308,27 @@ fn default_mouse(bytes: &[u8], last: bool) -> Step {
     Step::Done(mouse(code, col, row, None).into_iter().collect(), 6)
 }
 
-fn sgr_mouse(params: &[u8], release: bool) -> Option<TerminalInput> {
+fn sgr_mouse(bytes: &[u8], last: bool) -> Step {
+    let body = &bytes[3..];
+    let Some(end) = body
+        .iter()
+        .position(|byte| !matches!(byte, b'0'..=b'9' | b';'))
+    else {
+        return incomplete(last);
+    };
+    let release = match body[end] {
+        b'M' => false,
+        b'm' => true,
+        _ => return Step::Invalid,
+    };
+    let params = &body[..end];
     let params = params.strip_suffix(b";").unwrap_or(params);
-    match numbers(params)?.as_slice() {
-        &[code, col, row] => mouse(code, col, row, Some(release)),
-        _ => None,
+    match numbers(params).as_deref() {
+        Some(&[code, col, row]) => Step::Done(
+            mouse(code, col, row, Some(release)).into_iter().collect(),
+            end + 4,
+        ),
+        _ => Step::Invalid,
     }
 }
 
