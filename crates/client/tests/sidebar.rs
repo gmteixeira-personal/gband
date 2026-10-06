@@ -5,7 +5,7 @@ use std::time::Instant;
 use gband_client::animation::Animations;
 use gband_client::{Controls, Display, Step};
 use gband_core::geometry::Size;
-use gband_core::input::{Modifiers, MouseButton, MouseEvent, MouseKind};
+use gband_core::input::{Modifiers, MouseButton, MouseEvent, MouseKind, WheelDirection};
 use gband_core::layout::{Layout, LayoutOptions, WindowId};
 use gband_lua::keys::parse_key;
 use gband_lua::{Bar, Color, Config, ConfigError, DEFAULTS, LoadOptions, Locations, Style};
@@ -207,6 +207,12 @@ impl Client {
             self.controls
                 .mouse(&mut self.display, event, Instant::now());
         }
+    }
+
+    fn wheel(&mut self, direction: WheelDirection, col: u16, row: u16, modifiers: Modifiers) {
+        let event = MouseEvent::new(MouseKind::Wheel(direction), col, row, modifiers);
+        self.controls
+            .mouse(&mut self.display, event, Instant::now());
     }
 
     fn viewed(&self) -> u32 {
@@ -697,6 +703,87 @@ fn click_in_navigation_mode() {
     client.attach_bands(2);
     client.press("ctrl+space");
     client.click(MouseButton::Left, 0, 3);
+    assert_eq!(client.viewed(), 2);
+    assert_eq!(client.row(0), "N");
+}
+
+#[test]
+fn wheel_down_over_the_labels() {
+    let (_scratch, mut client) = defaults("wheel-down", "", Size::new(80, 24));
+    client.attach_bands(2);
+    client.wheel(WheelDirection::Down, 0, 2, Modifiers::NONE);
+    assert_eq!(client.viewed(), 2);
+    assert!(client.style(3).bold);
+    assert!(!client.style(2).bold);
+}
+
+#[test]
+fn wheel_steps_move_one_band_each() {
+    let (_scratch, mut client) = defaults("wheel-steps", "", Size::new(80, 24));
+    client.attach_bands(2);
+    client.wheel(WheelDirection::Down, 0, 2, Modifiers::NONE);
+    client.wheel(WheelDirection::Down, 0, 2, Modifiers::NONE);
+    assert_eq!(client.viewed(), 3);
+}
+
+#[test]
+fn wheel_up() {
+    let (_scratch, mut client) = defaults("wheel-up", "", Size::new(80, 24));
+    client.attach_bands(2);
+    client.click(MouseButton::Left, 0, 4);
+    assert_eq!(client.viewed(), 3);
+    client.wheel(WheelDirection::Up, 0, 2, Modifiers::NONE);
+    assert_eq!(client.viewed(), 2);
+}
+
+#[test]
+fn wheel_on_any_row() {
+    for row in [0, 1, 23] {
+        let (_scratch, mut client) = defaults(&format!("wheel-row-{row}"), "", Size::new(80, 24));
+        client.attach_bands(1);
+        client.wheel(WheelDirection::Down, 0, row, Modifiers::NONE);
+        assert_eq!(client.viewed(), 2, "{row}");
+    }
+}
+
+#[test]
+fn wheel_past_the_last_band() {
+    let (_scratch, mut client) = defaults("wheel-last", "", Size::new(80, 24));
+    client.attach_bands(1);
+    client.click(MouseButton::Left, 0, 3);
+    assert_eq!(client.viewed(), 2);
+    client.wheel(WheelDirection::Down, 0, 2, Modifiers::NONE);
+    assert_eq!(client.viewed(), 2);
+}
+
+#[test]
+fn wheel_on_the_right_sidebar() {
+    let scratch = Scratch::new("wheel-right");
+    let source = DEFAULTS.replace(
+        SETUP,
+        "gband.plugin(\"gband.sidebar\", { side = \"right\" })",
+    );
+    let config = scratch.load(&source).unwrap();
+    let mut client = Client::new(config, Size::new(80, 24));
+    client.attach_bands(1);
+    client.wheel(WheelDirection::Down, 79, 2, Modifiers::NONE);
+    assert_eq!(client.viewed(), 2);
+}
+
+#[test]
+fn wheel_with_alt_held() {
+    let (_scratch, mut client) = defaults("wheel-alt", "", Size::new(80, 24));
+    client.attach_bands(2);
+    client.wheel(WheelDirection::Down, 0, 2, Modifiers::ALT);
+    assert_eq!(client.viewed(), 2);
+}
+
+#[test]
+fn wheel_in_navigation_mode() {
+    let (_scratch, mut client) = defaults("wheel-navigation", "", Size::new(80, 24));
+    client.attach_bands(1);
+    client.press("ctrl+space");
+    client.wheel(WheelDirection::Down, 0, 2, Modifiers::NONE);
     assert_eq!(client.viewed(), 2);
     assert_eq!(client.row(0), "N");
 }
