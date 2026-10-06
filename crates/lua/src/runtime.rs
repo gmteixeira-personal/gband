@@ -8,7 +8,7 @@ use std::sync::atomic::AtomicU32;
 use std::time::Instant;
 
 use gband_core::geometry::Size;
-use gband_core::input::{Key, KeyCode, MouseButton};
+use gband_core::input::{Key, KeyCode, MouseButton, WheelDirection};
 use gband_core::layout::WindowId;
 use gband_protocol::Value as Data;
 
@@ -554,6 +554,21 @@ impl Runtime {
     ) -> Outcome {
         self.within_callback(|lua| {
             let payload = pointer.pressed(lua, button)?;
+            Ok(matches!(
+                callbacks::run::<()>(lua, callback, payload)?,
+                Ran::Disabled
+            ))
+        })
+    }
+
+    pub fn call_scrolled(
+        &self,
+        callback: CallbackId,
+        direction: WheelDirection,
+        pointer: &Pointer,
+    ) -> Outcome {
+        self.within_callback(|lua| {
+            let payload = pointer.scrolled(lua, direction)?;
             Ok(matches!(
                 callbacks::run::<()>(lua, callback, payload)?,
                 Ran::Disabled

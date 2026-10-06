@@ -50,7 +50,7 @@ The client SHALL have the built-in option `mouse_mod`, with the description `mod
 
 `mod` in the key name of a binding SHALL stand for the modifiers that `mouse_mod` names when the bindings are used, added to any other modifier the name gives, as `prefix` stands for the key the `prefix` option names. Setting `mouse_mod` before or after the binding is made, in the same load, SHALL give the same binding. `gband.keymap.list` SHALL give the key of such a binding as written, such as `mod+leftmouse`.
 
-When more than one binding of one table matches the same mouse event, the binding made first SHALL run.
+When more than one binding of one table matches the same mouse event, the binding made last SHALL run, so a binding made after `gband.keystyle.use()` takes the place of a preset's binding for the same event. Binding a key name again SHALL make that binding the last made.
 
 #### Scenario: Default mouse modifier
 - **WHEN** `user/init.lua` binds `mod+leftmouse` in `root` to `gband.action.drag_window` and does not set `mouse_mod`, and the user drags a floating window 5 cells right with the left button and Alt held
@@ -69,6 +69,10 @@ When more than one binding of one table matches the same mouse event, the bindin
 - **WHEN** line 2 of `user/init.lua` sets `gband.opt.mouse_mod = "super"`
 - **THEN** a configuration error at `user/init.lua` line 2 naming `mouse_mod` is reported
 - **AND** `gband.opt.mouse_mod` reads `alt`
+
+#### Scenario: Own binding after the preset
+- **WHEN** `user/init.lua` calls `gband.keystyle.use()` and then binds `alt+leftmouse` in `root` to a function, and the user drags a floating window with the left button and Alt held
+- **THEN** the function runs and the floating window's box does not move
 
 #### Scenario: Listed as written
 - **WHEN** `user/init.lua` binds `mod+rightmouse` in `root` and reads `gband.keymap.list("root")`

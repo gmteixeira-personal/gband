@@ -59,12 +59,45 @@ entry = gband.keymap.list('prefix')[1]",
     assert_eq!(
         config.keymap["prefix"],
         [(
-            Chord::Mouse(MouseKey::new(MouseButton::Right, Modifiers::ALT)),
+            Chord::Mouse {
+                key: MouseKey::new(MouseButton::Right, Modifiers::ALT),
+                uses_mod: false,
+            },
             Binding::Action(Action::Client(ClientAction::Detach))
         )]
     );
     let key: String = eval(&config, "return entry.key");
     assert_eq!(key, "alt+rightmouse");
+}
+
+#[test]
+fn mod_mouse_name_listed_as_written() {
+    let scratch = Scratch::new("mod-listed");
+    scratch.write(
+        "gband.keymap.set('root', 'mod+rightmouse', gband.action.drag_resize_window)
+entry = gband.keymap.list('root')[1]",
+    );
+    let config = scratch.loaded();
+    assert_eq!(
+        config.keymap["root"],
+        [(
+            Chord::Mouse {
+                key: MouseKey::new(MouseButton::Right, Modifiers::NONE),
+                uses_mod: true,
+            },
+            Binding::Action(Action::Client(ClientAction::DragResize))
+        )]
+    );
+    let key: String = eval(&config, "return entry.key");
+    assert_eq!(key, "mod+rightmouse");
+}
+
+#[test]
+fn mod_with_a_key() {
+    let scratch = Scratch::new("mod-key");
+    let path = scratch.write("\n\n\n\n\ngband.keymap.set('root', 'mod+h', gband.action.detach)");
+    let error = scratch.load().err().unwrap();
+    assert_error_at(&error, &path, 6, "mod+h");
 }
 
 #[test]
@@ -200,7 +233,12 @@ fn plugin_root_binding_of_the_prefix_key_is_dropped() {
         "gband.keymap.set('root', 'ctrl+space', gband.action.detach)\ngband.keymap.set('root', 'alt+d', gband.action.detach)",
     );
     let config = scratch.loaded();
-    assert_eq!(config.keymap["root"].len(), 1);
+    let keys: Vec<Chord> = config.keymap["root"]
+        .iter()
+        .map(|(chord, _)| *chord)
+        .filter(|chord| matches!(chord, Chord::Key(_)))
+        .collect();
+    assert_eq!(keys, [Chord::Key(key("alt+d"))]);
     assert_eq!(config.errors[0].plugin.as_deref(), Some("hello"));
 }
 

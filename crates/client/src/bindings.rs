@@ -1,22 +1,24 @@
 use gband_core::action::Steps;
-use gband_core::input::{Key, KeyCode, MouseKey};
-use gband_lua::{Binding, Chord, KeyTables, Modes};
+use gband_core::input::{Key, KeyCode, Modifiers, MouseKey};
+use gband_lua::{Binding, Chord, KeyTables, Modes, Options};
 
 pub const ROOT: &str = "root";
 pub const PREFIX: &str = "prefix";
 
 pub struct Keymap {
     pub prefix: Key,
+    pub mouse_mod: Modifiers,
     pub steps: Steps,
     pub tables: KeyTables,
     pub modes: Modes,
 }
 
 impl Keymap {
-    pub fn new(prefix: Key, steps: Steps, tables: KeyTables, modes: Modes) -> Self {
+    pub fn new(options: &Options, tables: KeyTables, modes: Modes) -> Self {
         Self {
-            prefix,
-            steps,
+            prefix: options.prefix,
+            mouse_mod: options.mouse_mod,
+            steps: options.steps,
             tables,
             modes,
         }
@@ -30,29 +32,48 @@ impl Keymap {
         match chord {
             Chord::Key(key) => Some(key),
             Chord::Prefix => Some(self.prefix),
-            Chord::Mouse(_) => None,
+            Chord::Mouse { .. } => None,
+        }
+    }
+
+    fn chord_mouse(&self, chord: Chord) -> Option<MouseKey> {
+        match chord {
+            Chord::Mouse { key, uses_mod } if uses_mod => Some(MouseKey {
+                modifiers: Modifiers {
+                    ctrl: key.modifiers.ctrl || self.mouse_mod.ctrl,
+                    alt: key.modifiers.alt || self.mouse_mod.alt,
+                    shift: key.modifiers.shift || self.mouse_mod.shift,
+                },
+                ..key
+            }),
+            Chord::Mouse { key, .. } => Some(key),
+            Chord::Key(_) | Chord::Prefix => None,
         }
     }
 
     fn find(&self, table: &str, key: Key) -> Option<Binding> {
-        self.find_by(table, |chord| {
-            self.chord_key(chord)
-                .is_some_and(|bound| matches(bound, key))
-        })
+        self.table(table)
+            .iter()
+            .find(|&&(chord, _)| {
+                self.chord_key(chord)
+                    .is_some_and(|bound| matches(bound, key))
+            })
+            .map(|&(_, binding)| self.stepped(binding))
     }
 
     fn find_mouse(&self, table: &str, key: MouseKey) -> Option<Binding> {
-        self.find_by(table, |chord| chord == Chord::Mouse(key))
-    }
-
-    fn find_by(&self, table: &str, matching: impl Fn(Chord) -> bool) -> Option<Binding> {
         self.table(table)
             .iter()
-            .find(|&&(chord, _)| matching(chord))
-            .map(|&(_, binding)| match binding {
-                Binding::Action(action) => Binding::Action(action.stepped(self.steps)),
-                binding => binding,
-            })
+            .rev()
+            .find(|&&(chord, _)| self.chord_mouse(chord) == Some(key))
+            .map(|&(_, binding)| self.stepped(binding))
+    }
+
+    fn stepped(&self, binding: Binding) -> Binding {
+        match binding {
+            Binding::Action(action) => Binding::Action(action.stepped(self.steps)),
+            binding => binding,
+        }
     }
 }
 
@@ -68,6 +89,12 @@ pub enum MouseCommand {
     Default,
     Run(Binding),
     Discard,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WheelCommand {
+    Run(Binding),
+    Pass,
 }
 
 #[derive(Debug)]
@@ -128,6 +155,16 @@ impl Leader {
             .map_or(MouseCommand::Default, MouseCommand::Run)
     }
 
+    pub fn handle_wheel(&mut self, keymap: &Keymap, key: MouseKey) -> WheelCommand {
+        let Some(binding) = keymap.find_mouse(&self.active, key) else {
+            return WheelCommand::Pass;
+        };
+        if !keymap.modes.contains(&self.active) {
+            self.reset();
+        }
+        WheelCommand::Run(binding)
+    }
+
     pub fn enter(&mut self, table: String) {
         self.active = table;
     }
@@ -151,7 +188,7 @@ fn matches(bound: Key, key: Key) -> bool {
 #[cfg(test)]
 mod tests {
     use gband_core::action::{Action, ClientAction, SessionCommand};
-    use gband_core::input::{Modes, Modifiers, encode_key};
+    use gband_core::input::{Modes, MouseButton, MouseInput, WheelDirection, encode_key};
     use gband_core::layout::{Direction, Proportion, Step, Vertical};
     use gband_core::view::ViewAction;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -162,12 +199,7 @@ mod tests {
 
     fn defaults() -> Keymap {
         let config = gband_lua::defaults(gband_lua::Side::Client);
-        Keymap::new(
-            config.options.prefix,
-            config.options.steps,
-            config.keymap,
-            config.modes,
-        )
+        Keymap::new(&config.options, config.keymap, config.modes)
     }
 
     fn default_prefix_entries() -> Vec<(String, Option<String>, String)> {
@@ -175,6 +207,13 @@ mod tests {
     }
 
     fn prefix_entries(config: &gband_lua::Config) -> Vec<(String, Option<String>, String)> {
+        table_entries(config, PREFIX)
+    }
+
+    fn table_entries(
+        config: &gband_lua::Config,
+        table: &str,
+    ) -> Vec<(String, Option<String>, String)> {
         let names: Vec<String> = config
             .runtime
             .lua()
@@ -184,7 +223,7 @@ mod tests {
         let entries: Vec<mlua::Table> = config
             .runtime
             .lua()
-            .load("return gband.keymap.list('prefix')")
+            .load(format!("return gband.keymap.list('{table}')"))
             .eval()
             .unwrap();
         entries
@@ -249,12 +288,7 @@ mod tests {
         )
         .unwrap();
         let _ = std::fs::remove_dir_all(&dir);
-        Keymap::new(
-            config.options.prefix,
-            config.options.steps,
-            config.keymap,
-            config.modes,
-        )
+        Keymap::new(&config.options, config.keymap, config.modes)
     }
 
     fn key(name: &str) -> Key {
@@ -397,11 +431,71 @@ mod tests {
             .collect();
         let order = "h l j k u i c n q [ ] r f - = _ + R v V ctrl+h ctrl+l ctrl+j ctrl+k \
             ctrl+left ctrl+right ctrl+down ctrl+up ? : D escape enter left right down up prefix \
-            leftmouse rightmouse middlemouse";
+            leftmouse rightmouse middlemouse mod+leftmouse mod+rightmouse mod+middlemouse \
+            mod+wheeldown mod+wheelup";
         assert_eq!(keys, order.split_whitespace().collect::<Vec<_>>());
-        assert!(keymap.table(ROOT).is_empty());
         assert_eq!(keymap.table(PREFIX).len(), keys.len());
         assert!(keymap.modes.contains(PREFIX));
+        let root: Vec<String> = table_entries(&gband_lua::defaults(gband_lua::Side::Client), ROOT)
+            .into_iter()
+            .map(|(key, _, _)| key)
+            .collect();
+        assert_eq!(root, MOD_ROWS);
+        assert_mouse_rows(&keymap);
+    }
+
+    const MOD_ROWS: [&str; 5] = [
+        "mod+leftmouse",
+        "mod+rightmouse",
+        "mod+middlemouse",
+        "mod+wheeldown",
+        "mod+wheelup",
+    ];
+
+    fn mouse(input: impl Into<MouseInput>, modifiers: Modifiers) -> MouseKey {
+        MouseKey::new(input, modifiers)
+    }
+
+    fn assert_mouse_rows(keymap: &Keymap) {
+        let drags = [
+            (MouseButton::Left, ClientAction::DragWindow),
+            (MouseButton::Right, ClientAction::DragResize),
+            (MouseButton::Middle, ClientAction::DragBand),
+        ];
+        let wheels = [
+            (WheelDirection::Down, ViewAction::BandDown),
+            (WheelDirection::Up, ViewAction::BandUp),
+        ];
+        for (button, action) in drags {
+            let alt = mouse(button, Modifiers::ALT);
+            let ran = |command| match command {
+                MouseCommand::Run(Binding::Action(action)) => Some(action),
+                _ => None,
+            };
+            let action = Some(Action::Client(action));
+            assert_eq!(ran(Leader::default().handle_mouse(keymap, alt)), action);
+            for pressed in [alt, mouse(button, Modifiers::NONE)] {
+                let mut leader = Leader::default();
+                leader.handle(keymap, keymap.prefix);
+                assert_eq!(
+                    ran(leader.handle_mouse(keymap, pressed)),
+                    action,
+                    "{pressed:?}"
+                );
+            }
+        }
+        for (direction, action) in wheels {
+            let alt = mouse(direction, Modifiers::ALT);
+            let action = WheelCommand::Run(Binding::Action(Action::View(action)));
+            assert_eq!(Leader::default().handle_wheel(keymap, alt), action);
+            let mut leader = Leader::default();
+            leader.handle(keymap, keymap.prefix);
+            assert_eq!(leader.handle_wheel(keymap, alt), action);
+            assert_eq!(
+                Leader::default().handle_wheel(keymap, mouse(direction, Modifiers::NONE)),
+                WheelCommand::Pass
+            );
+        }
     }
 
     #[test]
@@ -410,26 +504,16 @@ mod tests {
         let modal_entries = default_prefix_entries();
         let config = with_saved_style("direct");
         let entries = prefix_entries(&config);
-        let keymap = Keymap::new(
-            config.options.prefix,
-            config.options.steps,
-            config.keymap,
-            config.modes,
-        );
+        let keymap = Keymap::new(&config.options, config.keymap, config.modes);
         let keys: Vec<&str> = entries.iter().map(|(key, _, _)| key.as_str()).collect();
         let expected: Vec<&str> = modal_entries
             .iter()
             .map(|(key, _, _)| key.as_str())
-            .filter(|key| {
-                !matches!(
-                    *key,
-                    "escape" | "enter" | "leftmouse" | "rightmouse" | "middlemouse"
-                )
-            })
+            .filter(|key| !matches!(*key, "escape" | "enter"))
             .collect();
         assert_eq!(keys, expected);
-        assert!(keymap.table(ROOT).is_empty());
         assert!(keymap.modes.is_empty());
+        assert_mouse_rows(&keymap);
         let own = [
             (
                 "n",
@@ -483,31 +567,194 @@ mod tests {
     }
 
     #[test]
+    fn presets_keep_parity() {
+        let modal = with_saved_style("modal");
+        let direct = with_saved_style("direct");
+        for table in [ROOT, PREFIX] {
+            let modal_entries: Vec<_> = table_entries(&modal, table)
+                .into_iter()
+                .filter(|(key, _, _)| {
+                    table != PREFIX || !matches!(key.as_str(), "escape" | "enter")
+                })
+                .collect();
+            let direct_entries = table_entries(&direct, table);
+            let keys = |entries: &[(String, Option<String>, String)]| {
+                entries
+                    .iter()
+                    .map(|(key, _, _)| key.clone())
+                    .collect::<Vec<_>>()
+            };
+            assert_eq!(keys(&modal_entries), keys(&direct_entries), "{table}");
+            for ((key, modal_action, _), (_, direct_action, _)) in
+                modal_entries.iter().zip(&direct_entries)
+            {
+                if let (Some(modal_action), Some(direct_action)) = (modal_action, direct_action) {
+                    assert_eq!(modal_action, direct_action, "{table} {key}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn default_mouse_modifier() {
+        let keymap =
+            configured("gband.keymap.set('root', 'mod+leftmouse', gband.action.drag_window)");
+        let drag = MouseCommand::Run(Binding::Action(Action::Client(ClientAction::DragWindow)));
+        let mut leader = Leader::default();
+        assert_eq!(
+            leader.handle_mouse(&keymap, mouse(MouseButton::Left, Modifiers::ALT)),
+            drag
+        );
+        assert_eq!(
+            leader.handle_mouse(&keymap, mouse(MouseButton::Left, Modifiers::NONE)),
+            MouseCommand::Default
+        );
+    }
+
+    #[test]
+    fn changed_mouse_modifier() {
+        let keymap = configured("gband.keystyle.use()\ngband.opt.mouse_mod = 'ctrl+alt'");
+        let ctrl_alt = Modifiers {
+            ctrl: true,
+            alt: true,
+            shift: false,
+        };
+        let drag = MouseCommand::Run(Binding::Action(Action::Client(ClientAction::DragWindow)));
+        let mut leader = Leader::default();
+        assert_eq!(
+            leader.handle_mouse(&keymap, mouse(MouseButton::Left, ctrl_alt)),
+            drag
+        );
+        assert_eq!(
+            leader.handle_mouse(&keymap, mouse(MouseButton::Left, Modifiers::ALT)),
+            MouseCommand::Default
+        );
+    }
+
+    #[test]
+    fn last_matching_mouse_binding_wins() {
+        let alt_left = mouse(MouseButton::Left, Modifiers::ALT);
+        let drag = |action| MouseCommand::Run(Binding::Action(Action::Client(action)));
+        let keymap = configured(
+            "gband.keymap.set('root', 'mod+leftmouse', gband.action.drag_window)
+gband.keymap.set('root', 'alt+leftmouse', gband.action.drag_band)",
+        );
+        assert_eq!(
+            Leader::default().handle_mouse(&keymap, alt_left),
+            drag(ClientAction::DragBand)
+        );
+        let keymap = configured(
+            "gband.keymap.set('root', 'mod+leftmouse', gband.action.drag_window)
+gband.keymap.set('root', 'alt+leftmouse', gband.action.drag_band)
+gband.keymap.set('root', 'mod+leftmouse', gband.action.drag_resize_window)",
+        );
+        assert_eq!(
+            Leader::default().handle_mouse(&keymap, alt_left),
+            drag(ClientAction::DragResize)
+        );
+    }
+
+    #[test]
+    fn own_binding_after_the_preset() {
+        let keymap = configured(
+            "gband.keystyle.use()
+gband.keymap.set('root', 'alt+leftmouse', function() end)
+gband.keymap.set('root', 'alt+wheeldown', function() end)
+gband.keymap.set('prefix', 'alt+leftmouse', function() end)",
+        );
+        let alt_left = mouse(MouseButton::Left, Modifiers::ALT);
+        let mut leader = Leader::default();
+        assert!(matches!(
+            leader.handle_mouse(&keymap, alt_left),
+            MouseCommand::Run(Binding::Callback(_))
+        ));
+        assert!(matches!(
+            leader.handle_wheel(&keymap, mouse(WheelDirection::Down, Modifiers::ALT)),
+            WheelCommand::Run(Binding::Callback(_))
+        ));
+        assert_eq!(leader.handle(&keymap, keymap.prefix), Command::Discard);
+        assert!(matches!(
+            leader.handle_mouse(&keymap, alt_left),
+            MouseCommand::Run(Binding::Callback(_))
+        ));
+        assert_eq!(
+            leader.handle_mouse(&keymap, mouse(MouseButton::Right, Modifiers::ALT)),
+            MouseCommand::Run(Binding::Action(Action::Client(ClientAction::DragResize)))
+        );
+    }
+
+    #[test]
+    fn navigation_mode_keeps_wheel_bindings() {
+        let keymap = defaults();
+        let down = mouse(WheelDirection::Down, Modifiers::ALT);
+        let band_down = WheelCommand::Run(Binding::Action(Action::View(ViewAction::BandDown)));
+        let mut leader = Leader::default();
+        assert_eq!(leader.handle(&keymap, keymap.prefix), Command::Discard);
+        assert_eq!(leader.handle_wheel(&keymap, down), band_down);
+        assert_eq!(leader.active(), PREFIX);
+        assert_eq!(
+            leader.handle_wheel(&keymap, mouse(WheelDirection::Down, Modifiers::NONE)),
+            WheelCommand::Pass
+        );
+        assert_eq!(leader.active(), PREFIX);
+        assert_eq!(leader.handle_wheel(&keymap, down), band_down);
+        assert_eq!(leader.active(), PREFIX);
+    }
+
+    #[test]
+    fn wheel_after_a_prefix_table_that_is_not_a_mode() {
+        let keymap = configured(
+            "gband.keymap.set('prefix', 'h', gband.action.focus_column_left)
+gband.keymap.set('prefix', 'alt+wheeldown', gband.action.focus_band_down)",
+        );
+        let mut leader = Leader::default();
+        assert_eq!(leader.handle(&keymap, keymap.prefix), Command::Discard);
+        assert_eq!(
+            leader.handle_wheel(&keymap, mouse(WheelDirection::Up, Modifiers::NONE)),
+            WheelCommand::Pass
+        );
+        assert_eq!(leader.active(), PREFIX);
+        assert_eq!(
+            leader.handle_wheel(&keymap, mouse(WheelDirection::Down, Modifiers::ALT)),
+            WheelCommand::Run(Binding::Action(Action::View(ViewAction::BandDown)))
+        );
+        assert_eq!(leader.active(), ROOT);
+        assert_eq!(
+            leader.handle_wheel(&keymap, mouse(WheelDirection::Down, Modifiers::ALT)),
+            WheelCommand::Pass
+        );
+    }
+
+    #[test]
     fn every_default_binding_names_an_action() {
         let keymap = defaults();
-        let entries = default_prefix_entries();
-        assert_eq!(entries.len(), keymap.table(PREFIX).len());
+        let config = gband_lua::defaults(gband_lua::Side::Client);
         let functions = [
             ("n", "open a window"),
             ("escape", "interactive mode"),
             ("enter", "interactive mode"),
             ("prefix", "send the prefix key"),
         ];
-        for ((chord, binding), (key, action, desc)) in keymap.table(PREFIX).iter().zip(&entries) {
-            match functions.iter().find(|(name, _)| name == key) {
-                Some((_, described)) => {
-                    assert!(action.is_none(), "{key}");
-                    assert_eq!(desc, described, "{key}");
-                    assert!(matches!(binding, Binding::Callback(_)), "{chord:?} {key}");
-                }
-                None => {
-                    let registered =
-                        matches!(action.as_deref(), Some("keylist.open" | "prompt.open"));
-                    assert!(action.is_some(), "{key}");
-                    assert!(
-                        matches!(binding, Binding::Action(_)) != registered,
-                        "{chord:?} {key}"
-                    );
+        for table in [PREFIX, ROOT] {
+            let entries = table_entries(&config, table);
+            assert_eq!(entries.len(), keymap.table(table).len(), "{table}");
+            for ((chord, binding), (key, action, desc)) in keymap.table(table).iter().zip(&entries)
+            {
+                match functions.iter().find(|(name, _)| name == key) {
+                    Some((_, described)) => {
+                        assert!(action.is_none(), "{key}");
+                        assert_eq!(desc, described, "{key}");
+                        assert!(matches!(binding, Binding::Callback(_)), "{chord:?} {key}");
+                    }
+                    None => {
+                        let registered =
+                            matches!(action.as_deref(), Some("keylist.open" | "prompt.open"));
+                        assert!(action.is_some(), "{key}");
+                        assert!(
+                            matches!(binding, Binding::Action(_)) != registered,
+                            "{chord:?} {key}"
+                        );
+                    }
                 }
             }
         }

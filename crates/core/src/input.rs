@@ -80,18 +80,39 @@ pub enum MouseButton {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum MouseInput {
+    Button(MouseButton),
+    Wheel(WheelDirection),
+}
+
+impl From<MouseButton> for MouseInput {
+    fn from(button: MouseButton) -> Self {
+        Self::Button(button)
+    }
+}
+
+impl From<WheelDirection> for MouseInput {
+    fn from(direction: WheelDirection) -> Self {
+        Self::Wheel(direction)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct MouseKey {
-    pub button: MouseButton,
+    pub input: MouseInput,
     pub modifiers: Modifiers,
 }
 
 impl MouseKey {
-    pub fn new(button: MouseButton, modifiers: Modifiers) -> Self {
-        Self { button, modifiers }
+    pub fn new(input: impl Into<MouseInput>, modifiers: Modifiers) -> Self {
+        Self {
+            input: input.into(),
+            modifiers,
+        }
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum WheelDirection {
     Up,
     Down,

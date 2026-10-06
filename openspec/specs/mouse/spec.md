@@ -1,7 +1,7 @@
 # mouse Specification
 
 ## Purpose
-Defines how the client takes the mouse: what a mouse event points at, how mouse buttons take part in key tables, what interactive mode does with a click, a drag and a right click, how every wheel step reaches the program under the pointer, how text is selected and copied, and the niri-like gestures that move windows, resize them and slide the band.
+Defines how the client takes the mouse: what a mouse event points at, how mouse buttons and wheel steps take part in key tables, what interactive mode does with a click, a drag and a right click, how a wheel step that runs no binding reaches the program under the pointer while a bound one runs its binding, how text is selected and copied, and the niri-like gestures that move windows, resize them and slide the band.
 
 ## Requirements
 

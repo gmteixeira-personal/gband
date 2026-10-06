@@ -8,6 +8,7 @@ gband.opt.floating_border_sides = { "top", "right", "bottom", "left" }
 gband.opt.floating_border_chars = "plain"
 gband.opt.width_step = 1/10
 gband.opt.height_step = 1/10
+gband.opt.mouse_mod = "alt"
 
 gband.keystyle.use()
 

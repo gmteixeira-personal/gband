@@ -1,4 +1,12 @@
-local MOUSE = { leftmouse = true, middlemouse = true, rightmouse = true }
+local MOUSE = {
+  leftmouse = true,
+  middlemouse = true,
+  rightmouse = true,
+  wheelup = true,
+  wheeldown = true,
+  wheelleft = true,
+  wheelright = true,
+}
 
 local function split(written)
   local modifiers, key

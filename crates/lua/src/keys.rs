@@ -1,4 +1,6 @@
-use gband_core::input::{Key, KeyCode, Modifiers, MouseButton, MouseKey};
+use gband_core::input::{
+    Key, KeyCode, Modifiers, MouseButton, MouseInput, MouseKey, WheelDirection,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("invalid key name `{0}`")]
@@ -7,13 +9,13 @@ pub struct KeyError(pub String);
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Pressed {
     Key(Key),
-    Mouse(MouseKey),
+    Mouse { key: MouseKey, uses_mod: bool },
 }
 
 pub fn parse_key(name: &str) -> Result<Key, KeyError> {
     match parse_pressed(name)? {
         Pressed::Key(key) => Ok(key),
-        Pressed::Mouse(_) => Err(KeyError(name.to_owned())),
+        Pressed::Mouse { .. } => Err(KeyError(name.to_owned())),
     }
 }
 
@@ -30,6 +32,7 @@ pub fn parse_pressed(name: &str) -> Result<Pressed, KeyError> {
         }
     };
     let mut held = Modifiers::NONE;
+    let mut uses_mod = false;
     for modifier in modifiers
         .into_iter()
         .flat_map(|modifiers| modifiers.split('+'))
@@ -38,11 +41,18 @@ pub fn parse_pressed(name: &str) -> Result<Pressed, KeyError> {
             "ctrl" => held.ctrl = true,
             "alt" => held.alt = true,
             "shift" => held.shift = true,
+            "mod" => uses_mod = true,
             _ => return Err(invalid()),
         }
     }
-    if let Some(button) = mouse_button(&key.to_ascii_lowercase()) {
-        return Ok(Pressed::Mouse(MouseKey::new(button, held)));
+    if let Some(input) = mouse_input(&key.to_ascii_lowercase()) {
+        return Ok(Pressed::Mouse {
+            key: MouseKey::new(input, held),
+            uses_mod,
+        });
+    }
+    if uses_mod {
+        return Err(invalid());
     }
     let mut chars = key.chars();
     let code = match (chars.next(), chars.next()) {
@@ -62,13 +72,17 @@ pub fn parse_pressed(name: &str) -> Result<Pressed, KeyError> {
     }
 }
 
-fn mouse_button(name: &str) -> Option<MouseButton> {
-    match name {
-        "leftmouse" => Some(MouseButton::Left),
-        "middlemouse" => Some(MouseButton::Middle),
-        "rightmouse" => Some(MouseButton::Right),
-        _ => None,
-    }
+fn mouse_input(name: &str) -> Option<MouseInput> {
+    Some(match name {
+        "leftmouse" => MouseInput::Button(MouseButton::Left),
+        "middlemouse" => MouseInput::Button(MouseButton::Middle),
+        "rightmouse" => MouseInput::Button(MouseButton::Right),
+        "wheelup" => MouseInput::Wheel(WheelDirection::Up),
+        "wheeldown" => MouseInput::Wheel(WheelDirection::Down),
+        "wheelleft" => MouseInput::Wheel(WheelDirection::Left),
+        "wheelright" => MouseInput::Wheel(WheelDirection::Right),
+        _ => return None,
+    })
 }
 
 pub fn mouse_name(key: MouseKey) -> String {
@@ -82,10 +96,14 @@ pub fn mouse_name(key: MouseKey) -> String {
             name.push_str(modifier);
         }
     }
-    name.push_str(match key.button {
-        MouseButton::Left => "leftmouse",
-        MouseButton::Middle => "middlemouse",
-        MouseButton::Right => "rightmouse",
+    name.push_str(match key.input {
+        MouseInput::Button(MouseButton::Left) => "leftmouse",
+        MouseInput::Button(MouseButton::Middle) => "middlemouse",
+        MouseInput::Button(MouseButton::Right) => "rightmouse",
+        MouseInput::Wheel(WheelDirection::Up) => "wheelup",
+        MouseInput::Wheel(WheelDirection::Down) => "wheeldown",
+        MouseInput::Wheel(WheelDirection::Left) => "wheelleft",
+        MouseInput::Wheel(WheelDirection::Right) => "wheelright",
     });
     name
 }
@@ -232,21 +250,22 @@ mod tests {
         assert_eq!(key_name(parse_key("ctrl+space").unwrap()), "ctrl+space");
     }
 
+    fn mouse(input: impl Into<MouseInput>, modifiers: Modifiers) -> Result<Pressed, KeyError> {
+        Ok(Pressed::Mouse {
+            key: MouseKey::new(input, modifiers),
+            uses_mod: false,
+        })
+    }
+
     #[test]
     fn mouse_names_with_modifiers() {
         assert_eq!(
             parse_pressed("Shift+RightMouse"),
-            Ok(Pressed::Mouse(MouseKey::new(
-                MouseButton::Right,
-                Modifiers::SHIFT
-            )))
+            mouse(MouseButton::Right, Modifiers::SHIFT)
         );
         assert_eq!(
             parse_pressed("leftmouse"),
-            Ok(Pressed::Mouse(MouseKey::new(
-                MouseButton::Left,
-                Modifiers::NONE
-            )))
+            mouse(MouseButton::Left, Modifiers::NONE)
         );
         let key = MouseKey::new(
             MouseButton::Middle,
@@ -257,16 +276,68 @@ mod tests {
             },
         );
         assert_eq!(mouse_name(key), "ctrl+alt+shift+middlemouse");
-        assert_eq!(parse_pressed(&mouse_name(key)), Ok(Pressed::Mouse(key)));
+        assert_eq!(
+            parse_pressed(&mouse_name(key)),
+            mouse(MouseButton::Middle, key.modifiers)
+        );
+    }
+
+    #[test]
+    fn wheel_names_read_back() {
+        assert_eq!(
+            parse_pressed("Alt+WheelDown"),
+            mouse(WheelDirection::Down, Modifiers::ALT)
+        );
+        for (name, direction) in [
+            ("wheelup", WheelDirection::Up),
+            ("wheeldown", WheelDirection::Down),
+            ("wheelleft", WheelDirection::Left),
+            ("ctrl+wheelright", WheelDirection::Right),
+        ] {
+            let Ok(Pressed::Mouse { key, .. }) = parse_pressed(name) else {
+                panic!("{name} is not a mouse name");
+            };
+            assert_eq!(key.input, MouseInput::Wheel(direction), "{name}");
+            assert_eq!(mouse_name(key), name);
+        }
+    }
+
+    #[test]
+    fn mod_before_a_mouse_name() {
+        assert_eq!(
+            parse_pressed("Mod+LeftMouse"),
+            Ok(Pressed::Mouse {
+                key: MouseKey::new(MouseButton::Left, Modifiers::NONE),
+                uses_mod: true,
+            })
+        );
+        assert_eq!(
+            parse_pressed("mod+shift+wheelup"),
+            Ok(Pressed::Mouse {
+                key: MouseKey::new(WheelDirection::Up, Modifiers::SHIFT),
+                uses_mod: true,
+            })
+        );
     }
 
     #[test]
     fn mouse_names_are_not_keys() {
-        for name in ["leftmouse", "alt+rightmouse"] {
+        for name in ["leftmouse", "alt+rightmouse", "wheelup", "mod+leftmouse"] {
             assert_eq!(parse_key(name), Err(KeyError(name.to_owned())));
         }
-        for name in ["wheelup", "scrollwheelup", "wheeldown", "mouse"] {
-            assert_eq!(parse_pressed(name), Err(KeyError(name.to_owned())));
+        for name in [
+            "scrollup",
+            "scrollwheelup",
+            "mouse",
+            "mod+h",
+            "mod+enter",
+            "mod",
+        ] {
+            assert_eq!(
+                parse_pressed(name),
+                Err(KeyError(name.to_owned())),
+                "{name}"
+            );
         }
     }
 

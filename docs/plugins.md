@@ -291,7 +291,7 @@ Each built-in option belongs to one side, and each process knows only its own si
 
 | side | options |
 |---|---|
-| client | `prefix`, `center_focused_column`, `loop_bands`, `notify_style`, `tile_border_sides`, `tile_border_chars`, `floating_border_sides`, `floating_border_chars`, `width_step`, `height_step` |
+| client | `prefix`, `center_focused_column`, `loop_bands`, `notify_style`, `tile_border_sides`, `tile_border_chars`, `floating_border_sides`, `floating_border_chars`, `width_step`, `height_step`, `mouse_mod` |
 | server | `default_column_width`, `width_presets` |
 
 ```lua
@@ -430,14 +430,25 @@ gband.keymap.set("prefix", "m", function() gband.keymap.enter("move") end, { des
 ### Mouse names
 
 `leftmouse`, `middlemouse` and `rightmouse`, with `ctrl`, `alt` and `shift`, bind a press of a mouse button in a key table, as a key binds.
-They cannot be the `prefix` option or a key of a plugin window's `keys`, and the wheel has no name: every wheel step goes to the window under the pointer.
+`wheelup`, `wheeldown`, `wheelleft` and `wheelright` bind one step of the wheel the same way.
+They cannot be the `prefix` option or a key of a plugin window's `keys`.
 A press matches the active table: in `root`, a bound mouse name replaces the interactive defaults, which focus, forward to a program, select or paste.
 In a mode or a key sequence it behaves as a key does.
+A wheel step that no binding of the active table takes goes to the window under the pointer, as it always did, and leaves the active table as it was, so a stray wheel step after the prefix key does not end the sequence.
+While a drag gesture runs, every wheel step goes to the window under the pointer.
+After a wheel binding runs, further steps of the same name and modifiers are discarded until 150 ms have passed since its last run, so one flick of a free-spinning wheel or a touchpad runs it once.
 The key list leaves mouse bindings out.
 
-A function bound to a mouse name runs with one argument, the `MousePressed` payload.
+`mod` before a mouse name stands for the modifiers of the client option `mouse_mod`, `"alt"` by default, added to any other modifier the name gives.
+It is read when the bindings are used, as `prefix` is, so setting the option before or after the binding gives the same result, and `gband.keymap.list` shows the name as written, such as `mod+leftmouse`.
+`mouse_mod` takes `ctrl`, `alt` and `shift` joined by `+`, in any order and case, and reads back in lowercase as `ctrl`, `alt`, `shift`.
+`mod` before a key that is not a mouse name is an error.
+When two bindings of one table match the same mouse event, such as `mod+leftmouse` and `alt+leftmouse`, the one made last runs, so your own `alt+leftmouse` after `gband.keystyle.use()` takes the place of the preset's `mod+leftmouse`.
+
+A function bound to a button runs with one argument, the `MousePressed` payload, and a function bound to a wheel name with the `MouseScrolled` payload.
 The drag actions `drag_window`, `drag_resize_window` and `drag_band` start a gesture when a mouse press runs them, from its binding or a function it calls, and do nothing at any other time.
-The modal key style binds them to `leftmouse`, `rightmouse` and `middlemouse` in navigation mode.
+Both key styles bind them to `mod+leftmouse`, `mod+rightmouse` and `mod+middlemouse` in `root` and in `prefix`, and to `leftmouse`, `rightmouse` and `middlemouse` in `prefix`, and bind `mod+wheeldown` and `mod+wheelup` to `focus_band_down` and `focus_band_up` in both tables.
+With no binding, Ctrl and Alt held together select text over a program that asked for the mouse, and Alt alone reaches the program.
 `drag_band`, and `drag_window` pressed on empty ribbon, slide the band sideways or switch bands vertically, whichever axis the drag starts on, and never both in one drag.
 
 ```lua
@@ -640,8 +651,9 @@ The `keys` functions, `on_input`, `on_close` and `on_resize` run as callbacks of
 A plugin window closes when its plugin is marked failed.
 
 Without `on_mouse`, a left click on a plugin window with `cursorline` moves the cursor line to the line under the pointer, and the wheel acts as Down and Up do, in any mode and whether or not the plugin window has focus.
+A wheel step that runs a binding, such as Alt with the wheel in the default configuration, reaches neither these defaults nor `on_mouse`.
 With `on_mouse`, those defaults are off.
-`on_mouse` runs for a press on the plugin window that no `root` binding takes, for that press's drags and release, and for each wheel step over it in any mode, with the plugin window's number and a table:
+`on_mouse` runs for a press on the plugin window that no `root` binding takes, for that press's drags and release, and for each wheel step over it in any mode that runs no binding, with the plugin window's number and a table:
 
 - `kind`: `"press"`, `"release"`, `"drag"` or `"scroll"`.
 - `button`: `"left"`, `"middle"` or `"right"`, except for `"scroll"`.

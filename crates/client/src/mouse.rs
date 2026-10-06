@@ -1,4 +1,4 @@
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use gband_core::action::{Action, ClientAction};
 use gband_core::geometry::{MIN_COLUMN_WIDTH, Size, WindowBox};
@@ -14,7 +14,7 @@ use gband_protocol::ClientMessage;
 use ratatui::layout::{Position, Rect};
 
 use crate::animation::{DrawnTile, FRAME, Hold};
-use crate::bindings::MouseCommand;
+use crate::bindings::{MouseCommand, WheelCommand};
 use crate::render::{Region, RegionKind, Selected};
 use crate::{Controls, Display, Step};
 
@@ -400,6 +400,7 @@ pub struct Pointer {
     pub copy_buffer: String,
     pub sends: Option<Sends>,
     pub last_flush: Option<Instant>,
+    pub wheel_binding: Option<(MouseKey, Instant)>,
 }
 
 impl Pointer {
@@ -417,6 +418,8 @@ pub(crate) struct Pressing {
     pub button: MouseButton,
     pub cell: (u16, u16),
 }
+
+const WHEEL_COOLDOWN: Duration = Duration::from_millis(150);
 
 fn reports_mouse(display: &Display, window: WindowId) -> bool {
     display
@@ -529,7 +532,7 @@ impl Controls {
         let mut steps = self.react(display, Vec::new(), |controls, display, steps| {
             match event.kind {
                 MouseKind::Wheel(direction) => {
-                    controls.wheel(display, &hit, event, direction, steps)
+                    controls.wheel(display, &hit, event, direction, now, steps)
                 }
                 MouseKind::Press(button) => {
                     controls.mouse_press(display, &hit, event, button, &table, steps)
@@ -587,8 +590,32 @@ impl Controls {
         hit: &Hit,
         event: MouseEvent,
         direction: WheelDirection,
+        now: Instant,
         steps: &mut Vec<Step>,
     ) {
+        if display.pointer.gesture().is_none() {
+            let key = MouseKey::new(direction, event.modifiers);
+            let table = self.leader.active().to_owned();
+            if display
+                .pointer
+                .wheel_binding
+                .is_some_and(|(last, at)| last == key && now < at + WHEEL_COOLDOWN)
+            {
+                return;
+            }
+            if let WheelCommand::Run(binding) = self.leader.handle_wheel(&self.keymap, key) {
+                display.pointer.wheel_binding = Some((key, now));
+                match binding {
+                    Binding::Action(action) => self.run_action(display, action, steps),
+                    Binding::Callback(callback) => {
+                        let pointer = payload(hit, event, &table);
+                        let outcome = self.runtime.call_scrolled(callback, direction, &pointer);
+                        self.apply(display, outcome, steps);
+                    }
+                }
+                return;
+            }
+        }
         match hit.target {
             Target::Window(window) => {
                 let cell = hit.content.or_else(|| {
@@ -696,7 +723,8 @@ impl Controls {
                 let Some((col, row)) = hit.content else {
                     return;
                 };
-                if reports_mouse(display, window) && !event.modifiers.alt {
+                if reports_mouse(display, window) && !(event.modifiers.ctrl && event.modifiers.alt)
+                {
                     steps.push(Step::Send(ClientMessage::Mouse {
                         window,
                         event: event.at(col, row),

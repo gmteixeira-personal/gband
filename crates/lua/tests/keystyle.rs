@@ -200,7 +200,36 @@ fn preset_required_by_name() {
         let entries = prefix_entries(&config);
         assert_eq!(entries[0].0, "h");
         assert_eq!(entries[0].1.as_deref(), Some("focus_column_left"));
-        assert!(config.keymap.get("root").is_none_or(Vec::is_empty));
+    }
+}
+
+#[test]
+fn only_mouse_names_in_root() {
+    for style in ["modal", "direct"] {
+        let scratch = Scratch::new(&format!("keystyle-root-{style}"));
+        scratch.write(&format!("gband.keystyle.use('{style}')"));
+        let config = scratch.loaded();
+        let keys: Vec<String> = eval(
+            &config,
+            "local keys = {} for _, entry in ipairs(gband.keymap.list('root')) do keys[#keys + 1] = entry.key end return keys",
+        );
+        assert_eq!(
+            keys,
+            [
+                "mod+leftmouse",
+                "mod+rightmouse",
+                "mod+middlemouse",
+                "mod+wheeldown",
+                "mod+wheelup",
+            ],
+            "{style}"
+        );
+        assert!(
+            config.keymap["root"]
+                .iter()
+                .all(|(chord, _)| matches!(chord, Chord::Mouse { uses_mod: true, .. })),
+            "{style}"
+        );
     }
 }
 

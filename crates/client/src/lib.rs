@@ -1008,12 +1008,7 @@ impl Controls {
             display.report_error(error.to_string());
         }
         Self {
-            keymap: Keymap::new(
-                config.options.prefix,
-                config.options.steps,
-                config.keymap,
-                config.modes,
-            ),
+            keymap: Keymap::new(&config.options, config.keymap, config.modes),
             runtime: config.runtime,
             leader: Leader::default(),
             refresh_pending: false,
