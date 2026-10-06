@@ -25,15 +25,23 @@ local function three_windows(g, config)
   end
 end
 
-t.case("focus right goes round the strip without end", function(g)
-  three_windows(g)
-  shows(g, "2,3")
-  g.keys("ctrl+space")
-  for _, expected in ipairs({ "3,1", "1,2", "2,3", "3,1", "1,2", "2,3", "3,1" }) do
-    g.keys("l")
-    shows(g, expected)
+local function goes_round_right(config)
+  return function(g)
+    three_windows(g, config)
+    shows(g, "2,3")
+    g.keys("ctrl+space")
+    for _, expected in ipairs({ "3,1", "1,2", "2,3", "3,1", "1,2", "2,3", "3,1" }) do
+      g.keys("l")
+      shows(g, expected)
+    end
   end
-end)
+end
+
+t.case("focus right goes round the strip without end", goes_round_right())
+
+t.case("focus right goes round the strip without end with no bar", goes_round_right([[
+  gband.keystyle.use()
+]]))
 
 t.case("focus left goes round the strip without end", function(g)
   three_windows(g)
