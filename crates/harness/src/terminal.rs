@@ -1,5 +1,4 @@
 use std::io::{Read, Write};
-use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread;
@@ -12,7 +11,20 @@ use rustix::process::{Pid, Signal};
 
 use crate::env::{TIMEOUT, TestEnv};
 
-type SharedWriter = Arc<Mutex<Box<dyn Write + Send>>>;
+type SharedWriter = Arc<Mutex<Input>>;
+
+struct Input {
+    writer: Box<dyn Write + Send>,
+    written: u64,
+}
+
+impl Input {
+    fn send(&mut self, bytes: &[u8]) -> std::io::Result<()> {
+        self.writer.write_all(bytes)?;
+        self.written += bytes.len() as u64;
+        self.writer.flush()
+    }
+}
 
 pub struct Attached {
     pub child: Box<dyn Child + Send + Sync>,
@@ -75,9 +87,10 @@ impl Attached {
             .master
             .try_clone_reader()
             .map_err(std::io::Error::other)?;
-        let writer: SharedWriter = Arc::new(Mutex::new(
-            pair.master.take_writer().map_err(std::io::Error::other)?,
-        ));
+        let writer: SharedWriter = Arc::new(Mutex::new(Input {
+            writer: pair.master.take_writer().map_err(std::io::Error::other)?,
+            written: 0,
+        }));
         let output = Arc::clone(&grid);
         let replies = Arc::clone(&writer);
         thread::spawn(move || {
@@ -92,8 +105,7 @@ impl Attached {
                     grid.take_write_back()
                 };
                 if !reply.is_empty() {
-                    let mut writer = replies.lock().unwrap();
-                    let _ = writer.write_all(&reply).and_then(|()| writer.flush());
+                    let _ = replies.lock().unwrap().send(&reply);
                 }
             }
         });
@@ -114,21 +126,11 @@ impl Attached {
     }
 
     pub fn try_send(&self, bytes: &[u8]) -> std::io::Result<()> {
-        let mut writer = self.writer.lock().unwrap();
-        writer.write_all(bytes)?;
-        writer.flush()
+        self.writer.lock().unwrap().send(bytes)
     }
 
-    pub fn input_pending(&self) -> std::io::Result<u64> {
-        let tty = self
-            .master
-            .tty_name()
-            .ok_or_else(|| std::io::Error::other("the terminal has no name"))?;
-        let tty = std::fs::OpenOptions::new()
-            .read(true)
-            .custom_flags(rustix::fs::OFlags::NOCTTY.bits() as i32)
-            .open(tty)?;
-        Ok(rustix::io::ioctl_fionread(&tty)?)
+    pub fn written(&self) -> u64 {
+        self.writer.lock().unwrap().written
     }
 
     pub fn send(&mut self, bytes: &[u8]) {

@@ -31,7 +31,7 @@ pub enum ToProcess {
     },
     Settle {
         round: u32,
-        markers: Option<u64>,
+        input: Option<u64>,
     },
     Reload {
         id: u64,

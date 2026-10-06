@@ -3,4 +3,5 @@ pub mod event;
 pub mod geometry;
 pub mod input;
 pub mod layout;
+pub mod terminal_input;
 pub mod view;

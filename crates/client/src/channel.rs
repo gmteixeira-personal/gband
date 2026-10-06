@@ -20,7 +20,8 @@ pub(crate) struct Channel {
     reader: MessageReader<OwnedReadHalf>,
     writer: MessageWriter<OwnedWriteHalf>,
     reload: Loader,
-    markers: u64,
+    read: u64,
+    holding: bool,
     input: Option<(u32, u64)>,
     pub(crate) draw: Option<u32>,
     reported: u64,
@@ -44,7 +45,8 @@ impl Channel {
             reader: MessageReader::new(reader),
             writer: MessageWriter::new(writer),
             reload: channel.reload,
-            markers: 0,
+            read: 0,
+            holding: false,
             input: None,
             draw: None,
             reported: 0,
@@ -69,16 +71,17 @@ impl Channel {
             .await
     }
 
-    pub(crate) async fn marker(&mut self, sent: u64) -> Result<()> {
-        self.markers += 1;
-        self.check_input(sent).await
+    pub(crate) async fn read(&mut self, bytes: u64, holding: bool) -> Result<()> {
+        self.read += bytes;
+        self.holding = holding;
+        self.check_input().await
     }
 
-    async fn check_input(&mut self, sent: u64) -> Result<()> {
+    async fn check_input(&mut self) -> Result<()> {
         match self.input {
-            Some((round, markers)) if self.markers >= markers => {
+            Some((round, input)) if self.read >= input && !self.holding => {
                 self.input = None;
-                self.settled(round, sent).await
+                self.answer(&FromProcess::Settled { round, sent: 0 }).await
             }
             _ => Ok(()),
         }
@@ -122,15 +125,12 @@ impl Channel {
                 ToProcess::SetTime { time } => gband_lua::freeze_time(time),
                 ToProcess::Settle {
                     round,
-                    markers: Some(markers),
+                    input: Some(input),
                 } => {
-                    self.input = Some((round, markers));
-                    self.check_input(connection.sent).await?;
+                    self.input = Some((round, input));
+                    self.check_input().await?;
                 }
-                ToProcess::Settle {
-                    round,
-                    markers: None,
-                } => {
+                ToProcess::Settle { round, input: None } => {
                     if !connection.reader.fill_ready().await.unwrap_or(false) {
                         return Ok(Served::Finished(Outcome::LostServer));
                     }

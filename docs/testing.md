@@ -130,7 +130,7 @@ When the case ends, passed or failed, the runner stops the client, the server an
 
 | function | effect |
 |---|---|
-| `g.keys(keys)` | presses keys, named as in key bindings and separated by spaces, such as `"ctrl+space n"`; each is written as xterm sends it |
+| `g.keys(keys)` | presses keys, named as in key bindings and separated by spaces, such as `"ctrl+space n"`; each is written as xterm sends it, and after a key that ends in ESC, such as `escape`, it waits until the client has read that key, so the next key is not read with it |
 | `g.type(text)` | types `text` |
 | `g.paste(text)` | pastes `text`, bracketed when the client enabled bracketed paste |
 | `g.run(line)` | types `line` and Enter |
@@ -258,7 +258,7 @@ Give `time = false` to `g.start` for the real time.
 
 `g.settle()` returns once gband has finished reacting to everything the case did so far:
 
-1. the client has read and handled every key the case wrote,
+1. the client has read and handled every byte written to its terminal, the case's keys and the terminal's own replies, and holds no unfinished escape sequence,
 2. the server has handled every message the client sent, applied the actions, run its Lua handlers and sent the changes,
 3. the client has handled every message the server sent, run its handlers, finished any animation and drawn the result,
 4. the runner has read the frame,
@@ -267,6 +267,8 @@ and again for the effects of those effects, until a round changes nothing, up to
 Handlers that keep triggering each other make it fail after ten rounds.
 A settle that does not finish in 10 seconds fails naming the step that did not.
 `g.start` returns after a settle.
+
+An Escape reaches gband 25 ms after its byte, once no other byte has followed it, so a settle after `escape` takes at least that long.
 
 Settle does not wait for programs in windows: a shell may print its prompt or a command its output at any time.
 Wait for those with `g.wait_text` or `g.wait`:

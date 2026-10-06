@@ -39,6 +39,8 @@ After an ESC whose next byte starts another sequence, the decoder decodes that s
 - A mouse report, focus report or paste start gives Escape and then that event.
 - Another ESC with nothing after it, before the flush, gives Alt+Escape.
 
+Held bytes resolve as zellij's longest-match key lookup resolves them, where `\x1b[` is itself the key Alt+`[` and `\x1bO` is Alt+Shift+`O`. A byte that no sequence can continue resolves them at once: Alt with `[` or `O`, then the rest read as keys, so Alt+`[` followed within 25 ms by `x` is Alt+`[` then `x`. The flush resolves whatever is still held the same way, so Alt+`[` and Alt+Shift+`O` pressed alone stay Alt keys. A complete sequence that started like one of gband's and named none is dropped, as zellij skips a complete CSI sequence it does not know. gband's table differs from zellij's: it adds the Linux console F1 to F5 and the default mouse encoding, which zellij lacks. It leaves out zellij's rxvt Shift and Ctrl arrows, `\x1b[a` to `\x1b[d` and `\x1bOa` to `\x1bOd`, so Alt+`[` then `a` is Alt+`[` then `a`, where zellij reads Shift+Up. zellij also waits for the timeout before typing a malformed sequence's bytes, where gband types them once the malformed byte arrives; the keys are the same. A partial UTF-8 character survives the flush, as in zellij and herdr.
+
 This matches zellij and herdr's macOS policy, which keep Terminal.app's Option+arrow (`\x1b\x1b[A`) as Alt+Up. *Alternative:* herdr's Linux policy, which splits `ESC ESC` into Escape and the next sequence. Rejected by the user's choice, and because it breaks Option+arrow on macOS.
 
 ### Sequence table as data
@@ -47,7 +49,7 @@ Keys are matched by an explicit table: the inverse of `encode_key`, plus the xte
 ### Client loop
 - `spawn_events` becomes a thread that reads raw standard input into byte chunks and sends them on the existing unbounded channel.
 - The main `select!` gains a branch: a sleep until 25 ms after the last chunk, enabled only while `decoder.holds()`. When it fires, the loop calls `decoder.flush()`.
-- Each chunk goes through `decoder.push`, and the inputs go to the existing `controls.press`, `controls.mouse` and `controls.paste`. Focus inputs are dropped.
+- Each chunk goes through `decoder.push`, and the inputs go to the existing `controls.press`, `controls.mouse` and `controls.paste`, one per pass of the loop with a draw between them, as crossterm's events did, so the frames drawn do not depend on how reads split the input. Focus inputs are dropped.
 - Resize comes from `tokio::signal::unix::signal(SignalKind::window_change())` followed by `crossterm::terminal::size()`.
 - `crates/client/src/input.rs` and its crossterm conversions are deleted.
 - crossterm stays for raw mode, the alternate screen, bracketed paste and mouse enabling, and `terminal::size`.
