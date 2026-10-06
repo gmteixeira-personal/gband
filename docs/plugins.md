@@ -687,8 +687,10 @@ end, { desc = "open a notes window" })
 ## Side bars: `gband.bar`
 
 A bar reserves columns at the left or right of one client's terminal and shows lines of styled text there.
-Bars never change a window's size: the client still reports its whole terminal to the server, and draws the ribbon in the columns its bars leave, scrolling the view inside them.
-Each client has its own bars, and the server never sees them.
+The client reports the columns its bars leave as its size, so column widths, full width included, are measured against that space.
+Adding, resizing or removing a bar resizes the windows, as a terminal resize does, while moving a bar to the other side keeps their size.
+Several bar changes from one callback or one load are reported as one resize.
+Each client has its own bars, and the server sees only the size they leave.
 
 `gband.bar.add(spec)` adds a bar and returns its full id:
 

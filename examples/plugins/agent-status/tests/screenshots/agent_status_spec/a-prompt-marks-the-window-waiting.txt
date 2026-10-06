@@ -1,7 +1,7 @@
 size 80x24 cursor 4:4 shown
  0|I┌────────────────────────────────────┐                                      1
  1| │$ printf 'Do you want to %s?\n' proc│
- 2|1│d                                   │
+ 2|1│eed                                 │
  3|2│Do you want to proceed?             │
  4| │$                                   │
  5| │                                    │
