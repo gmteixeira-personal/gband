@@ -1,7 +1,7 @@
 mod common;
 
 use common::*;
-use gband_core::action::{Action, ClientAction};
+use gband_core::action::{Action, ClientAction, SessionCommand};
 use gband_core::view::ViewAction;
 use gband_lua::{Binding, Chord, Dispatch};
 
@@ -180,4 +180,216 @@ fn plugin_root_binding_of_the_prefix_key_is_dropped() {
     let config = scratch.loaded();
     assert_eq!(config.keymap["root"].len(), 1);
     assert_eq!(config.errors[0].plugin.as_deref(), Some("hello"));
+}
+
+#[test]
+fn modes_and_labels() {
+    let scratch = Scratch::new("modes");
+    scratch.write(
+        "gband.keymap.mode('prefix', { label = 'nav' })
+gband.keymap.mode('prefix', { label = 'navigation' })
+gband.keymap.mode('resize')
+gband.keymap.set('move', 'h', gband.action.focus_column_left)
+labels = { gband.keymap.label('prefix'), gband.keymap.label('resize'), gband.keymap.label('move') }",
+    );
+    let config = scratch.loaded();
+    assert_eq!(
+        global::<Vec<String>>(&config, "labels"),
+        ["navigation", "resize", "move"]
+    );
+    assert_eq!(
+        config.modes.iter().collect::<Vec<_>>(),
+        ["prefix", "resize"]
+    );
+}
+
+#[test]
+fn a_mode_keeps_its_declaration_across_set_and_del() {
+    let scratch = Scratch::new("mode-set-del");
+    scratch.write(
+        "gband.keymap.mode('resize', { label = 'RESIZE' })
+gband.keymap.set('resize', '=', gband.action.grow_column_width)
+gband.keymap.del('resize', '=')
+gband.keymap.set('resize', '-', gband.action.shrink_column_width)",
+    );
+    let config = scratch.loaded();
+    assert!(config.modes.contains("resize"));
+    assert_eq!(
+        eval::<String>(&config, "return gband.keymap.label('resize')"),
+        "RESIZE"
+    );
+}
+
+#[test]
+fn invalid_mode_calls() {
+    for (index, call) in [
+        "gband.keymap.mode('root')",
+        "gband.keymap.mode(5)",
+        "gband.keymap.mode('')",
+        "gband.keymap.mode('prefix', 3)",
+        "gband.keymap.mode('prefix', { label = 3 })",
+        "gband.keymap.mode('prefix', { label = '' })",
+        "gband.keymap.label(nil)",
+        "gband.keymap.run('prefix', 'h')",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let scratch = Scratch::new(&format!("invalid-mode-{index}"));
+        let path = scratch.write(&format!("\n{call}"));
+        let error = scratch
+            .load()
+            .err()
+            .unwrap_or_else(|| panic!("{call} loaded"));
+        assert_error_at(&error, &path, 2, "");
+    }
+}
+
+#[test]
+fn mode_declared_after_the_load() {
+    let scratch = Scratch::new("late-mode");
+    let path = scratch
+        .write("gband.bind('alt+n', function()\n\n\n\n\n\n  gband.keymap.mode('move')\nend)");
+    let config = scratch.loaded();
+    let Binding::Callback(callback) = config.keymap["root"][0].1 else {
+        panic!("not a function");
+    };
+    let outcome = config.runtime.call(callback);
+    assert_error_at(
+        &outcome.errors[0],
+        &path,
+        7,
+        "while the configuration loads",
+    );
+}
+
+#[test]
+fn label_in_a_callback() {
+    let scratch = Scratch::new("label-callback");
+    scratch.write(&format!(
+        "{JOB}gband.keymap.mode('prefix', {{ label = 'navigation' }})"
+    ));
+    let config = scratch.loaded();
+    clean(&run_job(&config, "seen = gband.keymap.label('prefix')"));
+    assert_eq!(global::<String>(&config, "seen"), "navigation");
+}
+
+#[test]
+fn enter_root_with_no_root_binding() {
+    let scratch = Scratch::new("enter-root");
+    scratch.write(
+        "gband.keymap.mode('prefix')
+gband.keymap.set('prefix', 'escape', function() gband.keymap.enter('root') end)",
+    );
+    let config = scratch.loaded();
+    assert!(!config.keymap.contains_key("root"));
+    let Binding::Callback(callback) = config.keymap["prefix"][0].1 else {
+        panic!("not a function");
+    };
+    config.runtime.set_active_table("prefix");
+    let outcome = config.runtime.call(callback);
+    clean(&outcome);
+    assert_eq!(outcome.dispatched, [Dispatch::Enter("root".to_owned())]);
+}
+
+#[test]
+fn run_an_action_binding() {
+    let scratch = Scratch::new("run-action");
+    scratch.write(&format!(
+        "{JOB}gband.keymap.set('prefix', 'h', gband.action.focus_column_left)"
+    ));
+    let config = scratch.loaded();
+    let outcome = run_job(&config, "ran = gband.keymap.run('prefix', 'h')");
+    clean(&outcome);
+    assert!(global::<bool>(&config, "ran"));
+    assert_eq!(
+        outcome.dispatched,
+        [Dispatch::Action(Action::View(ViewAction::FocusLeft))]
+    );
+}
+
+#[test]
+fn run_a_function_binding() {
+    let scratch = Scratch::new("run-function");
+    scratch.write(&format!(
+        "{JOB}calls = 0
+gband.keymap.set('prefix', 'x', function() calls = calls + 1 end)
+gband.keymap.set('prefix', 'prefix', function() prefixed = true end)"
+    ));
+    let config = scratch.loaded();
+    let outcome = run_job(
+        &config,
+        "ran = gband.keymap.run('prefix', 'x')\ngband.keymap.run('prefix', 'prefix')",
+    );
+    clean(&outcome);
+    assert!(global::<bool>(&config, "ran"));
+    assert_eq!(global::<i64>(&config, "calls"), 1);
+    assert!(global::<bool>(&config, "prefixed"));
+}
+
+#[test]
+fn run_a_registered_action_under_its_plugin() {
+    let scratch = Scratch::new("run-registered");
+    scratch.write(JOB);
+    scratch.client_plugin(
+        "hello",
+        "gband.action.register('greet', function() error('boom') end)
+gband.keymap.set('prefix', 'g', gband.action['hello.greet'])",
+    );
+    let config = scratch.loaded();
+    let outcome = run_job(&config, "ran = gband.keymap.run('prefix', 'g')");
+    assert!(global::<bool>(&config, "ran"));
+    assert_eq!(outcome.errors[0].plugin.as_deref(), Some("hello"));
+}
+
+#[test]
+fn run_an_unbound_key() {
+    let scratch = Scratch::new("run-unbound");
+    scratch.write(JOB);
+    let config = scratch.loaded();
+    let outcome = run_job(&config, "ran = gband.keymap.run('prefix', 'z')");
+    clean(&outcome);
+    assert!(!global::<bool>(&config, "ran"));
+    assert!(outcome.dispatched.is_empty());
+}
+
+#[test]
+fn invalid_run_calls() {
+    let scratch = Scratch::new("run-invalid");
+    scratch.write(JOB);
+    let config = scratch.loaded();
+    for call in [
+        "gband.keymap.run('', 'h')",
+        "gband.keymap.run(3, 'h')",
+        "gband.keymap.run('prefix', 'hyper+x')",
+        "gband.keymap.run('prefix', 5)",
+    ] {
+        let outcome = run_job(&config, call);
+        assert_eq!(outcome.errors.len(), 1, "{call}");
+    }
+}
+
+#[test]
+fn run_queues_in_the_callers_order() {
+    let scratch = Scratch::new("run-order");
+    scratch.write(&format!(
+        "{JOB}gband.keymap.set('prefix', 'n', function()
+  gband.action.open_window()
+  gband.keymap.enter('root')
+end)"
+    ));
+    let config = scratch.loaded();
+    let outcome = run_job(
+        &config,
+        "gband.action.detach()\ngband.keymap.run('prefix', 'n')",
+    );
+    clean(&outcome);
+    assert_eq!(
+        outcome.dispatched,
+        [
+            Dispatch::Action(Action::Client(ClientAction::Detach)),
+            Dispatch::Action(Action::Session(SessionCommand::OpenWindow)),
+            Dispatch::Enter("root".to_owned()),
+        ]
+    );
 }

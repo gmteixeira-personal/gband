@@ -12,7 +12,7 @@ Buffer {
         "│                  ││                  │",
         "│                  ││                  │",
         "└──────────────────┘└──────────────────┘",
-        "band 1 │ C-space prefix              2/2",
+        "band 1 │ C-space navigation          2/2",
     ],
     styles: [
         x: 0, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,

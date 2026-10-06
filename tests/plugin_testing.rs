@@ -371,7 +371,7 @@ fn nothing_left_behind() {
         "local t = require('gband.test')\n\
          t.case('three windows', function(g)\n\
            g.start()\n\
-           g.keys('ctrl+space enter ctrl+space enter')\n\
+           g.keys('ctrl+space n ctrl+space n')\n\
            g.settle()\n\
            t.eq(g.client('return #gband.layout().bands[1].columns'), 3)\n\
            error('fails on purpose')\n\
@@ -428,7 +428,7 @@ fn users_server_untouched() {
         "local t = require('gband.test')\n\
          t.case('opens windows', function(g)\n\
            g.start()\n\
-           g.keys('ctrl+space enter ctrl+space enter')\n\
+           g.keys('ctrl+space n ctrl+space n')\n\
            g.settle()\n\
          end)\n",
     );
@@ -465,7 +465,7 @@ end)
 
 t.case("open a window by key", function(g)
   g.start({ size = "60x12" })
-  g.keys("ctrl+space enter")
+  g.keys("ctrl+space n")
   g.settle()
   t.eq(g.client("return #gband.layout().bands[1].columns"), 2)
   local _, corners = g.screen().row(0):gsub("┌", "")
@@ -819,7 +819,7 @@ fn settling() {
 
 t.case("key effect is drawn", function(g)
   g.start({ size = "60x12" })
-  g.keys("ctrl+space enter")
+  g.keys("ctrl+space n")
   g.settle()
   local _, corners = g.screen().row(0):gsub("┌", "")
   t.eq(corners, 2)

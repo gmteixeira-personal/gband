@@ -4,7 +4,6 @@ use std::path::PathBuf;
 use gband_core::input::Key;
 use mlua::{Lua, Table, Value};
 
-use crate::KeyTables;
 use crate::actions::LuaAction;
 use crate::api::{self, Binding, Chord, Dispatch, require_loading};
 use crate::callbacks;
@@ -12,6 +11,7 @@ use crate::error::{ConfigError, caller};
 use crate::guard::{self, Failure};
 use crate::keys::parse_key;
 use crate::owner;
+use crate::{KeyTables, Modes};
 
 pub(crate) const ROOT: &str = "root";
 pub(crate) const PREFIX: &str = "prefix";
@@ -33,6 +33,7 @@ struct Bound {
 
 pub(crate) struct Keymaps {
     bound: Vec<Bound>,
+    modes: BTreeMap<String, Option<String>>,
     active: String,
 }
 
@@ -40,6 +41,7 @@ impl Default for Keymaps {
     fn default() -> Self {
         Self {
             bound: Vec::new(),
+            modes: BTreeMap::new(),
             active: ROOT.to_owned(),
         }
     }
@@ -58,6 +60,9 @@ pub(crate) fn install(lua: &Lua, gband: &Table) -> mlua::Result<()> {
     keymap.set("list", lua.create_function(list)?)?;
     keymap.set("current_table", lua.create_function(current_table)?)?;
     keymap.set("enter", lua.create_function(enter)?)?;
+    keymap.set("mode", lua.create_function(mode)?)?;
+    keymap.set("label", lua.create_function(label)?)?;
+    keymap.set("run", lua.create_function(run)?)?;
     gband.set("keymap", keymap)
 }
 
@@ -214,13 +219,79 @@ fn enter(lua: &Lua, table: Value) -> mlua::Result<()> {
         return Err(api::outside_callback(lua, function));
     }
     let table = table_name(lua, &table, function)?;
-    if !keymaps(lua).bound.iter().any(|bound| bound.table == table) {
+    if table != ROOT && !keymaps(lua).bound.iter().any(|bound| bound.table == table) {
         return Err(ConfigError::raise(
             lua,
             format!("the key table `{table}` has no binding"),
         ));
     }
     api::queue(lua, Dispatch::Enter(table), function)
+}
+
+fn mode_label(lua: &Lua, opts: &Value, function: &str) -> mlua::Result<Option<String>> {
+    let invalid = || {
+        ConfigError::raise(
+            lua,
+            format!("{function} expects `label` to be a non-empty string"),
+        )
+    };
+    match opts {
+        Value::Nil => Ok(None),
+        Value::Table(opts) => match opts.get::<Value>("label")? {
+            Value::Nil => Ok(None),
+            Value::String(label) if !label.as_bytes().is_empty() => {
+                Ok(Some(label.to_str()?.to_owned()))
+            }
+            _ => Err(invalid()),
+        },
+        _ => Err(ConfigError::raise(
+            lua,
+            format!("{function} expects its options as a table"),
+        )),
+    }
+}
+
+fn mode(lua: &Lua, (table, opts): (Value, Value)) -> mlua::Result<()> {
+    let function = "gband.keymap.mode";
+    let table = table_name(lua, &table, function)?;
+    if table == ROOT {
+        return Err(ConfigError::raise(lua, "the root table cannot be a mode"));
+    }
+    let label = mode_label(lua, &opts, function)?;
+    require_loading(lua, function)?;
+    keymaps(lua).modes.insert(table, label);
+    Ok(())
+}
+
+fn label(lua: &Lua, table: Value) -> mlua::Result<String> {
+    let table = table_name(lua, &table, "gband.keymap.label")?;
+    let label = keymaps(lua).modes.get(&table).cloned().flatten();
+    Ok(label.unwrap_or(table))
+}
+
+fn run(lua: &Lua, (table, key): (Value, Value)) -> mlua::Result<bool> {
+    let function = "gband.keymap.run";
+    if !api::in_callback(lua) {
+        return Err(api::outside_callback(lua, function));
+    }
+    let table = table_name(lua, &table, function)?;
+    let (_, chord) = chord(lua, &table, &key, function)?;
+    let binding = keymaps(lua)
+        .bound
+        .iter()
+        .find(|bound| bound.table == table && bound.chord == chord)
+        .map(|bound| bound.target.binding);
+    match binding {
+        None => Ok(false),
+        Some(Binding::Action(action)) => {
+            api::queue(lua, Dispatch::Action(action), function)?;
+            Ok(true)
+        }
+        Some(Binding::Callback(callback)) => {
+            callbacks::run::<()>(lua, callback, ())?;
+            Ok(true)
+        }
+    }
 }
 
 pub(crate) fn active(lua: &Lua) -> String {
@@ -231,7 +302,7 @@ pub(crate) fn set_active(lua: &Lua, table: &str) {
     keymaps(lua).active = table.to_owned();
 }
 
-pub(crate) fn finish(lua: &Lua, prefix: Key) -> Result<KeyTables, ConfigError> {
+pub(crate) fn finish(lua: &Lua, prefix: Key) -> Result<(KeyTables, Modes), ConfigError> {
     let clash = |bound: &Bound| bound.table == ROOT && bound.chord == Chord::Key(prefix);
     let clashes: Vec<ConfigError> = keymaps(lua)
         .bound
@@ -264,5 +335,5 @@ pub(crate) fn finish(lua: &Lua, prefix: Key) -> Result<KeyTables, ConfigError> {
             .or_default()
             .push((bound.chord, bound.target.binding));
     }
-    Ok(tables)
+    Ok((tables, keymaps.modes.keys().cloned().collect()))
 }

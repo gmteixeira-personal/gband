@@ -220,6 +220,19 @@ fn root_binding_runs_before_the_plugin_window() {
 }
 
 #[test]
+fn navigation_mode_before_the_plugin_window() {
+    let mut client = Client::new(
+        "navigation-first",
+        "gband.bind('alt+o', function() gband.win.open({ keys = { x = function() pressed = true end } }) end)\n",
+    );
+    client.press("alt+o");
+    client.press("ctrl+space");
+    no_input(&client.press("x"));
+    assert!(client.global::<Option<bool>>("pressed").is_none());
+    assert_eq!(client.controls.active_table(), "prefix");
+}
+
+#[test]
 fn bindings_still_win() {
     let mut client = Client::new(
         "bindings-win",
@@ -227,6 +240,7 @@ fn bindings_still_win() {
     );
     client.press("ctrl+space");
     client.press("l");
+    client.press("escape");
     client.press("alt+o");
     assert!(client.press("ctrl+space").is_empty());
     no_input(&client.press("h"));
@@ -294,6 +308,7 @@ fn prefix_q_closes_a_float_on_the_empty_band() {
     let mut client = Client::new("prefix-q-empty", CLOSABLE);
     client.press("ctrl+space");
     client.press("u");
+    client.press("escape");
     assert_eq!(client.display.focused(), None);
     client.press("alt+n");
     assert_eq!(client.display.plugin_windows().floats().len(), 1);
@@ -301,7 +316,6 @@ fn prefix_q_closes_a_float_on_the_empty_band() {
     let steps = client.press("q");
     assert!(sent(&steps).is_empty(), "{steps:?}");
     assert!(client.display.plugin_windows().floats().is_empty());
-    client.press("ctrl+space");
     assert!(sent(&client.press("q")).is_empty());
 }
 
@@ -335,6 +349,7 @@ fn moving_focus_leaves_the_float() {
     assert_eq!(client.display.plugin_windows().floats().len(), 1);
     assert_eq!(client.display.plugin_windows().focused_float(), None);
     assert_eq!(client.display.focused_plugin_window(), None);
+    client.press("escape");
     let steps = client.press("x");
     assert_eq!(
         sent(&steps),

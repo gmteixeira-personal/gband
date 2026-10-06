@@ -65,7 +65,7 @@ fn tiled_plugin_window_closes_with_the_prefix_and_q() {
             .first()
             .is_some_and(|line| line == "hello from a plugin")
     });
-    client.send(b"\x00q");
+    client.send(b"\x00q\r");
     client.wait_for("one tile again", |screen| tiles(screen).len() == 1);
     client.run("echo still-here");
     client.wait_for_line("still-here");
@@ -97,7 +97,7 @@ fn focused_float_takes_the_keys() {
 fn send_text_runs_a_command_in_another_window() {
     let env = env("windows-send-text");
     let mut client = attached(&env);
-    client.send(b"\x00\r");
+    client.send(b"\x00n");
     client.wait_for("two tiles", |screen| tiles(screen).len() == 2);
     client.wait_for_prompt();
     client.send(b"\x1bt");

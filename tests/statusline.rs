@@ -87,18 +87,21 @@ fn moving_the_status_line() {
 }
 
 #[test]
-fn mode_segment_while_the_prefix_is_held() {
+fn mode_segment_in_navigation_mode() {
     let env = TestEnv::new("statusline-mode");
     let mut client = attached(&env);
     client.wait_for_text("band 1");
     client.send(b"\x00");
-    client.wait_for("the prefix table in the status line", |screen| {
-        row(screen, 23).starts_with("band 1 │ prefix")
+    client.wait_for("navigation mode in the status line", |screen| {
+        row(screen, 23).starts_with("band 1 │ navigation │")
     });
     client.send(b"x");
-    client.wait_for("the prefix table gone", |screen| {
+    thread::sleep(Duration::from_millis(200));
+    assert!(row(&client.screen(), 23).starts_with("band 1 │ navigation │"));
+    client.send(b"\r");
+    client.wait_for("navigation mode gone", |screen| {
         let bottom = row(screen, 23);
-        bottom.starts_with("band 1 │ C-space prefix") && !bottom.contains("│ prefix")
+        bottom.starts_with("band 1 │ C-space navigation") && !bottom.contains("│ navigation │")
     });
 }
 
@@ -108,7 +111,7 @@ fn hints_in_the_default_line() {
     let client = attached(&env);
     client.wait_for("the hints on the bottom row", |screen| {
         let bottom = row(screen, 23);
-        bottom.starts_with("band 1 │ C-space prefix ")
+        bottom.starts_with("band 1 │ C-space navigation ")
             && bottom.ends_with("1/1")
             && bottom.chars().count() == 80
     });
@@ -128,6 +131,6 @@ fn looping_component_is_stopped() {
     });
     client.run("echo alive");
     client.wait_for_line("alive");
-    client.send(b"\x00\r");
+    client.send(b"\x00n");
     client.wait_for("two tiles", |screen| tiles(screen).len() == 2);
 }

@@ -33,11 +33,10 @@ local function entries()
   local prefix = key_form(gband.opt.prefix)
   local list = {}
   for _, binding in ipairs(gband.keymap.list("prefix")) do
-    local action = binding.action
     list[#list + 1] = {
       key = binding.key == "prefix" and prefix or key_form(binding.key),
       text = describe(binding, descs),
-      action = action ~= OWN and action or nil,
+      binding = binding.action ~= OWN and binding.key or nil,
     }
   end
   return list
@@ -53,7 +52,7 @@ local function lines_of(list)
     local key = entry.key .. string.rep(" ", widest + 2 - gband.ui.width(entry.key))
     lines[index] = {
       { text = key, hl = "KeyListKey" },
-      { text = entry.text, hl = entry.action and "PluginWindow" or "KeyListMuted" },
+      { text = entry.text, hl = entry.binding and "PluginWindow" or "KeyListMuted" },
     }
     longest = math.max(longest, gband.ui.width(key) + gband.ui.width(entry.text))
   end
@@ -70,6 +69,7 @@ local function is_open(win)
 end
 
 local function open()
+  gband.keymap.enter("root")
   if current and is_open(current) then
     gband.win.focus(current)
     return
@@ -77,7 +77,7 @@ local function open()
   local list = entries()
   local lines, longest = lines_of(list)
   current = gband.win.open({
-    title = "prefix keys",
+    title = gband.keymap.label("prefix") .. " keys",
     width = longest + 2,
     height = math.min(math.max(#lines + 2, 3), MAX_HEIGHT),
     cursorline = true,
@@ -85,8 +85,8 @@ local function open()
     keys = {
       enter = function(win)
         local entry = list[gband.win.info(win).cursor]
-        if entry and entry.action then
-          gband.action[entry.action]()
+        if entry and entry.binding then
+          gband.keymap.run("prefix", entry.binding)
         end
       end,
     },

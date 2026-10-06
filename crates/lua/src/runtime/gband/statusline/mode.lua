@@ -15,7 +15,7 @@ return {
         if ctx.table == "root" then
           return nil
         end
-        return ctx.table
+        return gband.keymap.label(ctx.table)
       end,
     })
   end,

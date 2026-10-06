@@ -1,5 +1,5 @@
 use gband_core::input::{Key, KeyCode};
-use gband_lua::{Binding, Chord, KeyTables};
+use gband_lua::{Binding, Chord, KeyTables, Modes};
 
 pub const ROOT: &str = "root";
 pub const PREFIX: &str = "prefix";
@@ -7,11 +7,16 @@ pub const PREFIX: &str = "prefix";
 pub struct Keymap {
     pub prefix: Key,
     pub tables: KeyTables,
+    pub modes: Modes,
 }
 
 impl Keymap {
-    pub fn new(prefix: Key, tables: KeyTables) -> Self {
-        Self { prefix, tables }
+    pub fn new(prefix: Key, tables: KeyTables, modes: Modes) -> Self {
+        Self {
+            prefix,
+            tables,
+            modes,
+        }
     }
 
     pub fn table(&self, name: &str) -> &[(Chord, Binding)] {
@@ -59,6 +64,11 @@ impl Leader {
     }
 
     pub fn handle(&mut self, keymap: &Keymap, key: Key) -> Command {
+        if keymap.modes.contains(&self.active) {
+            return keymap
+                .find(&self.active, key)
+                .map_or(Command::Discard, Command::Run);
+        }
         if self.active != ROOT {
             let table = std::mem::replace(&mut self.active, ROOT.to_owned());
             return keymap
@@ -109,10 +119,10 @@ mod tests {
 
     fn defaults() -> Keymap {
         let config = gband_lua::defaults(gband_lua::Side::Client);
-        Keymap::new(config.options.prefix, config.keymap)
+        Keymap::new(config.options.prefix, config.keymap, config.modes)
     }
 
-    fn default_prefix_actions() -> Vec<(String, Option<String>)> {
+    fn default_prefix_entries() -> Vec<(String, Option<String>, String)> {
         let config = gband_lua::defaults(gband_lua::Side::Client);
         let names: Vec<String> = config
             .runtime
@@ -131,10 +141,14 @@ mod tests {
             .map(|entry| {
                 let action: Option<String> = entry.get("action").unwrap();
                 assert!(
-                    action.as_ref().is_some_and(|action| names.contains(action)),
+                    action.as_ref().is_none_or(|action| names.contains(action)),
                     "{action:?}"
                 );
-                (entry.get("key").unwrap(), action)
+                (
+                    entry.get("key").unwrap(),
+                    action,
+                    entry.get("desc").unwrap(),
+                )
             })
             .collect()
     }
@@ -160,7 +174,7 @@ mod tests {
         )
         .unwrap();
         let _ = std::fs::remove_dir_all(&dir);
-        Keymap::new(config.options.prefix, config.keymap)
+        Keymap::new(config.options.prefix, config.keymap, config.modes)
     }
 
     fn key(name: &str) -> Key {
@@ -217,23 +231,26 @@ mod tests {
             ),
             ('+', Action::Session(SessionCommand::StepHeight(Step::Grow))),
             ('R', Action::Session(SessionCommand::ResetHeight)),
+            ('v', Action::Session(SessionCommand::ToggleFloating)),
+            ('V', Action::View(ViewAction::SwitchLayer)),
             ('D', Action::Client(ClientAction::Detach)),
         ];
         for (c, action) in expected {
             assert_eq!(after_prefix(&keymap, char_key(c)), Some(action), "{c}");
         }
-        assert_eq!(
-            after_prefix(&keymap, Key::plain(KeyCode::Enter)),
-            Some(Action::Session(SessionCommand::OpenWindow))
-        );
-        assert_eq!(
-            after_prefix(&keymap, char_key('v')),
-            Some(Action::Session(SessionCommand::ToggleFloating))
-        );
-        assert_eq!(
-            after_prefix(&keymap, char_key('V')),
-            Some(Action::View(ViewAction::SwitchLayer))
-        );
+        let arrows = [
+            (KeyCode::Left, ViewAction::FocusLeft),
+            (KeyCode::Right, ViewAction::FocusRight),
+            (KeyCode::Down, ViewAction::FocusDown),
+            (KeyCode::Up, ViewAction::FocusUp),
+        ];
+        for (arrow, action) in arrows {
+            assert_eq!(
+                after_prefix(&keymap, Key::plain(arrow)),
+                Some(Action::View(action)),
+                "{arrow:?}"
+            );
+        }
         let moves = [
             (
                 'h',
@@ -258,38 +275,62 @@ mod tests {
             assert_eq!(after_prefix(&keymap, ctrl(KeyCode::Char(c))), action, "{c}");
             assert_eq!(after_prefix(&keymap, ctrl(arrow)), action, "{arrow:?}");
         }
-        let mut leader = Leader::default();
-        leader.handle(&keymap, keymap.prefix);
-        assert!(matches!(
-            leader.handle(&keymap, char_key('?')),
-            Command::Run(Binding::Callback(_))
-        ));
-        let registered: Vec<(String, Option<String>)> = default_prefix_actions()
+        for pressed in [
+            char_key('?'),
+            char_key('n'),
+            Key::plain(KeyCode::Escape),
+            Key::plain(KeyCode::Enter),
+            keymap.prefix,
+        ] {
+            let mut leader = Leader::default();
+            leader.handle(&keymap, keymap.prefix);
+            assert!(
+                matches!(
+                    leader.handle(&keymap, pressed),
+                    Command::Run(Binding::Callback(_))
+                ),
+                "{pressed:?}"
+            );
+        }
+        let keys: Vec<String> = default_prefix_entries()
             .into_iter()
-            .filter(|(_, action)| action.as_deref() == Some("keylist.open"))
+            .map(|(key, _, _)| key)
             .collect();
-        assert_eq!(
-            registered,
-            [("?".to_owned(), Some("keylist.open".to_owned()))]
-        );
+        let order = "h l j k u i c n q [ ] r f - = _ + R v V ctrl+h ctrl+l ctrl+j ctrl+k \
+            ctrl+left ctrl+right ctrl+down ctrl+up ? D escape enter left right down up prefix";
+        assert_eq!(keys, order.split_whitespace().collect::<Vec<_>>());
         assert!(keymap.table(ROOT).is_empty());
-        assert_eq!(
-            keymap.table(PREFIX).len(),
-            expected.len() + 2 + 2 + 2 * moves.len() + 1
-        );
+        assert_eq!(keymap.table(PREFIX).len(), keys.len());
+        assert!(keymap.modes.contains(PREFIX));
     }
 
     #[test]
     fn every_default_binding_names_an_action() {
         let keymap = defaults();
-        let actions = default_prefix_actions();
-        assert_eq!(actions.len(), keymap.table(PREFIX).len());
-        for ((chord, binding), (key, action)) in keymap.table(PREFIX).iter().zip(&actions) {
-            let registered = action.as_deref() == Some("keylist.open");
-            assert!(
-                matches!(binding, Binding::Action(_)) != registered,
-                "{chord:?} {key}"
-            );
+        let entries = default_prefix_entries();
+        assert_eq!(entries.len(), keymap.table(PREFIX).len());
+        let functions = [
+            ("n", "open a window"),
+            ("escape", "interactive mode"),
+            ("enter", "interactive mode"),
+            ("prefix", "send the prefix key"),
+        ];
+        for ((chord, binding), (key, action, desc)) in keymap.table(PREFIX).iter().zip(&entries) {
+            match functions.iter().find(|(name, _)| name == key) {
+                Some((_, described)) => {
+                    assert!(action.is_none(), "{key}");
+                    assert_eq!(desc, described, "{key}");
+                    assert!(matches!(binding, Binding::Callback(_)), "{chord:?} {key}");
+                }
+                None => {
+                    let registered = action.as_deref() == Some("keylist.open");
+                    assert!(action.is_some(), "{key}");
+                    assert!(
+                        matches!(binding, Binding::Action(_)) != registered,
+                        "{chord:?} {key}"
+                    );
+                }
+            }
         }
     }
 
@@ -324,16 +365,62 @@ mod tests {
     }
 
     #[test]
-    fn prefix_twice_sends_one_prefix() {
+    fn prefix_twice_runs_the_send_prefix_function() {
         let keymap = defaults();
         assert_eq!(keymap.prefix, key("ctrl+space"));
         assert_eq!(encode_key(keymap.prefix, Modes::default()), b"\x00");
         let mut leader = Leader::default();
         assert_eq!(leader.handle(&keymap, keymap.prefix), Command::Discard);
+        assert!(matches!(
+            leader.handle(&keymap, keymap.prefix),
+            Command::Run(Binding::Callback(_))
+        ));
+        assert_eq!(leader.active(), PREFIX);
+    }
+
+    #[test]
+    fn unbound_key_in_navigation_mode_is_discarded() {
+        let keymap = defaults();
+        let mut leader = Leader::default();
+        assert_eq!(leader.handle(&keymap, keymap.prefix), Command::Discard);
+        assert_eq!(leader.handle(&keymap, char_key('x')), Command::Discard);
+        assert_eq!(leader.active(), PREFIX);
         assert_eq!(
-            ran(leader.handle(&keymap, keymap.prefix)),
-            Some(Action::Client(ClientAction::SendPrefix))
+            ran(leader.handle(&keymap, char_key('l'))),
+            Some(Action::View(ViewAction::FocusRight))
         );
+    }
+
+    #[test]
+    fn navigation_mode_repeats_keys() {
+        let keymap = defaults();
+        let mut leader = Leader::default();
+        assert_eq!(leader.handle(&keymap, keymap.prefix), Command::Discard);
+        for _ in 0..3 {
+            assert_eq!(
+                ran(leader.handle(&keymap, char_key('l'))),
+                Some(Action::View(ViewAction::FocusRight))
+            );
+            assert_eq!(leader.active(), PREFIX);
+        }
+        leader.enter(ROOT.to_owned());
+        assert_eq!(
+            leader.handle(&keymap, char_key('l')),
+            Command::Send(char_key('l'))
+        );
+    }
+
+    #[test]
+    fn prefix_table_that_is_not_a_mode() {
+        let keymap = configured("gband.keymap.set('prefix', 'h', gband.action.focus_column_left)");
+        assert!(keymap.modes.is_empty());
+        let mut leader = Leader::default();
+        assert_eq!(leader.handle(&keymap, keymap.prefix), Command::Discard);
+        assert_eq!(
+            ran(leader.handle(&keymap, char_key('h'))),
+            Some(Action::View(ViewAction::FocusLeft))
+        );
+        assert_eq!(leader.active(), ROOT);
         assert_eq!(
             leader.handle(&keymap, char_key('h')),
             Command::Send(char_key('h'))
@@ -341,15 +428,20 @@ mod tests {
     }
 
     #[test]
-    fn unbound_key_after_the_prefix_is_discarded() {
-        let keymap = defaults();
-        let mut leader = Leader::default();
-        assert_eq!(leader.handle(&keymap, keymap.prefix), Command::Discard);
-        assert_eq!(leader.handle(&keymap, char_key('x')), Command::Discard);
-        assert_eq!(
-            leader.handle(&keymap, char_key('x')),
-            Command::Send(char_key('x'))
+    fn a_user_mode() {
+        let keymap = configured(
+            "gband.keymap.mode('resize')
+gband.keymap.set('resize', '=', gband.action.grow_column_width)
+gband.keymap.set('resize', 'escape', function() gband.keymap.enter('root') end)
+gband.keymap.set('root', 'alt+r', function() gband.keymap.enter('resize') end)",
         );
+        let mut leader = Leader::default();
+        leader.enter("resize".to_owned());
+        let grow = Some(Action::Session(SessionCommand::StepWidth(Step::Grow)));
+        assert_eq!(ran(leader.handle(&keymap, char_key('='))), grow);
+        assert_eq!(ran(leader.handle(&keymap, char_key('='))), grow);
+        assert_eq!(leader.handle(&keymap, char_key('x')), Command::Discard);
+        assert_eq!(leader.active(), "resize");
     }
 
     #[test]
@@ -405,14 +497,15 @@ mod tests {
             ran(leader.handle(&keymap, char_key('q'))),
             Some(Action::Session(SessionCommand::CloseWindow))
         );
+        assert_eq!(leader.handle(&keymap, key("ctrl+space")), Command::Discard);
+        assert!(matches!(
+            leader.handle(&keymap, key("ctrl+b")),
+            Command::Run(Binding::Callback(_))
+        ));
+        leader.enter(ROOT.to_owned());
         assert_eq!(
             leader.handle(&keymap, key("ctrl+space")),
             Command::Send(key("ctrl+space"))
-        );
-        assert_eq!(leader.handle(&keymap, key("ctrl+b")), Command::Discard);
-        assert_eq!(
-            ran(leader.handle(&keymap, key("ctrl+b"))),
-            Some(Action::Client(ClientAction::SendPrefix))
         );
     }
 

@@ -315,17 +315,27 @@ fn mode_segment_after_the_prefix() {
     client.attach(3, 1);
     client.press("ctrl+space");
     assert!(
-        client.status().starts_with("band 1 │ prefix "),
+        client.status().starts_with("band 1 │ navigation │ "),
         "{}",
         client.status()
     );
     client.press("h");
     assert!(
-        client.status().starts_with("band 1 "),
+        client.status().starts_with("band 1 │ navigation │ "),
         "{}",
         client.status()
     );
-    assert!(!client.status().contains("│ prefix"), "{}", client.status());
+    client.press("escape");
+    assert!(
+        client.status().starts_with("band 1 │ C-space navigation "),
+        "{}",
+        client.status()
+    );
+    assert!(
+        !client.status().contains("│ navigation │"),
+        "{}",
+        client.status()
+    );
 }
 
 #[test]
@@ -333,14 +343,14 @@ fn hints_after_the_prefix() {
     let (_scratch, mut client) = defaults("hints", "", Size::new(80, 24));
     client.attach(3, 1);
     assert!(
-        client.status().starts_with("band 1 │ C-space prefix "),
+        client.status().starts_with("band 1 │ C-space navigation "),
         "{}",
         client.status()
     );
     client.press("ctrl+space");
     let status = client.status();
     assert!(
-        status.starts_with("band 1 │ prefix │ h left  l right  j down"),
+        status.starts_with("band 1 │ navigation │ h left  l right  j down"),
         "{status}"
     );
     assert!(
@@ -357,7 +367,13 @@ fn back_to_root() {
     client.press("ctrl+space");
     client.press("h");
     assert!(
-        client.status().starts_with("band 1 │ C-space prefix "),
+        client.status().starts_with("band 1 │ navigation │ h left"),
+        "{}",
+        client.status()
+    );
+    client.press("escape");
+    assert!(
+        client.status().starts_with("band 1 │ C-space navigation "),
         "{}",
         client.status()
     );

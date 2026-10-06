@@ -123,7 +123,7 @@ fn ctrl_a_reaches_the_window_and_unbound_keys_are_discarded() {
     client.send(b"\x01");
     thread::sleep(Duration::from_millis(200));
     client.send(b"echo ");
-    client.send(b"\x00x\r");
+    client.send(b"\x00x\r\r");
     client.wait_for_line("abc");
 }
 
@@ -223,7 +223,7 @@ fn leader_equals_grows_the_column() {
     let mut client = Attached::start(&env, 80, 24);
     client.wait_for_prompt();
     client.shell_pid(&env);
-    client.send(b"\x00=");
+    client.send(b"\x00=\r");
     client.wait_for("a tile 48 columns wide", |screen| {
         let tiles = tiles(screen);
         tiles.len() == 1 && tiles[0].left == 0 && tiles[0].right == 47
@@ -345,7 +345,7 @@ fn open_second_window(env: &TestEnv) -> Attached {
     let mut client = Attached::start(env, 80, 24);
     client.wait_for_prompt();
     client.shell_pid(env);
-    client.send(b"\x00\r");
+    client.send(b"\x00n");
     client.wait_for("two tiles with the second focused", |screen| {
         let tiles = tiles(screen);
         tiles.len() == 2 && tiles[1].focused && tiles[1].left == 40
@@ -361,7 +361,7 @@ fn lowercase_d_does_not_detach() {
     let mut client = Attached::start(&env, 80, 24);
     client.wait_for_prompt();
     client.shell_pid(&env);
-    client.send(b"\x00d");
+    client.send(b"\x00d\r");
     thread::sleep(Duration::from_millis(300));
     assert!(client.child.try_wait().unwrap().is_none());
     client.run("echo still-attached");
@@ -369,7 +369,7 @@ fn lowercase_d_does_not_detach() {
 }
 
 #[test]
-fn leader_enter_opens_a_focused_window() {
+fn leader_n_opens_a_focused_window() {
     let env = TestEnv::new("open");
     let mut client = Attached::start(&env, 80, 24);
     client.wait_for_prompt();
@@ -380,7 +380,7 @@ fn leader_enter_opens_a_focused_window() {
     });
     let first = window_number(&client.focused_lines()).unwrap();
 
-    client.send(b"\x00\r");
+    client.send(b"\x00n");
     client.wait_for("two tiles with the second focused", |screen| {
         let tiles = tiles(screen);
         tiles.len() == 2 && tiles[1].focused && tiles[1].left == 40
@@ -398,7 +398,7 @@ fn leader_enter_opens_a_focused_window() {
 fn leader_h_focuses_the_left_window() {
     let env = TestEnv::new("focus-left");
     let mut client = open_second_window(&env);
-    client.send(b"\x00h");
+    client.send(b"\x00h\r");
     client.wait_for("the first tile focused", |screen| tiles(screen)[0].focused);
     client.run("echo left");
     client.wait_for_line("left");
@@ -412,7 +412,7 @@ fn leader_q_closes_the_focused_window() {
     let env = TestEnv::new("close");
     let mut client = open_second_window(&env);
     let second = client.last_pid();
-    client.send(b"\x00q");
+    client.send(b"\x00q\r");
     client.wait_for("one tile left", |screen| {
         let tiles = tiles(screen);
         tiles.len() == 1 && tiles[0].focused && tiles[0].left == 0
@@ -433,7 +433,7 @@ fn leader_u_and_i_switch_bands() {
 
     client.send(b"\x00u");
     client.wait_for("an empty band", |screen| tiles(screen).is_empty());
-    client.send(b"\x00\r");
+    client.send(b"n");
     client.wait_for("a window in the second band", |screen| {
         tiles(screen).len() == 1
     });
@@ -442,7 +442,7 @@ fn leader_u_and_i_switch_bands() {
     client.run("echo second-band");
     client.wait_for_line("second-band");
 
-    client.send(b"\x00i");
+    client.send(b"\x00i\r");
     client.wait_for_focused("the first band", |lines| {
         lines.iter().any(|line| line == "first-band")
     });
@@ -488,7 +488,7 @@ fn animations_off_opens_a_window_without_motion() {
     });
     client.wait_for_prompt();
     client.shell_pid(&env);
-    client.send(b"\x00\r");
+    client.send(b"\x00n");
     client.wait_for("two tiles with the second focused", |screen| {
         let tiles = tiles(screen);
         tiles.len() == 2 && tiles[1].focused && tiles[1].left == 40

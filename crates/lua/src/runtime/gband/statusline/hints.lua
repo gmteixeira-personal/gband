@@ -67,7 +67,7 @@ local function hints(active, labels)
   local prefix = key_form(gband.opt.prefix)
   local list = {}
   if active == "root" and #gband.keymap.list("prefix") > 0 then
-    list[1] = { key = prefix, label = "prefix" }
+    list[1] = { key = prefix, label = gband.keymap.label("prefix") }
   end
   for _, binding in ipairs(gband.keymap.list(active)) do
     local text = label(binding, descs, labels)

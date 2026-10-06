@@ -11,6 +11,12 @@ gband.plugin("gband.keylist")
 local set = gband.keymap.set
 local action = gband.action
 
+gband.keymap.mode("prefix", { label = "navigation" })
+
+local function interactive()
+  gband.keymap.enter("root")
+end
+
 set("prefix", "h", action.focus_column_left, { desc = "focus the column to the left" })
 set("prefix", "l", action.focus_column_right, { desc = "focus the column to the right" })
 set("prefix", "j", action.focus_window_down, { desc = "focus the window below" })
@@ -18,7 +24,10 @@ set("prefix", "k", action.focus_window_up, { desc = "focus the window above" })
 set("prefix", "u", action.focus_band_down, { desc = "view the band below" })
 set("prefix", "i", action.focus_band_up, { desc = "view the band above" })
 set("prefix", "c", action.center_column, { desc = "center the focused column" })
-set("prefix", "enter", action.open_window, { desc = "open a window running the user's shell" })
+set("prefix", "n", function()
+  action.open_window()
+  interactive()
+end, { desc = "open a window" })
 set("prefix", "q", action.close_window, { desc = "close the window" })
 set("prefix", "[", action.consume_or_expel_left, { desc = "consume or expel the window to the left" })
 set("prefix", "]", action.consume_or_expel_right, { desc = "consume or expel the window to the right" })
@@ -41,7 +50,16 @@ set("prefix", "ctrl+down", action.move_window_down, { desc = "move the window do
 set("prefix", "ctrl+up", action.move_window_up, { desc = "move the window up" })
 set("prefix", "?", action["keylist.open"], { desc = "list the keys" })
 set("prefix", "D", action.detach, { desc = "detach" })
-set("prefix", "prefix", action.send_prefix, { desc = "send the prefix key to the focused window" })
+set("prefix", "escape", interactive, { desc = "interactive mode" })
+set("prefix", "enter", interactive, { desc = "interactive mode" })
+set("prefix", "left", action.focus_column_left, { desc = "focus the column to the left" })
+set("prefix", "right", action.focus_column_right, { desc = "focus the column to the right" })
+set("prefix", "down", action.focus_window_down, { desc = "focus the window below" })
+set("prefix", "up", action.focus_window_up, { desc = "focus the window above" })
+set("prefix", "prefix", function()
+  action.send_prefix()
+  interactive()
+end, { desc = "send the prefix key" })
 
 gband.plugin("gband.statusline.band")
 gband.plugin("gband.statusline.mode")

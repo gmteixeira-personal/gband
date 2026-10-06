@@ -139,6 +139,7 @@ fn no_configuration_file_gives_the_defaults() {
     assert_eq!(config.options, defaults.options);
     assert_eq!(actions(&config), actions(&defaults));
     assert_eq!(bound_keys(&config), bound_keys(&defaults));
+    assert_eq!(config.modes, defaults.modes);
     assert!(config.errors.is_empty());
 }
 
@@ -170,6 +171,7 @@ fn copied_defaults_load_unchanged() {
     assert_eq!(config.options, defaults.options);
     assert_eq!(actions(&config), actions(&defaults));
     assert_eq!(bound_keys(&config), bound_keys(&defaults));
+    assert_eq!(config.modes, defaults.modes);
     assert!(config.errors.is_empty(), "{:?}", config.errors);
     assert_eq!(component_ids(&config), component_ids(&defaults));
 }
@@ -208,10 +210,6 @@ fn defaults_reproduce_the_built_in_behaviour() {
         (char_key('u'), Action::View(ViewAction::BandDown)),
         (char_key('i'), Action::View(ViewAction::BandUp)),
         (char_key('c'), Action::View(ViewAction::CenterColumn)),
-        (
-            ("prefix", Chord::Key(Key::plain(KeyCode::Enter))),
-            Action::Session(SessionCommand::OpenWindow),
-        ),
         (char_key('q'), Action::Session(SessionCommand::CloseWindow)),
         (
             char_key('['),
@@ -282,12 +280,52 @@ fn defaults_reproduce_the_built_in_behaviour() {
         ),
         (char_key('D'), Action::Client(ClientAction::Detach)),
         (
-            ("prefix", Chord::Prefix),
-            Action::Client(ClientAction::SendPrefix),
+            ("prefix", Chord::Key(Key::plain(KeyCode::Left))),
+            Action::View(ViewAction::FocusLeft),
+        ),
+        (
+            ("prefix", Chord::Key(Key::plain(KeyCode::Right))),
+            Action::View(ViewAction::FocusRight),
+        ),
+        (
+            ("prefix", Chord::Key(Key::plain(KeyCode::Down))),
+            Action::View(ViewAction::FocusDown),
+        ),
+        (
+            ("prefix", Chord::Key(Key::plain(KeyCode::Up))),
+            Action::View(ViewAction::FocusUp),
         ),
     ]
     .map(|((table, chord), action)| (table.to_owned(), chord, action));
     assert_eq!(actions(&config), expected);
+    assert_eq!(config.modes.iter().collect::<Vec<_>>(), ["prefix"]);
+    let label: String = eval(&config, "return gband.keymap.label('prefix')");
+    assert_eq!(label, "navigation");
+    let root = || Dispatch::Enter("root".to_owned());
+    let functions = [
+        (
+            prefixed("n"),
+            vec![
+                Dispatch::Action(Action::Session(SessionCommand::OpenWindow)),
+                root(),
+            ],
+        ),
+        (prefixed("escape"), vec![root()]),
+        (prefixed("enter"), vec![root()]),
+        (
+            ("prefix", Chord::Prefix),
+            vec![
+                Dispatch::Action(Action::Client(ClientAction::SendPrefix)),
+                root(),
+            ],
+        ),
+    ];
+    for (keys, dispatched) in functions {
+        config.runtime.set_active_table("prefix");
+        let outcome = config.runtime.call(function_of(&config, keys));
+        clean(&outcome);
+        assert_eq!(outcome.dispatched, dispatched, "{keys:?}");
+    }
     assert_eq!(
         component_ids(&config),
         ["band", "hints", "mode", "position"]
@@ -308,9 +346,16 @@ fn every_default_binding_is_described() {
         &config,
         "local descs = {}
          for _, action in ipairs(gband.action.list()) do descs[action.name] = action.desc end
+         local functions = {
+           n = 'open a window',
+           escape = 'interactive mode',
+           enter = 'interactive mode',
+           prefix = 'send the prefix key',
+         }
          local wrong = {}
          for _, entry in ipairs(gband.keymap.list('prefix')) do
-           if entry.desc == nil or entry.desc ~= descs[entry.action] then
+           local expected = entry.action and descs[entry.action] or functions[entry.key]
+           if entry.desc == nil or entry.desc ~= expected then
              wrong[#wrong + 1] = entry.key
            end
          end
@@ -318,7 +363,7 @@ fn every_default_binding_is_described() {
     );
     assert!(undescribed.is_empty(), "{undescribed:?}");
     let count: usize = eval(&config, "return #gband.keymap.list('prefix')");
-    assert_eq!(count, 31);
+    assert_eq!(count, 37);
 }
 
 #[test]

@@ -24,7 +24,7 @@ mod value;
 pub mod version;
 mod watch;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::ErrorKind;
 use std::path::Path;
 
@@ -120,6 +120,7 @@ impl Default for LoadOptions {
 }
 
 pub type KeyTables = BTreeMap<String, Vec<(Chord, Binding)>>;
+pub type Modes = BTreeSet<String>;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PluginManifest {
@@ -133,6 +134,7 @@ pub struct Config {
     pub side: Side,
     pub options: Options,
     pub keymap: KeyTables,
+    pub modes: Modes,
     pub runtime: Runtime,
     pub errors: Vec<ConfigError>,
     pub plugins: Vec<PluginManifest>,

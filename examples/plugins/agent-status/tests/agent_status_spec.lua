@@ -38,7 +38,7 @@ end)
 
 t.case("prefix a focuses the next waiting window", function(g)
   g.start({ size = "80x6" })
-  g.keys("ctrl+space enter")
+  g.keys("ctrl+space n")
   g.settle()
   t.eq(g.client("return gband.view().window"), 2)
   g.server([[gband.window_state("default", 1).agent = "waiting"]])

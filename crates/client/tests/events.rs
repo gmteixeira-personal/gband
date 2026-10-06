@@ -410,6 +410,10 @@ fn key_table_change_events() {
     client.clear();
     client.press("ctrl+space");
     client.press("h");
+    client.press("l");
+    assert_eq!(client.controls.active_table(), "prefix");
+    client.press("escape");
+    assert_eq!(client.controls.active_table(), "root");
     let log: Vec<String> = client
         .log()
         .into_iter()
@@ -510,6 +514,7 @@ fn reload() {
 fn reload_makes_root_active() {
     let (scratch, mut client) = recording("reload-root", DEFAULTS);
     client.press("ctrl+space");
+    client.press("h");
     assert_eq!(client.controls.active_table(), "prefix");
     let reloaded = scratch.load(&format!("{RECORD}{DEFAULTS}"));
     client.controls.reload(&mut client.display, reloaded);
