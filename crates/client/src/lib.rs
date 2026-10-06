@@ -155,6 +155,7 @@ pub struct Display {
     presentation: Presentation,
     prefix: Option<Key>,
     policy: CenterFocusedColumn,
+    loop_bands: bool,
     banner: Option<String>,
     colors: ColorSupport,
     line: Option<StatusLine>,
@@ -179,6 +180,7 @@ impl Display {
             presentation: Presentation::new(animations),
             prefix: None,
             policy: CenterFocusedColumn::default(),
+            loop_bands: true,
             banner: None,
             colors: ColorSupport::default(),
             line: None,
@@ -227,8 +229,13 @@ impl Display {
     pub fn configure(&mut self, options: &Options) {
         self.prefix = Some(options.prefix);
         self.policy = options.center_focused_column;
+        let looping = std::mem::replace(&mut self.loop_bands, options.loop_bands);
         if let Some(view) = &mut self.view {
             view.set_center_focused_column(self.policy);
+            view.set_loop_bands(self.loop_bands);
+        }
+        if looping != self.loop_bands {
+            self.with_view(View::sync);
         }
         self.set_placement(Placement::new(&options.statusline));
     }
@@ -427,7 +434,10 @@ impl Display {
 
     fn sync(&mut self) {
         if self.view.is_none() {
-            self.view = Some(View::with_policy(self.scene(), self.policy));
+            let mut view = View::with_policy(self.scene(), self.policy);
+            view.set_loop_bands(self.loop_bands);
+            view.sync(self.scene());
+            self.view = Some(view);
             self.presentation.snap();
         } else {
             self.with_view(View::sync);

@@ -139,6 +139,21 @@ pub fn column_spans(band: &Band, area: Size) -> Vec<Span> {
         .collect()
 }
 
+pub fn loop_width(spans: &[Span], viewport: u16) -> Option<u32> {
+    let width = spans.last()?.end();
+    let widest = spans.iter().map(|span| u32::from(span.width)).max()?;
+    (width - widest >= u32::from(viewport)).then_some(width)
+}
+
+pub fn drawn_copy(left: i64, strip: u32, viewport: u16) -> i64 {
+    let left = left.rem_euclid(i64::from(strip));
+    if left < i64::from(viewport) {
+        left
+    } else {
+        left - i64::from(strip)
+    }
+}
+
 fn share(rows: u16, weights: &[u64]) -> Vec<u16> {
     let total: u64 = weights.iter().sum();
     if total == 0 {

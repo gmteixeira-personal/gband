@@ -100,7 +100,6 @@ Options SHALL be set and declared only while the configuration loads. Setting or
 - **THEN** loading succeeds with a status line height of 1
 - **AND** an error at `user/init.lua` line 2 naming `statusline_height` is reported
 
-
 #### Scenario: Looping bands by default
 - **WHEN** `user/init.lua` does not set `loop_bands` and reads `gband.opt.loop_bands`
 - **THEN** the value read is `true`

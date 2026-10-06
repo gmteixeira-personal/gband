@@ -22,7 +22,7 @@ Out of scope:
 None.
 
 ### Modified Capabilities
-- `layout-view`: "Focus across columns" loops, "Camera" gains the looping strip and its copies, "Shown windows" places tiles at the copy inside the terminal.
+- `layout-view`: "Focus across columns" loops, "Camera" gains the looping strip and its copies, "Shown windows" places tiles at the copy inside the terminal, "Center the focused column" centres the copy nearest the camera.
 - `animations`: "Camera scroll" scrolls across the seam without a jump.
 - `configuration`: "Options" gains the client option `loop_bands`.
 
@@ -48,20 +48,23 @@ None.
 - rename-panes-to-windows
 
 ### Expected Files
-- crates/core/src/view.rs
-- crates/core/src/geometry.rs
-- crates/core/tests/view.rs
-- crates/core/tests/geometry.rs
-- crates/client/src/lib.rs
+- README.md
 - crates/client/src/animation.rs
+- crates/client/src/lib.rs
 - crates/client/src/render.rs
 - crates/client/tests/actions.rs
 - crates/client/tests/animation.rs
 - crates/client/tests/render.rs
-- crates/client/tests/snapshots/
-- crates/lua/src/options.rs
+- crates/client/tests/snapshots/render__first_column_drawn_after_the_last.snap
+- crates/client/tests/snapshots/render__floating_window_stays_in_place_across_the_seam.snap
+- crates/core/src/geometry.rs
+- crates/core/src/view.rs
+- crates/core/tests/geometry.rs
+- crates/core/tests/view.rs
 - crates/lua/src/defaults.lua
+- crates/lua/src/options.rs
 - crates/lua/tests/options.rs
-- README.md
 - docs/plugins.md
 - openspec/changes/loop-bands/
+- tests/lua/loop_bands_spec.lua
+- tests/lua_specs.rs

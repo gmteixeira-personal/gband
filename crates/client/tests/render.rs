@@ -324,11 +324,13 @@ fn band_switch_mid_slide() {
             band: above,
             top: -5,
             camera: 0,
+            strip: None,
         },
         DrawnBand {
             band: below,
             top: 7,
             camera: 0,
+            strip: None,
         },
     ];
     drawn.settled = false;
@@ -516,6 +518,64 @@ fn floating_window_ignores_the_camera() {
     };
     assert_eq!(rows(&at_zero), rows(&at_forty));
     assert_snapshot!(at_forty);
+}
+
+#[test]
+fn first_column_drawn_after_the_last() {
+    let (mut fixture, windows) = Fixture::new(Size::new(80, 24), 3, 80);
+    for (index, &window) in windows.iter().enumerate() {
+        fixture.write(window, format!("window {index}").as_bytes());
+    }
+    for _ in 0..3 {
+        fixture.act(ViewAction::FocusRight, 80);
+    }
+    assert_eq!(fixture.view.camera(), 80);
+    assert_eq!(fixture.view.focused(), Some(windows[0]));
+    let screen = fixture.render(Size::new(80, 24));
+    let top = screen.lines().nth(4).unwrap();
+    assert!(top.contains("window 2") && top.contains("window 0"));
+    assert!(top.find("window 2") < top.find("window 0"));
+    assert!(!screen.contains("window 1"));
+    assert_snapshot!(screen);
+}
+
+#[test]
+fn floating_window_stays_in_place_across_the_seam() {
+    let (mut fixture, windows) = Fixture::new(Size::new(80, 24), 4, 80);
+    floating_at(&mut fixture, windows[3], 10, 6, 80);
+    for (index, &window) in windows.iter().enumerate() {
+        fixture.write(window, format!("window {index}").as_bytes());
+    }
+    fixture.act(ViewAction::FocusRight, 80);
+    fixture.act(ViewAction::FocusRight, 80);
+    assert_eq!(fixture.view.camera(), 40);
+    let terminal = Size::new(80, 24);
+    let mut presentation = Presentation::new(Animations::On);
+    let targets =
+        |fixture: &Fixture| Targets::new(&fixture.layout, fixture.area, &fixture.view, terminal);
+    presentation.update(Instant::now(), &targets(&fixture));
+    let at_forty = fixture.render(terminal);
+    fixture.act(ViewAction::FocusRight, 80);
+    assert_eq!(fixture.view.camera(), 80);
+    let start = Instant::now();
+    presentation.update(start, &targets(&fixture));
+    let mut middle = presentation.drawn(start + std::time::Duration::from_millis(50));
+    middle.settled = false;
+    let camera = middle.bands[0].camera;
+    assert!(40 < camera && camera < 80, "{camera}");
+    let mid_scroll = fixture.render_drawn(terminal, &middle);
+    let at_eighty = fixture.render(terminal);
+    let rows = |screen: &str| -> Vec<String> {
+        screen
+            .lines()
+            .skip(9)
+            .take(12)
+            .map(|line| line.chars().skip(19).take(40).collect())
+            .collect()
+    };
+    assert_eq!(rows(&at_forty), rows(&mid_scroll));
+    assert_eq!(rows(&at_forty), rows(&at_eighty));
+    assert_snapshot!(at_eighty);
 }
 
 #[test]

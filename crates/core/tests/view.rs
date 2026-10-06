@@ -1,5 +1,5 @@
 use gband_core::action::SessionCommand;
-use gband_core::geometry::Size;
+use gband_core::geometry::{Size, boxes, drawn_copy, tiles};
 use gband_core::layout::{
     Direction, Layout, LayoutOptions, Proportion, SessionAction, Step, WindowHeight, WindowId,
 };
@@ -73,6 +73,7 @@ fn initial_view_of_an_empty_session() {
 fn focus_moves_across_columns_and_stops_at_the_edges() {
     let (layout, windows) = row_of_columns(3);
     let mut view = View::new(scene(&layout));
+    view.set_loop_bands(false);
     act(&mut view, &layout, &[ViewAction::FocusLeft]);
     assert_eq!(view.focused(), Some(windows[0]));
     act(
@@ -1258,6 +1259,7 @@ fn centred_column_keeps_the_camera() {
 fn policy_resumes_on_the_next_focus_change() {
     let (layout, windows) = row_of_columns(3);
     let mut view = View::new(scene(&layout));
+    view.set_loop_bands(false);
     act(
         &mut view,
         &layout,
@@ -1328,4 +1330,247 @@ fn center_column_on_an_empty_band_changes_nothing() {
     act(&mut view, &layout, &[ViewAction::CenterColumn]);
     assert_eq!(view.camera(), 0);
     assert_eq!(view.focused(), None);
+}
+
+fn drawn(view: &View, layout: &Layout) -> Vec<(WindowId, i64)> {
+    let scene = scene(layout);
+    let shown = view.shown(scene);
+    let strip = view.strip(scene);
+    let mut drawn: Vec<(WindowId, i64)> = tiles(&layout.bands()[0], AREA)
+        .into_iter()
+        .filter(|tile| shown.contains(&tile.window))
+        .map(|tile| {
+            let left = i64::from(tile.x) - view.camera();
+            let left = strip.map_or(left, |strip| drawn_copy(left, strip, scene.viewport.cols));
+            (tile.window, left)
+        })
+        .collect();
+    drawn.sort_by_key(|&(_, left)| left);
+    drawn
+}
+
+#[test]
+fn right_of_the_last_column_goes_round() {
+    let (layout, windows) = row_of_columns(3);
+    let mut view = View::new(scene(&layout));
+    act(&mut view, &layout, &[ViewAction::FocusWindow(windows[2])]);
+    act(&mut view, &layout, &[ViewAction::FocusRight]);
+    assert_eq!(view.focused(), Some(windows[0]));
+}
+
+#[test]
+fn left_of_the_first_column_goes_round_to_the_remembered_window() {
+    let (mut layout, windows) = row_of_columns(5);
+    stack_into_left(&mut layout, windows[1]);
+    stack_into_left(&mut layout, windows[4]);
+    let mut view = View::new(scene(&layout));
+    act(
+        &mut view,
+        &layout,
+        &[
+            ViewAction::FocusWindow(windows[4]),
+            ViewAction::FocusWindow(windows[0]),
+            ViewAction::FocusLeft,
+        ],
+    );
+    assert_eq!(view.focused(), Some(windows[4]));
+}
+
+#[test]
+fn short_band_still_goes_round() {
+    let (layout, windows) = row_of_columns(2);
+    let mut view = View::new(scene(&layout));
+    act(
+        &mut view,
+        &layout,
+        &[ViewAction::FocusRight, ViewAction::FocusRight],
+    );
+    assert_eq!(view.focused(), Some(windows[0]));
+    assert_eq!(view.strip(scene(&layout)), None);
+}
+
+#[test]
+fn one_column_does_not_go_round() {
+    let (mut layout, windows) = row_of_columns(2);
+    stack_into_left(&mut layout, windows[1]);
+    let mut view = View::new(scene(&layout));
+    act(&mut view, &layout, &[ViewAction::FocusWindow(windows[0])]);
+    for action in [ViewAction::FocusRight, ViewAction::FocusLeft] {
+        act(&mut view, &layout, &[action]);
+        assert_eq!(view.focused(), Some(windows[0]));
+        assert_eq!(view.camera(), 0);
+    }
+}
+
+fn third_of_three(policy: CenterFocusedColumn) -> (Layout, Vec<WindowId>, View) {
+    let (layout, windows) = row_of_columns(3);
+    let mut view = view_with(&layout, policy);
+    act(
+        &mut view,
+        &layout,
+        &[ViewAction::FocusRight, ViewAction::FocusRight],
+    );
+    (layout, windows, view)
+}
+
+#[test]
+fn scroll_right_across_the_seam() {
+    let (layout, windows, mut view) = third_of_three(CenterFocusedColumn::Never);
+    assert_eq!(view.camera(), 40);
+    act(&mut view, &layout, &[ViewAction::FocusRight]);
+    assert_eq!(view.focused(), Some(windows[0]));
+    assert_eq!(view.camera(), 80);
+    assert_eq!(drawn(&view, &layout), [(windows[2], 0), (windows[0], 40)]);
+}
+
+#[test]
+fn keep_going_right_holds_the_camera_and_keeps_the_travel() {
+    let (layout, windows, mut view) = third_of_three(CenterFocusedColumn::Never);
+    act(&mut view, &layout, &[ViewAction::FocusRight]);
+    assert_eq!((view.camera(), view.travel()), (80, 80));
+    act(&mut view, &layout, &[ViewAction::FocusRight]);
+    assert_eq!(view.focused(), Some(windows[1]));
+    assert_eq!((view.camera(), view.travel()), (0, 120));
+    assert_eq!(drawn(&view, &layout), [(windows[0], 0), (windows[1], 40)]);
+}
+
+#[test]
+fn scroll_left_across_the_seam() {
+    let (layout, windows) = row_of_columns(3);
+    let mut view = View::new(scene(&layout));
+    act(&mut view, &layout, &[ViewAction::FocusLeft]);
+    assert_eq!(view.focused(), Some(windows[2]));
+    assert_eq!((view.camera(), view.travel()), (80, -40));
+    assert_eq!(drawn(&view, &layout), [(windows[2], 0), (windows[0], 40)]);
+}
+
+#[test]
+fn always_centre_across_the_seam() {
+    let (layout, windows, mut view) = third_of_three(CenterFocusedColumn::Always);
+    act(&mut view, &layout, &[ViewAction::FocusRight]);
+    assert_eq!(view.camera(), 100);
+    assert_eq!(
+        drawn(&view, &layout),
+        [(windows[2], -20), (windows[0], 20), (windows[1], 60)]
+    );
+}
+
+#[test]
+fn on_overflow_centres_across_the_seam() {
+    let (layout, windows) = columns_of(Proportion::TWO_THIRDS, 3);
+    let mut view = view_with(&layout, CenterFocusedColumn::OnOverflow);
+    act(&mut view, &layout, &[ViewAction::FocusLeft]);
+    assert_eq!(view.focused(), Some(windows[2]));
+    assert_eq!((view.camera(), view.travel()), (93, -66));
+}
+
+#[test]
+fn on_overflow_scrolls_just_enough_across_the_seam() {
+    let (layout, windows, mut view) = third_of_three(CenterFocusedColumn::OnOverflow);
+    act(&mut view, &layout, &[ViewAction::FocusRight]);
+    assert_eq!(view.focused(), Some(windows[0]));
+    assert_eq!(view.camera(), 80);
+}
+
+#[test]
+fn short_strip_does_not_loop() {
+    let (layout, windows) = row_of_columns(2);
+    let mut view = view_with(&layout, CenterFocusedColumn::Always);
+    act(
+        &mut view,
+        &layout,
+        &[ViewAction::FocusRight, ViewAction::FocusRight],
+    );
+    assert_eq!(view.focused(), Some(windows[0]));
+    assert_eq!(view.camera(), -20);
+    assert_eq!(drawn(&view, &layout), [(windows[0], 20), (windows[1], 60)]);
+}
+
+#[test]
+fn looping_off_draws_the_strip_once() {
+    let (layout, windows) = row_of_columns(3);
+    let mut view = view_with(&layout, CenterFocusedColumn::Always);
+    view.set_loop_bands(false);
+    view.sync(scene(&layout));
+    assert_eq!(view.camera(), -20);
+    assert_eq!(view.strip(scene(&layout)), None);
+    assert_eq!(drawn(&view, &layout), [(windows[0], 20), (windows[1], 60)]);
+}
+
+#[test]
+fn looping_off_stops_focus_at_the_first_column() {
+    let (layout, windows) = row_of_columns(3);
+    let mut view = View::new(scene(&layout));
+    view.set_loop_bands(false);
+    act(&mut view, &layout, &[ViewAction::FocusLeft]);
+    assert_eq!(view.focused(), Some(windows[0]));
+    assert_eq!(view.camera(), 0);
+}
+
+#[test]
+fn center_the_first_column_of_a_looping_strip() {
+    let (layout, windows) = row_of_columns(3);
+    let mut view = View::new(scene(&layout));
+    act(&mut view, &layout, &[ViewAction::CenterColumn]);
+    assert_eq!((view.camera(), view.travel()), (100, -20));
+    assert_eq!(
+        drawn(&view, &layout),
+        [(windows[2], -20), (windows[0], 20), (windows[1], 60)]
+    );
+}
+
+#[test]
+fn focus_jump_takes_the_copy_needing_the_smallest_move() {
+    let (layout, windows) = row_of_columns(4);
+    let mut view = View::new(scene(&layout));
+    act(&mut view, &layout, &[ViewAction::FocusWindow(windows[3])]);
+    assert_eq!((view.camera(), view.travel()), (120, -40));
+    assert_eq!(drawn(&view, &layout), [(windows[3], 0), (windows[0], 40)]);
+}
+
+#[test]
+fn focus_jump_ties_take_the_copy_with_the_smaller_start() {
+    let (layout, windows, mut view) = third_of_three(CenterFocusedColumn::Never);
+    act(&mut view, &layout, &[ViewAction::FocusRight]);
+    assert_eq!(view.camera(), 80);
+    act(&mut view, &layout, &[ViewAction::FocusWindow(windows[1])]);
+    assert_eq!((view.camera(), view.travel()), (40, 40));
+}
+
+#[test]
+fn first_column_shown_after_the_last() {
+    let (layout, windows, mut view) = third_of_three(CenterFocusedColumn::Never);
+    act(&mut view, &layout, &[ViewAction::FocusRight]);
+    assert_eq!(view.shown(scene(&layout)), [windows[0], windows[2]]);
+    assert_eq!(drawn(&view, &layout), [(windows[2], 0), (windows[0], 40)]);
+}
+
+#[test]
+fn floating_window_stays_in_place_across_the_seam() {
+    let (mut layout, windows) = row_of_columns(4);
+    float(&mut layout, windows[3]);
+    place(&mut layout, windows[3], 10, 2, Proportion::ONE_THIRD);
+    let mut view = View::new(scene(&layout));
+    act(
+        &mut view,
+        &layout,
+        &[ViewAction::FocusRight, ViewAction::FocusRight],
+    );
+    assert_eq!(view.camera(), 40);
+    act(&mut view, &layout, &[ViewAction::FocusRight]);
+    assert_eq!(view.camera(), 80);
+    assert!(view.shown(scene(&layout)).contains(&windows[3]));
+    let placed = boxes(&layout.bands()[0], AREA);
+    assert_eq!(placed[0].x, 10);
+}
+
+#[test]
+fn band_stops_looping_and_resets_the_travel() {
+    let (mut layout, windows, mut view) = third_of_three(CenterFocusedColumn::Never);
+    act(&mut view, &layout, &[ViewAction::FocusRight]);
+    assert_eq!((view.camera(), view.travel()), (80, 80));
+    layout.remove(windows[2]);
+    view.sync(scene(&layout));
+    assert_eq!(view.strip(scene(&layout)), None);
+    assert_eq!(view.camera(), view.travel());
 }

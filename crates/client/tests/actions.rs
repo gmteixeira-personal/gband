@@ -291,6 +291,30 @@ fn action_called_from_a_function() {
 }
 
 #[test]
+fn focus_goes_round_the_band_by_default() {
+    let config = Scratch::new("loop-bands-on").load("").unwrap();
+    let (mut display, windows) = three_columns();
+    let _controls = Controls::new(config, &mut display);
+    for _ in 0..3 {
+        dispatch(&mut display, Action::View(ViewAction::FocusRight));
+    }
+    assert_eq!(display.focused(), Some(windows[0]));
+}
+
+#[test]
+fn loop_bands_off_stops_focus_at_the_last_column() {
+    let config = Scratch::new("loop-bands-off")
+        .load("gband.set { loop_bands = false }")
+        .unwrap();
+    let (mut display, windows) = three_columns();
+    let _controls = Controls::new(config, &mut display);
+    for _ in 0..3 {
+        dispatch(&mut display, Action::View(ViewAction::FocusRight));
+    }
+    assert_eq!(display.focused(), Some(windows[2]));
+}
+
+#[test]
 fn center_column_binding_moves_the_camera_locally() {
     let scratch = Scratch::new("center");
     let config = scratch

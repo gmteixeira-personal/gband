@@ -207,6 +207,7 @@ fn list_holds_built_in_and_declared_options() {
         [
             "center_focused_column",
             "greeting",
+            "loop_bands",
             "notify_style",
             "prefix",
             "statusline_height",
@@ -352,4 +353,33 @@ fn notify_style() {
     let config = rejected.loaded();
     assert_eq!(config.options.notify_style, gband_lua::NotifyStyle::Osc9);
     error_naming(&config.errors, "notify_style");
+}
+
+#[test]
+fn looping_bands_by_default() {
+    let scratch = Scratch::new("loop-bands-default");
+    scratch.write("looping = gband.opt.loop_bands");
+    let config = scratch.loaded();
+    assert!(global::<bool>(&config, "looping"));
+    assert!(config.options.loop_bands);
+}
+
+#[test]
+fn looping_bands_turned_off() {
+    let scratch = Scratch::new("loop-bands-off");
+    scratch.write("\n\ngband.set { loop_bands = false }\nlooping = gband.opt.loop_bands");
+    let config = scratch.loaded();
+    assert!(config.errors.is_empty(), "{:?}", config.errors);
+    assert!(!global::<bool>(&config, "looping"));
+    assert!(!config.options.loop_bands);
+}
+
+#[test]
+fn looping_bands_of_the_wrong_type() {
+    let scratch = Scratch::new("loop-bands-wrong-type");
+    let path = scratch.write("gband.opt.loop_bands = false\n\ngband.opt.loop_bands = 'yes'");
+    let config = scratch.loaded();
+    assert!(config.options.loop_bands);
+    let error = error_naming(&config.errors, "loop_bands");
+    assert_error_at(error, &path, 3, "loop_bands");
 }

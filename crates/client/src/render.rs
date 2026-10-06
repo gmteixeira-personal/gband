@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use gband_core::geometry::{BORDER, Size, Tile, WindowBox, placed, tiles};
+use gband_core::geometry::{BORDER, Size, Tile, WindowBox, drawn_copy, placed, tiles};
 use gband_core::layout::{Layout, WindowId};
 use gband_core::view::{Scene, View};
 use gband_emulator::{Emulator, Grid};
@@ -173,7 +173,9 @@ pub fn render(ribbon: &Ribbon<'_>, buffer: &mut Buffer) -> Option<Position> {
             .collect();
         placed.sort_by_key(|&(window, _)| focused == Some(window));
         for (window, tile) in placed {
-            let Some(placement) = Placement::new(&tile, drawn.camera, drawn.top, target) else {
+            let Some(placement) =
+                Placement::new(&tile, drawn.camera, drawn.strip, drawn.top, target)
+            else {
                 continue;
             };
             let is_focused = focused == Some(window);
@@ -195,7 +197,7 @@ pub fn render(ribbon: &Ribbon<'_>, buffer: &mut Buffer) -> Option<Position> {
         };
         let placed = placed(floating, ribbon.area);
         let tile = DrawnTile::from(&placed);
-        let Some(placement) = Placement::new(&tile, 0, 0, target) else {
+        let Some(placement) = Placement::new(&tile, 0, None, 0, target) else {
             continue;
         };
         if cursor.is_some_and(|cursor| covers(&placed, target, cursor)) {
@@ -266,9 +268,16 @@ struct Placement {
 }
 
 impl Placement {
-    fn new(tile: &DrawnTile, camera: i64, band_top: i64, target: Rect) -> Option<Self> {
+    fn new(
+        tile: &DrawnTile,
+        camera: i64,
+        strip: Option<u32>,
+        band_top: i64,
+        target: Rect,
+    ) -> Option<Self> {
         let height = i64::from(target.height);
         let left = tile.x - camera;
+        let left = strip.map_or(left, |strip| drawn_copy(left, strip, target.width));
         let top = band_top + tile.y;
         let clip_top = band_top.max(0);
         let clip_bottom = (band_top + height).min(height);

@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 
 use gband_core::geometry::{Size, Tile, tiles};
 use gband_core::layout::{BandId, Layout, WindowId};
-use gband_core::view::View;
+use gband_core::view::{Scene, View};
 
 pub const ANIMATIONS_VARIABLE: &str = "GBAND_ANIMATIONS";
 pub const FRAME: Duration = Duration::from_millis(16);
@@ -122,6 +122,7 @@ pub struct Targets {
     pub band: BandId,
     pub bands: Vec<BandId>,
     pub camera: i64,
+    pub strip: Option<u32>,
     pub band_height: u16,
     pub tiles: Vec<Tile>,
     pub focused: Option<WindowId>,
@@ -132,7 +133,12 @@ impl Targets {
         Self {
             band: view.band(),
             bands: layout.bands().iter().map(|band| band.id).collect(),
-            camera: view.camera(),
+            camera: view.travel(),
+            strip: view.strip(Scene {
+                layout,
+                area,
+                viewport: terminal,
+            }),
             band_height: terminal.rows,
             tiles: layout
                 .band(view.band())
@@ -204,6 +210,7 @@ pub struct DrawnBand {
     pub band: BandId,
     pub top: i64,
     pub camera: i64,
+    pub strip: Option<u32>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -228,9 +235,10 @@ struct Shown {
     band_height: u16,
     focused: Option<WindowId>,
     camera: Spring,
+    strip: Option<u32>,
     vertical: Spring,
     tiles: HashMap<WindowId, TileSprings>,
-    leaving: Vec<(BandId, i64)>,
+    leaving: Vec<(BandId, i64, Option<u32>)>,
 }
 
 #[derive(Clone, Debug)]
@@ -290,19 +298,20 @@ impl Presentation {
             };
         };
         let vertical = shown.vertical.drawn(now);
-        let drawn_band = |band: BandId, camera: i64| {
+        let drawn_band = |band: BandId, camera: i64, strip: Option<u32>| {
             let index = shown.bands.iter().position(|&id| id == band)?;
             Some(DrawnBand {
                 band,
                 top: index as i64 * i64::from(shown.band_height) - vertical,
                 camera,
+                strip,
             })
         };
         let bands = shown
             .leaving
             .iter()
-            .filter_map(|&(band, camera)| drawn_band(band, camera))
-            .chain(drawn_band(shown.band, shown.camera.drawn(now)))
+            .filter_map(|&(band, camera, strip)| drawn_band(band, camera, strip))
+            .chain(drawn_band(shown.band, shown.camera.drawn(now), shown.strip))
             .collect();
         Drawn {
             bands,
@@ -324,6 +333,7 @@ impl Shown {
             band_height: targets.band_height,
             focused: targets.focused,
             camera: Spring::at_rest(targets.camera as f64, now),
+            strip: targets.strip,
             vertical: Spring::at_rest(targets.top(targets.band).unwrap_or(0.0), now),
             tiles: targets
                 .tiles
@@ -339,20 +349,26 @@ impl Shown {
         let mut snap_vertical = !self
             .leaving
             .iter()
-            .all(|&(band, _)| targets.index_of(band).is_some());
+            .all(|&(band, _, _)| targets.index_of(band).is_some());
         if let Some(previous) = targets.top(self.band) {
             self.vertical.shift(previous - self.vertical.target());
         } else {
             snap_vertical = true;
         }
         if targets.band == self.band {
+            if let (Some(strip), None) = (self.strip, targets.strip) {
+                let period = f64::from(strip);
+                let laps = ((self.camera.value(now) - targets.camera as f64) / period).round();
+                self.camera.shift(-laps * period);
+            }
             self.camera.retarget(targets.camera as f64, now);
             self.retarget_tiles(now, targets);
         } else {
             if !snap_vertical {
-                self.leaving.push((self.band, self.camera.drawn(now)));
+                self.leaving
+                    .push((self.band, self.camera.drawn(now), self.strip));
             }
-            self.leaving.retain(|&(band, _)| band != targets.band);
+            self.leaving.retain(|&(band, _, _)| band != targets.band);
             self.camera = Spring::at_rest(targets.camera as f64, now);
             self.tiles.clear();
             self.retarget_tiles(now, targets);
@@ -365,6 +381,7 @@ impl Shown {
             self.leaving.clear();
         }
         self.band = targets.band;
+        self.strip = targets.strip;
         self.bands.clone_from(&targets.bands);
         self.band_height = targets.band_height;
         self.focused = targets.focused;

@@ -1,5 +1,6 @@
 gband.opt.prefix = "ctrl+space"
 gband.opt.center_focused_column = "never"
+gband.opt.loop_bands = true
 gband.opt.statusline_position = "bottom"
 gband.opt.statusline_height = 1
 gband.opt.statusline_separator = " │ "

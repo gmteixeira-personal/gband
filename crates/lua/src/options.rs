@@ -60,6 +60,7 @@ pub struct Options {
     pub prefix: Key,
     pub layout: LayoutOptions,
     pub center_focused_column: CenterFocusedColumn,
+    pub loop_bands: bool,
     pub statusline: StatusLineOptions,
     pub notify_style: NotifyStyle,
 }
@@ -70,6 +71,7 @@ impl Default for Options {
             prefix: Key::new(KeyCode::Char(' '), Modifiers::CTRL),
             layout: LayoutOptions::default(),
             center_focused_column: CenterFocusedColumn::default(),
+            loop_bands: true,
             statusline: StatusLineOptions::default(),
             notify_style: NotifyStyle::default(),
         }
@@ -96,6 +98,9 @@ impl Options {
         if let Some(policy) = patch.center_focused_column {
             self.center_focused_column = policy;
         }
+        if let Some(loop_bands) = patch.loop_bands {
+            self.loop_bands = loop_bands;
+        }
         if let Some(position) = patch.statusline_position {
             self.statusline.position = position;
         }
@@ -119,6 +124,7 @@ impl Options {
             "default_column_width" => self.layout.default_width = defaults.layout.default_width,
             "width_presets" => self.layout.presets = defaults.layout.presets,
             "center_focused_column" => self.center_focused_column = defaults.center_focused_column,
+            "loop_bands" => self.loop_bands = defaults.loop_bands,
             "statusline_position" => self.statusline.position = defaults.statusline.position,
             "statusline_height" => self.statusline.height = defaults.statusline.height,
             "statusline_separator" => self.statusline.separator = defaults.statusline.separator,
@@ -136,6 +142,7 @@ impl Options {
                 .create_sequence_from(self.layout.presets.iter().map(|&preset| width(preset)))?
                 .into_lua(lua),
             "center_focused_column" => lua.to_value(&self.center_focused_column),
+            "loop_bands" => self.loop_bands.into_lua(lua),
             "statusline_position" => lua.to_value(&self.statusline.position),
             "statusline_height" => self.statusline.height.into_lua(lua),
             "statusline_separator" => self.statusline.separator.as_str().into_lua(lua),
@@ -145,9 +152,10 @@ impl Options {
     }
 }
 
-const CLIENT_NAMES: [&str; 6] = [
+const CLIENT_NAMES: [&str; 7] = [
     "prefix",
     "center_focused_column",
+    "loop_bands",
     "statusline_position",
     "statusline_height",
     "statusline_separator",
@@ -191,7 +199,7 @@ pub(crate) fn check_name(lua: &Lua, name: &str) -> Result<(), String> {
     Err(foreign(lua, name).unwrap_or_else(|| format!("unknown option `{name}`")))
 }
 
-const BUILTIN: [(&str, &str, &str); 8] = [
+const BUILTIN: [(&str, &str, &str); 9] = [
     ("prefix", "string", "the key that starts a key sequence"),
     (
         "default_column_width",
@@ -212,6 +220,11 @@ const BUILTIN: [(&str, &str, &str); 8] = [
         "center_focused_column",
         "string",
         "when the view centres the focused column: never, always or on-overflow",
+    ),
+    (
+        "loop_bands",
+        "boolean",
+        "whether focus and the strip go round from a band's last column to its first",
     ),
     (
         "statusline_position",
@@ -651,6 +664,7 @@ pub struct OptionsPatch {
     default_column_width: Option<Width>,
     width_presets: Option<Presets>,
     center_focused_column: Option<CenterFocusedColumn>,
+    loop_bands: Option<bool>,
     statusline_position: Option<StatusLinePosition>,
     statusline_height: Option<Height>,
     statusline_separator: Option<String>,
@@ -871,7 +885,7 @@ mod tests {
     #[test]
     fn every_option_is_read() {
         let options = patched(
-            "{ prefix = 'ctrl+b', default_column_width = 0.35, width_presets = { 1/2 }, center_focused_column = 'on-overflow', statusline_position = 'top', statusline_height = 2, statusline_separator = ' | ', notify_style = 'osc777' }",
+            "{ prefix = 'ctrl+b', default_column_width = 0.35, width_presets = { 1/2 }, center_focused_column = 'on-overflow', loop_bands = false, statusline_position = 'top', statusline_height = 2, statusline_separator = ' | ', notify_style = 'osc777' }",
         )
         .unwrap();
         assert_eq!(
@@ -883,6 +897,7 @@ mod tests {
                     presets: vec![Proportion::ONE_HALF],
                 },
                 center_focused_column: CenterFocusedColumn::OnOverflow,
+                loop_bands: false,
                 statusline: StatusLineOptions {
                     position: StatusLinePosition::Top,
                     height: 2,
@@ -909,6 +924,7 @@ mod tests {
             "{ statusline_height = 1.5 }",
             "{ statusline_separator = 3 }",
             "{ notify_style = 'osc8' }",
+            "{ loop_bands = 'yes' }",
         ] {
             assert!(patched(source).is_err(), "{source}");
         }

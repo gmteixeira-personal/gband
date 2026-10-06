@@ -3,9 +3,9 @@ use std::time::{Duration, Instant};
 use gband_client::animation::{
     Animations, DrawnBand, DrawnTile, Presentation, Spring, Targets, parse_animations,
 };
-use gband_core::geometry::{Size, Tile};
+use gband_core::geometry::{Size, Tile, drawn_copy};
 use gband_core::layout::{BandId, Direction, Layout, LayoutOptions, SessionAction, WindowId};
-use gband_core::view::{Scene, View};
+use gband_core::view::{Scene, View, ViewAction};
 
 fn ms(millis: u64) -> Duration {
     Duration::from_millis(millis)
@@ -28,6 +28,7 @@ fn targets(band: u32, bands: &[u32], camera: i64, tiles: Vec<Tile>) -> Targets {
         band: BandId(band),
         bands: bands.iter().copied().map(BandId).collect(),
         camera,
+        strip: None,
         band_height: 24,
         focused: tiles.first().map(|tile| tile.window),
         tiles,
@@ -57,6 +58,7 @@ fn band(band: u32, top: i64) -> DrawnBand {
         band: BandId(band),
         top,
         camera: 0,
+        strip: None,
     }
 }
 
@@ -372,6 +374,113 @@ fn moving_a_floating_window_does_not_animate() {
     presentation.update(start, &layout_targets(&layout));
     assert_eq!(drawn_tile(&presentation, start, b.0), None);
     assert!(!presentation.is_animating(start));
+}
+
+fn scene(layout: &Layout) -> Scene<'_> {
+    Scene {
+        layout,
+        area: AREA,
+        viewport: AREA,
+    }
+}
+
+fn view_targets(layout: &Layout, view: &View) -> Targets {
+    Targets::new(layout, AREA, view, AREA)
+}
+
+fn lefts(presentation: &Presentation, now: Instant, windows: &[WindowId]) -> Vec<i64> {
+    let drawn = presentation.drawn(now);
+    let band = drawn.bands.last().unwrap();
+    windows
+        .iter()
+        .map(|window| {
+            let left = drawn.tiles[window].x - band.camera;
+            band.strip
+                .map_or(left, |strip| drawn_copy(left, strip, AREA.cols))
+        })
+        .collect()
+}
+
+fn frames(presentation: &Presentation, start: Instant, windows: &[WindowId]) -> Vec<Vec<i64>> {
+    (0..=25)
+        .map(|frame| lefts(presentation, start + ms(16 * frame), windows))
+        .collect()
+}
+
+fn moving(frames: &[Vec<i64>], step: impl Fn(i64, i64) -> bool) -> bool {
+    frames.windows(2).all(|pair| step(pair[0][0], pair[1][0]))
+}
+
+fn follows_on(frames: &[Vec<i64>]) -> bool {
+    frames.iter().all(|frame| {
+        let next = frame[1];
+        next >= i64::from(AREA.cols) || next + 40 <= 0 || next == frame[0] + 40
+    })
+}
+
+#[test]
+fn scroll_right_across_the_seam() {
+    let (layout, [a, b, _]) = three_columns();
+    let mut view = View::new(scene(&layout));
+    for _ in 0..3 {
+        view.apply(ViewAction::FocusRight, scene(&layout));
+    }
+    assert_eq!((view.focused(), view.camera()), (Some(a), 80));
+    let mut presentation = Presentation::new(Animations::On);
+    presentation.update(Instant::now(), &view_targets(&layout, &view));
+    view.apply(ViewAction::FocusRight, scene(&layout));
+    assert_eq!((view.camera(), view.travel()), (0, 120));
+    let start = Instant::now();
+    presentation.update(start, &view_targets(&layout, &view));
+    let frames = frames(&presentation, start, &[a, b]);
+    assert_eq!(frames[0][0], 40);
+    assert_eq!(frames.last().unwrap(), &[0, 40]);
+    assert!(frames.iter().any(|frame| 0 < frame[0] && frame[0] < 40));
+    assert!(moving(&frames, |before, after| after <= before));
+    assert!(follows_on(&frames));
+}
+
+#[test]
+fn scroll_left_across_the_seam() {
+    let (layout, [a, _, c]) = three_columns();
+    let mut view = View::new(scene(&layout));
+    let mut presentation = Presentation::new(Animations::On);
+    presentation.update(Instant::now(), &view_targets(&layout, &view));
+    view.apply(ViewAction::FocusLeft, scene(&layout));
+    assert_eq!(
+        (view.focused(), view.camera(), view.travel()),
+        (Some(c), 80, -40)
+    );
+    let start = Instant::now();
+    presentation.update(start, &view_targets(&layout, &view));
+    let frames = frames(&presentation, start, &[c, a]);
+    assert_eq!(frames[0][1], 0);
+    assert_eq!(frames.last().unwrap(), &[0, 40]);
+    assert!(frames.iter().any(|frame| -40 < frame[0] && frame[0] < 0));
+    assert!(moving(&frames, |before, after| after >= before));
+    assert!(follows_on(&frames));
+}
+
+#[test]
+fn band_that_stops_looping_scrolls_on_without_a_jump() {
+    let (mut layout, [a, _, c]) = three_columns();
+    let mut view = View::new(scene(&layout));
+    for _ in 0..3 {
+        view.apply(ViewAction::FocusRight, scene(&layout));
+    }
+    let mut presentation = Presentation::new(Animations::On);
+    presentation.update(Instant::now(), &view_targets(&layout, &view));
+    assert_eq!(lefts(&presentation, Instant::now(), &[c, a]), [0, 40]);
+    layout.remove(c);
+    view.sync(scene(&layout));
+    assert_eq!(view.strip(scene(&layout)), None);
+    assert_eq!((view.camera(), view.travel()), (0, 0));
+    let start = Instant::now();
+    presentation.update(start, &view_targets(&layout, &view));
+    let frames = frames(&presentation, start, &[a]);
+    assert_eq!(frames[0], [40]);
+    assert_eq!(frames.last().unwrap(), &[0]);
+    assert!(moving(&frames, |before, after| after <= before));
 }
 
 #[test]

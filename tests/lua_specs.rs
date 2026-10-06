@@ -40,6 +40,11 @@ fn bundled_key_list() {
 }
 
 #[test]
+fn looping_bands() {
+    gband_test(root(), &["tests/lua/loop_bands_spec.lua"]);
+}
+
+#[test]
 fn example_plugin_agent_status() {
     gband_test(&root().join("examples/plugins/agent-status"), &[]);
 }
