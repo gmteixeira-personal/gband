@@ -139,7 +139,7 @@ fn question_mark_opens_the_key_list() {
         position(screen, "┌navigation keys").is_some()
             && inverse_at(screen, "focus the column to the left")
     });
-    client.send(b"j");
+    client.send(b"\x1b[B");
     client.wait_for("the cursor line on the second line", |screen| {
         inverse_at(screen, "focus the column to the right")
             && !inverse_at(screen, "focus the column to the left")

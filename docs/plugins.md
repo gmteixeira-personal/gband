@@ -794,7 +794,15 @@ Enter runs the binding on the cursor line with `gband.keymap.run("prefix", key)`
 The list stays open and focused, by the rule for a floating plugin window's own `keys`, so you can choose again; a floating plugin window the binding opens takes focus above it.
 `close_window` closes the list itself, as it closes any focused floating plugin window.
 Enter does nothing on the line of `keylist.open` itself, the one line whose description is drawn in `KeyListMuted`.
-`q`, Escape and Ctrl+Space then `q` close the list.
+
+Pressing a line's key, matched as a binding's key is, moves the cursor line to that line and runs it exactly as Enter on it does: the list stays open and focused on the same terms, `close_window` closes it, and the line of `keylist.open` only moves the cursor line.
+The list keeps its own keys: Up, Down, PageUp, PageDown, Home and End move the cursor line, Enter runs it, and Escape closes the list.
+An own key keeps that meaning when a line shows it, so such a line runs only through Enter.
+The line of the prefix key also runs only through Enter, because the prefix key enters the `prefix` table before the list receives it.
+Every other key a line shows runs that line, even where a floating plugin window gives the key a default: with the defaults `j` and `k` focus the window below and above, and only Up and Down move the cursor line.
+A key no line shows keeps its floating plugin window default, so a `prefix` table without `j` leaves `j` moving the cursor line.
+`q` runs its line when the `prefix` table binds it, so the default `close_window` closes the list; without a `q` binding, `q` closes the list as it closes any floating plugin window.
+Escape and Ctrl+Space then `q` close the list too.
 
 The key list draws keys in `KeyListKey` and the description it cannot run in `KeyListMuted`; it defines them as defaults when its module is first required, and gives `StatusLineAccent` and `StatusLineMuted` their usual defaults so the links resolve without a status line.
 

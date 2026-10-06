@@ -267,9 +267,11 @@ Each client stacks floating windows in its own order, with the one it focused la
 ### Key list
 
 Ctrl+Space then `?` opens a list of the navigation keys in a box titled `navigation keys` over the windows, each with its description, and returns to interactive mode so the list takes the keys that follow.
-`j` and `k` or the arrow keys move through it, and Enter runs the selected key's binding, an action or a function, on the window behind the list, which stays open for the next choice.
-The list's own `?` line shows dimmed, and Enter does nothing on it.
-`q`, Escape, or Ctrl+Space then `q` close the list.
+Pressing a line's key selects that line and runs its binding, an action or a function, on the window behind the list, which stays open for the next choice: `l` focuses the column to the right, and `j` and `k` focus the window below and above.
+Up and Down move through the list, PageUp, PageDown, Home and End jump through it, and Enter runs the selected line.
+Lines whose key is one of these, and the line of the prefix key, run only through Enter.
+The list's own `?` line shows dimmed, and pressing `?` or Enter on it only selects it.
+`q` runs its line, close the window, which closes the list; Escape, or Ctrl+Space then `q`, close it too.
 
 The list is a plugin bundled with gband, set up by the default configuration.
 A `user/init.lua` that replaces the defaults sets it up and binds it itself:
