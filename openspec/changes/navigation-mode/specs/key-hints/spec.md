@@ -14,8 +14,8 @@ Each hint SHALL be the key, as "Key form" shows it, in the group `KeyHintKey`, o
 - **THEN** the segment shows `C-space prefix`
 
 #### Scenario: Prefix table with the defaults
-- **WHEN** the default configuration is in use, the client's terminal is 400 columns wide, and the user presses Ctrl+Space
-- **THEN** the segment starts with `h left  l right  j down  k up  u band down  i band up  n open a window  q close`
+- **WHEN** the default configuration is in use, the client's terminal is 520 columns wide, and the user presses Ctrl+Space
+- **THEN** the segment starts with `h left  l right  j down  k up  u band down  i band up  c center  n open a window  q close`
 - **AND** ends with `D detach  esc interactive mode  enter interactive mode  left left  right right  down down  up up  C-space send the prefix key`
 
 #### Scenario: Hints stay in navigation mode

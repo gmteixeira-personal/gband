@@ -6,7 +6,7 @@ See proposal.md for the motivation. The code today:
 - **Floating plugin windows.** `gband/win.lua` validates plugin windows and presents frames through `host.present_window`, and `plugin_windows::ribbon_resized` replaces floating plugin windows after a ribbon change. Bars follow the same split.
 - **Borders.** Every tile border is `Block::bordered()` with the `FOCUSED_BORDER` or `UNFOCUSED_BORDER` style in `crates/client/src/render.rs`. Floating plugin windows use `Block::bordered()` with `PluginWindowBorder`. The window's terminal size is always its tile less 2 by 2, in `gband_core::geometry`.
 - **Steps.** `SessionCommand::StepWidth(Step)` and `StepHeight(Step)` carry only grow or shrink. `Column::step_width` adds `1/10` through `Proportion::step`, and `Column::step_height` computes `(rows + 5) / 10` rows.
-- **Dependencies.** This change depends on `floating-windows` and `navigation-mode`. Its deltas are written against their versions of the requirements they share: floating-windows' "Present the ribbon", "Action targets", "Session actions resolve against the view", "Client messages", "Handshake" and the new `floating-windows` spec; navigation-mode's status-line "Layout" and "Bundled segment plugins", and key-hints "Hints of the active table" and "Default setup". floating-windows' "Client messages" predates the `command` message from split-plugin-runtime, so this change's delta restores that row and its scenario.
+- **Dependencies.** This change depends on `floating-windows`, `loop-bands` and `navigation-mode`. Its deltas are written against their versions of the requirements they share: floating-windows' "Present the ribbon", "Action targets", "Session actions resolve against the view", "Client messages", "Handshake" and the new `floating-windows` spec; navigation-mode's status-line "Layout" and "Bundled segment plugins", key-hints "Hints of the active table" and "Default setup", and configuration "Defaults use the public API"; and loop-bands' configuration "Options", which gains `loop_bands`. floating-windows' "Client messages" predates the `command` message from split-plugin-runtime, so this change's delta restores that row and its scenario.
 
 ## Goals / Non-Goals
 
@@ -77,7 +77,8 @@ Alternative: keep `Block` with `Borders` flags and `border_set`. Rejected becaus
 - `SessionCommand::StepWidth` and `StepHeight` become `StepWidth { step, by: Proportion }` and `StepHeight { step, by: Proportion }`. `SessionAction` carries the same fields.
 - `Column::step_width` adds or subtracts `by`. `Column::step_height` uses `round_half_up(rows × by).max(1)` rows.
 - `bindings.rs` fills `by` from `width_step` or `height_step` when it resolves a binding.
-- `control.rs` fills it from the client target's `step`, or the same options. `actions.rs` fills it from the server target's `step`. The server's Lua uses `1/10` when no step is given.
+- `control.rs` fills it from the client target's `step`, or the same options. `actions.rs` fills it from the server target's `step`, which the server's targets of the four grow and shrink actions now accept, with the client's ranges. The server's Lua uses `1/10` when no step is given.
+- `geometry::height_step` and `width_step` stay the fixed tenth. Floating moves, and the height of a new floating box, keep using them, so `crates/core/src/geometry.rs` does not change. The requested step is turned into rows in `layout.rs`.
 - The floating-window sizing that floating-windows adds receives the same `by`.
 
 Alternative: server options for the steps. Rejected because the user wants each client to have its own settings, while the resulting sizes stay shared.

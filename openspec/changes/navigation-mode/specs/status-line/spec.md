@@ -38,7 +38,7 @@ gband SHALL bundle these plugin modules, each set up with `gband.plugin` and eac
 |---|---|---|---|---|---|---|---|
 | `gband.statusline.band` | `band` | `band ` and the viewed band's index | `BandChanged`, `LayoutChanged` | left | 20 | 10 | `StatusLineSegment` |
 | `gband.statusline.mode` | `mode` | the active key table's label, as `gband.keymap.label` returns it; hidden while `root` is active | `KeyTableChanged` | left | 30 | 20 | `StatusLineAccent` |
-| `gband.statusline.position` | `position` | the focused column's index, `/`, and the band's column count; hidden while the viewed band is empty | `FocusChanged`, `BandChanged`, `LayoutChanged` | right | 10 | 10 | `StatusLineMuted` |
+| `gband.statusline.position` | `position` | the focused column's index, `/`, and the band's column count; hidden while the viewed band is empty or a floating window is focused | `FocusChanged`, `BandChanged`, `LayoutChanged` | right | 10 | 10 | `StatusLineMuted` |
 | `gband.statusline.clock` | `clock` | the local time, formatted by `os.date` with `opts.format`, `"%H:%M"` by default | every `opts.interval` milliseconds, 1000 by default | right | 5 | 20 | `StatusLineMuted` |
 
 Each SHALL take the options `align`, `priority`, `order` and `hl`, which replace the defaults in the table. An option of the wrong type or value SHALL make its `setup` raise an error. The default configuration SHALL set up `band`, `mode` and `position`, and SHALL NOT set up `clock`.
@@ -58,3 +58,7 @@ Each SHALL take the options `align`, `priority`, `order` and `hl`, which replace
 #### Scenario: User file without segments
 - **WHEN** `user/init.lua` sets up no segment plugin and adds no component
 - **THEN** the status line is drawn in `StatusLine` with no text
+
+#### Scenario: Position hidden on floating focus
+- **WHEN** the default configuration is in use and the client focuses a floating window
+- **THEN** the status line shows no position segment
