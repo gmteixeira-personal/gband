@@ -311,7 +311,7 @@ With no configuration file, the bindings SHALL be those the default configuratio
 | `i` | `prefix i` | view the band above | view |
 | `c` | `prefix c` | center the focused column, or the focused floating window | view |
 | Enter | `prefix enter` | open a window right of the focused window's column | session |
-| `q` | `prefix q` | close the focused window | session |
+| `q` | `prefix q` | close the focused floating plugin window when one is focused, otherwise the focused window | session |
 | `[` | `prefix [` | consume or expel the focused window to the left | session |
 | `]` | `prefix ]` | consume or expel the focused window to the right | session |
 | `r` | `prefix r` | cycle the width of the focused window's column | session |
@@ -331,11 +331,12 @@ With no configuration file, the bindings SHALL be those the default configuratio
 | Ctrl+Right | `prefix ctrl+right` | move the focused window's column, or its floating box, to the right | session |
 | Ctrl+Down | `prefix ctrl+down` | move the focused window, or its floating box, down | session |
 | Ctrl+Up | `prefix ctrl+up` | move the focused window, or its floating box, up | session |
+| `?` | `prefix ?` | open the key list, as the key-list capability defines | client |
 | `D` | `prefix D` | detach | client |
 | Ctrl+Space | `prefix prefix` | send the prefix key to the focused window | client |
 | any other key | — | discard both keys | — |
 
-A binding to an action SHALL dispatch it. A binding to a Lua function SHALL run the function, as the configuration capability defines. A view action SHALL change this client's view as the layout-view capability defines, and SHALL send nothing to the server, except `center_column` on the floating layer, which sends the placing the layout-view capability defines. A session action SHALL be sent to the server as an action naming the focused window, resolved as the actions capability defines. Open window SHALL name the viewed band and the tiled window this client focused most recently there, or no window when there is none. Any other session action, and sending the prefix key, SHALL do nothing when no window is focused. A character key SHALL match a binding by its character, Ctrl and Alt, so a `D` matches whether or not the terminal reports Shift with it.
+A binding to an action SHALL dispatch it. A binding to a Lua function SHALL run the function, as the configuration capability defines. A view action SHALL change this client's view as the layout-view capability defines, and SHALL send nothing to the server, except `center_column` on the floating layer, which sends the placing the layout-view capability defines. A session action SHALL be sent to the server as an action naming the focused window, resolved as the actions capability defines, except close window while a floating plugin window is focused, which closes that floating plugin window in the client. Open window SHALL name the viewed band and the tiled window this client focused most recently there, or no window when there is none. Any other session action, and sending the prefix key, SHALL do nothing when no window is focused, except close window while a floating plugin window is focused. A character key SHALL match a binding by its character, Ctrl and Alt, so a `D` matches whether or not the terminal reports Shift with it.
 
 #### Scenario: Detach
 - **WHEN** the user presses Ctrl+Space then Shift+D
@@ -371,6 +372,14 @@ A binding to an action SHALL dispatch it. A binding to a Lua function SHALL run 
 #### Scenario: Close the focused window
 - **WHEN** two windows are open with the second focused and the user presses Ctrl+Space then `q`
 - **THEN** the second tile disappears and the first window is focused
+
+#### Scenario: Prefix q closes the focused floating plugin window
+- **WHEN** two windows are open, a floating plugin window is focused, and the user presses Ctrl+Space then `q`
+- **THEN** the floating plugin window closes and both tiles stay
+
+#### Scenario: Prefix q closes a floating plugin window on the empty band
+- **WHEN** the viewed band holds no window, a floating plugin window is focused, and the user presses Ctrl+Space then `q`
+- **THEN** the floating plugin window closes
 
 #### Scenario: Another band
 - **WHEN** the user presses Ctrl+Space then `u`, then Ctrl+Space then Enter, then Ctrl+Space then `i`
@@ -455,6 +464,10 @@ A binding to an action SHALL dispatch it. A binding to a Lua function SHALL run 
 #### Scenario: Move a floating window
 - **WHEN** the client's 80×24 terminal sets the screen area, a floating window is focused with its box starting at column 20, and the user presses Ctrl+Space then Ctrl+L
 - **THEN** the box is drawn from column 28
+
+#### Scenario: Open the key list
+- **WHEN** no `user/init.lua` exists and the user presses Ctrl+Space then `?`
+- **THEN** a floating plugin window titled `prefix keys` lists the prefix bindings and has focus
 
 ### Requirement: Report shown windows
 The client SHALL send the server a shown message naming its shown windows, as the layout-view capability defines them, once it has received the first layout after attaching. It SHALL send a new shown message whenever its shown windows change, whether a layout, a focus message, a view action or a change of its terminal's size changed them. It SHALL NOT send a shown message that names the same windows as the last one it sent.

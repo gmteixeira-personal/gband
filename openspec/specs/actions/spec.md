@@ -35,7 +35,9 @@ A session action from a binding SHALL name no window. Before sending it, the cli
 
 Open window SHALL be sent naming, as the window to open after, the tiled window this client focused most recently in the viewed band, when it is still tiled there, and no window otherwise. Toggling floating SHALL be sent naming the same tiled window, as the window the toggled window is tiled after.
 
-A session action dispatched with a target, as the lua-control capability defines, SHALL NOT be resolved against the view: it SHALL name the window, band or window to open after that its target names, whichever window is focused.
+Close window resolved against the view SHALL close the focused floating plugin window when one is focused, as the plugin-windows capability defines, even when no window is focused: it SHALL close that floating plugin window as `gband.win.close` does, and SHALL send nothing to the server. Otherwise it SHALL resolve to the focused window, tiled or floating. A floating window is a window, not a plugin window.
+
+A session action dispatched with a target, as the lua-control capability defines, SHALL NOT be resolved against the view: it SHALL name the window, band or window to open after that its target names, whichever window or plugin window is focused.
 
 #### Scenario: Resolve to the focused window
 - **WHEN** a view focuses window 3 and resolves cycle width
@@ -64,6 +66,22 @@ A session action dispatched with a target, as the lua-control capability defines
 #### Scenario: Target on the empty band
 - **WHEN** a view on the empty band dispatches close window with the target window 1
 - **THEN** the result is close window naming window 1
+
+#### Scenario: Close the focused floating plugin window
+- **WHEN** window 3 is focused, a floating plugin window is focused, and close window is dispatched with no target
+- **THEN** the floating plugin window closes, nothing is sent to the server, and window 3 stays open and focused
+
+#### Scenario: Close the focused floating plugin window on the empty band
+- **WHEN** a view on the empty band has a floating plugin window focused and resolves close window
+- **THEN** the floating plugin window closes and there is nothing to send
+
+#### Scenario: Close a focused floating window
+- **WHEN** floating window 3 is focused, no floating plugin window is focused, and close window is dispatched with no target
+- **THEN** the result is close window naming window 3
+
+#### Scenario: Target names a window behind a floating plugin window
+- **WHEN** a floating plugin window is focused and close window is dispatched with the target window 3
+- **THEN** the client sends close window naming window 3 and the floating plugin window stays open
 
 ### Requirement: Lua names of actions
 Every built-in action SHALL have one Lua name, under which `gband.action` holds it, and one description, the text of its action column:

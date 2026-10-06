@@ -122,7 +122,7 @@ While a plugin window is focused, every key that the key bindings would send to 
 | Up or `k`, Down or `j` | move the cursor line up or down one line with `cursorline` on, otherwise scroll by one line |
 | PageUp, PageDown | scroll by the content area's height, and move the cursor line by as many lines with `cursorline` on |
 | Home, End | show the first or last line, and make it the cursor line with `cursorline` on |
-| Escape | close the plugin window when it is a floating plugin window |
+| `q`, Escape | close the plugin window when it is a floating plugin window |
 
 Any other key SHALL be discarded.
 
@@ -143,8 +143,24 @@ Any other key SHALL be discarded.
 - **THEN** the floating plugin window closes and the focused window receives nothing
 
 #### Scenario: Bindings still win
-- **WHEN** a floating plugin window is focused and the user presses Ctrl+Space then `q`
-- **THEN** the focused window closes and the floating plugin window receives no key
+- **WHEN** a floating plugin window with `keys = { h = fn }` is focused over the second of two columns and the user presses Ctrl+Space then `h`
+- **THEN** the first column is focused and `fn` does not run
+
+#### Scenario: q closes a floating plugin window
+- **WHEN** a focused floating plugin window binds no `q` and the user presses `q`
+- **THEN** the floating plugin window closes, its `on_close` runs, and the focused window receives nothing
+
+#### Scenario: A keys entry for q wins
+- **WHEN** a focused floating plugin window has `keys = { q = fn }` and the user presses `q`
+- **THEN** `fn` runs and the floating plugin window stays open
+
+#### Scenario: Prefix q closes the focused floating plugin window
+- **WHEN** a floating plugin window is focused over window 1 and the user presses Ctrl+Space then `q`
+- **THEN** the floating plugin window closes, window 1 stays open and focused, and the floating plugin window's `keys` functions do not run
+
+#### Scenario: q in a tiled plugin window
+- **WHEN** a tiled plugin window is focused, binds no `q`, and the user presses `q`
+- **THEN** the key is discarded and the tiled plugin window stays open
 
 #### Scenario: Unmatched key
 - **WHEN** a floating plugin window is focused and the user types `x`
@@ -212,7 +228,7 @@ A plugin window's `keys` functions, `on_close` and `on_resize` SHALL run as call
 - **THEN** the error is reported as a plugin error, and the plugin window stays open
 
 ### Requirement: Closing plugin windows
-`gband.win.close(win)` SHALL close the plugin window. For a tiled plugin window, it SHALL also dispatch close window naming its drawn window, or close that window as soon as the server reports it when the window is not yet known. Closing a plugin window that is not open SHALL do nothing. A plugin window SHALL also close when the plugin it belongs to is marked failed. A reload SHALL close every plugin window and every drawn window this client opened, before the new configuration's `ConfigReloaded` handlers run.
+`gband.win.close(win)` SHALL close the plugin window. For a tiled plugin window, it SHALL also dispatch close window naming its drawn window, or close that window as soon as the server reports it when the window is not yet known. Closing a plugin window that is not open SHALL do nothing. Close window resolved against the view while a floating plugin window is focused SHALL close that floating plugin window the same way, as the actions capability defines. A plugin window SHALL also close when the plugin it belongs to is marked failed. A reload SHALL close every plugin window and every drawn window this client opened, before the new configuration's `ConfigReloaded` handlers run.
 
 #### Scenario: Close a floating plugin window
 - **WHEN** a binding function closes the focused floating plugin window
@@ -221,6 +237,10 @@ A plugin window's `keys` functions, `on_close` and `on_resize` SHALL run as call
 #### Scenario: Close a tiled plugin window
 - **WHEN** a binding function closes a tiled plugin window whose drawn window is window 3
 - **THEN** window 3 leaves the layout
+
+#### Scenario: Close window on a focused floating plugin window
+- **WHEN** a focused floating plugin window's `on_close` records its argument and a binding function calls `gband.action.close_window()`
+- **THEN** the floating plugin window is no longer drawn, `on_close` runs with its number, and no window closes
 
 #### Scenario: Reload
 - **WHEN** a floating plugin window and a tiled plugin window are open and the user saves `user/init.lua`
