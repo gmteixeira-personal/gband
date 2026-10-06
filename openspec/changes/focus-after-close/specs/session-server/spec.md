@@ -82,3 +82,38 @@ After placing an opened window whose action asks for focus, the server SHALL sen
 - **WHEN** a client asks to open a window running `printf` with focus, and the program exits before the server sends the focus message
 - **THEN** every focus message the client receives names a window that the last layout it received holds
 - **AND** the client receives no focus message naming the closed window after a layout that does not hold it
+
+### Requirement: Window program
+On creating a session, the server SHALL open that session's first window. Every window other than a drawn window SHALL run, in its own new PTY, the program its open window action names, or the user's shell when the action names none and for the first window. The user's shell SHALL be `$SHELL` when it is set, otherwise the user's login shell. A program named as a command line SHALL run as the user's shell with the arguments `-c` and that command line. A program named as an argument list SHALL run as that list. The program SHALL start in its session's working directory. Its environment SHALL be the server's without `GBAND_TEST_SOCKET` or `GBAND_PANE`, with `TERM=xterm-256color`, `COLORTERM=truecolor`, `GBAND` set to the socket path, `GBAND_SESSION` set to the session's name and `GBAND_WINDOW` set to the window's identifier in decimal. The PTY's initial size SHALL be the terminal size the layout gives the window for its session's current screen area.
+
+#### Scenario: Environment of the window
+- **WHEN** a client attaches and the user runs `echo $TERM $COLORTERM $GBAND` in the window
+- **THEN** the window prints `xterm-256color truecolor` followed by the socket path
+
+#### Scenario: Session named in the window
+- **WHEN** a client attaches with `-s work` and the user runs `echo $GBAND_SESSION` in the window
+- **THEN** the window prints `work`
+
+#### Scenario: Windows are told apart
+- **WHEN** a session holds two windows and the user runs `echo $GBAND_WINDOW` in each
+- **THEN** the two windows print different identifiers
+
+#### Scenario: Size before any client
+- **WHEN** the server starts and no client has attached
+- **THEN** the first window's PTY is 38 columns by 22 rows
+
+#### Scenario: Command line program
+- **WHEN** a client asks to open a window naming the command line `echo $GBAND_WINDOW; sleep 5`
+- **THEN** the new window prints its identifier, as the user's shell expands it
+
+#### Scenario: Argument list program
+- **WHEN** a client asks to open a window naming the argument list `awk`, `BEGIN { printf "%s-%s", ARGV[1], ARGV[2]; getline line < "-" }`, `a`, `b`
+- **THEN** the new window prints `a-b` without a shell expanding it, and stays open while its program waits for input
+
+#### Scenario: Program that cannot start
+- **WHEN** a client asks to open a window naming the argument list `/nonexistent`
+- **THEN** the server records the reason in its log and the layout is unchanged
+
+#### Scenario: Test channel kept out of windows
+- **WHEN** a server runs with `GBAND_TEST_SOCKET` set and the user runs `echo "[$GBAND_TEST_SOCKET]"` in a window
+- **THEN** the window prints `[]`
