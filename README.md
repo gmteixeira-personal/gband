@@ -108,21 +108,35 @@ gband takes the mouse while it is attached.
 In interactive mode:
 
 - A click focuses the window under the pointer, and raises a floating window.
-- When the window's program asked for the mouse, such as `htop` or `less --mouse`, the click, its drags and its release go to the program. Hold Alt to select text instead.
+- When the window's program asked for the mouse, such as `htop` or `less --mouse`, the click, its drags and its release go to the program. Hold Ctrl and Alt to select text instead.
 - Otherwise a left drag selects text, shown reversed. Releasing copies it to gband's copy buffer and to your terminal's clipboard with OSC 52.
 - A right click pastes the copy buffer into the window under the pointer.
 - In a plugin window, such as the key list, a click moves the cursor line.
 
-The wheel always reaches the window under the pointer, in every mode, and the program receives it when it asked for the mouse.
+With Alt held, the wheel views the band below or above, one band per flick.
+Every other turn of the wheel reaches the window under the pointer, in every mode, and the program receives it when it asked for the mouse.
 gband keeps no scrollback, so the wheel scrolls nothing of its own; over a plugin window it scrolls the lines.
 
-In navigation mode, as holding niri's modifier:
+Both key styles drag windows the way niri does with its modifier held: with Alt held in any mode, or with no modifier in navigation mode or after Ctrl+Space.
 
 | button | drag |
 |---|---|
 | left | move a floating window, or lift a tiled window and drop it beside or into another column; on empty ribbon, slide the band or switch bands as the middle button does |
 | right | resize the window from the edges nearest the press |
 | middle | slide the band sideways or switch bands vertically, whichever axis the drag starts on; a sideways release focuses the column at the middle of the view, and a vertical release views the band holding the middle row |
+
+| mouse | modal | direct |
+|---|---|---|
+| Alt with a drag or the wheel | acts in interactive and navigation mode | acts at any time |
+| Ctrl+Space then a drag | acts, and navigation mode stays active | acts once, and the keys that follow reach the window |
+| Ctrl+Space then Alt with a drag or the wheel | acts, and navigation mode stays active | acts once |
+
+Some Linux desktops, such as Xfce, take Alt with a drag to move their own windows, so the terminal never sees it.
+Pick another modifier for every one of these bindings in `user/init.lua`:
+
+```lua
+gband.opt.mouse_mod = "ctrl+alt"
+```
 
 While gband has the mouse, a plain drag no longer selects text in your terminal.
 Most terminals, such as kitty, Alacritty, WezTerm, foot and those built on VTE, still select natively with Shift held.
@@ -217,6 +231,7 @@ The client options, set in `user/init.lua`, and their defaults:
 | `floating_border_chars` | a floating window border's characters | `"plain"` |
 | `width_step` | how much growing or shrinking changes a column's width, as a fraction of the screen | `1/10` |
 | `height_step` | how much growing or shrinking changes a window's height, as a fraction of the screen, at most 1 | `1/10` |
+| `mouse_mod` | the modifiers that `mod` stands for in a mouse name: `ctrl`, `alt` and `shift` joined by `+` | `"alt"` |
 | `notify_style` | how a plugin's desktop notification reaches your terminal: `"osc9"`, `"osc777"`, `"bell"` or `"none"` | `"osc9"` |
 
 The server options, set in `user/server.lua`, and their defaults:
@@ -271,7 +286,9 @@ The direct key style, `gband.keystyle.use("direct")`, is the one-key prefix bind
 
 A key is a key name with optional `ctrl`, `alt` and `shift` modifiers joined by `+`, such as `alt+h`, `ctrl+PageUp` or `alt++`.
 A key name is one character, or `enter`, `tab`, `backtab`, `backspace`, `escape`, `space`, the arrow keys `up`, `down`, `left` and `right`, `home`, `end`, `insert`, `delete`, `pageup`, `pagedown`, or `f1` to `f12`.
-`leftmouse`, `middlemouse` and `rightmouse` name a press of a mouse button, with the same modifiers, such as `alt+rightmouse`. They bind in key tables only, not as the prefix or in a plugin window's `keys`, and the wheel has no name.
+`leftmouse`, `middlemouse` and `rightmouse` name a press of a mouse button, and `wheelup`, `wheeldown`, `wheelleft` and `wheelright` one step of the wheel, with the same modifiers, such as `alt+rightmouse`. They bind in key tables only, not as the prefix or in a plugin window's `keys`.
+Before a mouse name, `mod` stands for the modifiers of the `mouse_mod` option, so `mod+leftmouse` is Alt with the left button until you change it.
+A bound wheel step runs its binding at most once every 150 ms, and an unbound one still reaches the window under the pointer.
 `prefix prefix` binds the prefix key pressed twice.
 
 `gband.spawn { cmd = ... }` takes a command line as a string, which your shell runs, or a list of a program and its arguments.

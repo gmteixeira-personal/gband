@@ -17,6 +17,7 @@ const MIDDLE: u16 = 1;
 const RIGHT: u16 = 2;
 const MOTION: u16 = 32;
 const ALT: u16 = 8;
+const CTRL: u16 = 16;
 const WHEEL_UP: u16 = 64;
 const WHEEL_DOWN: u16 = 65;
 
@@ -193,8 +194,8 @@ fn drag_outside_the_window() {
 }
 
 #[test]
-fn alt_selects_in_a_mouse_program() {
-    let env = env("mouse-alt-select");
+fn ctrl_alt_selects_in_a_mouse_program() {
+    let env = env("mouse-ctrl-alt-select");
     let mut client = attached(&env);
     let file = recording(
         &mut client,
@@ -209,7 +210,7 @@ fn alt_selects_in_a_mouse_program() {
     let shell = tile_at(&client, 40);
     drag(
         &mut client,
-        LEFT + ALT,
+        LEFT + CTRL + ALT,
         content(&program, 1, row),
         content(&program, 3, row),
     );
@@ -257,11 +258,25 @@ fn wheel_in_navigation_mode_reaches_the_program() {
 #[test]
 fn wheel_with_alt() {
     let env = env("mouse-wheel-alt");
+    env.write_config(&format!(
+        "{}\ngband.keymap.del('root', 'mod+wheeldown')",
+        DEFAULTS.replace("gband.plugin(\"gband.sidebar\")", "")
+    ));
     let mut client = attached(&env);
     let file = recording(&mut client, &env, &format!("printf '{SGR_1000}'; "), 10);
     let program = focused(&client);
     sgr(&mut client, WHEEL_DOWN + ALT, content(&program, 0, 0), 'M');
     wait_file(&file, b"\x1b[<73;1;1M");
+}
+
+#[test]
+fn wheel_with_ctrl() {
+    let env = env("mouse-wheel-ctrl");
+    let mut client = attached(&env);
+    let file = recording(&mut client, &env, &format!("printf '{SGR_1000}'; "), 10);
+    let program = focused(&client);
+    sgr(&mut client, WHEEL_DOWN + CTRL, content(&program, 0, 0), 'M');
+    wait_file(&file, b"\x1b[<81;1;1M");
 }
 
 #[test]
@@ -450,4 +465,95 @@ fn middle_drag_up_switches_bands_in_navigation_mode() {
     client.wait_for("navigation mode still active", |screen| {
         focused_has(screen, "AAA")
     });
+}
+
+fn floated(client: &mut Attached, leave: &[u8]) -> Tile {
+    open_window(client);
+    client.send(&[PREFIX, b"v", leave].concat());
+    client.wait_for("the floating box", |screen| {
+        tiles(screen)
+            .iter()
+            .any(|tile| tile.focused && (tile.left, tile.top) == (20, 2))
+    });
+    focused(client)
+}
+
+fn moved_right(client: &mut Attached, code: u16, from: &Tile) {
+    let (left, top) = (from.left, from.top);
+    drag(client, code, (left + 10, top + 3), (left + 16, top + 3));
+    client.wait_for("the box moved 6 cells right", |screen| {
+        tiles(screen)
+            .iter()
+            .any(|tile| tile.focused && (tile.left, tile.top) == (left + 6, top))
+    });
+}
+
+#[test]
+fn alt_drag_moves_a_window_in_interactive_mode() {
+    for (style, leave) in [("modal", &b"\r"[..]), ("direct", &b""[..])] {
+        let env = env(&format!("mouse-alt-drag-{style}"));
+        env.save_key_style(style);
+        let mut client = attached(&env);
+        let window = floated(&mut client, leave);
+        moved_right(&mut client, LEFT + ALT, &window);
+        client.run("echo typed");
+        client.wait_for("the box still takes keys", |screen| {
+            focused_has(screen, "typed")
+        });
+    }
+}
+
+#[test]
+fn alt_drag_in_navigation_mode() {
+    let env = env("mouse-alt-drag-navigation");
+    let mut client = attached(&env);
+    let window = floated(&mut client, b"");
+    moved_right(&mut client, LEFT + ALT, &window);
+    client.send(b"V");
+    client.wait_for("the tiled layer, so navigation mode stayed", |screen| {
+        tiles(screen)
+            .iter()
+            .any(|tile| tile.focused && (tile.left, tile.top) == (0, 0))
+    });
+}
+
+#[test]
+fn alt_wheel_switches_bands() {
+    let env = env("mouse-alt-wheel");
+    let mut client = attached(&env);
+    client.run("echo AAA");
+    client.wait_for_line("AAA");
+    client.send(&[PREFIX, b"un"].concat());
+    client.wait_for("a window in the second band", |screen| {
+        tiles(screen).len() == 1 && !focused_has(screen, "AAA")
+    });
+    client.run("echo BBB");
+    client.wait_for_line("BBB");
+    client.send(&[PREFIX, b"i\r"].concat());
+    client.wait_for("the first band viewed", |screen| {
+        !focused_has(screen, "BBB")
+    });
+    let file = recording(&mut client, &env, &format!("printf '{SGR_1000}'; "), 1);
+    let program = focused(&client);
+    sgr(&mut client, WHEEL_DOWN + ALT, content(&program, 0, 0), 'M');
+    client.wait_for("the second band viewed", |screen| {
+        focused_has(screen, "BBB")
+    });
+    thread::sleep(Duration::from_millis(200));
+    assert_eq!(fs::read(&file).unwrap_or_default(), b"");
+}
+
+#[test]
+fn remove_a_preset_mouse_binding() {
+    let env = env("mouse-remove-preset");
+    env.write_config(&format!(
+        "{}\ngband.keymap.del('root', 'mod+leftmouse')",
+        DEFAULTS.replace("gband.plugin(\"gband.sidebar\")", "")
+    ));
+    let mut client = attached(&env);
+    let file = recording(&mut client, &env, &format!("printf '{SGR_1000}'; "), 18);
+    let tile = focused(&client);
+    click(&mut client, LEFT + ALT, content(&tile, 4, 2));
+    wait_file(&file, b"\x1b[<8;5;3M\x1b[<8;5;3m");
+    assert_eq!(focused(&client).left, tile.left);
 }

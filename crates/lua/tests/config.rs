@@ -5,7 +5,9 @@ use std::path::PathBuf;
 
 use common::*;
 use gband_core::action::{Action, ClientAction, SessionCommand};
-use gband_core::input::{Key, KeyCode, Modifiers, MouseButton, MouseKey};
+use gband_core::input::{
+    Key, KeyCode, Modifiers, MouseButton, MouseInput, MouseKey, WheelDirection,
+};
 use gband_core::layout::{Direction, Program, Proportion, Step, Vertical};
 use gband_core::view::{CenterFocusedColumn, ViewAction};
 use gband_lua::{
@@ -202,11 +204,38 @@ fn defaults_reproduce_the_built_in_behaviour() {
     assert_eq!(config.options, Options::default());
     let char_key = |c| ("prefix", Chord::Key(Key::plain(KeyCode::Char(c))));
     let ctrl_key = |code| ("prefix", Chord::Key(Key::new(code, Modifiers::CTRL)));
-    let mouse = |button| {
+    let mouse = |table, input: MouseInput, uses_mod| {
         (
-            "prefix",
-            Chord::Mouse(MouseKey::new(button, Modifiers::NONE)),
+            table,
+            Chord::Mouse {
+                key: MouseKey::new(input, Modifiers::NONE),
+                uses_mod,
+            },
         )
+    };
+    let modded = |table| {
+        [
+            (
+                mouse(table, MouseButton::Left.into(), true),
+                Action::Client(ClientAction::DragWindow),
+            ),
+            (
+                mouse(table, MouseButton::Right.into(), true),
+                Action::Client(ClientAction::DragResize),
+            ),
+            (
+                mouse(table, MouseButton::Middle.into(), true),
+                Action::Client(ClientAction::DragBand),
+            ),
+            (
+                mouse(table, WheelDirection::Down.into(), true),
+                Action::View(ViewAction::BandDown),
+            ),
+            (
+                mouse(table, WheelDirection::Up.into(), true),
+                Action::View(ViewAction::BandUp),
+            ),
+        ]
     };
     let expected = [
         (char_key('h'), Action::View(ViewAction::FocusLeft)),
@@ -314,19 +343,23 @@ fn defaults_reproduce_the_built_in_behaviour() {
             Action::View(ViewAction::FocusUp),
         ),
         (
-            mouse(MouseButton::Left),
+            mouse("prefix", MouseButton::Left.into(), false),
             Action::Client(ClientAction::DragWindow),
         ),
         (
-            mouse(MouseButton::Right),
+            mouse("prefix", MouseButton::Right.into(), false),
             Action::Client(ClientAction::DragResize),
         ),
         (
-            mouse(MouseButton::Middle),
+            mouse("prefix", MouseButton::Middle.into(), false),
             Action::Client(ClientAction::DragBand),
         ),
     ]
-    .map(|((table, chord), action)| (table.to_owned(), chord, action));
+    .into_iter()
+    .chain(modded("prefix"))
+    .chain(modded("root"))
+    .map(|((table, chord), action)| (table.to_owned(), chord, action))
+    .collect::<Vec<_>>();
     assert_eq!(actions(&config), expected);
     assert_eq!(config.modes.iter().collect::<Vec<_>>(), ["prefix"]);
     let label: String = eval(&config, "return gband.keymap.label('prefix')");
@@ -476,8 +509,8 @@ fn prefix_keys(config: &Config) -> Vec<String> {
 fn every_default_binding_is_described() {
     let (_scratch, direct) = with_saved_style("described-direct", "direct");
     for (config, count) in [
-        (gband_lua::defaults(gband_lua::Side::Client), 41),
-        (direct, 36),
+        (gband_lua::defaults(gband_lua::Side::Client), 46),
+        (direct, 44),
     ] {
         assert_described(&config, count);
     }
@@ -492,11 +525,10 @@ fn direct_style_from_the_saved_choice() {
     let modal = prefix_keys(&gband_lua::defaults(gband_lua::Side::Client));
     let expected: Vec<String> = modal
         .into_iter()
-        .filter(|key| {
-            !["escape", "enter", "leftmouse", "rightmouse", "middlemouse"].contains(&key.as_str())
-        })
+        .filter(|key| !["escape", "enter"].contains(&key.as_str()))
         .collect();
     assert_eq!(prefix_keys(&config), expected);
+    assert_eq!(root_keys(&config), MOD_ROWS);
     assert_eq!(
         action_of(&config, prefixed("n")),
         Some(Action::Session(SessionCommand::OpenWindow))
@@ -545,10 +577,12 @@ fn assert_described(config: &Config, count: usize) {
            prefix = 'send the prefix key',
          }
          local wrong = {}
-         for _, entry in ipairs(gband.keymap.list('prefix')) do
-           local expected = entry.action and descs[entry.action] or functions[entry.key]
-           if entry.desc == nil or entry.desc ~= expected then
-             wrong[#wrong + 1] = entry.key
+         for _, table in ipairs({ 'prefix', 'root' }) do
+           for _, entry in ipairs(gband.keymap.list(table)) do
+             local expected = entry.action and descs[entry.action] or functions[entry.key]
+             if entry.desc == nil or entry.desc ~= expected then
+               wrong[#wrong + 1] = table .. ' ' .. entry.key
+             end
            end
          end
          return wrong",
@@ -562,22 +596,44 @@ fn assert_described(config: &Config, count: usize) {
 fn navigation_mode_ends_with_the_mouse_bindings() {
     let config = gband_lua::defaults(gband_lua::Side::Client);
     let keys = prefix_keys(&config);
-    assert_eq!(
-        keys[keys.len() - 4..],
-        ["prefix", "leftmouse", "rightmouse", "middlemouse"]
-    );
+    let mouse = ["prefix", "leftmouse", "rightmouse", "middlemouse"]
+        .into_iter()
+        .chain(MOD_ROWS);
+    assert_eq!(keys[keys.len() - 9..], mouse.collect::<Vec<_>>());
     let actions: Vec<String> = eval(
         &config,
         "local names = {} for _, entry in ipairs(gband.keymap.list('prefix')) do names[#names + 1] = entry.action or '' end return names",
     );
+    let mod_actions = [
+        "drag_window",
+        "drag_resize_window",
+        "drag_band",
+        "focus_band_down",
+        "focus_band_up",
+    ];
     assert_eq!(
-        actions[actions.len() - 3..],
+        actions[actions.len() - 8..],
         ["drag_window", "drag_resize_window", "drag_band"]
+            .into_iter()
+            .chain(mod_actions)
+            .collect::<Vec<_>>()
     );
-    assert!(eval::<bool>(
-        &config,
-        "return #gband.keymap.list('root') == 0"
-    ));
+    assert_eq!(root_keys(&config), MOD_ROWS);
+}
+
+const MOD_ROWS: [&str; 5] = [
+    "mod+leftmouse",
+    "mod+rightmouse",
+    "mod+middlemouse",
+    "mod+wheeldown",
+    "mod+wheelup",
+];
+
+fn root_keys(config: &Config) -> Vec<String> {
+    eval(
+        config,
+        "local keys = {} for _, entry in ipairs(gband.keymap.list('root')) do keys[#keys + 1] = entry.key end return keys",
+    )
 }
 
 #[test]
@@ -617,10 +673,7 @@ fn prompt_set_up_by_the_defaults() {
         "for _, entry in ipairs(gband.keymap.list('prefix')) do if entry.key == ':' then return { entry.action, entry.desc } end end",
     );
     assert_eq!(entry, ["prompt.open", "run Lua"]);
-    assert!(eval::<bool>(
-        &config,
-        "return #gband.keymap.list('root') == 0"
-    ));
+    assert_eq!(root_keys(&config), MOD_ROWS);
 }
 
 #[test]
@@ -835,7 +888,10 @@ fn mouse_name_with_modifiers() {
             &config,
             (
                 "prefix",
-                Chord::Mouse(MouseKey::new(MouseButton::Right, Modifiers::SHIFT))
+                Chord::Mouse {
+                    key: MouseKey::new(MouseButton::Right, Modifiers::SHIFT),
+                    uses_mod: false,
+                }
             )
         ),
         Some(Action::Client(ClientAction::Detach))
@@ -845,7 +901,10 @@ fn mouse_name_with_modifiers() {
             &config,
             (
                 "root",
-                Chord::Mouse(MouseKey::new(MouseButton::Left, Modifiers::NONE))
+                Chord::Mouse {
+                    key: MouseKey::new(MouseButton::Left, Modifiers::NONE),
+                    uses_mod: false,
+                }
             )
         ),
         Some(Action::Client(ClientAction::Detach))
@@ -854,11 +913,32 @@ fn mouse_name_with_modifiers() {
 
 #[test]
 fn wheel_name() {
-    let (path, error) = failure(
+    let config = loaded(
         "wheel-name",
-        "\n\n\ngband.bind('prefix wheelup', gband.action.detach)",
+        "gband.keymap.set('root', 'Alt+WheelDown', gband.action.focus_band_down)",
     );
-    assert_failure_at(&error, &path, 4, "wheelup");
+    assert_eq!(
+        action_of(
+            &config,
+            (
+                "root",
+                Chord::Mouse {
+                    key: MouseKey::new(WheelDirection::Down, Modifiers::ALT),
+                    uses_mod: false,
+                }
+            )
+        ),
+        Some(Action::View(ViewAction::BandDown))
+    );
+}
+
+#[test]
+fn unknown_wheel_name() {
+    let (path, error) = failure(
+        "unknown-wheel-name",
+        "\n\n\ngband.bind('prefix scrollup', gband.action.detach)",
+    );
+    assert_failure_at(&error, &path, 4, "scrollup");
 }
 
 #[test]

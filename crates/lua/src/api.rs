@@ -15,7 +15,7 @@ use crate::runtime::is_loading;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Chord {
     Key(Key),
-    Mouse(MouseKey),
+    Mouse { key: MouseKey, uses_mod: bool },
     Prefix,
 }
 
@@ -23,7 +23,7 @@ impl From<Pressed> for Chord {
     fn from(pressed: Pressed) -> Self {
         match pressed {
             Pressed::Key(key) => Chord::Key(key),
-            Pressed::Mouse(key) => Chord::Mouse(key),
+            Pressed::Mouse { key, uses_mod } => Chord::Mouse { key, uses_mod },
         }
     }
 }

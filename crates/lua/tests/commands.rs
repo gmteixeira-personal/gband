@@ -6,10 +6,14 @@ use gband_core::view::ViewAction;
 use gband_lua::{Binding, CallbackId, Config, Dispatch};
 
 fn root_callback(config: &Config, index: usize) -> CallbackId {
-    match config.keymap["root"][index].1 {
-        Binding::Callback(callback) => callback,
-        other => panic!("{other:?}"),
-    }
+    config.keymap["root"]
+        .iter()
+        .filter_map(|(_, binding)| match binding {
+            Binding::Callback(callback) => Some(*callback),
+            Binding::Action(_) => None,
+        })
+        .nth(index)
+        .unwrap_or_else(|| panic!("{:?}", config.keymap["root"]))
 }
 
 #[test]

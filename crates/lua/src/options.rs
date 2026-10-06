@@ -40,6 +40,7 @@ pub struct Options {
     pub tile_border: Border,
     pub floating_border: Border,
     pub steps: Steps,
+    pub mouse_mod: Modifiers,
 }
 
 impl Default for Options {
@@ -53,6 +54,7 @@ impl Default for Options {
             tile_border: Border::default(),
             floating_border: Border::default(),
             steps: Steps::default(),
+            mouse_mod: Modifiers::ALT,
         }
     }
 }
@@ -101,6 +103,9 @@ impl Options {
         if let Some(HeightStep(step)) = patch.height_step {
             self.steps.height = step;
         }
+        if let Some(MouseMod(modifiers)) = patch.mouse_mod {
+            self.mouse_mod = modifiers;
+        }
     }
 }
 
@@ -120,6 +125,7 @@ impl Options {
             "floating_border_chars" => self.floating_border.chars = defaults.floating_border.chars,
             "width_step" => self.steps.width = defaults.steps.width,
             "height_step" => self.steps.height = defaults.steps.height,
+            "mouse_mod" => self.mouse_mod = defaults.mouse_mod,
             _ => {}
         }
     }
@@ -141,12 +147,13 @@ impl Options {
             "floating_border_chars" => self.floating_border.chars.to_lua(lua),
             "width_step" => width(self.steps.width).into_lua(lua),
             "height_step" => width(self.steps.height).into_lua(lua),
+            "mouse_mod" => modifier_names(self.mouse_mod).into_lua(lua),
             _ => Ok(Value::Nil),
         }
     }
 }
 
-const CLIENT_NAMES: [&str; 10] = [
+const CLIENT_NAMES: [&str; 11] = [
     "prefix",
     "center_focused_column",
     "loop_bands",
@@ -157,6 +164,7 @@ const CLIENT_NAMES: [&str; 10] = [
     "floating_border_chars",
     "width_step",
     "height_step",
+    "mouse_mod",
 ];
 
 const SERVER_NAMES: [&str; 2] = ["default_column_width", "width_presets"];
@@ -196,7 +204,7 @@ pub(crate) fn check_name(lua: &Lua, name: &str) -> Result<(), String> {
     Err(foreign(lua, name).unwrap_or_else(|| format!("unknown option `{name}`")))
 }
 
-const BUILTIN: [(&str, &str, &str); 12] = [
+const BUILTIN: [(&str, &str, &str); 13] = [
     ("prefix", "string", "the key that starts a key sequence"),
     (
         "default_column_width",
@@ -252,6 +260,11 @@ const BUILTIN: [(&str, &str, &str); 12] = [
         "height_step",
         "number",
         "how much growing or shrinking changes a window's height, as a fraction of the screen",
+    ),
+    (
+        "mouse_mod",
+        "string",
+        "modifiers that mod stands for in a mouse name",
     ),
 ];
 
@@ -684,6 +697,7 @@ pub struct OptionsPatch {
     floating_border_chars: Option<BorderChars>,
     width_step: Option<WidthStep>,
     height_step: Option<HeightStep>,
+    mouse_mod: Option<MouseMod>,
 }
 
 pub(crate) fn step(value: f64, limit: u32) -> Result<Proportion, String> {
@@ -751,6 +765,41 @@ impl<'de> Deserialize<'de> for KeySpec {
         let name = String::deserialize(deserializer)?;
         parse_key(&name).map(KeySpec).map_err(de::Error::custom)
     }
+}
+
+#[derive(Debug)]
+struct MouseMod(Modifiers);
+
+impl<'de> Deserialize<'de> for MouseMod {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let names = String::deserialize(deserializer)?;
+        let mut modifiers = Modifiers::NONE;
+        for name in names.split('+') {
+            match name.to_ascii_lowercase().as_str() {
+                "ctrl" => modifiers.ctrl = true,
+                "alt" => modifiers.alt = true,
+                "shift" => modifiers.shift = true,
+                _ => {
+                    return Err(de::Error::custom(format!(
+                        "expected modifiers among ctrl, alt and shift joined by +, found `{names}`"
+                    )));
+                }
+            }
+        }
+        Ok(MouseMod(modifiers))
+    }
+}
+
+fn modifier_names(modifiers: Modifiers) -> String {
+    [
+        (modifiers.ctrl, "ctrl"),
+        (modifiers.alt, "alt"),
+        (modifiers.shift, "shift"),
+    ]
+    .into_iter()
+    .filter_map(|(held, name)| held.then_some(name))
+    .collect::<Vec<_>>()
+    .join("+")
 }
 
 #[derive(Debug)]
@@ -951,6 +1000,11 @@ mod tests {
             "{ width_step = 10001 }",
             "{ height_step = 2 }",
             "{ height_step = 'tenth' }",
+            "{ mouse_mod = 'super' }",
+            "{ mouse_mod = '' }",
+            "{ mouse_mod = 'ctrl+' }",
+            "{ mouse_mod = 'mod' }",
+            "{ mouse_mod = true }",
             "{ tile_border_sides = { 'middle' } }",
             "{ tile_border_sides = 'top' }",
             "{ tile_border_chars = 'dotted' }",

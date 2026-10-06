@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use common::*;
 use gband_core::action::Action;
 use gband_core::view::ViewAction;
-use gband_lua::{Binding, Chord, ConfigError, Dispatch, LoadOptions, Locations};
+use gband_lua::{Binding, Chord, Config, ConfigError, Dispatch, LoadOptions, Locations};
 use gband_protocol::Value as Data;
 
 fn plugin_error<'a>(errors: &'a [ConfigError], plugin: &str) -> &'a ConfigError {
@@ -184,6 +184,17 @@ fn invalid_manifests() {
     }
 }
 
+fn root_keys(config: &Config) -> Vec<(Chord, Binding)> {
+    config
+        .keymap
+        .get("root")
+        .into_iter()
+        .flatten()
+        .copied()
+        .filter(|(chord, _)| matches!(chord, Chord::Key(_)))
+        .collect()
+}
+
 #[test]
 fn manifest_cannot_reach_gband() {
     let scratch = Scratch::new("manifest-env");
@@ -194,7 +205,7 @@ fn manifest_cannot_reach_gband() {
     let config = scratch.loaded();
     let error = plugin_error(&config.errors, "hello");
     assert_eq!(error.location, Some((manifest, 1)), "{error}");
-    assert!(!config.keymap.contains_key("root"));
+    assert!(root_keys(&config).is_empty());
 }
 
 #[test]
@@ -274,9 +285,9 @@ fn default_configuration_with_a_plugin() {
         "gband.keymap.set('root', 'alt+g', gband.action.focus_column_left)",
     );
     let config = scratch.loaded();
-    assert_eq!(config.keymap["prefix"].len(), 41);
+    assert_eq!(config.keymap["prefix"].len(), 46);
     assert_eq!(
-        config.keymap["root"],
+        root_keys(&config),
         [(
             Chord::Key(key("alt+g")),
             Binding::Action(Action::View(ViewAction::FocusLeft))
@@ -302,10 +313,10 @@ fn error_in_a_plugin_file() {
     );
     let failed: bool = eval(&config, "return gband.plugins()[1].failed");
     assert!(failed);
-    let Some((_, Binding::Callback(callback))) = config.keymap["root"].first() else {
+    let Some((_, Binding::Callback(callback))) = root_keys(&config).first().copied() else {
         panic!("alt+b is bound");
     };
-    assert!(config.runtime.call(*callback).disabled);
+    assert!(config.runtime.call(callback).disabled);
     assert!(global::<Option<bool>>(&config, "pressed").is_none());
 }
 
@@ -685,7 +696,7 @@ gband.bind('alt+s', gband.action['spin.go'])",
         "gband.bind('alt+h', function() ran = gband.cmd.run('spin.cmd') end)",
     );
     let config = scratch.load_with_budget(100_000).unwrap();
-    let root = &config.keymap["root"];
+    let root = root_keys(&config);
     let (Binding::Callback(spin), Binding::Callback(other)) = (root[0].1, root[1].1) else {
         panic!("{root:?}");
     };

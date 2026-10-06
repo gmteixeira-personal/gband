@@ -2,6 +2,7 @@ mod common;
 
 use common::*;
 use gband_core::action::Steps;
+use gband_core::input::Modifiers;
 use gband_core::layout::Proportion;
 use gband_core::view::CenterFocusedColumn;
 use gband_lua::{Binding, Border, BorderChars, CharSet, ConfigError, Sides};
@@ -212,6 +213,7 @@ fn list_holds_built_in_and_declared_options() {
             "greeting",
             "height_step",
             "loop_bands",
+            "mouse_mod",
             "notify_style",
             "prefix",
             "tile_border_chars",
@@ -424,4 +426,43 @@ fn wide_character_rejected() {
     assert_error_at(error, &path, 2, "tile_border_chars");
     let error = error_naming(&config.errors, "floating_border_sides");
     assert_error_at(error, &path, 3, "middle");
+}
+
+#[test]
+fn mouse_modifier_defaults_to_alt() {
+    let scratch = Scratch::new("mouse-mod-default");
+    scratch.write("modifiers = gband.opt.mouse_mod");
+    let config = scratch.loaded();
+    assert_eq!(global::<String>(&config, "modifiers"), "alt");
+    assert_eq!(config.options.mouse_mod, Modifiers::ALT);
+}
+
+#[test]
+fn mouse_modifier_read_back() {
+    let scratch = Scratch::new("mouse-mod-read");
+    scratch.write("gband.opt.mouse_mod = 'Alt+Ctrl'\nmodifiers = gband.opt.mouse_mod");
+    let config = scratch.loaded();
+    assert!(config.errors.is_empty(), "{:?}", config.errors);
+    assert_eq!(global::<String>(&config, "modifiers"), "ctrl+alt");
+    assert_eq!(
+        config.options.mouse_mod,
+        Modifiers {
+            ctrl: true,
+            alt: true,
+            shift: false,
+        }
+    );
+}
+
+#[test]
+fn invalid_mouse_modifier() {
+    let scratch = Scratch::new("mouse-mod-invalid");
+    let path = scratch.write(
+        "gband.opt.mouse_mod = 'shift'\ngband.opt.mouse_mod = 'super'\nmodifiers = gband.opt.mouse_mod",
+    );
+    let config = scratch.loaded();
+    let error = error_naming(&config.errors, "mouse_mod");
+    assert_error_at(error, &path, 2, "mouse_mod");
+    assert_eq!(global::<String>(&config, "modifiers"), "alt");
+    assert_eq!(config.options.mouse_mod, Modifiers::ALT);
 }

@@ -79,6 +79,13 @@ impl Pointer {
         self.payload(lua, &payload)?;
         Ok(payload)
     }
+
+    pub(crate) fn scrolled(&self, lua: &Lua, direction: WheelDirection) -> mlua::Result<Table> {
+        let payload = lua.create_table()?;
+        payload.set("direction", direction_name(direction))?;
+        self.payload(lua, &payload)?;
+        Ok(payload)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

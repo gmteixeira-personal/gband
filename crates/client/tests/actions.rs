@@ -3,12 +3,12 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use gband_client::animation::Animations;
-use gband_client::mouse::{Edges, pick_edges};
+use gband_client::mouse::{Edges, Target, pick_edges};
 use gband_client::{Controls, Display, Step, dispatch};
 use gband_core::action::{Action, SessionCommand};
 use gband_core::geometry::Size;
 use gband_core::geometry::tiles;
-use gband_core::input::{Key, Modifiers, MouseButton, MouseEvent, MouseKind};
+use gband_core::input::{Key, Modifiers, MouseButton, MouseEvent, MouseKind, WheelDirection};
 use gband_core::layout::{
     BandId, Direction, Layout, LayoutOptions, Program, Proportion, SessionAction, Vertical,
     WindowContent, WindowHeight, WindowId,
@@ -1389,4 +1389,245 @@ fn drop_between_two_columns() {
     assert_eq!(order, [windows[1], windows[0], windows[2]]);
     assert_eq!(mouse.display.focused(), Some(windows[0]));
     assert_eq!(mouse.display.camera(), Some(0));
+}
+
+const REPORTING: &[u8] = b"\x1b[?1000h\x1b[?1006h";
+const BAND_WHEEL: &str =
+    "gband.keymap.set('root', 'alt+wheeldown', gband.action.focus_band_down)\n";
+
+impl Mouse {
+    fn wheel(
+        &mut self,
+        direction: WheelDirection,
+        cell: (u16, u16),
+        modifiers: Modifiers,
+    ) -> Vec<Step> {
+        self.event(MouseKind::Wheel(direction), cell.0, cell.1, modifiers)
+    }
+
+    fn report_mouse(&mut self, window: WindowId) {
+        self.display.apply(ServerMessage::Snapshot {
+            window,
+            cols: 38,
+            rows: 22,
+            contents: REPORTING.to_vec(),
+        });
+    }
+
+    fn plugin_float(&mut self, id: u32) -> (u16, u16) {
+        for row in 0..AREA.rows {
+            for col in 0..AREA.cols {
+                let hit = self.display.hit(col, row, self.now);
+                if hit.target == Target::PluginFloat(id) && hit.content.is_some() {
+                    return (col, row);
+                }
+            }
+        }
+        panic!("plugin window {id} is not drawn");
+    }
+
+    fn eval<T: mlua::FromLua>(&self, source: &str) -> T {
+        self.controls.runtime().lua().load(source).eval().unwrap()
+    }
+}
+
+fn mouse_messages(steps: &[Step]) -> Vec<(WindowId, MouseEvent)> {
+    steps
+        .iter()
+        .filter_map(|step| match step {
+            Step::Send(ClientMessage::Mouse { window, event }) => Some((*window, *event)),
+            _ => None,
+        })
+        .collect()
+}
+
+fn three_bands() -> (Layout, Vec<WindowId>) {
+    let (mut layout, mut windows) = two_bands(1, None);
+    windows.push(open_in(&mut layout, 2, None));
+    (layout, windows)
+}
+
+#[test]
+fn bound_wheel_step_in_root() {
+    let (layout, windows) = two_bands(1, None);
+    let mut mouse = Mouse::new("wheel-bound", BAND_WHEEL, layout);
+    mouse.report_mouse(windows[0]);
+    assert_eq!(mouse.viewed(), mouse.band(0));
+    let steps = mouse.wheel(WheelDirection::Down, (5, 5), Modifiers::ALT);
+    assert_eq!(mouse.viewed(), mouse.band(1));
+    assert!(mouse_messages(&steps).is_empty(), "{steps:?}");
+}
+
+#[test]
+fn cooldown_after_a_wheel_binding() {
+    let (layout, _) = three_bands();
+    let mut mouse = Mouse::new("wheel-cooldown", BAND_WHEEL, layout);
+    let mut steps = Vec::new();
+    for _ in 0..3 {
+        steps.extend(mouse.wheel(WheelDirection::Down, (5, 5), Modifiers::ALT));
+    }
+    assert_eq!(mouse.viewed(), mouse.band(1));
+    assert!(mouse_messages(&steps).is_empty(), "{steps:?}");
+}
+
+#[test]
+fn binding_runs_again_after_the_cooldown() {
+    let (layout, _) = three_bands();
+    let mut mouse = Mouse::new("wheel-cooldown-over", BAND_WHEEL, layout);
+    mouse.wheel(WheelDirection::Down, (5, 5), Modifiers::ALT);
+    mouse.now += Duration::from_millis(180);
+    mouse.wheel(WheelDirection::Down, (5, 5), Modifiers::ALT);
+    assert_eq!(mouse.viewed(), mouse.band(2));
+}
+
+#[test]
+fn cooldown_keeps_other_wheel_names() {
+    let (layout, windows) = two_bands(1, None);
+    let mut mouse = Mouse::new("wheel-cooldown-other", BAND_WHEEL, layout);
+    mouse.report_mouse(windows[0]);
+    mouse.wheel(WheelDirection::Down, (5, 5), Modifiers::ALT);
+    mouse.wheel(WheelDirection::Down, (5, 5), Modifiers::NONE);
+    let steps = mouse.wheel(WheelDirection::Down, (5, 5), Modifiers::NONE);
+    assert_eq!(mouse.viewed(), mouse.band(1));
+    assert_eq!(mouse_messages(&steps).len(), 1, "{steps:?}");
+}
+
+#[test]
+fn unbound_wheel_step_keeps_the_sequence() {
+    let (layout, windows) = columns_of(2, None);
+    let mut mouse = Mouse::new("wheel-sequence", "gband.keystyle.use('direct')", layout);
+    mouse.report_mouse(windows[0]);
+    mouse.key("ctrl+space");
+    mouse.key("l");
+    assert_eq!(mouse.display.focused(), Some(windows[1]));
+    mouse.key("ctrl+space");
+    let steps = mouse.wheel(WheelDirection::Down, (5, 5), Modifiers::NONE);
+    assert_eq!(
+        mouse_messages(&steps),
+        [(
+            windows[0],
+            MouseEvent::new(
+                MouseKind::Wheel(WheelDirection::Down),
+                4,
+                4,
+                Modifiers::NONE
+            )
+        )]
+    );
+    assert_eq!(mouse.controls.active_table(), "prefix");
+    mouse.key("h");
+    assert_eq!(mouse.display.focused(), Some(windows[0]));
+}
+
+#[test]
+fn wheel_during_a_gesture() {
+    let (mut layout, windows) = two_bands(2, None);
+    float(&mut layout, windows[1], Proportion::ONE_HALF, 12, 10, 4);
+    let mut mouse = Mouse::new(
+        "wheel-gesture",
+        &format!("{BAND_WHEEL}gband.keymap.set('root', 'alt+leftmouse', gband.action.drag_window)"),
+        layout,
+    );
+    mouse.event(MouseKind::Press(MouseButton::Left), 20, 6, Modifiers::ALT);
+    mouse.event(motion(MouseButton::Left), 25, 6, Modifiers::ALT);
+    mouse.wheel(WheelDirection::Down, (25, 6), Modifiers::ALT);
+    mouse.event(MouseKind::Release(MouseButton::Left), 25, 6, Modifiers::ALT);
+    assert_eq!(mouse.viewed(), mouse.band(0));
+}
+
+#[test]
+fn wheel_binding_function() {
+    let (layout, _) = columns_of(1, None);
+    let mut mouse = Mouse::new(
+        "wheel-function",
+        "gband.keymap.set('root', 'ctrl+wheelup', function(e) calls = (calls or 0) + 1 got = e.direction .. ' ' .. tostring(e.ctrl) .. ' ' .. e.target end)",
+        layout,
+    );
+    let steps = mouse.wheel(WheelDirection::Up, (60, 3), Modifiers::CTRL);
+    assert_eq!(mouse.global::<String>("got"), "up true ribbon");
+    assert_eq!(mouse.global::<i64>("calls"), 1);
+    assert!(messages(&steps).is_empty(), "{steps:?}");
+}
+
+#[test]
+fn ctrl_alt_selects_in_a_mouse_program() {
+    let (layout, windows) = columns_of(1, None);
+    let mut mouse = Mouse::new("ctrl-alt-select", "", layout);
+    mouse.report_mouse(windows[0]);
+    let ctrl_alt = Modifiers {
+        ctrl: true,
+        alt: true,
+        shift: false,
+    };
+    let steps = mouse.drag_with(MouseButton::Left, (2, 3), (6, 3), ctrl_alt);
+    assert!(mouse_messages(&steps).is_empty(), "{steps:?}");
+    assert!(mouse.display.selection().is_some());
+}
+
+#[test]
+fn own_binding_after_the_preset() {
+    let (mut layout, windows) = columns_of(2, None);
+    float(&mut layout, windows[1], Proportion::ONE_HALF, 12, 10, 4);
+    let mut mouse = Mouse::new(
+        "own-after-preset",
+        "gband.keystyle.use()\ngband.keymap.set('root', 'alt+leftmouse', function() ran = true end)",
+        layout,
+    );
+    let steps = mouse.drag_with(MouseButton::Left, (20, 6), (35, 8), Modifiers::ALT);
+    assert!(mouse.global::<bool>("ran"));
+    assert!(sent(&steps).is_empty(), "{steps:?}");
+}
+
+#[test]
+fn unbound_alt_click_is_forwarded() {
+    let (layout, windows) = columns_of(1, None);
+    let mut mouse = Mouse::new("alt-forward", "", layout);
+    mouse.report_mouse(windows[0]);
+    let steps = mouse.event(MouseKind::Press(MouseButton::Left), 5, 3, Modifiers::ALT);
+    assert_eq!(
+        mouse_messages(&steps),
+        [(
+            windows[0],
+            MouseEvent::new(MouseKind::Press(MouseButton::Left), 4, 2, Modifiers::ALT)
+        )]
+    );
+}
+
+#[test]
+fn bound_wheel_step_over_a_plugin_window() {
+    let (layout, _) = two_bands(1, None);
+    let mut mouse = Mouse::new(
+        "wheel-plugin-window",
+        &format!(
+            "{BAND_WHEEL}gband.bind('alt+o', function() win = gband.win.open({{ lines = {{ 'a', 'b' }}, on_mouse = function(_, e) got = e.kind end }}) end)"
+        ),
+        layout,
+    );
+    mouse.key("alt+o");
+    let id: u32 = mouse.global("win");
+    let cell = mouse.plugin_float(id);
+    mouse.wheel(WheelDirection::Down, cell, Modifiers::ALT);
+    assert_eq!(mouse.viewed(), mouse.band(1));
+    assert_eq!(mouse.global::<Option<String>>("got"), None);
+}
+
+#[test]
+fn unbound_wheel_step_scrolls_a_plugin_window() {
+    let (layout, _) = two_bands(1, None);
+    let mut mouse = Mouse::new(
+        "wheel-plugin-scroll",
+        &format!(
+            "{BAND_WHEEL}gband.bind('alt+o', function() local lines = {{}} for i = 1, 25 do lines[i] = tostring(i) end win = gband.win.open({{ lines = lines, height = 10, focus = false }}) end)"
+        ),
+        layout,
+    );
+    mouse.key("alt+o");
+    let id: u32 = mouse.global("win");
+    let cell = mouse.plugin_float(id);
+    mouse.wheel(WheelDirection::Down, cell, Modifiers::NONE);
+    assert_eq!(
+        mouse.eval::<i64>(&format!("return gband.win.info({id}).top")),
+        2
+    );
+    assert_eq!(mouse.viewed(), mouse.band(0));
 }
