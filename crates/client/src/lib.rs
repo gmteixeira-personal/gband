@@ -627,7 +627,7 @@ impl Controls {
         display.configure(&config.options);
         display.set_banner(config.errors.last().map(ToString::to_string));
         Self {
-            keymap: Keymap::new(config.options.prefix, config.keymap),
+            keymap: Keymap::new(config.options.prefix, config.keymap, config.modes),
             runtime: config.runtime,
             leader: Leader::default(),
             refresh_pending: false,

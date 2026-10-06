@@ -49,7 +49,7 @@ fn resolved(config: &Config, group: &str) -> Vec<String> {
     )
 }
 
-const PREFIX_HINTS: &str = "h left  l right  j down  k up  u band down  i band up  c center  enter new  q close  [ stack left  ] stack right  r width  f full  - narrower  = wider  _ shorter  + taller  R reset height  v float  V layer  C-h move left  C-l move right  C-j move down  C-k move up  C-left move left  C-right move right  C-down move down  C-up move up  ? list the keys  D detach  C-space send prefix";
+const PREFIX_HINTS: &str = "h left  l right  j down  k up  u band down  i band up  c center  n open a window  q close  [ stack left  ] stack right  r width  f full  - narrower  = wider  _ shorter  + taller  R reset height  v float  V layer  C-h move left  C-l move right  C-j move down  C-k move up  C-left move left  C-right move right  C-down move down  C-up move up  ? list the keys  D detach  esc interactive mode  enter interactive mode  left left  right right  down down  up up  C-space send the prefix key";
 
 #[test]
 fn component_entry() {
@@ -186,16 +186,25 @@ fn prefix_hint_follows_the_option() {
 #[test]
 fn root_with_the_defaults() {
     let config = gband_lua::defaults(gband_lua::Side::Client);
-    assert_eq!(shown(&config, "root", 80), "band 1 │ C-space prefix");
+    assert_eq!(shown(&config, "root", 80), "band 1 │ C-space navigation");
+}
+
+#[test]
+fn prefix_table_that_is_not_a_mode() {
+    let (_scratch, config) = loaded(
+        "prefix-not-a-mode",
+        &format!("gband.keymap.set('prefix', 'h', gband.action.focus_column_left)\n{HINTS}"),
+    );
+    assert_eq!(shown(&config, "root", 40), "C-space prefix");
 }
 
 #[test]
 fn prefix_table_with_the_defaults() {
     let config = gband_lua::defaults(gband_lua::Side::Client);
-    assert_eq!(
-        shown(&config, "prefix", 400),
-        format!("band 1 │ prefix │ {PREFIX_HINTS}")
-    );
+    let shown = shown(&config, "prefix", 520);
+    assert_eq!(shown, format!("band 1 │ navigation │ {PREFIX_HINTS}"));
+    assert!(shown.starts_with("band 1 │ navigation │ h left  l right  j down  k up  u band down  i band up  c center  n open a window  q close"));
+    assert!(shown.ends_with("D detach  esc interactive mode  enter interactive mode  left left  right right  down down  up up  C-space send the prefix key"));
 }
 
 #[test]
@@ -224,7 +233,7 @@ fn root_hints_turned_off() {
     assert_eq!(shown(&config, "root", 80), "band 1");
     let shown = shown(&config, "prefix", 80);
     assert!(
-        shown.starts_with("band 1 │ prefix │ h left  l right"),
+        shown.starts_with("band 1 │ navigation │ h left  l right"),
         "{shown}"
     );
 }
@@ -270,13 +279,13 @@ fn separators_and_ellipsis_in_the_label_group() {
 #[test]
 fn default_description_gives_the_short_label() {
     let config = gband_lua::defaults(gband_lua::Side::Client);
-    assert!(shown(&config, "prefix", 400).contains("  r width  "));
+    assert!(shown(&config, "prefix", 520).contains("  r width  "));
 }
 
 #[test]
 fn center_label() {
     let config = gband_lua::defaults(gband_lua::Side::Client);
-    assert!(shown(&config, "prefix", 400).contains("  c center  "));
+    assert!(shown(&config, "prefix", 520).contains("  c center  "));
 }
 
 #[test]
@@ -293,7 +302,7 @@ fn own_description() {
 #[test]
 fn floating_keys() {
     let config = gband_lua::defaults(gband_lua::Side::Client);
-    let shown = shown(&config, "prefix", 400);
+    let shown = shown(&config, "prefix", 520);
     for hint in ["v float", "V layer", "C-h move left", "C-left move left"] {
         assert!(shown.contains(&format!("  {hint}  ")), "{hint}: {shown}");
     }
@@ -302,16 +311,20 @@ fn floating_keys() {
 #[test]
 fn label_option() {
     let (_scratch, config) = defaults_with("label", "{ labels = { close_window = 'kill' } }");
-    let shown = shown(&config, "prefix", 400);
+    let shown = shown(&config, "prefix", 520);
     assert!(shown.contains("  q kill  "), "{shown}");
 }
 
 #[test]
 fn label_option_hides_an_action() {
-    let (_scratch, config) = defaults_with("label-hide", "{ labels = { send_prefix = false } }");
-    let shown = shown(&config, "prefix", 400);
-    assert!(!shown.contains("send prefix"), "{shown}");
-    assert!(shown.ends_with("D detach"), "{shown}");
+    let (_scratch, config) = defaults_with("label-hide", "{ labels = { detach = false } }");
+    let shown = shown(&config, "prefix", 520);
+    assert!(!shown.contains("detach"), "{shown}");
+    assert!(
+        shown.contains("  ? list the keys  esc interactive mode  "),
+        "{shown}"
+    );
+    assert!(shown.ends_with("C-space send the prefix key"), "{shown}");
 }
 
 fn registered(name: &str, opts: &str) -> (Scratch, Config) {

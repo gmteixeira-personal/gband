@@ -56,15 +56,19 @@ Run `gband` again to attach to it.
 - `gband kill-session -s work` ends the session `work` and its windows.
 - `gband kill-server` stops the server and every session.
 
-The default key bindings all follow the prefix key, Ctrl+Space:
+Keys typed in gband go to the focused window: this is interactive mode.
+The prefix key, Ctrl+Space, enters navigation mode, and the status line shows `navigation`.
+In navigation mode each key below acts and navigation mode stays active, so `l` `l` `l` moves three columns and `=` `=` widens the column twice.
+A key with no binding does nothing.
+Escape or Enter returns to interactive mode, and so do `n`, `?` and Ctrl+Space once they have acted:
 
 | key | action |
 |---|---|
-| `h`, `l` | focus the column to the left or right |
-| `j`, `k` | focus the window below or above |
+| `h`, `l`, or the left or right arrow | focus the column to the left or right |
+| `j`, `k`, or the down or up arrow | focus the window below or above |
 | `u`, `i` | view the band below or above |
 | `c` | center the focused column in the view, or the focused floating window on the screen |
-| `enter` | open a window running your shell |
+| `n` | open a window running your shell, and return to interactive mode |
 | `q` | close the window, or the key list or another floating plugin window when it has focus |
 | `[`, `]` | move the window into or out of the column to the left or right |
 | `r` | cycle the column's width through the presets |
@@ -76,9 +80,14 @@ The default key bindings all follow the prefix key, Ctrl+Space:
 | `V` | move focus between the floating and the tiled windows |
 | Ctrl+`h`, Ctrl+`l`, or Ctrl with the left or right arrow | move the column, or the floating window, to the left or right |
 | Ctrl+`j`, Ctrl+`k`, or Ctrl with the down or up arrow | move the window, or the floating window, down or up |
-| `?` | list these keys, and run the one you choose |
+| `?` | list these keys, and run the one you choose; the list takes the keys that follow |
 | `D` | detach |
-| Ctrl+Space | send Ctrl+Space to the window |
+| Escape, Enter | return to interactive mode |
+| Ctrl+Space | send Ctrl+Space to the window, and return to interactive mode |
+
+Navigation mode changed two habits.
+Enter no longer opens a window: `n` does.
+After Ctrl+Space and a layout key, what you type no longer reaches the window until Escape or Enter returns to interactive mode.
 
 ## Scripting
 
@@ -186,6 +195,29 @@ A value set through `gband.opt` that the option rejects is reported, does not st
 `gband.bind` is the short form: `gband.bind("alt+h", ...)` binds in `root`, and `gband.bind("prefix h", ...)` binds in `prefix`.
 `gband.keymap.del` and `gband.unbind` remove bindings, and `gband.keymap.list(table)` lists them with their descriptions.
 
+`gband.keymap.mode(table, { label = ... })` makes a key table a mode: its keys act as often as you press them, and it stays active until one of its bindings enters another table.
+`gband.keymap.enter("root")` returns to interactive mode.
+The default configuration makes `prefix` a mode labelled `navigation`.
+A `user/init.lua` that declares no mode keeps one-key prefix bindings: the key after the prefix acts once, and the next key goes to the window.
+To get navigation mode in such a file, declare it and bind the keys that leave it:
+
+```lua
+gband.keymap.mode("prefix", { label = "navigation" })
+
+local function interactive()
+  gband.keymap.enter("root")
+end
+
+gband.keymap.set("prefix", "escape", interactive, { desc = "interactive mode" })
+gband.keymap.set("prefix", "enter", interactive, { desc = "interactive mode" })
+gband.keymap.set("prefix", "n", function()
+  gband.action.open_window()
+  interactive()
+end, { desc = "open a window" })
+```
+
+A copy of `defaults/init.lua` keeps one-key prefix bindings when you delete its `gband.keymap.mode` line.
+
 A key is a key name with optional `ctrl`, `alt` and `shift` modifiers joined by `+`, such as `alt+h`, `ctrl+PageUp` or `alt++`.
 A key name is one character, or `enter`, `tab`, `backtab`, `backspace`, `escape`, `space`, the arrow keys `up`, `down`, `left` and `right`, `home`, `end`, `insert`, `delete`, `pageup`, `pagedown`, or `f1` to `f12`.
 `prefix prefix` binds the prefix key pressed twice.
@@ -234,9 +266,9 @@ Each client stacks floating windows in its own order, with the one it focused la
 
 ### Key list
 
-Ctrl+Space then `?` opens a list of the prefix keys in a box over the windows, each with its description.
-`j` and `k` or the arrow keys move through it, and Enter runs the selected key's action on the window behind the list, which stays open for the next choice.
-A key bound to a function shows dimmed, and Enter does nothing on it.
+Ctrl+Space then `?` opens a list of the navigation keys in a box titled `navigation keys` over the windows, each with its description, and returns to interactive mode so the list takes the keys that follow.
+`j` and `k` or the arrow keys move through it, and Enter runs the selected key's binding, an action or a function, on the window behind the list, which stays open for the next choice.
+The list's own `?` line shows dimmed, and Enter does nothing on it.
 `q`, Escape, or Ctrl+Space then `q` close the list.
 
 The list is a plugin bundled with gband, set up by the default configuration.
@@ -250,8 +282,8 @@ gband.keymap.set("prefix", "?", gband.action["keylist.open"], { desc = "list the
 ### Status line
 
 The status line takes the bottom row of the terminal, and the windows get the rows above it.
-By default it shows the viewed band on the left, such as `band 1`, the active key table after the prefix key, such as `prefix`, hints for the keys of that table, and the focused column on the right, such as `2/3`.
-The hints show `C-space prefix` until the prefix key is pressed, then each key of the prefix table with a short label, such as `h left  l right`, cut with `…` when the line is full.
+By default it shows the viewed band on the left, such as `band 1`, the label of the active mode after the prefix key, such as `navigation`, hints for the keys of that mode, and the focused column on the right, such as `2/3`.
+The hints show `C-space navigation` until the prefix key is pressed, then each key of navigation mode with a short label, such as `h left  l right`, cut with `…` when the line is full.
 The latest configuration or plugin error shows first, in red.
 
 `statusline_position = "top"` moves it to the top row, and `"off"` removes it, so the windows get the whole terminal.

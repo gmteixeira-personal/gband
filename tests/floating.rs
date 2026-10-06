@@ -24,6 +24,10 @@ fn press(client: &mut Attached, key: &[u8]) {
     client.send(&[PREFIX, key].concat());
 }
 
+fn leave(client: &mut Attached) {
+    client.send(b"\r");
+}
+
 fn has_line(tile: &Tile, screen: &Grid, text: &str) -> bool {
     tile.lines(screen).iter().any(|line| line == text)
 }
@@ -33,7 +37,7 @@ fn spans(tile: &Tile) -> (u16, u16, u16, u16) {
 }
 
 fn second_window(client: &mut Attached) {
-    press(client, b"\r");
+    press(client, b"n");
     client.wait_for("two tiles", |screen| tiles(screen).len() == 2);
     client.wait_for_prompt();
 }
@@ -48,6 +52,7 @@ fn float_the_focused_window() {
             .iter()
             .any(|tile| tile.focused && spans(tile) == (20, 59, 2, 21))
     });
+    leave(&mut client);
     client.run("echo floated");
     client.wait_for_line("floated");
 }
@@ -60,7 +65,7 @@ fn switch_to_the_tiled_layer_and_back() {
     press(&mut client, b"v");
     for (left, right) in [(20, 59), (28, 67), (36, 75), (40, 79)] {
         if left > 20 {
-            press(&mut client, b"\x0c");
+            client.send(b"\x0c");
         }
         client.wait_for("the box one step right", |screen| {
             tiles(screen)
@@ -68,12 +73,13 @@ fn switch_to_the_tiled_layer_and_back() {
                 .any(|tile| tile.focused && spans(tile) == (left, right, 2, 21))
         });
     }
-    press(&mut client, b"V");
+    client.send(b"V");
     client.wait_for("the tiled window focused", |screen| {
         tiles(screen)
             .iter()
             .any(|tile| tile.focused && tile.left == 0)
     });
+    leave(&mut client);
     client.run("echo tiled");
     client.wait_for("tiled in the first window only", |screen| {
         let found = tiles(screen);
@@ -107,7 +113,7 @@ fn move_a_column_with_ctrl_h_and_ctrl_right() {
             .iter()
             .any(|tile| tile.left == 0 && tile.focused && has_line(tile, screen, "second-window"))
     });
-    press(&mut client, b"\x1b[1;5C");
+    client.send(b"\x1b[1;5C");
     client.wait_for("A then B", |screen| {
         let found = tiles(screen);
         found
@@ -117,6 +123,7 @@ fn move_a_column_with_ctrl_h_and_ctrl_right() {
                 tile.left == 40 && tile.focused && has_line(tile, screen, "second-window")
             })
     });
+    leave(&mut client);
     client.run("echo still-clean");
     client.wait_for_line("still-clean");
     assert!(
@@ -141,13 +148,13 @@ fn move_a_window_with_ctrl_j() {
         let found = tiles(screen);
         found.len() == 2 && found.iter().all(|tile| tile.left == 0)
     });
-    press(&mut client, b"k");
+    client.send(b"k");
     client.wait_for("the upper window focused", |screen| {
         tiles(screen)
             .iter()
             .any(|tile| tile.focused && has_line(tile, screen, "upper"))
     });
-    press(&mut client, b"\x0a");
+    client.send(b"\x0a");
     client.wait_for("the windows swapped", |screen| {
         let mut found = tiles(screen);
         found.sort_by_key(|tile| tile.top);
@@ -166,7 +173,7 @@ fn move_a_floating_window() {
     client.wait_for("the box at column 20", |screen| {
         tiles(screen).iter().any(|tile| tile.left == 20)
     });
-    press(&mut client, b"\x0c");
+    client.send(b"\x0c");
     client.wait_for("the box at column 28", |screen| {
         tiles(screen)
             .iter()

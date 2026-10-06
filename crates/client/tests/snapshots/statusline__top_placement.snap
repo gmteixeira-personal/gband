@@ -5,7 +5,7 @@ expression: "client.screen(Size::new(40, 8))"
 Buffer {
     area: Rect { x: 0, y: 0, width: 40, height: 8 },
     content: [
-        "band 1 │ C-space prefix              2/2",
+        "band 1 │ C-space navigation          2/2",
         "┌──────────────────┐┌──────────────────┐",
         "│                  ││                  │",
         "│                  ││                  │",

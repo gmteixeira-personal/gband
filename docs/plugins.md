@@ -366,7 +366,8 @@ Binding a key again replaces the earlier binding.
 
 `gband.keymap.current_table()` returns the active table.
 `gband.keymap.enter(table)`, inside a callback, makes `table` active for the next key.
-The next key ends the sequence: a bound key runs its binding, and any other key is discarded.
+Entering a table with no binding is an error, except `root`: `gband.keymap.enter("root")` always works, and returns to interactive mode.
+In a table that is not a mode, the next key ends the sequence: a bound key runs its binding, and any other key is discarded.
 
 ```lua
 gband.keymap.set("move", "h", gband.action.focus_column_left, { desc = "left" })
@@ -377,6 +378,42 @@ gband.keymap.set("prefix", "m", function() gband.keymap.enter("move") end, { des
 `gband.bind` and `gband.unbind` still work: `gband.bind("alt+h", ...)` binds in `root`, and `gband.bind("prefix h", ...)` binds in `prefix`.
 
 Bindings are made only while the configuration loads.
+
+### Modes
+
+`gband.keymap.mode(table, opts)`, while the configuration loads, makes `table` a mode.
+`opts` is nil or a table whose `label` is nil or a non-empty string naming the mode for display.
+Declaring a mode again replaces its label, and `gband.keymap.set` and `gband.keymap.del` on its table keep the declaration.
+`root` cannot be a mode.
+
+While a mode is active, a bound key runs its binding, any other key is discarded, and neither reaches a window or a plugin window.
+The mode stays active after each key and emits no `KeyTableChanged`, until a binding enters another table.
+The default configuration makes `prefix` a mode labelled `navigation`, and leaves it with Escape, Enter, `n`, `?` and the prefix key.
+A mode of your own:
+
+```lua
+gband.keymap.mode("resize", { label = "RESIZE" })
+gband.keymap.set("resize", "=", gband.action.grow_column_width)
+gband.keymap.set("resize", "-", gband.action.shrink_column_width)
+gband.keymap.set("resize", "escape", function() gband.keymap.enter("root") end, { desc = "done" })
+gband.keymap.set("root", "alt+r", function() gband.keymap.enter("resize") end, { desc = "resize" })
+```
+
+`gband.keymap.label(table)` returns the label of a mode, or `table` itself for a mode without one and for any other table.
+It works while loading and in any callback.
+
+### Running a binding
+
+`gband.keymap.run(table, key)`, inside a callback, runs the binding of `key` in `table` as pressing it in that table would, and returns `true`, or `false` when the key is unbound there.
+`key` is written as `gband.keymap.set` takes it, `prefix` included.
+An action binding is dispatched, and a function binding, or a registered action, runs at once under its own plugin, its dispatches joining the caller's.
+It sends nothing to any window and changes the active table only through the binding's own `gband.keymap.enter`.
+
+```lua
+gband.keymap.set("root", "alt+n", function()
+  gband.keymap.run("prefix", "n")
+end, { desc = "the navigation n" })
+```
 
 ## Layout and view: `gband.layout`, `gband.view`
 
@@ -517,7 +554,9 @@ gband.keymap.set("prefix", "K", function()
       binding.desc or binding.action or "function",
     }
   end
-  gband.win.open({ title = "prefix keys", width = 50, height = 15, cursorline = true, lines = lines })
+  gband.keymap.enter("root")
+  local title = gband.keymap.label("prefix") .. " keys"
+  gband.win.open({ title = title, width = 50, height = 15, cursorline = true, lines = lines })
 end, { desc = "list the prefix keys" })
 
 gband.keymap.set("prefix", "P", function()
@@ -639,7 +678,7 @@ gband bundles five segment plugins:
 | module | plugin | shows | redraws on | align | priority | order | group |
 |---|---|---|---|---|---|---|---|
 | `gband.statusline.band` | `band` | `band ` and the viewed band's index | `BandChanged`, `LayoutChanged` | left | 20 | 10 | `StatusLineSegment` |
-| `gband.statusline.mode` | `mode` | the active key table; hidden in `root` | `KeyTableChanged` | left | 30 | 20 | `StatusLineAccent` |
+| `gband.statusline.mode` | `mode` | the active key table's label, as `gband.keymap.label` gives it; hidden in `root` | `KeyTableChanged` | left | 30 | 20 | `StatusLineAccent` |
 | `gband.statusline.hints` | `hints` | the keys of the active key table and what each does, below | `KeyTableChanged`, and as a fill component | left | 0 | 30 | `KeyHintLabel` |
 | `gband.statusline.position` | `position` | the focused column and the column count, such as `3/7`; hidden in an empty band and while a floating window is focused | `FocusChanged`, `BandChanged`, `LayoutChanged` | right | 10 | 10 | `StatusLineMuted` |
 | `gband.statusline.clock` | `clock` | the local time, `os.date(opts.format)`, `"%H:%M"` by default | every `opts.interval` milliseconds, 1000 by default | right | 5 | 20 | `StatusLineMuted` |
@@ -663,7 +702,8 @@ Set `statusline_position = "off"` to give the ribbon the whole terminal.
 ### The hints segment
 
 `hints` shows one hint per binding of the active key table, in the order `gband.keymap.list` gives them: the key in `KeyHintKey`, a space, and a label in `KeyHintLabel`, with two spaces between hints.
-In `root` it starts with the prefix key labelled `prefix`, when the `prefix` table holds a binding, so the default line shows `C-space prefix`, and the prefix table's hints after Ctrl+Space.
+In `root` it starts with the prefix key labelled with `gband.keymap.label("prefix")`, when the `prefix` table holds a binding, so the default line shows `C-space navigation`, and navigation mode's hints after Ctrl+Space.
+A `prefix` table that is not a mode shows `C-space prefix`.
 
 Keys are shown short: `C-`, `A-` and `S-` for Ctrl, Alt and Shift, in that order, named keys in lowercase, `escape` as `esc`, and `shift` with a lowercase letter as the uppercase letter.
 `ctrl+space` shows as `C-space`, `shift+d` as `D` and `Alt+PageUp` as `A-pageup`.
@@ -707,7 +747,7 @@ Its options, besides `align`, `priority` and `order`:
 | `root` | `false` hides the segment while `root` is active | `true` |
 
 ```lua
-gband.plugin("gband.statusline.hints", { labels = { close_window = "kill", send_prefix = false } })
+gband.plugin("gband.statusline.hints", { labels = { close_window = "kill", detach = false } })
 ```
 
 Its groups are `KeyHintKey`, linked to `StatusLineAccent` by default, and `KeyHintLabel`, linked to `StatusLineSegment`.
@@ -744,18 +784,19 @@ gband.plugin("gband.keylist")
 gband.keymap.set("prefix", "?", gband.action["keylist.open"], { desc = "list the keys" })
 ```
 
-`keylist.open` opens a focused floating plugin window titled `prefix keys`, centred in the ribbon, with its cursor line on the first line.
+`keylist.open` opens a focused floating plugin window titled with `gband.keymap.label("prefix")` and ` keys`, `navigation keys` with the defaults, centred in the ribbon, with its cursor line on the first line.
+It enters `root` as it opens, and as it focuses an open list, so the keys that follow reach the list and not navigation mode.
 It holds one line per binding of the `prefix` table, in the order `gband.keymap.list("prefix")` gives them when it opens: the key in the hints segment's short form, such as `C-space` for the prefix key, padded to two cells more than the widest key, then the binding's description, its action's description when it has none, its action's name when that is empty too, or `function`.
 The plugin window is as wide as its longest line plus its border and as high as its lines plus its border, at most 15 rows, and the ribbon caps both.
 Dispatching `keylist.open` while the list is open focuses it and opens no second one.
 
-Enter runs the binding on the cursor line by dispatching its action with no target, so it acts on the focused window behind the list, as a key bound to it would.
-The list stays open and focused, by the rule for a floating plugin window's own `keys`, so you can choose again; a floating plugin window the action opens takes focus above it.
+Enter runs the binding on the cursor line with `gband.keymap.run("prefix", key)`: an action is dispatched with no target, so it acts on the focused window behind the list, and a function runs, as a key bound to it would.
+The list stays open and focused, by the rule for a floating plugin window's own `keys`, so you can choose again; a floating plugin window the binding opens takes focus above it.
 `close_window` closes the list itself, as it closes any focused floating plugin window.
-A function binding gives the list nothing to dispatch, so Enter does nothing on it and its description is drawn in `KeyListMuted`, as is the line of `keylist.open` itself.
+Enter does nothing on the line of `keylist.open` itself, the one line whose description is drawn in `KeyListMuted`.
 `q`, Escape and Ctrl+Space then `q` close the list.
 
-The key list draws keys in `KeyListKey` and the descriptions it cannot run in `KeyListMuted`; it defines them as defaults when its module is first required, and gives `StatusLineAccent` and `StatusLineMuted` their usual defaults so the links resolve without a status line.
+The key list draws keys in `KeyListKey` and the description it cannot run in `KeyListMuted`; it defines them as defaults when its module is first required, and gives `StatusLineAccent` and `StatusLineMuted` their usual defaults so the links resolve without a status line.
 
 ## Highlight groups: `gband.hl`
 

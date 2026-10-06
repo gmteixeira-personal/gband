@@ -43,7 +43,7 @@ fn agent_status_example() {
     let mut client = Attached::start(&env, 100, 24);
     client.wait_for_prompt();
     client.shell_pid(&env);
-    client.send(b"\x00\r");
+    client.send(b"\x00n");
     client.wait_for("two tiles with the second focused", |screen| {
         let tiles = tiles(screen);
         tiles.len() == 2 && tiles[1].focused
@@ -55,7 +55,7 @@ fn agent_status_example() {
     });
     client.send(b"\x00h");
     client.wait_for("the first tile focused", |screen| tiles(screen)[0].focused);
-    client.send(b"\x00a");
+    client.send(b"a");
     client.wait_for("the waiting tile focused", |screen| {
         tiles(screen)[1].focused
     });

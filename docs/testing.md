@@ -126,7 +126,7 @@ When the case ends, passed or failed, the runner stops the client, the server an
 
 | function | effect |
 |---|---|
-| `g.keys(keys)` | presses keys, named as in key bindings and separated by spaces, such as `"ctrl+space enter"`; each is written as xterm sends it |
+| `g.keys(keys)` | presses keys, named as in key bindings and separated by spaces, such as `"ctrl+space n"`; each is written as xterm sends it |
 | `g.type(text)` | types `text` |
 | `g.paste(text)` | pastes `text`, bracketed when the client enabled bracketed paste |
 | `g.run(line)` | types `line` and Enter |

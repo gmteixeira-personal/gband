@@ -206,7 +206,7 @@ fn remove_a_bundled_segment() {
     .unwrap();
     let mut state = drawn(80);
     state.table = "prefix".to_owned();
-    assert!(shown(&config, state.clone()).contains("prefix"));
+    assert!(shown(&config, state.clone()).contains("navigation"));
     clean(&config.runtime.set_state(state.clone()));
     let lua = config.runtime.lua();
     lua.load("gband.bind = nil").exec().unwrap();
@@ -216,7 +216,11 @@ fn remove_a_bundled_segment() {
         .unwrap();
     assert!(removed);
     let line = config.runtime.take_line().unwrap();
-    assert!(!text(&line, 80).contains("prefix"), "{}", text(&line, 80));
+    assert!(
+        !text(&line, 80).contains("navigation"),
+        "{}",
+        text(&line, 80)
+    );
     let again: bool = lua
         .load("return gband.ui.statusline.remove('mode')")
         .eval()
@@ -488,11 +492,24 @@ fn mode_shown() {
     }));
     let line = config.runtime.take_line().unwrap();
     assert!(
-        text(&line, 80).starts_with("band 1 │ prefix "),
+        text(&line, 80).starts_with("band 1 │ navigation "),
         "{}",
         text(&line, 80)
     );
     assert!(style_at(&line, 9).bold);
+}
+
+#[test]
+fn label_of_a_mode() {
+    let (_scratch, config) = loaded(
+        "mode-label",
+        "gband.keymap.mode('resize', { label = 'RESIZE' })
+gband.keymap.set('resize', '=', gband.action.grow_column_width)
+gband.plugin('gband.statusline.mode')",
+    );
+    let mut state = default_state();
+    state.table = "resize".to_owned();
+    assert_eq!(shown(&config, state).trim_end(), "RESIZE");
 }
 
 #[test]

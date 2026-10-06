@@ -437,11 +437,41 @@ fn send_prefix_follows_the_prefix_option() {
             key: key("ctrl+b"),
         })]
     );
+    assert_eq!(controls.active_table(), "root");
     assert_eq!(
         controls.press(&mut display, key("ctrl+space")),
         [Step::Send(ClientMessage::Key {
             window: windows[0],
             key: key("ctrl+space"),
+        })]
+    );
+}
+
+#[test]
+fn navigation_mode_opens_a_window_with_n_and_leaves_with_enter() {
+    let scratch = Scratch::new("navigation");
+    let (mut display, windows) = three_columns();
+    let mut controls = Controls::new(scratch.load(DEFAULTS).unwrap(), &mut display);
+    controls.press(&mut display, key("ctrl+space"));
+    assert_eq!(controls.press(&mut display, key("enter")), []);
+    assert_eq!(controls.active_table(), "root");
+    controls.press(&mut display, key("ctrl+space"));
+    let steps = controls.press(&mut display, key("n"));
+    assert!(
+        matches!(
+            steps.as_slice(),
+            [Step::Send(ClientMessage::Action(
+                SessionAction::OpenWindow { .. }
+            ))]
+        ),
+        "{steps:?}"
+    );
+    assert_eq!(controls.active_table(), "root");
+    assert_eq!(
+        controls.press(&mut display, key("x")),
+        [Step::Send(ClientMessage::Key {
+            window: windows[0],
+            key: key("x"),
         })]
     );
 }

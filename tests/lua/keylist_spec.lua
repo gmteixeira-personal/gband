@@ -24,11 +24,20 @@ local function info(g, win)
   return g.client("return gband.win.info(...)", win)
 end
 
+local function current_table(g)
+  return g.client("return gband.keymap.current_table()")
+end
+
 local function open(g)
-  g.keys("ctrl+space ?")
+  if current_table(g) == "prefix" then
+    g.keys("?")
+  else
+    g.keys("ctrl+space ?")
+  end
   g.settle()
   local win = view(g).plugin_window
   t.ok(win, "the key list is focused")
+  t.eq(current_table(g), "root")
   return win
 end
 
@@ -62,6 +71,26 @@ local function cell_at(g, row, text, word)
   return g.screen().cell(row, utf8.len(text:sub(1, pos - 1)))
 end
 
+local MUTED = "#9aa5ce"
+
+local function muted_lines(g, win)
+  local box = info(g, win)
+  local screen = g.screen()
+  local muted = {}
+  for row = box.row + 1, box.row + box.height - 2 do
+    local chars = {}
+    for col = box.col + 1, box.col + box.width - 2 do
+      chars[#chars + 1] = screen.cell(row, col).char
+    end
+    local text = table.concat(chars)
+    local start, desc = text:match("^%S+%s+()(.-)%s*$")
+    if start and screen.cell(row, box.col + start).fg == MUTED then
+      muted[#muted + 1] = desc
+    end
+  end
+  return muted
+end
+
 local function prompts(g, count)
   g.wait(function(screen)
     local _, found = screen.text():gsub("│%$", "")
@@ -92,17 +121,17 @@ t.case("default list", function(g)
   g.start({})
   prompts(g, 1)
   local win = open(g)
-  t.ok(row_of(g, "┌prefix keys"), "the title is drawn")
+  t.ok(row_of(g, "┌navigation keys"), "the title is drawn")
   local first, text = row_of(g, "focus the column to the left")
   t.match(text, "│h%s+focus the column to the left")
-  t.eq(first, row_of(g, "┌prefix keys") + 1)
+  t.eq(first, row_of(g, "┌navigation keys") + 1)
   t.eq(info(g, win).cursor, 1)
   t.ok(cell_at(g, first, text, "focus").inverse, "the cursor line is drawn")
   t.ok(row_of(g, "q        close the window"))
   g.expect_screenshot("first page")
   g.keys("end")
   g.settle()
-  t.ok(row_of(g, "C-space  send the prefix key to the focused window"))
+  t.ok(row_of(g, "C-space  send the prefix key"))
   local widest = g.client([[
     local key_form = require("gband.keyform")
     local keys, descs = 0, 0
@@ -120,16 +149,37 @@ t.case("default list", function(g)
   g.expect_screenshot("last page")
 end)
 
-t.case("function binding is muted", function(g)
+t.case("title of a prefix table that is not a mode", function(g)
+  g.start({ config = MINIMAL })
+  open(g)
+  t.ok(row_of(g, "┌prefix keys"), "the title is drawn")
+end)
+
+t.case("function binding can run", function(g)
   g.start({ config = MINIMAL })
   open(g)
   local x, x_text = row_of(g, "say hi")
   local own, own_text = row_of(g, "list the keys")
   local h, h_text = row_of(g, "focus the column to the left")
-  t.eq(cell_at(g, x, x_text, "say hi").fg, "#9aa5ce")
-  t.eq(cell_at(g, own, own_text, "list the keys").fg, "#9aa5ce")
+  t.eq(cell_at(g, x, x_text, "say hi").fg, nil)
+  t.eq(cell_at(g, own, own_text, "list the keys").fg, MUTED)
   t.eq(cell_at(g, h, h_text, "focus the column").fg, nil)
   t.eq(cell_at(g, x, x_text, "x").fg, "#7aa2f7")
+end)
+
+t.case("only the key list's own line is muted", function(g)
+  g.start({})
+  local win = open(g)
+  local muted = {}
+  local count = #g.client("return gband.keymap.list('prefix')")
+  for _, line in ipairs({ 1, 19, count }) do
+    g.client("gband.win.set_cursor(...)", win, line)
+    g.settle()
+    for _, desc in ipairs(muted_lines(g, win)) do
+      muted[desc] = true
+    end
+  end
+  t.eq(muted, { ["list the keys"] = true })
 end)
 
 t.case("muted without a status line", function(g)
@@ -138,9 +188,11 @@ t.case("muted without a status line", function(g)
     gband.hl.set("StatusLineAccent", nil)
   ]] })
   open(g)
+  local own, own_text = row_of(g, "list the keys")
   local x, x_text = row_of(g, "say hi")
   local h, h_text = row_of(g, "close the window")
-  t.ok(cell_at(g, x, x_text, "say hi").dim, "the muted line is dim")
+  t.ok(cell_at(g, own, own_text, "list the keys").dim, "the muted line is dim")
+  t.ok(not cell_at(g, x, x_text, "say hi").dim, "the function line is not dim")
   t.ok(not cell_at(g, h, h_text, "close").dim, "the runnable line is not dim")
   t.ok(cell_at(g, h, h_text, "q ").bold, "the key is bold")
 end)
@@ -173,11 +225,11 @@ end)
 t.case("run a resize from the list", function(g)
   g.start({})
   prompts(g, 1)
-  g.keys("ctrl+space enter")
+  g.keys("ctrl+space n")
   prompts(g, 2)
   g.keys("ctrl+space [")
   g.settle()
-  g.keys("ctrl+space k")
+  g.keys("k")
   g.settle()
   local function top()
     return g.client("return gband.layout().bands[1].columns[1].windows[1]")
@@ -224,18 +276,40 @@ t.case("run an action that opens a floating plugin window", function(g)
   t.eq(lists(g), { win })
 end)
 
-t.case("function binding does nothing", function(g)
+t.case("run a function binding", function(g)
   g.start({ config = MINIMAL })
   local win = open(g)
   move_to(g, win, "x")
   g.keys("enter")
   g.settle()
-  t.eq(g.client("return ran"), nil)
+  t.eq(g.client("return ran"), true)
   t.eq(lists(g), { win })
+  t.eq(view(g).plugin_window, win)
+end)
+
+t.case("run n from the list", function(g)
+  g.start({})
+  prompts(g, 1)
+  local win = open(g)
+  move_to(g, win, "n")
+  g.keys("enter")
+  prompts(g, 2)
+  g.settle()
+  t.eq(#g.client("return gband.layout().bands[1].columns"), 2)
+  t.eq(lists(g), { win })
+  t.eq(view(g).plugin_window, win)
+  t.eq(current_table(g), "root")
+  t.ok(not g.screen().text():find("│%$ %S"), "no window received a key")
+end)
+
+t.case("the key list's own line does nothing", function(g)
+  g.start({ config = MINIMAL })
+  local win = open(g)
   move_to(g, win, "?")
   g.keys("enter")
   g.settle()
   t.eq(lists(g), { win })
+  t.eq(view(g).plugin_window, win)
 end)
 
 t.case("q closes the list", function(g)
@@ -270,9 +344,9 @@ t.case("prefix q on the empty band", function(g)
 end)
 
 t.case("open again while open", function(g)
-  g.start({ config = MINIMAL })
+  g.start({})
   prompts(g, 1)
-  g.keys("ctrl+space enter")
+  g.keys("ctrl+space n")
   prompts(g, 2)
   g.keys("ctrl+space h")
   g.settle()
@@ -280,6 +354,7 @@ t.case("open again while open", function(g)
   g.keys("ctrl+space l")
   g.settle()
   t.eq(view(g).plugin_window, nil)
+  t.eq(current_table(g), "prefix")
   t.eq(open(g), win)
   t.eq(lists(g), { win })
   g.keys("q")

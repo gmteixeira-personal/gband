@@ -493,7 +493,7 @@ pub(crate) fn finish(lua: Lua) -> Result<Config, ConfigError> {
     options::finish(&lua);
     let options = options::current(&lua);
     let side = side(&lua);
-    let keymap = match side {
+    let (keymap, modes) = match side {
         Side::Client => keymap::finish(&lua, options.prefix)?,
         Side::Server | Side::Test => Default::default(),
     };
@@ -504,6 +504,7 @@ pub(crate) fn finish(lua: Lua) -> Result<Config, ConfigError> {
         side,
         options,
         keymap,
+        modes,
         runtime: Runtime { lua },
         errors,
         plugins,

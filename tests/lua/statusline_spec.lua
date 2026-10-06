@@ -15,7 +15,7 @@ end
 
 t.case("default status line", function(g)
   g.start({ size = SIZE })
-  t.eq(status(g), "band 1 │ C-space prefix                                  1/1")
+  t.eq(status(g), "band 1 │ C-space navigation                              1/1")
   prompts(g, 1)
   g.expect_screenshot()
 end)
