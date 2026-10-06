@@ -7,7 +7,7 @@ The sidebar lists the bands, and a click on a label views that band, but the whe
 - A wheel step down over any cell of a shown sidebar views the band below the viewed band, and a step up views the band above, as `focus_band_down` and `focus_band_up` do. Each step moves one band, so the view follows the wheel band by band.
 - The step works in any key table and mode, does not change the active key table, and moves relative to the viewed band, not to the row under the pointer.
 - At the first or last band a step past the end changes nothing, because viewing does not loop between bands.
-- A step with Ctrl, Alt or Shift held, and a step left or right, does nothing over the sidebar. Modified wheel steps stay free for key bindings.
+- The sidebar takes no action on a step left or right, or on a step with Ctrl, Alt or Shift held, so modified wheel steps stay free for key bindings. With the default keys, Alt and the wheel over the sidebar view one band through the `mod+wheeldown` and `mod+wheelup` bindings, as the wheel alone does.
 - The README's sidebar section describes the wheel.
 
 Out of scope:
