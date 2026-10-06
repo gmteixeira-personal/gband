@@ -7,6 +7,10 @@ gband.hl.default("KeyListMuted", { link = "StatusLineMuted" })
 
 local OWN = "keylist.open"
 local MAX_HEIGHT = 15
+local OWN_KEYS = {
+  up = true, down = true, pageup = true, pagedown = true,
+  home = true, ["end"] = true, enter = true, esc = true,
+}
 
 local current = nil
 
@@ -33,10 +37,12 @@ local function entries()
   local prefix = key_form(gband.opt.prefix)
   local list = {}
   for _, binding in ipairs(gband.keymap.list("prefix")) do
+    local form = binding.key == "prefix" and prefix or key_form(binding.key)
     list[#list + 1] = {
-      key = binding.key == "prefix" and prefix or key_form(binding.key),
+      key = form,
       text = describe(binding, descs),
       binding = binding.action ~= OWN and binding.key or nil,
+      direct = binding.key ~= "prefix" and not OWN_KEYS[form] and binding.key or nil,
     }
   end
   return list
@@ -76,20 +82,32 @@ local function open()
   end
   local list = entries()
   local lines, longest = lines_of(list)
+  local function run(index)
+    local entry = list[index]
+    if entry and entry.binding then
+      gband.keymap.run("prefix", entry.binding)
+    end
+  end
+  local keys = {
+    enter = function(win)
+      run(gband.win.info(win).cursor)
+    end,
+  }
+  for index, entry in ipairs(list) do
+    if entry.direct then
+      keys[entry.direct] = function(win)
+        gband.win.set_cursor(win, index)
+        run(index)
+      end
+    end
+  end
   current = gband.win.open({
     title = gband.keymap.label("prefix") .. " keys",
     width = longest + 2,
     height = math.min(math.max(#lines + 2, 3), MAX_HEIGHT),
     cursorline = true,
     lines = lines,
-    keys = {
-      enter = function(win)
-        local entry = list[gband.win.info(win).cursor]
-        if entry and entry.binding then
-          gband.keymap.run("prefix", entry.binding)
-        end
-      end,
-    },
+    keys = keys,
     on_close = function(win)
       if current == win then
         current = nil
