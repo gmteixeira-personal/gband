@@ -119,7 +119,7 @@ user/server.lua:3: `gband.keymap` is a client API; this is the server
 
 | only the client | only the server |
 |---|---|
-| `bind`, `unbind`, `spawn`, `keymap`, `ui`, `hl`, `colorscheme`, `layout`, `view`, `window`, `band`, `win`, `rpc`, `notify`, `bell`, `clipboard`, `open` | `sessions`, `session` |
+| `bind`, `unbind`, `spawn`, `keymap`, `ui`, `hl`, `colorscheme`, `layout`, `view`, `window`, `band`, `win`, `bar`, `errors`, `clear_errors`, `rpc`, `notify`, `bell`, `clipboard`, `open` | `sessions`, `session` |
 
 Every other field exists on both sides: `on`, `augroup`, `emit`, `cmd`, `opt`, `set`, `plugin`, `plugins`, `runtimepath`, `side`, `api_version`, `window_state` and `action`.
 `emit`, `window_state`, `action` and the events differ between the sides, as their sections describe.
@@ -180,11 +180,33 @@ An error there is a plugin error: gband records it in the process's log as `<plu
 While the status line is drawn, its first row shows `error`.
 While it is not, the latest error shows on the bottom row of the ribbon.
 
-`gband.errors()` returns a new list of the client's errors since its configuration last loaded without one of its own, oldest first.
+`gband.errors()` returns a new list of the client's errors since the list was last emptied, oldest first.
+A load with none of the client's own errors empties it, and so does `gband.clear_errors()`.
+
+`gband.clear_errors()` is callable wherever an action value is, such as a binding function, a command or an event handler; calling it while the configuration loads is an error.
+`gband.errors()` returns an empty list right after it, in the same callback, and once the callback returns the error item or the banner goes until the client reports another error.
+An error raised in that callback, before or after the call, is listed after the clear.
+Clearing changes nothing else:
+
+- it does not reload the configuration;
+- a status line component or a callback that an error disabled stays disabled, and a failed plugin stays failed, until the next load;
+- the logs keep every error;
+- only this client's list is emptied: other clients keep theirs, and the server still sends its latest error to each client that attaches.
+
 The bundled plugin `gband.errors`, plugin `errors`, registers the action and command `errors.open`, both described as `list the errors`.
-They open the list in a plugin window titled `errors`, three quarters of the ribbon wide and half of it high, wrapping each error by display width and leaving an empty line between two, and enter `root` so the keys that follow reach it.
+They open the list in a plugin window, three quarters of the ribbon wide and half of it high, wrapping each error by display width and leaving an empty line between two, and enter `root` so the keys that follow reach it.
+A floating list is titled `errors  c clear` while it holds errors, and `errors` once it shows `no errors`.
 Its `setup` takes `kind`, `"floating"` by default or `"tiled"`, and the command takes the same `kind` in its arguments table: `gband.cmd.run("errors.open", { kind = "tiled" })`.
 `q` closes the list, and so does Escape when it floats.
+
+The plugin also registers the action and command `errors.clear`, described as `clear the errors`, and `c` in the list, floating or tiled, does the same.
+Each calls `gband.clear_errors()` and, when the list is open, empties it so it shows `no errors`, keeping it open and focused.
+A binding still wins over `c`, so Ctrl+Space then `c` centers the column and clears nothing.
+A clear made by calling `gband.clear_errors()` directly leaves an open list as it was until it is opened again.
+
+```lua
+gband.keymap.set("prefix", "C", gband.action["errors.clear"], { desc = "clear the errors" })
+```
 The default configuration sets the plugin up and binds no key to it.
 
 The server sends each error of its own Lua to every attached client, and the latest one to each client that attaches, until its configuration next loads without errors.
@@ -736,7 +758,8 @@ When `render` raises an error, returns something else than the forms above, or h
 Hitting the limit also marks the plugin failed, which hides all its components.
 
 While the client reports an error, the server's included, the status line's error item shows `error` in `StatusLineError` as the first row of the top region.
-It is dropped last, and stays until the configuration next loads without errors.
+It is dropped last, and stays until the configuration next loads without errors or `gband.clear_errors()` empties the error list.
+A component an error disabled stays hidden after a clear, until the next load.
 `gband.errors()` and the `errors.open` action give the errors' text.
 
 ### Bundled segments

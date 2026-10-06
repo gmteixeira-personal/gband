@@ -503,6 +503,114 @@ fn cleared_by_a_good_load() {
     assert!(client.display.errors().is_empty());
 }
 
+const CLEAR: &str =
+    "gband.bind('alt+x', function() gband.clear_errors() seen = #gband.errors() end)";
+
+#[test]
+fn cleared_by_hand() {
+    let scratch = Scratch::new("cleared-by-hand");
+    scratch.client_plugin("alpha", "error('first')");
+    scratch.client_plugin("beta", "error('second')");
+    let config = scratch.load(&format!("{DEFAULTS}\n{CLEAR}")).unwrap();
+    let mut client = Client::new(config, Size::new(200, 24));
+    client.attach(1, 0);
+    assert_eq!(client.display.errors().len(), 2);
+    assert_eq!(client.row(0), "error");
+    client.press("alt+x");
+    assert_eq!(client.number("seen"), 0);
+    assert!(client.display.errors().is_empty());
+    assert_eq!(client.display.banner(), None);
+    assert_eq!(client.row(0), "band 1");
+}
+
+#[test]
+fn banner_cleared_by_hand() {
+    let scratch = Scratch::new("banner-cleared");
+    scratch.client_plugin("hello", "error('boom')");
+    let config = scratch
+        .load(&format!("{}\n{CLEAR}", without_status_line()))
+        .unwrap();
+    let mut client = Client::new(config, Size::new(200, 6));
+    client.attach(1, 0);
+    assert!(client.screen(Size::new(200, 6)).contains("boom"));
+    client.press("alt+x");
+    assert_eq!(client.display.banner(), None);
+    let screen = client.screen(Size::new(200, 6));
+    assert!(!screen.contains("boom"), "{screen}");
+}
+
+#[test]
+fn error_after_a_clear() {
+    let scratch = Scratch::new("error-after-clear");
+    scratch.client_plugin("hello", "error('first')");
+    let config = scratch
+        .load(&format!(
+            "{DEFAULTS}\n{CLEAR}
+gband.bind('alt+f', function()
+  gband.ui.statusline.add({{ id = 'late', render = function() error('boom') end }})
+end)"
+        ))
+        .unwrap();
+    let mut client = Client::new(config, Size::new(200, 24));
+    client.attach(1, 0);
+    client.press("alt+x");
+    assert!(client.display.errors().is_empty());
+    client.press("alt+f");
+    let errors = client.display.errors();
+    assert_eq!(errors.len(), 1, "{errors:?}");
+    assert!(errors[0].contains("boom"), "{errors:?}");
+    assert_eq!(client.row(0), "error");
+}
+
+#[test]
+fn error_in_the_clearing_callback() {
+    let scratch = Scratch::new("error-in-clearing");
+    scratch.client_plugin("hello", "error('first')");
+    let source = format!(
+        "{DEFAULTS}\ngband.bind('alt+x', function()\n  gband.clear_errors()\n  error('late')\nend)"
+    );
+    let line = source
+        .lines()
+        .position(|text| text.contains("'late'"))
+        .unwrap()
+        + 1;
+    let config = scratch.load(&source).unwrap();
+    let mut client = Client::new(config, Size::new(200, 24));
+    client.attach(1, 0);
+    client.press("alt+x");
+    let errors = client.display.errors();
+    assert_eq!(errors.len(), 1, "{errors:?}");
+    assert!(
+        errors[0].contains(&format!("init.lua:{line}: late")),
+        "{errors:?}"
+    );
+    assert_eq!(client.row(0), "error");
+}
+
+#[test]
+fn disabled_component_stays_disabled() {
+    let (_scratch, mut client) = defaults(
+        "disabled-stays",
+        &format!(
+            "{CLEAR}\ngband.ui.statusline.add({{ id = 'bad', render = function() error('render boom') end }})"
+        ),
+        Size::new(200, 24),
+    );
+    client.attach(1, 0);
+    assert_eq!(client.row(0), "error");
+    client.press("alt+x");
+    assert!(client.display.errors().is_empty());
+    assert_eq!(client.row(0), "band 1");
+    let enabled: bool = client
+        .controls
+        .runtime()
+        .lua()
+        .load("for _, c in ipairs(gband.ui.statusline.list()) do if c.id == 'bad' then return c.enabled end end")
+        .eval()
+        .unwrap();
+    assert!(!enabled);
+}
+
 #[test]
 fn error_from_a_binding_reaches_the_status_line() {
     let (_scratch, mut client) = defaults(

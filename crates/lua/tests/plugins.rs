@@ -342,6 +342,21 @@ fn bars_in_the_server() {
 }
 
 #[test]
+fn clearing_errors_in_the_server() {
+    let scratch = Scratch::new("clear-errors-in-the-server");
+    scratch.plugin("tabs", &manifest("tabs"));
+    let file = scratch.plugin_file(
+        "tabs",
+        "server.lua",
+        "local a = 1\nlocal b = 2\nlocal c = 3\ngband.clear_errors()",
+    );
+    let config = scratch.loaded_server();
+    let error = plugin_error(&config.errors, "tabs");
+    assert_error_at(error, &file, 4, "`gband.clear_errors`");
+    assert!(error.message.contains("client"), "{error}");
+}
+
+#[test]
 fn server_api_in_the_client() {
     let scratch = Scratch::new("server-api");
     let file = scratch.write("local a = 1\ngband.sessions()");

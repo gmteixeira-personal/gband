@@ -4,8 +4,9 @@ use std::sync::Arc;
 
 use common::*;
 use gband_core::geometry::Size;
-use gband_core::layout::{Layout, LayoutOptions};
-use gband_lua::plugin_windows::{FloatingFrame, Frame};
+use gband_core::layout::{Layout, LayoutOptions, WindowId};
+use gband_lua::keys::parse_key;
+use gband_lua::plugin_windows::{FloatingFrame, Frame, Run};
 use gband_lua::{Config, Dispatch, Outcome, PluginWindowRequest, ViewState};
 
 fn state(errors: &[String], ribbon: Size) -> ViewState {
@@ -51,8 +52,11 @@ fn float(config: &Config) -> FloatingFrame {
 }
 
 fn texts(frame: &FloatingFrame) -> Vec<String> {
-    frame
-        .lines
+    line_texts(&frame.lines)
+}
+
+fn line_texts(lines: &[Vec<Run>]) -> Vec<String> {
+    lines
         .iter()
         .map(|runs| {
             runs.iter()
@@ -99,7 +103,7 @@ fn floating_plugin_window_of_the_defaults() {
     let frame = float(&config);
     assert_eq!((frame.width, frame.height), (45, 12));
     assert_eq!((frame.col, frame.row), (7, 6));
-    assert_eq!(frame.title.as_deref(), Some("errors"));
+    assert_eq!(frame.title.as_deref(), Some("errors  c clear"));
     assert!(frame.border.is_some());
     assert!(frame.focused);
     assert_eq!(
@@ -145,7 +149,9 @@ fn wrapped_again_on_resize() {
 fn no_errors() {
     let (_scratch, config) = client("none", "", &[]);
     open(&config);
-    assert_eq!(texts(&float(&config))[0], "no errors");
+    let frame = float(&config);
+    assert_eq!(texts(&frame)[0], "no errors");
+    assert_eq!(frame.title.as_deref(), Some("errors"));
 }
 
 #[test]
@@ -227,4 +233,105 @@ fn unknown_option() {
         assert_eq!(error.plugin.as_deref(), Some("errors"));
         assert!(error.message.contains(mentions), "{error}");
     }
+}
+
+fn listed(config: &Config) -> Vec<String> {
+    eval(config, "return gband.errors()")
+}
+
+fn only_window(config: &Config) -> u32 {
+    let [id]: [u32; 1] = eval::<Vec<u32>>(config, "return gband.win.list()")
+        .try_into()
+        .unwrap();
+    id
+}
+
+fn focused(config: &Config, id: u32) -> bool {
+    eval(config, &format!("return gband.win.info({id}).focused"))
+}
+
+#[test]
+fn clear_action_and_command_registered() {
+    let (_scratch, config) = client("clear-registered", "", &[]);
+    let desc: String = eval(
+        &config,
+        "for _, a in ipairs(gband.action.list()) do if a.name == 'errors.clear' then return a.desc end end",
+    );
+    assert_eq!(desc, "clear the errors");
+    let registered: bool = eval(
+        &config,
+        "for _, c in ipairs(gband.cmd.list()) do if c.name == 'errors.clear' then return true end end return false",
+    );
+    assert!(registered);
+}
+
+#[test]
+fn clear_a_floating_error_list() {
+    let (_scratch, config) = client(
+        "clear-floating",
+        "",
+        &errors(&["alpha: init.lua:1: first", "beta: init.lua:2: second"]),
+    );
+    open(&config);
+    float(&config);
+    let id = only_window(&config);
+    let outcome = config
+        .runtime
+        .plugin_window_key(id, parse_key("c").unwrap());
+    clean(&outcome);
+    assert!(outcome.dispatched.contains(&Dispatch::ClearErrors));
+    let frame = float(&config);
+    assert_eq!(texts(&frame)[0], "no errors");
+    assert_eq!(frame.title.as_deref(), Some("errors"));
+    assert!(frame.focused);
+    assert!(listed(&config).is_empty());
+}
+
+#[test]
+fn clear_a_tiled_error_list() {
+    let (_scratch, config) = client(
+        "clear-tiled",
+        ", { kind = 'tiled' }",
+        &errors(&["alpha: init.lua:1: first"]),
+    );
+    open(&config);
+    let id = only_window(&config);
+    clean(&config.runtime.plugin_window_opened(id, Some(WindowId(1))));
+    clean(&config.runtime.window_resized(id, Size::new(40, 20)));
+    config.runtime.take_frames();
+    let outcome = config
+        .runtime
+        .plugin_window_key(id, parse_key("c").unwrap());
+    clean(&outcome);
+    assert!(outcome.dispatched.contains(&Dispatch::ClearErrors));
+    let Some((_, Some(Frame::Tiled(frame)))) = config.runtime.take_frames().pop() else {
+        panic!("expected a tiled frame");
+    };
+    assert_eq!(line_texts(&frame.lines)[0], "no errors");
+    assert_eq!(only_window(&config), id);
+    assert!(focused(&config, id));
+}
+
+#[test]
+fn clear_command_with_the_list_open() {
+    let (_scratch, config) = client("clear-command", "", &errors(&["alpha: init.lua:1: first"]));
+    open(&config);
+    float(&config);
+    let outcome = run_job(&config, "ran = gband.cmd.run('errors.clear')");
+    clean(&outcome);
+    assert!(global::<bool>(&config, "ran"));
+    assert!(outcome.dispatched.contains(&Dispatch::ClearErrors));
+    assert_eq!(texts(&float(&config))[0], "no errors");
+}
+
+#[test]
+fn clear_action_without_the_list() {
+    let (_scratch, config) = client("clear-action", "", &errors(&["alpha: init.lua:1: first"]));
+    let outcome = run_job(&config, "gband.action['errors.clear']()");
+    clean(&outcome);
+    assert_eq!(outcome.dispatched, [Dispatch::ClearErrors]);
+    assert!(listed(&config).is_empty());
+    let open: Vec<u32> = eval(&config, "return gband.win.list()");
+    assert!(open.is_empty());
+    assert!(config.runtime.take_frames().is_empty());
 }

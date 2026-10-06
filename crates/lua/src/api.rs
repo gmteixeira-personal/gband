@@ -64,6 +64,7 @@ pub enum Dispatch {
         session: String,
         action: SessionAction,
     },
+    ClearErrors,
 }
 
 #[derive(Default)]
@@ -123,7 +124,16 @@ pub(crate) fn install(lua: &Lua, gband: &Table, side: Side) -> mlua::Result<()> 
             lua.create_sequence_from(crate::ui::current_state(lua).errors)
         })?,
     )?;
+    gband.set("clear_errors", lua.create_function(clear_errors)?)?;
     Ok(())
+}
+
+fn clear_errors(lua: &Lua, (): ()) -> mlua::Result<()> {
+    if !in_callback(lua) {
+        return Err(outside_callback(lua, "gband.clear_errors"));
+    }
+    crate::ui::clear_errors(lua);
+    queue(lua, Dispatch::ClearErrors, "gband.clear_errors")
 }
 
 fn set(lua: &Lua, options: Value) -> mlua::Result<()> {

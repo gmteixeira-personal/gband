@@ -346,7 +346,7 @@ fn defaults_reproduce_the_built_in_behaviour() {
         &config,
         "local open = {} for _, a in ipairs(gband.action.list()) do if a.name:find('%.') then open[#open + 1] = a.name end end return open",
     );
-    assert_eq!(plugins, ["errors.open", "keylist.open"]);
+    assert_eq!(plugins, ["errors.clear", "errors.open", "keylist.open"]);
     clean(&config.runtime.set_state(drawn(80)));
     let bars: Vec<String> = eval(
         &config,
@@ -376,6 +376,60 @@ fn errors_kept_in_order() {
         "local l = gband.errors() l[1] = 'changed' return gband.errors()",
     );
     assert_eq!(listed, reported);
+}
+
+#[test]
+fn cleared_by_hand_reads_an_empty_list() {
+    let config = loaded("cleared-by-hand", JOB);
+    let mut state = drawn(80);
+    state.errors = vec!["first".to_owned(), "second".to_owned()];
+    state.error = Some("second".to_owned());
+    clean(&config.runtime.set_state(state));
+    let outcome = run_job(
+        &config,
+        "before = #gband.errors()\ngband.clear_errors()\nafter = #gband.errors()",
+    );
+    clean(&outcome);
+    assert_eq!(outcome.dispatched, [Dispatch::ClearErrors]);
+    assert_eq!(global::<i64>(&config, "before"), 2);
+    assert_eq!(global::<i64>(&config, "after"), 0);
+}
+
+#[test]
+fn clear_while_loading() {
+    let (path, error) = failure(
+        "clear-while-loading",
+        "local a = 1\nlocal b = 2\nlocal c = 3\ngband.clear_errors()",
+    );
+    assert_failure_at(&error, &path, 4, "gband.clear_errors");
+}
+
+#[test]
+fn clearing_keeps_a_failed_plugin_failed() {
+    let scratch = Scratch::new("clear-keeps-failed");
+    scratch.plugin_file(
+        "broken",
+        "lua/broken/init.lua",
+        "return { setup = function()
+  gband.action.register('go', function() gband.action.focus_column_left() end)
+  gband.keymap.set('root', 'alt+b', gband.action['broken.go'])
+  error('setup failed')
+end }",
+    );
+    scratch.write(&format!("gband.plugin('broken')\n{JOB}"));
+    let config = scratch.loaded();
+    let mut state = drawn(80);
+    state.errors = config.errors.iter().map(ToString::to_string).collect();
+    state.error = state.errors.last().cloned();
+    clean(&config.runtime.set_state(state));
+    let outcome = run_job(&config, "gband.clear_errors()\nafter = #gband.errors()");
+    clean(&outcome);
+    assert_eq!(outcome.dispatched, [Dispatch::ClearErrors]);
+    assert_eq!(global::<i64>(&config, "after"), 0);
+    let go = function_of(&config, direct("alt+b"));
+    let pressed = config.runtime.call(go);
+    assert!(pressed.disabled);
+    assert!(pressed.dispatched.is_empty());
 }
 
 fn component_ids(config: &Config) -> Vec<String> {
@@ -474,10 +528,11 @@ fn every_action_is_named() {
         "send_prefix",
         "keylist.open",
         "errors.open",
+        "errors.clear",
     ];
     expected.sort();
     assert_eq!(names, expected);
-    assert_eq!(ACTIONS.len() + 2, expected.len());
+    assert_eq!(ACTIONS.len() + 3, expected.len());
 }
 
 #[test]

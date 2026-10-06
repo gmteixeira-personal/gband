@@ -1084,6 +1084,7 @@ impl Controls {
                 Dispatch::Targeted { .. } => {
                     tracing::debug!("ignoring a server action dispatched in the client")
                 }
+                Dispatch::ClearErrors => display.clear_errors(),
             }
         }
         for error in &outcome.errors {
