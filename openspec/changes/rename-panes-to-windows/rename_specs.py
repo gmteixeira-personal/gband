@@ -51,6 +51,9 @@ CAPABILITY_TERMS = {
         (r"\| float \|", "| floating |"),
         (r"\| pane \|", "| tiled |"),
     ],
+    "session-server": [
+        (r"without `GBAND_TEST_SOCKET`(?: or `GBAND_PANE`)?,", "without `GBAND_TEST_SOCKET` or `GBAND_PANE`,"),
+    ],
 }
 
 ALL_FLOATS = {"plugin-windows"}
