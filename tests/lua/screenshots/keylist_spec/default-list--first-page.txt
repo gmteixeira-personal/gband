@@ -1,0 +1,104 @@
+size 80x24 cursor 23:73 hidden
+ 0|┌──────────────────────────────────────┐
+ 1|│$                                     │
+ 2|│                                      │
+ 3|│                                      │
+ 4|│          ┌prefix keys─────────────────────────────────────────────┐
+ 5|│          │h        focus the column to the left                   │
+ 6|│          │l        focus the column to the right                  │
+ 7|│          │j        focus the window below                         │
+ 8|│          │k        focus the window above                         │
+ 9|│          │u        view the band below                            │
+10|│          │i        view the band above                            │
+11|│          │c        center the focused column                      │
+12|│          │enter    open a window running the user's shell         │
+13|│          │q        close the window                               │
+14|│          │[        consume or expel the window to the left        │
+15|│          │]        consume or expel the window to the right       │
+16|│          │r        cycle the width of the window's column         │
+17|│          │f        toggle full width of the window's column       │
+18|│          └────────────────────────────────────────────────────────┘
+19|│                                      │
+20|│                                      │
+21|│                                      │
+22|└──────────────────────────────────────┘
+23|band 1 │ C-space prefix                                                      1/1
+--
+0:0-39 bold
+1:0 bold
+1:39 bold
+2:0 bold
+2:39 bold
+3:0 bold
+3:39 bold
+4:0 bold
+4:11 fg=8
+4:12-22 fg=8 bold
+4:23-68 fg=8
+5:0 bold
+5:11 fg=8
+5:12-20 fg=#7aa2f7 bold inverse
+5:21-67 inverse
+5:68 fg=8
+6:0 bold
+6:11 fg=8
+6:12-20 fg=#7aa2f7 bold
+6:68 fg=8
+7:0 bold
+7:11 fg=8
+7:12-20 fg=#7aa2f7 bold
+7:68 fg=8
+8:0 bold
+8:11 fg=8
+8:12-20 fg=#7aa2f7 bold
+8:68 fg=8
+9:0 bold
+9:11 fg=8
+9:12-20 fg=#7aa2f7 bold
+9:68 fg=8
+10:0 bold
+10:11 fg=8
+10:12-20 fg=#7aa2f7 bold
+10:68 fg=8
+11:0 bold
+11:11 fg=8
+11:12-20 fg=#7aa2f7 bold
+11:68 fg=8
+12:0 bold
+12:11 fg=8
+12:12-20 fg=#7aa2f7 bold
+12:68 fg=8
+13:0 bold
+13:11 fg=8
+13:12-20 fg=#7aa2f7 bold
+13:68 fg=8
+14:0 bold
+14:11 fg=8
+14:12-20 fg=#7aa2f7 bold
+14:68 fg=8
+15:0 bold
+15:11 fg=8
+15:12-20 fg=#7aa2f7 bold
+15:68 fg=8
+16:0 bold
+16:11 fg=8
+16:12-20 fg=#7aa2f7 bold
+16:68 fg=8
+17:0 bold
+17:11 fg=8
+17:12-20 fg=#7aa2f7 bold
+17:68 fg=8
+18:0 bold
+18:11-68 fg=8
+19:0 bold
+19:39 bold
+20:0 bold
+20:39 bold
+21:0 bold
+21:39 bold
+22:0-39 bold
+23:0-5 fg=#c0caf5 bg=#24283b
+23:6-8 fg=#565f89 bg=#24283b
+23:9-15 fg=#7aa2f7 bg=#24283b bold
+23:16-76 fg=#c0caf5 bg=#24283b
+23:77-79 fg=#9aa5ce bg=#24283b

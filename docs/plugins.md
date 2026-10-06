@@ -498,14 +498,16 @@ The exception is a focus change caused by the floating plugin window's own `keys
 So a list can run actions on Enter and stay open for the next choice.
 While a plugin window is focused, every key the bindings leave unused goes to it and never to a program, and pastes are discarded.
 A key in `keys` runs its function with the plugin window's number.
-Without an entry, Up or `k` and Down or `j` move the cursor line or scroll, PageUp and PageDown scroll a page, Home and End show the first or last line, and Escape closes a floating plugin window.
+Without an entry, Up or `k` and Down or `j` move the cursor line or scroll, PageUp and PageDown scroll a page, Home and End show the first or last line, and `q` and Escape close a floating plugin window.
+The `close_window` action, such as Ctrl+Space then `q`, closes the focused floating plugin window as `gband.win.close` does, running its `on_close` and sending nothing to the server, also on a band with no window; with no floating plugin window focused, it closes the focused window.
+A `close_window` dispatched with a target closes the window it names and leaves the floating plugin window open.
 
 `on_close` runs once with the plugin window's number when the plugin window closes, but not when a reload closes it.
 `on_resize` runs with the number and the new columns and rows when the plugin window's content area changes size, including when a tiled plugin window's size first becomes known.
 A plugin window closes when its plugin is marked failed.
 
 ```lua
-gband.keymap.set("prefix", "?", function()
+gband.keymap.set("prefix", "K", function()
   local lines = {}
   for _, binding in ipairs(gband.keymap.list("prefix")) do
     lines[#lines + 1] = {
@@ -513,15 +515,7 @@ gband.keymap.set("prefix", "?", function()
       binding.desc or binding.action or "function",
     }
   end
-  local win
-  win = gband.win.open({
-    title = "prefix keys",
-    width = 50,
-    height = 15,
-    cursorline = true,
-    lines = lines,
-    keys = { q = function() gband.win.close(win) end },
-  })
+  gband.win.open({ title = "prefix keys", width = 50, height = 15, cursorline = true, lines = lines })
 end, { desc = "list the prefix keys" })
 
 gband.keymap.set("prefix", "P", function()
@@ -737,6 +731,30 @@ end
 return M
 ```
 
+## The key list: `gband.keylist`
+
+gband bundles one more client plugin beside the status line segments: the key list, module `gband.keylist`, plugin `keylist`.
+Its `setup` takes no options, and registers the action `keylist.open`, described as `list the keys`.
+The default configuration sets it up before its key bindings and binds Ctrl+Space then `?` to it:
+
+```lua
+gband.plugin("gband.keylist")
+gband.keymap.set("prefix", "?", gband.action["keylist.open"], { desc = "list the keys" })
+```
+
+`keylist.open` opens a focused floating plugin window titled `prefix keys`, centred in the ribbon, with its cursor line on the first line.
+It holds one line per binding of the `prefix` table, in the order `gband.keymap.list("prefix")` gives them when it opens: the key in the hints segment's short form, such as `C-space` for the prefix key, padded to two cells more than the widest key, then the binding's description, its action's description when it has none, its action's name when that is empty too, or `function`.
+The plugin window is as wide as its longest line plus its border and as high as its lines plus its border, at most 15 rows, and the ribbon caps both.
+Dispatching `keylist.open` while the list is open focuses it and opens no second one.
+
+Enter runs the binding on the cursor line by dispatching its action with no target, so it acts on the focused window behind the list, as a key bound to it would.
+The list stays open and focused, by the rule for a floating plugin window's own `keys`, so you can choose again; a floating plugin window the action opens takes focus above it.
+`close_window` closes the list itself, as it closes any focused floating plugin window.
+A function binding gives the list nothing to dispatch, so Enter does nothing on it and its description is drawn in `KeyListMuted`, as is the line of `keylist.open` itself.
+`q`, Escape and Ctrl+Space then `q` close the list.
+
+The key list draws keys in `KeyListKey` and the descriptions it cannot run in `KeyListMuted`; it defines them as defaults when its module is first required, and gives `StatusLineAccent` and `StatusLineMuted` their usual defaults so the links resolve without a status line.
+
 ## Highlight groups: `gband.hl`
 
 A highlight group is a named style.
@@ -784,6 +802,7 @@ The status line defines these groups, as defaults:
 | `StatusLineError` | `{ fg = "red", bold = true }` | the error item |
 
 The hints segment adds `KeyHintKey`, `{ link = "StatusLineAccent" }`, and `KeyHintLabel`, `{ link = "StatusLineSegment" }`, when its module is first required.
+The key list adds `KeyListKey`, `{ link = "StatusLineAccent" }`, and `KeyListMuted`, `{ link = "StatusLineMuted" }`, the same way.
 
 The plugin window API defines these groups, as defaults:
 

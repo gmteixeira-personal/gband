@@ -93,12 +93,31 @@ fn actions(config: &Config) -> Vec<(String, Chord, Action)> {
         .keymap
         .iter()
         .flat_map(|(table, bindings)| {
-            bindings.iter().map(move |(chord, binding)| match binding {
-                Binding::Action(action) => (table.clone(), *chord, *action),
-                Binding::Callback(_) => panic!("{table} {chord:?} is bound to a function"),
-            })
+            bindings
+                .iter()
+                .filter_map(move |(chord, binding)| match binding {
+                    Binding::Action(action) => Some((table.clone(), *chord, *action)),
+                    Binding::Callback(_) => None,
+                })
         })
         .collect()
+}
+
+fn bound_keys(config: &Config) -> Vec<(String, String)> {
+    let mut keys: Vec<(String, String)> = Vec::new();
+    for table in config.keymap.keys() {
+        let entries: Vec<(String, Option<String>)> =
+            eval::<Vec<mlua::Table>>(config, &format!("return gband.keymap.list('{table}')"))
+                .into_iter()
+                .map(|entry| (entry.get("key").unwrap(), entry.get("action").unwrap()))
+                .collect();
+        keys.extend(
+            entries
+                .into_iter()
+                .map(|(key, action)| (key, action.unwrap_or_else(|| "function".to_owned()))),
+        );
+    }
+    keys
 }
 
 fn function_of(config: &Config, keys: Keys) -> CallbackId {
@@ -119,6 +138,7 @@ fn no_configuration_file_gives_the_defaults() {
     let defaults = gband_lua::defaults(gband_lua::Side::Client);
     assert_eq!(config.options, defaults.options);
     assert_eq!(actions(&config), actions(&defaults));
+    assert_eq!(bound_keys(&config), bound_keys(&defaults));
     assert!(config.errors.is_empty());
 }
 
@@ -149,6 +169,7 @@ fn copied_defaults_load_unchanged() {
     let defaults = gband_lua::defaults(gband_lua::Side::Client);
     assert_eq!(config.options, defaults.options);
     assert_eq!(actions(&config), actions(&defaults));
+    assert_eq!(bound_keys(&config), bound_keys(&defaults));
     assert!(config.errors.is_empty(), "{:?}", config.errors);
     assert_eq!(component_ids(&config), component_ids(&defaults));
 }
@@ -297,7 +318,29 @@ fn every_default_binding_is_described() {
     );
     assert!(undescribed.is_empty(), "{undescribed:?}");
     let count: usize = eval(&config, "return #gband.keymap.list('prefix')");
-    assert_eq!(count, 30);
+    assert_eq!(count, 31);
+}
+
+#[test]
+fn key_list_set_up_by_the_defaults() {
+    let config = gband_lua::defaults(gband_lua::Side::Client);
+    let keys: Vec<String> = eval(
+        &config,
+        "local keys = {} for _, entry in ipairs(gband.keymap.list('prefix')) do keys[#keys + 1] = entry.key end return keys",
+    );
+    let position = |key: &str| keys.iter().position(|bound| bound == key).unwrap();
+    assert!(position("R") < position("?"));
+    assert!(position("?") < position("D"));
+    assert!(position("ctrl+up") < position("?"));
+    assert!(matches!(
+        binding(&config, prefixed("?")),
+        Some(Binding::Callback(_))
+    ));
+    let action: String = eval(
+        &config,
+        "for _, entry in ipairs(gband.keymap.list('prefix')) do if entry.key == '?' then return entry.action end end",
+    );
+    assert_eq!(action, "keylist.open");
 }
 
 #[test]
@@ -338,10 +381,11 @@ fn every_action_is_named() {
         "reset_window_height",
         "detach",
         "send_prefix",
+        "keylist.open",
     ];
     expected.sort();
     assert_eq!(names, expected);
-    assert_eq!(ACTIONS.len(), expected.len());
+    assert_eq!(ACTIONS.len() + 1, expected.len());
 }
 
 #[test]

@@ -618,9 +618,18 @@ function hooks.key(id, name)
   if move(win, name) then
     return
   end
-  if name == "escape" and win.kind == "floating" then
+  if (name == "escape" or name == "q") and win.kind == "floating" then
     close(win, true, true)
   end
+end
+
+function hooks.close_focused()
+  local win = focused_float and wins[focused_float]
+  if not win then
+    return false
+  end
+  close(win, true, true)
+  return true
 end
 
 function hooks.release()

@@ -274,7 +274,7 @@ fn default_configuration_with_a_plugin() {
         "gband.keymap.set('root', 'alt+g', gband.action.focus_column_left)",
     );
     let config = scratch.loaded();
-    assert_eq!(config.keymap["prefix"].len(), 30);
+    assert_eq!(config.keymap["prefix"].len(), 31);
     assert_eq!(
         config.keymap["root"],
         [(
@@ -727,6 +727,14 @@ fn bundled_module() {
     scratch.write("name = require('gband.statusline.band').name");
     let config = scratch.loaded();
     assert_eq!(global::<String>(&config, "name"), "band");
+}
+
+#[test]
+fn bundled_key_form() {
+    let scratch = Scratch::new("bundled-keyform");
+    scratch.write("form = require('gband.keyform')('ctrl+space')");
+    let config = scratch.loaded();
+    assert_eq!(global::<String>(&config, "form"), "C-space");
 }
 
 #[test]

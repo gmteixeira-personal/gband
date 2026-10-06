@@ -221,17 +221,108 @@ fn root_binding_runs_before_the_plugin_window() {
 
 #[test]
 fn bindings_still_win() {
-    let mut client = Client::new("bindings-win", FLOAT);
+    let mut client = Client::new(
+        "bindings-win",
+        "gband.bind('alt+o', function() gband.win.open({ keys = { h = function() pressed = true end } }) end)\n",
+    );
+    client.press("ctrl+space");
+    client.press("l");
     client.press("alt+o");
     assert!(client.press("ctrl+space").is_empty());
-    let focused = client.display.focused().unwrap();
+    no_input(&client.press("h"));
+    assert_eq!(client.display.focused(), Some(client.windows[0]));
+    assert!(client.global::<Option<bool>>("pressed").is_none());
+}
+
+const CLOSABLE: &str = "gband.bind('alt+o', function() win = gband.win.open({ keys = { q = function(id) pressed = id end }, on_close = function(id) closed = id end }) end)\ngband.bind('alt+n', function() win = gband.win.open({ on_close = function(id) closed = id end }) end)\ngband.bind('alt+c', function() gband.action.close_window() end)\ngband.bind('alt+t', function() gband.action.close_window({ window = target }) end)\n";
+
+#[test]
+fn q_closes_a_float() {
+    let mut client = Client::new("q-closes", CLOSABLE);
+    client.press("alt+n");
+    let plugin_window: u32 = client.global("win");
+    let steps = client.press("q");
+    assert!(sent(&steps).is_empty(), "{steps:?}");
+    assert!(client.display.plugin_windows().floats().is_empty());
+    assert_eq!(client.global::<u32>("closed"), plugin_window);
+}
+
+#[test]
+fn keys_entry_for_q_wins() {
+    let mut client = Client::new("q-entry", CLOSABLE);
+    client.press("alt+o");
+    let plugin_window: u32 = client.global("win");
+    no_input(&client.press("q"));
+    assert_eq!(client.global::<u32>("pressed"), plugin_window);
+    assert_eq!(client.display.plugin_windows().floats().len(), 1);
+}
+
+#[test]
+fn prefix_q_closes_the_focused_float() {
+    let mut client = Client::new("prefix-q", CLOSABLE);
+    let focused = client.display.focused();
+    client.press("alt+o");
+    let plugin_window: u32 = client.global("win");
+    client.press("ctrl+space");
+    let steps = client.press("q");
+    assert!(sent(&steps).is_empty(), "{steps:?}");
+    assert!(client.display.plugin_windows().floats().is_empty());
+    assert_eq!(client.display.focused(), focused);
+    assert_eq!(client.global::<u32>("closed"), plugin_window);
+    assert!(client.global::<Option<u32>>("pressed").is_none());
+}
+
+#[test]
+fn close_window_from_a_binding_function_closes_the_focused_float() {
+    let mut client = Client::new("close-action", CLOSABLE);
+    client.press("alt+n");
+    let plugin_window: u32 = client.global("win");
+    let steps = client.press("alt+c");
+    assert!(sent(&steps).is_empty(), "{steps:?}");
+    assert!(client.display.plugin_windows().floats().is_empty());
+    assert_eq!(client.global::<u32>("closed"), plugin_window);
     assert_eq!(
-        client.press("q"),
+        client.press("alt+c"),
         [Step::Send(ClientMessage::Action(
-            SessionAction::CloseWindow(focused)
+            SessionAction::CloseWindow(client.windows[0])
         ))]
     );
-    assert!(client.global::<Option<u32>>("pressed").is_none());
+}
+
+#[test]
+fn prefix_q_closes_a_float_on_the_empty_band() {
+    let mut client = Client::new("prefix-q-empty", CLOSABLE);
+    client.press("ctrl+space");
+    client.press("u");
+    assert_eq!(client.display.focused(), None);
+    client.press("alt+n");
+    assert_eq!(client.display.plugin_windows().floats().len(), 1);
+    client.press("ctrl+space");
+    let steps = client.press("q");
+    assert!(sent(&steps).is_empty(), "{steps:?}");
+    assert!(client.display.plugin_windows().floats().is_empty());
+    client.press("ctrl+space");
+    assert!(sent(&client.press("q")).is_empty());
+}
+
+#[test]
+fn targeted_close_window_leaves_the_focused_float_open() {
+    let mut client = Client::new("targeted-close", CLOSABLE);
+    let target = client.windows[1];
+    client
+        .controls
+        .runtime()
+        .lua()
+        .globals()
+        .set("target", target.0)
+        .unwrap();
+    client.press("alt+n");
+    assert_eq!(
+        sent(&client.press("alt+t")),
+        [&ClientMessage::Action(SessionAction::CloseWindow(target))]
+    );
+    assert_eq!(client.display.plugin_windows().floats().len(), 1);
+    assert!(client.global::<Option<u32>>("closed").is_none());
 }
 
 #[test]
@@ -264,6 +355,20 @@ fn escape_closes_a_float() {
 }
 
 const WINDOW: &str = "gband.bind('alt+p', function() win = gband.win.open({ kind = 'tiled', lines = { 'hello' }, column_width = 1/4, keys = { j = function() pressed = true end }, on_close = function(id) closed = id end }) end)\n";
+
+#[test]
+fn q_in_a_tiled_plugin_window_is_discarded() {
+    let mut client = Client::new("tiled-q", WINDOW);
+    client.press("alt+p");
+    let plugin_window: u32 = client.global("win");
+    let (window, _) = client.open_plugin_window(plugin_window);
+    assert_eq!(client.display.focused_plugin_window(), Some(plugin_window));
+    let steps = client.press("q");
+    assert!(sent(&steps).is_empty(), "{steps:?}");
+    assert!(client.global::<Option<u32>>("closed").is_none());
+    assert_eq!(client.display.focused(), Some(window));
+    assert_eq!(client.display.focused_plugin_window(), Some(plugin_window));
+}
 
 #[test]
 fn tiled_plugin_window_opens_and_sends_its_contents() {

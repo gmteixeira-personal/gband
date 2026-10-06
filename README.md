@@ -65,7 +65,7 @@ The default key bindings all follow the prefix key, Ctrl+Space:
 | `u`, `i` | view the band below or above |
 | `c` | center the focused column in the view, or the focused floating window on the screen |
 | `enter` | open a window running your shell |
-| `q` | close the window |
+| `q` | close the window, or the key list or another floating plugin window when it has focus |
 | `[`, `]` | move the window into or out of the column to the left or right |
 | `r` | cycle the column's width through the presets |
 | `f` | toggle full width of the column |
@@ -76,6 +76,7 @@ The default key bindings all follow the prefix key, Ctrl+Space:
 | `V` | move focus between the floating and the tiled windows |
 | Ctrl+`h`, Ctrl+`l`, or Ctrl with the left or right arrow | move the column, or the floating window, to the left or right |
 | Ctrl+`j`, Ctrl+`k`, or Ctrl with the down or up arrow | move the window, or the floating window, down or up |
+| `?` | list these keys, and run the one you choose |
 | `D` | detach |
 | Ctrl+Space | send Ctrl+Space to the window |
 
@@ -201,7 +202,7 @@ The actions in `gband.action`:
 | `center_column` | scroll the view so the focused column sits in its middle, or move the focused floating window to the middle of the screen |
 | `switch_focus_floating_tiled` | move focus between the band's floating windows and its tiled windows |
 | `open_window` | open a window running your shell right of the focused column |
-| `close_window` | close the focused window |
+| `close_window` | close the focused floating plugin window, such as the key list, when one has focus, otherwise the focused window |
 | `consume_or_expel_left`, `consume_or_expel_right` | move the focused window into or out of the neighbouring column |
 | `move_column_left`, `move_column_right` | swap the column with its neighbour, or move a floating window left or right |
 | `move_window_down`, `move_window_up` | swap the window with its neighbour in the column, or move a floating window down or up |
@@ -229,6 +230,21 @@ The width keys change the box's width by the same steps as a column's, and the h
 Ctrl+Space then Ctrl with `h`, `l`, `j` or `k`, or with an arrow key, moves the box a tenth of the screen; on a tiled window the same keys swap its column with the next column, or the window with the next window in its column.
 
 Each client stacks floating windows in its own order, with the one it focused last on top, and draws its floating plugin windows above them.
+
+### Key list
+
+Ctrl+Space then `?` opens a list of the prefix keys in a box over the windows, each with its description.
+`j` and `k` or the arrow keys move through it, and Enter runs the selected key's action on the window behind the list, which stays open for the next choice.
+A key bound to a function shows dimmed, and Enter does nothing on it.
+`q`, Escape, or Ctrl+Space then `q` close the list.
+
+The list is a plugin bundled with gband, set up by the default configuration.
+A `user/init.lua` that replaces the defaults sets it up and binds it itself:
+
+```lua
+gband.plugin("gband.keylist")
+gband.keymap.set("prefix", "?", gband.action["keylist.open"], { desc = "list the keys" })
+```
 
 ### Status line
 

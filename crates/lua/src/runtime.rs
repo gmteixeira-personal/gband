@@ -593,6 +593,15 @@ impl Runtime {
         })
     }
 
+    pub fn close_focused_plugin_window(&self) -> (bool, Outcome) {
+        let mut closed = false;
+        let outcome = self.within_callback(|lua| {
+            closed = plugin_windows::call::<bool>(lua, "close_focused", ())?;
+            Ok(false)
+        });
+        (closed, outcome)
+    }
+
     pub fn release_plugin_windows(&self) -> Outcome {
         self.within_callback(|lua| plugin_windows::call::<()>(lua, "release", ()).map(|()| false))
     }
