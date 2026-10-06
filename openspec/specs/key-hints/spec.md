@@ -29,22 +29,30 @@ gband SHALL bundle the plugin module `gband.statusline.hints`, whose plugin is n
 - **THEN** `gband.plugin` returns `false` and a plugin error names `hints`
 
 ### Requirement: Hints of the active table
-The segment SHALL show one hint for each binding of the active key table, in the order `gband.keymap.list` returns them. While `root` is active, the hints SHALL start with one hint for the prefix key labelled `prefix`, shown only when the `prefix` table holds a binding, followed by the bindings of `root`. While `root` is active and the `root` option is false, the segment SHALL be hidden. A binding left out by "Hint labels" SHALL take no hint. When no hint is left, the segment SHALL be hidden.
+The segment SHALL show one hint for each binding of the active key table, in the order `gband.keymap.list` returns them. While `root` is active, the hints SHALL start with one hint for the prefix key, labelled with `gband.keymap.label("prefix")`, shown only when the `prefix` table holds a binding, followed by the bindings of `root`. While `root` is active and the `root` option is false, the segment SHALL be hidden. A binding left out by "Hint labels" SHALL take no hint. When no hint is left, the segment SHALL be hidden.
 
 Each hint SHALL be the key, as "Key form" shows it, in the group `KeyHintKey`, one space, and the label in the group `KeyHintLabel`. Hints SHALL be separated by two spaces in `KeyHintLabel`.
 
 #### Scenario: Root with the defaults
 - **WHEN** the default configuration is in use and `root` is active
-- **THEN** the left region shows `band 1`, the separator, then `C-space prefix`
+- **THEN** the left region shows `band 1`, the separator, then `C-space navigation`
+
+#### Scenario: Prefix table that is not a mode
+- **WHEN** `user/init.lua` binds `prefix h` to `gband.action.focus_column_left`, declares no mode, sets up the hints segment, and `root` is active
+- **THEN** the segment shows `C-space prefix`
 
 #### Scenario: Prefix table with the defaults
-- **WHEN** the default configuration is in use, the client's terminal is 240 columns wide, and the user presses Ctrl+Space
-- **THEN** the segment starts with `h left  l right  j down  k up  u band down  i band up`
-- **AND** ends with `D detach  C-space send prefix`
+- **WHEN** the default configuration is in use, the client's terminal is 520 columns wide, and the user presses Ctrl+Space
+- **THEN** the segment starts with `h left  l right  j down  k up  u band down  i band up  c center  n open a window  q close`
+- **AND** ends with `D detach  esc interactive mode  enter interactive mode  left left  right right  down down  up up  C-space send the prefix key`
+
+#### Scenario: Hints stay in navigation mode
+- **WHEN** navigation mode's hints are shown and the user presses `h`
+- **THEN** the segment still shows navigation mode's hints
 
 #### Scenario: Back to root
-- **WHEN** the prefix table's hints are shown and the user presses `h`
-- **THEN** the segment shows `C-space prefix` again
+- **WHEN** navigation mode's hints are shown and the user presses Escape
+- **THEN** the segment shows `C-space navigation` again
 
 #### Scenario: Named table
 - **WHEN** `user/init.lua` binds `h` with description `west` and `l` with description `east` in the table `move`, and a binding enters `move`
@@ -57,11 +65,11 @@ Each hint SHALL be the key, as "Key form" shows it, in the group `KeyHintKey`, o
 #### Scenario: Root hints turned off
 - **WHEN** the hints segment is set up with `{ root = false }` and `root` is active
 - **THEN** the segment is hidden
-- **AND** it shows the prefix table's hints after Ctrl+Space
+- **AND** it shows navigation mode's hints after Ctrl+Space
 
 #### Scenario: Groups
-- **WHEN** the segment shows `C-space prefix`
-- **THEN** `C-space` is drawn in `KeyHintKey` and ` prefix` in `KeyHintLabel`
+- **WHEN** the segment shows `C-space navigation`
+- **THEN** `C-space` is drawn in `KeyHintKey` and ` navigation` in `KeyHintLabel`
 
 ### Requirement: Key form
 A hint SHALL show its key in a short form. The modifiers SHALL be shown as `C-` for Ctrl, `A-` for Alt and `S-` for Shift, in that order, before the key. `shift` with a lowercase letter SHALL be shown as the uppercase letter, with no `S-`. A named key SHALL be shown in lowercase, with `escape` shown as `esc`. A one-character key SHALL be shown as written. The key `prefix` in a table other than `root`, and the prefix key's hint in `root`, SHALL be shown as the key the `prefix` option names, in the same form.
@@ -142,8 +150,8 @@ A binding to a function SHALL be labelled by its `desc`, and SHALL be left out w
 - **THEN** the hint for `q` shows `q kill`
 
 #### Scenario: Label option hides an action
-- **WHEN** the hints segment is set up with `{ labels = { send_prefix = false } }` and the user presses Ctrl+Space
-- **THEN** no hint shows `send prefix`
+- **WHEN** the hints segment is set up with `{ labels = { detach = false } }`, the default bindings are in use, the segment is wide enough for every hint, and the user presses Ctrl+Space
+- **THEN** no hint shows `detach`
 
 #### Scenario: Registered action
 - **WHEN** the plugin `hello` registers `greet` with description `say hi` and binds `alt+g` in `root` to it
@@ -192,4 +200,4 @@ The default configuration SHALL set up `gband.statusline.hints` with `gband.plug
 
 #### Scenario: Hints in the default line
 - **WHEN** no `user/init.lua` exists and a client attaches with an 80×24 terminal
-- **THEN** row 23 shows `band 1`, the separator, then `C-space prefix`, and the position ending at column 79
+- **THEN** row 23 shows `band 1`, the separator, then `C-space navigation`, and the position ending at column 79

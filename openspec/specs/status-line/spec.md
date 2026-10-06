@@ -184,7 +184,7 @@ The left region SHALL start at the line's first column, and the right region SHA
 
 #### Scenario: Mode shown
 - **WHEN** the default configuration is in use and the user presses Ctrl+Space
-- **THEN** the left region shows `band 1`, the separator, then `prefix`
+- **THEN** the left region shows `band 1`, the separator, then `navigation`
 
 #### Scenario: Lowest priority dropped first
 - **WHEN** the line is 18 cells wide, the separator is ` │ `, and the left region holds A of priority 1 with output `aaaaaaaa` and B of priority 2 with output `bbbbbbbb`
@@ -266,7 +266,7 @@ gband SHALL bundle these plugin modules, each set up with `gband.plugin` and eac
 | module | plugin | output | redraw on | align | priority | order | group |
 |---|---|---|---|---|---|---|---|
 | `gband.statusline.band` | `band` | `band ` and the viewed band's index | `BandChanged`, `LayoutChanged` | left | 20 | 10 | `StatusLineSegment` |
-| `gband.statusline.mode` | `mode` | the active key table's name; hidden while `root` is active | `KeyTableChanged` | left | 30 | 20 | `StatusLineAccent` |
+| `gband.statusline.mode` | `mode` | the active key table's label, as `gband.keymap.label` returns it; hidden while `root` is active | `KeyTableChanged` | left | 30 | 20 | `StatusLineAccent` |
 | `gband.statusline.position` | `position` | the focused column's index, `/`, and the band's column count; hidden while the viewed band is empty or a floating window is focused | `FocusChanged`, `BandChanged`, `LayoutChanged` | right | 10 | 10 | `StatusLineMuted` |
 | `gband.statusline.clock` | `clock` | the local time, formatted by `os.date` with `opts.format`, `"%H:%M"` by default | every `opts.interval` milliseconds, 1000 by default | right | 5 | 20 | `StatusLineMuted` |
 
@@ -275,6 +275,10 @@ Each SHALL take the options `align`, `priority`, `order` and `hl`, which replace
 #### Scenario: Reorder a segment
 - **WHEN** `user/init.lua` calls `gband.plugin("gband.statusline.mode", { align = "right", order = 1 })` and `gband.plugin("gband.statusline.position")`, and the user presses Ctrl+Space
 - **THEN** the right region shows `prefix`, the separator, then the position
+
+#### Scenario: Label of a mode
+- **WHEN** `user/init.lua` declares `resize` a mode with the label `RESIZE`, sets up `gband.statusline.mode`, and a binding enters `resize`
+- **THEN** the mode segment shows `RESIZE`
 
 #### Scenario: Clock
 - **WHEN** `user/init.lua` calls `gband.plugin("gband.statusline.clock", { format = "%H:%M:%S" })`
