@@ -36,8 +36,8 @@ The floating plugin window SHALL hold one line: `:` followed by the typed text, 
 The plugin SHALL give the group `PromptCursor` the default `{ reverse = true }`, as the highlights capability defines defaults.
 
 #### Scenario: Prompt on the bottom rows
-- **WHEN** the ribbon area is 60×24, as the default status line leaves it on an 80×24 terminal, and a binding dispatches `prompt.open`
-- **THEN** a focused floating plugin window titled `lua` spans columns 0 to 59 and rows 21 to 23 of the ribbon area
+- **WHEN** the ribbon area is 79×24, as the default sidebar leaves it on an 80×24 terminal, and a binding dispatches `prompt.open`
+- **THEN** a focused floating plugin window titled `lua` spans columns 0 to 78 and rows 21 to 23 of the ribbon area
 - **AND** its content row reads `:` followed by one cell drawn reversed
 
 #### Scenario: Typed text and the cursor
@@ -106,7 +106,7 @@ A syntax error, an error raised while the line runs, and a stop by the instructi
 
 #### Scenario: Enter a mode
 - **WHEN** the default configuration is in use and the user runs `gband.keymap.enter("prefix")` from the prompt
-- **THEN** navigation mode is active and the status line's mode segment shows `navigation`
+- **THEN** navigation mode is active and the sidebar's mode row shows `N`
 
 #### Scenario: Open a plugin window
 - **WHEN** the user runs `gband.win.open({ lines = { "hi" } })` from the prompt
@@ -141,8 +141,8 @@ Each key style preset of the key-style capability SHALL set up `gband.prompt` wi
 - **THEN** the focused window prints `a:b` and no prompt opens
 
 #### Scenario: Hint for the prompt
-- **WHEN** the default configuration is in use with the modal key style saved, the client's terminal is 80×60, and the user presses Ctrl+Space
-- **THEN** the hints segment shows the hint `: run Lua` right after the hint `? list the keys` and right before the hint `D detach`
+- **WHEN** the default configuration is in use with the modal key style saved, and the user presses Ctrl+Space and then `?`
+- **THEN** the key list holds the line for `:` right after the line for `?` and right before the line for `D`
 
 #### Scenario: Prompt in the key list
 - **WHEN** the default configuration is in use and the key list opens

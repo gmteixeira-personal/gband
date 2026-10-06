@@ -68,8 +68,8 @@ The client and the server SHALL repeat these steps for the effects of the effect
 - **THEN** the runner's screen shows two tiles as soon as the settle completes
 
 #### Scenario: Server handler effect is drawn
-- **WHEN** a server handler of `WindowOpened` sets a window state key that a client status line segment draws, and the runner opens a window and settles
-- **THEN** the segment's new text is on the runner's screen as soon as the settle completes
+- **WHEN** a server handler of `WindowOpened` sets a window state key, a client handler of `WindowStateChanged` writes the key's value into a bar with `gband.bar.set_lines`, and the runner opens a window and settles
+- **THEN** the bar's new text is on the runner's screen as soon as the settle completes
 
 ### Requirement: Reload request
 The runner SHALL be able to ask the client and the server to reload their configuration. Each SHALL load it again as the configuration capability's "Reload on change" defines, as if a file under `user/` had changed, and answer once the load has finished, with the error message when it failed. A reload request SHALL also re-read the plugins directory, so that changes to a plugin's files take effect.
@@ -84,15 +84,15 @@ The runner SHALL be able to ask the client and the server to reload their config
 - **AND** the client keeps the configuration it last loaded
 
 ### Requirement: Frozen time
-Before a process loads its configuration, the runner SHALL tell it either an instant, as Unix seconds, or that no instant is set. While an instant is set, in every Lua state the process creates, `os.time()` called without a table SHALL return the instant, and `os.date(format)` called without a time SHALL format the instant. Calls with an explicit time or table SHALL behave as Lua defines. The instant SHALL NOT advance by itself. The runner SHALL be able to set a new instant at any time, which SHALL take effect for every later call in that process. Frozen time SHALL NOT change when timers fire, such as a status line component's `redraw_interval`. Without an instant, `os.time` and `os.date` SHALL behave as Lua defines.
+Before a process loads its configuration, the runner SHALL tell it either an instant, as Unix seconds, or that no instant is set. While an instant is set, in every Lua state the process creates, `os.time()` called without a table SHALL return the instant, and `os.date(format)` called without a time SHALL format the instant. Calls with an explicit time or table SHALL behave as Lua defines. The instant SHALL NOT advance by itself. The runner SHALL be able to set a new instant at any time, which SHALL take effect for every later call in that process. Frozen time SHALL NOT change when timers fire. Without an instant, `os.time` and `os.date` SHALL behave as Lua defines.
 
 #### Scenario: Clock segment frozen
-- **WHEN** the instant is `2025-01-01 12:00:00` UTC, `TZ` is `UTC` and the client's status line holds the `clock` segment with its default format
-- **THEN** the segment draws `12:00` on every run
+- **WHEN** the instant is `2025-01-01 12:00:00` UTC, `TZ` is `UTC` and the client's `user/init.lua` adds a bar whose line is `os.date("%H:%M")`
+- **THEN** the bar draws `12:00` on every run
 
 #### Scenario: Time moved
-- **WHEN** the runner sets the instant to `2025-01-01 12:05:00` UTC and waits for the `clock` segment's next redraw
-- **THEN** the segment draws `12:05`
+- **WHEN** the runner sets the instant to `2025-01-01 12:05:00` UTC and then a binding function sets the bar's line to `os.date("%H:%M")` with `gband.bar.set_lines`
+- **THEN** the bar draws `12:05`
 
 #### Scenario: Explicit time unchanged
 - **WHEN** an instant is set and a chunk returns `os.date("%Y", 0)`

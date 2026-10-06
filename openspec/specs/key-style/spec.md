@@ -9,7 +9,7 @@ Defines gband's two key styles, modal and direct: the bundled preset files that 
 ### Requirement: Key style presets
 gband SHALL bundle two key style presets, the modules `gband.keystyle.modal` and `gband.keystyle.direct`, which `require` finds as the plugins capability defines for bundled modules. Each preset SHALL be a file of top-level calls that uses only the `gband` API a configuration file can use. Requiring a preset while the configuration loads SHALL make its bindings in that configuration. A preset SHALL set no option and SHALL bind nothing in `root`.
 
-Before its bindings, each preset SHALL set up, with `gband.plugin` and no options, each bundled plugin that registers an action it binds: the key list plugin `gband.keylist`, then the Lua prompt plugin `gband.prompt`. It SHALL set up no other plugin, so the error list plugin `gband.errors`, whose action no preset binds, the status line plugin `gband.statusline` and its segment plugins stay with the default configuration, as the configuration capability defines. A binding to an action SHALL take the description of the action it binds, as the actions capability lists them or as `gband.action.list()` gives it for a registered action. A binding to a Lua function SHALL take the description that the client-attach capability's default table gives its key.
+Before its bindings, each preset SHALL set up, with `gband.plugin` and no options, each bundled plugin that registers an action it binds: the key list plugin `gband.keylist`, then the Lua prompt plugin `gband.prompt`. It SHALL set up no other plugin, so the error list plugin `gband.errors`, whose action no preset binds, and the sidebar plugin `gband.sidebar` stay with the default configuration, as the configuration capability defines. A binding to an action SHALL take the description of the action it binds, as the actions capability lists them or as `gband.action.list()` gives it for a registered action. A binding to a Lua function SHALL take the description that the client-attach capability's default table gives its key.
 
 Each action that a preset binds to `h`, `j`, `k` or `l`, alone or with Ctrl, SHALL also be bound to Left, Down, Up or Right, with the same modifier.
 
@@ -29,7 +29,7 @@ Each action that a preset binds to `h`, `j`, `k` or `l`, alone or with Ctrl, SHA
 - **WHEN** `user/init.lua` calls only `gband.keystyle.use("modal")`, and the user presses Ctrl+Space then `?`
 - **THEN** loading succeeds and the key list opens
 - **AND** `gband.action.list()` holds `keylist.open` and `prompt.open`, and no `errors.open`
-- **AND** no status line is drawn
+- **AND** no sidebar is drawn
 
 ### Requirement: Modal preset
 `gband.keystyle.modal` SHALL declare `prefix` a mode with the label `navigation`, with `gband.keymap.mode`. It SHALL make the bindings of the modal key style that the client-attach capability's default table gives, in that order.
@@ -65,9 +65,9 @@ Each action that a preset binds to `h`, `j`, `k` or `l`, alone or with Ctrl, SHA
 - **THEN** the focused window receives nothing and `root` is active
 
 #### Scenario: Hints and labels of the direct style
-- **WHEN** the default configuration is in use with the direct key style saved and `root` is active
-- **THEN** the hints segment shows `C-space prefix`
-- **AND** after Ctrl+Space then `?`, the key list's title is `prefix keys`
+- **WHEN** the default configuration is in use with the direct key style saved, `root` is active, and the user presses Ctrl+Space
+- **THEN** the sidebar's mode row shows `P`
+- **AND** after `?`, the key list's title is `prefix keys`
 
 ### Requirement: Use a key style
 `gband.keystyle.use(style)` SHALL make the bindings of one preset by requiring the module `gband.keystyle.<style>`, and SHALL return the style's name. `style` SHALL be `"modal"`, `"direct"` or nil. With nil, it SHALL use the saved key style, as "Saved key style" defines, or `"modal"` when none is saved. A configuration MAY bind and unbind keys after the call, as with any other binding.
@@ -130,7 +130,35 @@ Loading SHALL evaluate `user/keystyle.lua` only through `gband.keystyle.saved()`
 - **WHEN** a client is attached with no `user/init.lua`, the modal style is in use, and the chooser saves the direct style
 - **THEN** within a second Ctrl+Space then `h` focuses the column to the left and the keys that follow reach the focused window
 
-### Requirement: Choose a key style
+### Requirement: Offer on the first start
+The default configuration SHALL register a handler of `Attached`, as the lua-events capability defines. The handler SHALL call `gband.keystyle.choose()` when `gband.config_dir` is not nil and `gband.keystyle.saved()` returns nil. A client emits `Attached` once, after it attaches, and never for a reload, so the chooser SHALL open at most once per start of a client. Until a style is saved, the default configuration SHALL use the modal style, and each start SHALL offer the chooser again.
+
+#### Scenario: First start
+- **WHEN** neither `user/init.lua` nor `user/keystyle.lua` exists and a client attaches
+- **THEN** the chooser is open and focused, with the cursor line on its first line
+- **AND** after Ctrl+Space, the sidebar's mode row shows `N`, so the modal style is in use
+
+#### Scenario: Style already saved
+- **WHEN** `user/keystyle.lua` holds `return "modal"`, no `user/init.lua` exists, and a client attaches
+- **THEN** no floating plugin window is open
+
+#### Scenario: Offered again on the next start
+- **WHEN** the user dismisses the chooser with Escape, detaches, and attaches again
+- **THEN** the chooser is open again
+
+#### Scenario: No offer after a reload
+- **WHEN** the user dismisses the chooser with Escape and then saves `user/lua/extra.lua`
+- **THEN** the configuration reloads and no chooser opens
+
+#### Scenario: No configuration directory
+- **WHEN** the default configuration is evaluated with no configuration directory and `Attached` is emitted
+- **THEN** no floating plugin window opens
+
+#### Scenario: Own configuration
+- **WHEN** `user/init.lua` binds only `alt+h`, no style is saved, and a client attaches
+- **THEN** no floating plugin window is open
+
+### Requirement: Key style chooser
 `gband.keystyle.choose()` SHALL make `root` the active table, as `gband.keymap.enter("root")` does, so keys reach the chooser even when it runs in navigation mode. It SHALL then open the key style chooser: a floating plugin window, as the plugin-windows capability defines, that takes focus. It SHALL be callable wherever an action value is, as the configuration capability defines. Calling it while the configuration loads SHALL be an error at the line of the call. Calling it while the chooser is open SHALL focus that chooser, as `gband.win.focus` does, and SHALL open no second one.
 
 The chooser SHALL have a border, the title `key style  enter choose  esc later`, and its cursor line on. It SHALL hold one line per style, in this order:
@@ -140,7 +168,7 @@ The chooser SHALL have a border, the title `key style  enter choose  esc later`,
 | 1 | `modal` | `modal`, padded with spaces to 8 cells, then `<prefix> enters a mode, keys repeat until Escape` |
 | 2 | `direct` | `direct`, padded with spaces to 8 cells, then `<prefix> then one key per action, back to typing` |
 
-`<prefix>` SHALL be the key the `prefix` option names, in the form the key-hints capability's "Key form" defines, such as `C-space`. The cursor line SHALL start on the line of the saved style, or on the first line when none is saved. The chooser's width SHALL be the smaller of its longest line plus 2 for the border and the ribbon area's width. Its height SHALL be the smaller of 4 and the ribbon area's height. It SHALL be centered in the ribbon area. A line wider than the content area SHALL be cut at the content area's edge, as the plugin-windows capability defines, so each line still starts with its style's name.
+`<prefix>` SHALL be the key the `prefix` option names, in the form the key-list capability's "Key form" defines, such as `C-space`. The cursor line SHALL start on the line of the saved style, or on the first line when none is saved. The chooser's width SHALL be the smaller of its longest line plus 2 for the border and the ribbon area's width. Its height SHALL be the smaller of 4 and the ribbon area's height. It SHALL be centered in the ribbon area. A line wider than the content area SHALL be cut at the content area's edge, as the plugin-windows capability defines, so each line still starts with its style's name.
 
 j, k and the arrow keys SHALL move the cursor line, as the plugin-windows capability's defaults do. Enter SHALL save the style of the cursor line, as "Saved key style" defines, and close the chooser. Escape and `q` SHALL close the chooser and save nothing, as the plugin-windows capability defines for a floating plugin window with no `keys` entry for them. The style in use SHALL then stay until the configuration next loads.
 
@@ -151,9 +179,9 @@ When `gband.config_dir` is nil, or the file cannot be written, Enter SHALL close
 - **THEN** a focused floating plugin window titled `key style  enter choose  esc later` shows `modal   C-space enters a mode, keys repeat until Escape` on its first line, with the cursor line there
 - **AND** its second line shows `direct  C-space then one key per action, back to typing`
 
-#### Scenario: Chooser beside the default status line
+#### Scenario: Chooser beside the default sidebar
 - **WHEN** no style is saved, the default configuration is in use on an 80×24 terminal, and the chooser opens
-- **THEN** the chooser is 57 columns wide and 4 rows high, and spans columns 1 to 57 and rows 10 to 13 of the 60-column ribbon area
+- **THEN** the chooser is 57 columns wide and 4 rows high, and spans columns 11 to 67 and rows 10 to 13 of the 79-column ribbon area
 - **AND** neither line is cut
 
 #### Scenario: Chooser in a narrow ribbon area
@@ -204,31 +232,3 @@ When `gband.config_dir` is nil, or the file cannot be written, Enter SHALL close
 #### Scenario: Choose while loading
 - **WHEN** line 5 of `user/init.lua` calls `gband.keystyle.choose()` at the top level
 - **THEN** loading fails with an error at `user/init.lua` line 5
-
-### Requirement: Offer on the first start
-The default configuration SHALL register a handler of `Attached`, as the lua-events capability defines. The handler SHALL call `gband.keystyle.choose()` when `gband.config_dir` is not nil and `gband.keystyle.saved()` returns nil. A client emits `Attached` once, after it attaches, and never for a reload, so the chooser SHALL open at most once per start of a client. Until a style is saved, the default configuration SHALL use the modal style, and each start SHALL offer the chooser again.
-
-#### Scenario: First start
-- **WHEN** neither `user/init.lua` nor `user/keystyle.lua` exists and a client attaches
-- **THEN** the chooser is open and focused, with the cursor line on its first line
-- **AND** the hints segment shows `C-space navigation`, so the modal style is in use
-
-#### Scenario: Style already saved
-- **WHEN** `user/keystyle.lua` holds `return "modal"`, no `user/init.lua` exists, and a client attaches
-- **THEN** no floating plugin window is open
-
-#### Scenario: Offered again on the next start
-- **WHEN** the user dismisses the chooser with Escape, detaches, and attaches again
-- **THEN** the chooser is open again
-
-#### Scenario: No offer after a reload
-- **WHEN** the user dismisses the chooser with Escape and then saves `user/lua/extra.lua`
-- **THEN** the configuration reloads and no chooser opens
-
-#### Scenario: No configuration directory
-- **WHEN** the default configuration is evaluated with no configuration directory and `Attached` is emitted
-- **THEN** no floating plugin window opens
-
-#### Scenario: Own configuration
-- **WHEN** `user/init.lua` binds only `alt+h`, no style is saved, and a client attaches
-- **THEN** no floating plugin window is open

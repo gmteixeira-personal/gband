@@ -43,8 +43,8 @@ Opening the error list SHALL open a plugin window, as the plugin-windows capabil
 The plugin window SHALL hold the texts `gband.errors()` returns when it opens, oldest first, until the errors are cleared as "Clearing the errors" defines. Its lines SHALL be the texts it holds. Each text SHALL be wrapped into lines no wider than the content area's width, breaking at the last character that fits, by display width. Two texts SHALL be separated by one empty line. When it holds no text, the plugin window SHALL hold the one line `no errors`. Each time the content area's width changes, the texts it holds SHALL be wrapped again. Opening the error list while its plugin window is open SHALL focus that plugin window and open no other.
 
 #### Scenario: Floating plugin window of the defaults
-- **WHEN** the ribbon area is 60×24, the error list holds two errors, and a binding dispatches `errors.open`
-- **THEN** a focused floating plugin window of width 45 and height 12 titled `errors  c clear` shows the first error's lines, an empty line, and the second error's lines
+- **WHEN** the ribbon area is 79×24, as the default sidebar leaves it on an 80×24 terminal, the error list holds two errors, and a binding dispatches `errors.open`
+- **THEN** a focused floating plugin window of width 59 and height 12 titled `errors  c clear` shows the first error's lines, an empty line, and the second error's lines
 
 #### Scenario: Long error wrapped
 - **WHEN** the error list holds one error 100 cells wide and the floating plugin window's content area is 43 columns wide
@@ -72,9 +72,9 @@ Clearing the errors through the plugin SHALL call `gband.clear_errors()`, as the
 In either kind, `c` in the error list's plugin window SHALL clear the errors, as a `keys` entry of the plugin window does. A binding SHALL still win over `c`, as the plugin-windows capability defines, so Ctrl+Space then `c` SHALL NOT clear the errors.
 
 #### Scenario: Clear with c
-- **WHEN** the error list is open as a floating plugin window holding two errors, the status line shows its error item, and the user presses `c`
+- **WHEN** the error list is open as a floating plugin window holding two errors, the sidebar shows its error marker `!`, and the user presses `c`
 - **THEN** the plugin window shows `no errors` and is titled `errors`, and it stays focused
-- **AND** `gband.errors()` returns an empty list, and the status line no longer shows `error`
+- **AND** `gband.errors()` returns an empty list, and the sidebar no longer shows `!`
 
 #### Scenario: Clear a tiled error list
 - **WHEN** the error list is open as a tiled plugin window holding one error and the user presses `c`

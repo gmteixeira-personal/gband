@@ -102,8 +102,8 @@ Each case SHALL run in a new directory tree of its own under the system's tempor
 When the case ends, whether it passed or not, the runner SHALL stop the case's client and server and every process they started, and remove the tree.
 
 #### Scenario: Configuration of the case
-- **WHEN** a case starts with `config = [[gband.plugin("gband.statusline", { side = "right" })]]`
-- **THEN** the case's status line is drawn on the terminal's last 20 columns
+- **WHEN** a case starts with `config = [[gband.plugin("gband.sidebar", { side = "right" })]]`
+- **THEN** the case's sidebar is drawn on the terminal's last column
 - **AND** the user's own `~/.config/gband/user/init.lua` is not read
 
 #### Scenario: Default configuration without the chooser
@@ -121,7 +121,7 @@ When the case ends, whether it passed or not, the runner SHALL stop the case's c
 
 #### Scenario: Plugin under test is installed
 - **WHEN** `gband test` runs in the plugin directory `window` and a case starts with `config = [[gband.plugin("window")]]`
-- **THEN** the plugin's segment is drawn, read from the working directory's files
+- **THEN** the plugin's bar is drawn, read from the working directory's files
 
 #### Scenario: Nothing left behind
 - **WHEN** a case opens three windows and then fails
@@ -161,7 +161,7 @@ The handle SHALL provide:
 - **THEN** the wait returns once the window shows `hi`
 
 #### Scenario: Reload after editing a plugin
-- **WHEN** a case writes a plugin file through `g.write` that changes its segment's text and calls `g.reload()`
+- **WHEN** a case writes a plugin file through `g.write` that changes the text its bar shows and calls `g.reload()`
 - **THEN** `g.reload()` returns nil and a later `g.settle()` shows the new text
 
 #### Scenario: Wait gives up
@@ -176,38 +176,6 @@ The handle SHALL provide:
 #### Scenario: Invalid mouse kind
 - **WHEN** a case calls `g.mouse("hover", "left", 0, 0)`
 - **THEN** the call raises an error at its line naming `hover`
-
-### Requirement: Observing a case
-`g.screen()` SHALL return a new table describing the client's terminal as the runner's emulator holds it: `cols`, `rows`, `cursor` holding `row`, `col` and `visible`, `row(n)`, a function returning row `n` as text, `text()`, a function returning every row joined with newlines, and `cell(row, col)`, a function returning `{ char, fg, bg, bold, dim, italic, underline, inverse }` for one cell. Rows and columns SHALL be counted from 0, top left. Text SHALL omit trailing spaces. A colour SHALL be a string `#rrggbb` for a direct colour, an integer 0 to 255 for a palette colour, and nil for the default colour.
-
-The handle SHALL also return, as new lists, everything the client wrote to its terminal since `g.start`:
-
-| function | each entry |
-|---|---|
-| `g.notifications()` | `{ title, body }` for a desktop notification sent with OSC 9, which carries no title, or OSC 777 |
-| `g.clipboard()` | the text of a clipboard write sent with OSC 52 |
-| `g.opened()` | the argument of each run of the opener, as "Case environment" defines |
-
-`g.bells()` SHALL return the number of bells the client wrote since `g.start`.
-
-`g.log(side)` SHALL return the lines the case's `"client"` or `"server"` process has written to its log so far.
-
-#### Scenario: Status line colour
-- **WHEN** a case loads a colorscheme that gives `StatusLine` the foreground `#c0caf5`
-- **THEN** `g.screen().cell(23, 0).fg` is `"#c0caf5"`
-
-#### Scenario: Notification observed
-- **WHEN** a case's configuration sets `notify_style` to `"osc777"` and a plugin's client code calls `gband.notify("build done", { title = "ci" })`
-- **THEN** `g.notifications()` holds one entry with `title` `ci` and `body` `build done`
-
-#### Scenario: Opener recorded
-- **WHEN** a plugin's binding calls `gband.open("https://example.com")`
-- **THEN** `g.opened()` holds `https://example.com`
-- **AND** no browser starts
-
-#### Scenario: Print observed
-- **WHEN** a plugin's `client.lua` calls `print("ready")`
-- **THEN** a line of `g.log("client")` holds `ready`
 
 ### Requirement: Screenshots
 `g.screenshot(opts)` SHALL return the screen as text, in this form:
@@ -265,3 +233,35 @@ Without `--update`, a reference that matches SHALL pass. A missing reference, or
 #### Scenario: Show
 - **WHEN** the user runs `gband test --show` and a case passes after two screenshots
 - **THEN** standard output holds both screenshots under the case's name
+
+### Requirement: Case observation
+`g.screen()` SHALL return a new table describing the client's terminal as the runner's emulator holds it: `cols`, `rows`, `cursor` holding `row`, `col` and `visible`, `row(n)`, a function returning row `n` as text, `text()`, a function returning every row joined with newlines, and `cell(row, col)`, a function returning `{ char, fg, bg, bold, dim, italic, underline, inverse }` for one cell. Rows and columns SHALL be counted from 0, top left. Text SHALL omit trailing spaces. A colour SHALL be a string `#rrggbb` for a direct colour, an integer 0 to 255 for a palette colour, and nil for the default colour.
+
+The handle SHALL also return, as new lists, everything the client wrote to its terminal since `g.start`:
+
+| function | each entry |
+|---|---|
+| `g.notifications()` | `{ title, body }` for a desktop notification sent with OSC 9, which carries no title, or OSC 777 |
+| `g.clipboard()` | the text of a clipboard write sent with OSC 52 |
+| `g.opened()` | the argument of each run of the opener, as "Case environment" defines |
+
+`g.bells()` SHALL return the number of bells the client wrote since `g.start`.
+
+`g.log(side)` SHALL return the lines the case's `"client"` or `"server"` process has written to its log so far.
+
+#### Scenario: Sidebar colour
+- **WHEN** a case with the default configuration loads a colorscheme that gives `SidebarMode` the foreground `#7aa2f7`
+- **THEN** `g.screen().cell(0, 0).char` is `I` and its `fg` is `"#7aa2f7"`
+
+#### Scenario: Notification observed
+- **WHEN** a case's configuration sets `notify_style` to `"osc777"` and a plugin's client code calls `gband.notify("build done", { title = "ci" })`
+- **THEN** `g.notifications()` holds one entry with `title` `ci` and `body` `build done`
+
+#### Scenario: Opener recorded
+- **WHEN** a plugin's binding calls `gband.open("https://example.com")`
+- **THEN** `g.opened()` holds `https://example.com`
+- **AND** no browser starts
+
+#### Scenario: Print observed
+- **WHEN** a plugin's `client.lua` calls `print("ready")`
+- **THEN** a line of `g.log("client")` holds `ready`
