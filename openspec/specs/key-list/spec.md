@@ -22,11 +22,15 @@ gband SHALL bundle the client plugin module `gband.keylist`, whose plugin name i
 - **AND** `root` is the active table, so a further `q` closes it
 
 ### Requirement: Closing the key list
-`q` and Escape SHALL close the key list while it is focused, as the plugin-windows capability defines for a floating plugin window with no `keys` entry for them. Ctrl+Space then `q` SHALL close it too while it is focused, as close window closes the focused floating plugin window, including on a band with no window.
+Escape SHALL close the key list while it is focused, as the plugin-windows capability defines for a floating plugin window with no `keys` entry for it. When the `prefix` table binds `q`, `q` SHALL run that line, as "Running a line by its key" defines, so the default binding to close window closes the key list. When the `prefix` table does not bind `q`, `q` SHALL close the key list, as the plugin-windows capability defines for a floating plugin window with no `keys` entry for it. Ctrl+Space then `q` SHALL close it too while it is focused, as close window closes the focused floating plugin window, including on a band with no window.
 
 #### Scenario: q closes the list
-- **WHEN** the key list is open and the user presses `q`
-- **THEN** the key list closes and the focused window receives nothing
+- **WHEN** the default configuration is in use, the key list is open, and the user presses `q`
+- **THEN** the key list closes, every window stays open, and the focused window receives nothing
+
+#### Scenario: q with no q binding
+- **WHEN** `user/init.lua` sets up `gband.keylist`, binds `prefix ?` to `gband.action["keylist.open"]` and binds no `prefix q`, the key list is open, and the user presses `q`
+- **THEN** the key list closes
 
 #### Scenario: Escape closes the list
 - **WHEN** the key list is open and the user presses Escape
@@ -69,7 +73,7 @@ The plugin SHALL define the groups `KeyListKey`, linked to `StatusLineAccent`, a
 - **THEN** the muted lines are drawn dim and the runnable lines are not
 
 #### Scenario: Moving through the list
-- **WHEN** the key list is open on its first line and the user presses `j`, Down, then `k`
+- **WHEN** the key list is open on its first line and the user presses Down, Down, then Up
 - **THEN** the cursor line is on the second line
 
 ### Requirement: Running any binding
@@ -80,7 +84,7 @@ The key list SHALL stay open. As the plugin-windows capability defines for a flo
 #### Scenario: Run a focus action
 - **WHEN** two columns are open with the second focused, the key list is open, and the user presses Enter on the line for `h`
 - **THEN** the first column is focused
-- **AND** the key list is still drawn and focused, so a further `j` moves its cursor line
+- **AND** the key list is still drawn and focused, so a further Down moves its cursor line
 
 #### Scenario: Run a resize from the list
 - **WHEN** a column holds two windows with automatic heights, the top one focused, the key list is open, and the user presses Enter on the line for `+`
@@ -102,3 +106,41 @@ The key list SHALL stay open. As the plugin-windows capability defines for a flo
 #### Scenario: The key list's own line does nothing
 - **WHEN** the cursor line is on the binding of `keylist.open` and the user presses Enter
 - **THEN** nothing is dispatched and the key list stays open
+
+### Requirement: Running a line by its key
+While the key list is focused, a key that matches the key of one of its lines, as a key matches a binding, SHALL move the cursor line to that line and then run that line exactly as Enter on it does, as "Running any binding" defines. The key list SHALL stay open and focused on the same terms, a binding that closes the focused plugin window SHALL close the key list, and the line of `keylist.open` SHALL only move the cursor line.
+
+The key list's own keys SHALL be Up, Down, PageUp, PageDown, Home and End, which move the cursor line as the plugin-windows capability defines, Enter, which runs the cursor line, and Escape, which closes the key list. An own key SHALL keep its meaning when a line shows it, so such a line runs only through Enter. The line of the prefix key SHALL also run only through Enter, because the prefix key enters the `prefix` table before the key list receives it.
+
+Every other key a line shows SHALL run that line, even when the plugin-windows capability gives the key a default. So `j` and `k` run their lines when the `prefix` table binds them, and the key list SHALL offer no other key in their place for moving the cursor line. A key that no line shows SHALL take its plugin-windows default, when it has one.
+
+#### Scenario: A line's key runs it
+- **WHEN** the default configuration is in use, two columns are open with the first focused, the key list is open on its first line, and the user presses `l`
+- **THEN** the second column is focused and the cursor line is on the line for `l`
+- **AND** the key list is still drawn and focused
+
+#### Scenario: j runs its binding
+- **WHEN** the default configuration is in use, a column holds two windows with the top one focused, the key list is open, and the user presses `j`
+- **THEN** the bottom window is focused, the cursor line is on the line for `j`, and the key list stays open and focused
+
+#### Scenario: A function binding by its key
+- **WHEN** the default configuration is in use, one window is open, the key list is open on its first line, and the user presses `n`
+- **THEN** a second window opens and the cursor line is on the line for `n`
+- **AND** the key list stays open and focused, and the focused window receives nothing
+
+#### Scenario: The key list's own line by its key
+- **WHEN** the default configuration is in use, the key list is open on its first line, and the user presses `?`
+- **THEN** the cursor line is on the line for `?`, nothing is dispatched, and exactly one key list is drawn
+
+#### Scenario: Arrows move the cursor line
+- **WHEN** the default configuration is in use, two windows are open, the key list is open on its first line, and the user presses Down, Down, then Up
+- **THEN** the cursor line is on the second line and the focused window has not changed
+
+#### Scenario: A line under an own key runs only through Enter
+- **WHEN** `user/init.lua` sets up `gband.keylist`, binds `prefix ?` to `gband.action["keylist.open"]` and `prefix home` to `gband.action.focus_column_left`, two columns are open with the second focused, the key list is open on its last line, and the user presses Home
+- **THEN** the cursor line is on the first line and the second column is still focused
+- **AND** moving the cursor line to the line for `home` and pressing Enter focuses the first column
+
+#### Scenario: An unbound j moves the cursor line
+- **WHEN** `user/init.lua` sets up `gband.keylist`, binds `prefix ?` to `gband.action["keylist.open"]`, `prefix h` and `prefix l`, binds no `prefix j`, the key list is open on its first line, and the user presses `j`
+- **THEN** the cursor line is on the second line
