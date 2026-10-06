@@ -762,9 +762,9 @@ gband.keymap.set('prefix', 'g', gband.action['hello.greet'], { desc = 'Greet' })
 #[test]
 fn bundled_module() {
     let scratch = Scratch::new("bundled");
-    scratch.write("name = require('gband.statusline.band').name");
+    scratch.write("name = require('gband.sidebar').name");
     let config = scratch.loaded();
-    assert_eq!(global::<String>(&config, "name"), "band");
+    assert_eq!(global::<String>(&config, "name"), "sidebar");
 }
 
 #[test]
@@ -776,10 +776,31 @@ fn bundled_key_form() {
 }
 
 #[test]
+fn key_form() {
+    for (written, form) in [
+        ("ctrl+space", "C-space"),
+        ("shift+d", "D"),
+        ("Alt+PageUp", "A-pageup"),
+        ("alt++", "A-+"),
+        ("+", "+"),
+        ("escape", "esc"),
+        ("ctrl+alt+x", "C-A-x"),
+        ("shift+alt+ctrl+tab", "C-A-S-tab"),
+        ("R", "R"),
+        ("[", "["),
+    ] {
+        let scratch = Scratch::new("key-form");
+        scratch.write(&format!("form = require('gband.keyform')('{written}')"));
+        let config = scratch.loaded();
+        assert_eq!(global::<String>(&config, "form"), form, "{written}");
+    }
+}
+
+#[test]
 fn bundled_module_shadowed() {
     let scratch = Scratch::new("bundled-shadowed");
-    scratch.user_file("lua/gband/statusline/band.lua", "return { name = 'mine' }");
-    scratch.write("name = require('gband.statusline.band').name");
+    scratch.user_file("lua/gband/sidebar.lua", "return { name = 'mine' }");
+    scratch.write("name = require('gband.sidebar').name");
     let config = scratch.loaded();
     assert_eq!(global::<String>(&config, "name"), "mine");
 }
@@ -795,12 +816,12 @@ fn api_chunks_are_not_modules() {
 #[test]
 fn errors_in_a_bundled_module_name_its_path() {
     let scratch = Scratch::new("bundled-error");
-    scratch.write("gband.plugin('gband.statusline.band', { align = 'middle' })");
+    scratch.write("gband.plugin('gband.sidebar', { side = 'middle' })");
     let config = scratch.loaded();
-    let error = plugin_error(&config.errors, "band");
+    let error = plugin_error(&config.errors, "sidebar");
     let (path, _) = error.location.clone().unwrap();
-    assert_eq!(path, PathBuf::from("gband/statusline/band.lua"));
-    assert!(error.message.contains("align"), "{error}");
+    assert_eq!(path, PathBuf::from("gband/sidebar.lua"));
+    assert!(error.message.contains("side"), "{error}");
 }
 
 fn test_side() -> (gband_lua::Lua, Arc<Mutex<String>>) {

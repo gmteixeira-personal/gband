@@ -188,16 +188,16 @@ fn moving_a_bar() {
 }
 
 #[test]
-fn moving_the_status_line() {
+fn moving_the_sidebar() {
     let mut client = Client::new(
-        "moving-status",
-        "gband.plugin('gband.statusline')\ngband.bind('alt+s', function() gband.bar.set_config('statusline', { side = 'right' }) end)",
+        "moving-sidebar",
+        "gband.plugin('gband.sidebar')\ngband.bind('alt+s', function() gband.bar.set_config('sidebar', { side = 'right' }) end)",
         1,
         0,
     );
-    assert_eq!(client.display.ribbon_area(), Rect::new(20, 0, 60, 24));
+    assert_eq!(client.display.ribbon_area(), Rect::new(1, 0, 79, 24));
     no_resize(&client.press("alt+s"));
-    assert_eq!(client.display.ribbon_area(), Rect::new(0, 0, 60, 24));
+    assert_eq!(client.display.ribbon_area(), Rect::new(0, 0, 79, 24));
 }
 
 #[test]

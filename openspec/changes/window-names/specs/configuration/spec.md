@@ -1,6 +1,6 @@
 ## MODIFIED Requirements
 
-### Requirement: Options
+### Requirement: Options and their values
 Every option SHALL have a name, a type, a declared default and a description, and SHALL belong to one side. The built-in client options SHALL be:
 
 | option | value | default |
@@ -107,11 +107,6 @@ Options SHALL be set and declared only while the configuration loads. Setting or
 #### Scenario: Sides are held in order
 - **WHEN** `user/init.lua` sets `tile_border_sides` to `{ "left", "top", "left" }` and then reads it
 - **THEN** the value read is `{ "top", "left" }`
-
-#### Scenario: Invalid status line height
-- **WHEN** line 2 of `user/init.lua` sets `gband.opt.statusline_height = 2`, an option that no longer exists, and nothing declares it
-- **THEN** loading succeeds
-- **AND** an error at `user/init.lua` line 2 naming `statusline_height` is reported
 
 #### Scenario: Looping bands by default
 - **WHEN** `user/init.lua` does not set `loop_bands` and reads `gband.opt.loop_bands`

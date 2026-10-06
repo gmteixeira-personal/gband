@@ -111,16 +111,6 @@ fn every_old_event_names_its_replacement() {
 }
 
 #[test]
-fn old_event_in_redraw_on() {
-    let scratch = Scratch::new("old-redraw-on");
-    let file = scratch.write(
-        "gband.ui.statusline.add({ id = 'w', render = function() return 'w' end, redraw_on = { 'PaneOpened' } })\n",
-    );
-    let error = scratch.load().err().unwrap();
-    assert_error_at(&error, &file, 1, "`WindowOpened`");
-}
-
-#[test]
 fn old_target_field() {
     job_error(
         "old-target",
@@ -149,21 +139,6 @@ fn old_floating_kind() {
     );
     let open: Vec<u32> = eval(&config, "return gband.win.list()");
     assert!(open.is_empty());
-}
-
-#[test]
-fn old_action_in_hints_labels() {
-    let scratch = Scratch::new("old-labels");
-    let file = scratch.write(
-        "local a = 1\ngband.plugin('gband.statusline.hints', { labels = { close_pane = 'close' } })\n",
-    );
-    let config = scratch.load();
-    let error = match &config {
-        Ok(config) => plugin_error(&config.errors, "hints").clone(),
-        Err(error) => error.clone(),
-    };
-    assert!(error.message.contains("`close_window`"), "{error}");
-    assert_eq!(error.location, Some((file, 2)), "{error}");
 }
 
 #[test]

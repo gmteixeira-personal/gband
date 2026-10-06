@@ -43,6 +43,10 @@ On a shown sidebar of height `h`, row 0 SHALL hold the mode letter, row 1 SHALL 
 - **WHEN** the client's terminal is 80×3, the default configuration is in use and no error is reported
 - **THEN** column 0 shows `I` on row 0 and nothing on rows 1 and 2
 
+#### Scenario: Terminal background
+- **WHEN** the default configuration and the `default` colorscheme are in use
+- **THEN** no cell of column 0 has a background colour, and the blank cells have no foreground colour either
+
 ### Requirement: Mode letter
 The mode letter SHALL be `I` while the active key table is `root`. While any other table is active, it SHALL be the first character of the label `gband.keymap.label` returns for that table, with an ASCII lowercase letter shown in uppercase. It SHALL be drawn in the group `SidebarMode`, and SHALL change in the frame that follows the change of the active table.
 
@@ -91,6 +95,25 @@ The label of the band the client views SHALL be drawn in the group `SidebarBandA
 #### Scenario: View moves down
 - **WHEN** the client views band 1 of three and the user focuses the band below
 - **THEN** the label `2` is drawn in `SidebarBandActive`, and `1` and `3` in `SidebarBand`
+
+### Requirement: Band click
+A press of the left button on a cell of a shown sidebar that holds a band label SHALL view the band that label stands for, as `gband.band.view` does, whatever key table is active. A press of another button, or on a cell of the sidebar that holds no band label, SHALL do nothing. A press SHALL NOT change the active key table.
+
+#### Scenario: Click a band label
+- **WHEN** the layout holds bands 1, 2 and 3, the client views band 1, and the user presses the left button on column 0, row 4
+- **THEN** the client views band 3, and the label `3` is drawn in `SidebarBandActive`
+
+#### Scenario: Click on the right sidebar
+- **WHEN** the client's terminal is 80×24, the sidebar is on the right, the layout holds bands 1 and 2, the client views band 1, and the user presses the left button on column 79, row 3
+- **THEN** the client views band 2
+
+#### Scenario: Click beside the labels
+- **WHEN** the client views band 1 and the user presses the left button on the sidebar's mode letter, its blank row 1, or a row below the last band label
+- **THEN** the client still views band 1
+
+#### Scenario: Right click on a label
+- **WHEN** the layout holds bands 1 and 2, the client views band 1, and the user presses the right button on the label `2`
+- **THEN** the client still views band 1
 
 ### Requirement: Error marker
 While the client reports an error, as the configuration capability defines, the sidebar's error marker row SHALL show `!` in the group `SidebarError`. Otherwise the row SHALL be blank. The marker SHALL count as drawn only while the sidebar is shown and `!` is in its row. While it is drawn, the client SHALL NOT draw the error banner the configuration capability defines.

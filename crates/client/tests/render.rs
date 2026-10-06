@@ -948,3 +948,34 @@ fn lifted_tile_with_its_drop_outline() {
     });
     assert_snapshot!(fixture.render(Size::new(80, 12)));
 }
+
+fn sidebar(rows: u16) -> (Bar, Rect) {
+    let label = |text: &str| {
+        vec![Run {
+            text: text.to_owned(),
+            style: Style::default(),
+        }]
+    };
+    (
+        bar(1, Style::default(), vec![label("I"), label(""), label("1")]),
+        Rect::new(0, 0, 1, rows),
+    )
+}
+
+#[test]
+fn tile_taller_than_the_ribbon_area() {
+    let (mut fixture, _) = Fixture::new(Size::new(120, 40), 1, 99);
+    fixture.bars.push(sidebar(30));
+    fixture.region = Some(Rect::new(1, 0, 99, 30));
+    let screen = fixture.render(Size::new(100, 30));
+    assert!(screen.contains("\"I┌"), "{screen}");
+    assert_snapshot!(screen);
+}
+
+#[test]
+fn ribbon_beside_the_sidebar() {
+    let (mut fixture, _) = Fixture::new(Size::new(80, 24), 2, 79);
+    fixture.bars.push(sidebar(24));
+    fixture.region = Some(Rect::new(1, 0, 79, 24));
+    assert_snapshot!(fixture.render(Size::new(80, 24)));
+}

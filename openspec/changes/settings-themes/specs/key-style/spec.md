@@ -34,7 +34,7 @@ Loading SHALL evaluate `user/keystyle.lua` only through `gband.keystyle.saved()`
 
 ## REMOVED Requirements
 
-### Requirement: Choose a key style
+### Requirement: Key style chooser
 **Reason**: The settings window replaces the key style chooser. Its `keys` line shows and saves the key style beside the theme and the sidebar.
 **Migration**: Call `gband.settings.open()` in place of `gband.keystyle.choose()`, or press `s` in navigation mode, then change the `keys` line.
 

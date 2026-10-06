@@ -32,7 +32,7 @@ The default key bindings and the declaration of the `navigation` mode SHALL exis
 
 #### Scenario: Defaults reproduce the built-in behaviour
 - **WHEN** the default configuration is evaluated alone
-- **THEN** the options equal the defaults in the "Options" table
+- **THEN** the options equal the defaults in the "Options and their values" table
 - **AND** the bindings equal the client-attach capability's default table for the modal key style, entry for entry
 - **AND** `gband.bar.list()` holds exactly one bar, `sidebar`, on the side `left`, 1 column wide on an 80×24 terminal
 

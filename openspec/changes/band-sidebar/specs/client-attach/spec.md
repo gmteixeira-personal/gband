@@ -1,7 +1,7 @@
-## MODIFIED Requirements
+## ADDED Requirements
 
-### Requirement: Send input
-The client SHALL send each key press and repeat that the key bindings do not consume to the server as a key naming the focused window, each paste as a paste naming the focused window, and each change of its reported size, as "Ribbon area" defines it, as a resize carrying the reported size. While a plugin window is focused, the plugin-windows capability SHALL take the keys and the pastes instead, whether or not a window is focused. Otherwise, keys and pastes SHALL be dropped while no window is focused. Keys the input-encoding capability cannot represent SHALL be dropped. On attach, the client SHALL report its reported size as its terminal size.
+### Requirement: Input to the server
+The client SHALL send each key press and repeat that the key bindings do not consume to the server as a key naming the focused window, each paste as a paste naming the focused window, and each change of its reported size, as "Ribbon area beside the bars" defines it, as a resize carrying the reported size. While a plugin window is focused, the plugin-windows capability SHALL take the keys and the pastes instead, whether or not a window is focused. Otherwise, keys and pastes SHALL be dropped while no window is focused. Keys the input-encoding capability cannot represent SHALL be dropped. On attach, the client SHALL report its reported size as its terminal size.
 
 #### Scenario: Typing runs a command
 - **WHEN** the user types `echo hi` and Enter
@@ -16,7 +16,7 @@ The client SHALL send each key press and repeat that the key bindings do not con
 - **WHEN** the only window sits in a column of width 1/2, the user resizes the terminal to 70 columns and runs `tput cols`
 - **THEN** the window prints `33`
 
-#### Scenario: Height excludes the status line
+#### Scenario: Height beside the sidebar
 - **WHEN** the client's terminal is 80×24, the sidebar is a left bar 1 column wide, and the only window runs `tput lines`
 - **THEN** the window prints `22`
 
@@ -36,30 +36,26 @@ The client SHALL send each key press and repeat that the key bindings do not con
 - **WHEN** the viewed band holds no window, a floating plugin window whose `on_input` records its arguments is focused, and the user pastes `hi`
 - **THEN** `on_input` runs with `hi`
 
-### Requirement: Ribbon area
+### Requirement: Ribbon area beside the bars
 The client's reported size SHALL be its terminal's size. The client's ribbon area SHALL be the cells of its terminal that its bars leave, as the bars capability places them: the terminal's full height, from the first column the left bars leave to the last column the right bars leave. Wherever the layout-view and animations capabilities speak of the client's terminal, its size, its top row or its first column, they SHALL mean the ribbon area, its size, its top row and its first column. The client's view SHALL use the ribbon area as its viewport, so the camera, the shown windows and the drawn bands follow the ribbon area, not the terminal. Tiles SHALL keep the sizes the layout gives them for the session's screen area, whatever the ribbon area's width.
 
-The reported size SHALL change only when the terminal changes size. Every change of the reported size SHALL be handled as a change of the terminal's size: the client SHALL report the new size to the server, as "Send input" defines, and its drawn state SHALL snap, as the animations capability defines for a terminal resize. A change of the ribbon area that the bars cause SHALL be handled as the bars capability defines.
-
-#### Scenario: Status line at the bottom
-- **WHEN** the client's terminal is 80×24 and `user/init.lua` still sets `statusline_position = "bottom"`
-- **THEN** an error naming `statusline_position` is reported, and the client reports the size 80×24
+The reported size SHALL change only when the terminal changes size. Every change of the reported size SHALL be handled as a change of the terminal's size: the client SHALL report the new size to the server, as "Input to the server" defines, and its drawn state SHALL snap, as the animations capability defines for a terminal resize. A change of the ribbon area that the bars cause SHALL be handled as the bars capability defines.
 
 #### Scenario: Default sidebar
 - **WHEN** the client's terminal is 80×24 and the default configuration is in use
 - **THEN** the client reports the size 80×24
 - **AND** column 0 shows the sidebar and the ribbon area spans columns 1 to 79
 
-#### Scenario: Status line off
+#### Scenario: Sidebar off
 - **WHEN** the client's terminal is 80×24 and the client has no bar
 - **THEN** the client reports the size 80×24 and the ribbon area is the whole terminal
 
-#### Scenario: Turning the status line off
+#### Scenario: Turning the sidebar off
 - **WHEN** the client's 80×24 terminal sets the screen area, the sidebar is a left bar 1 column wide, the only window sits in a column of width 1/2, and the user removes the setup of `gband.sidebar` from `user/init.lua`
 - **THEN** after the reload the client reports no resize, the ribbon area is the whole terminal, and the window's tile is still 40×24
 - **AND** `tput cols` in the window still prints `38`
 
-#### Scenario: Moving the status line
+#### Scenario: Moving the sidebar
 - **WHEN** the sidebar is a left bar 1 column wide and the user sets it up with `gband.plugin("gband.sidebar", { side = "right" })` in `user/init.lua`
 - **THEN** after the reload the client reports no resize
 - **AND** on an 80×24 terminal the ribbon is drawn from column 0 to column 78, and the sidebar on column 79
@@ -69,7 +65,7 @@ The reported size SHALL change only when the terminal changes size. Every change
 - **THEN** the client reports 80×24
 - **AND** the tile is 40 columns wide and is drawn on screen columns 20 to 59
 
-### Requirement: Present the ribbon
+### Requirement: Ribbon presentation
 After the handshake, the client SHALL take the terminal full screen in raw mode with bracketed paste enabled. It SHALL keep its own grid of every window, as the wire-protocol capability defines, and its own view, as the layout-view capability defines. It SHALL draw only the viewed band, except during a band switch, when it SHALL draw the bands the animations capability places on screen. It SHALL draw the ribbon in the ribbon area and each shown bar where the bars capability places it. It SHALL draw the viewed band's floating windows over the tiles, in its stacking order, as the floating-windows capability defines. It SHALL draw the floating plugin windows it opened over the floating windows, as the plugin-windows capability defines. While the configuration capability shows a configuration error and the sidebar's error marker, as the sidebar capability defines, is not drawn, the client SHALL draw that error over the ribbon area's bottom row, after the tiles, the floating windows and the floating plugin windows.
 
 Each window SHALL be drawn in its tile, as the layout capability's tile geometry gives it for the screen area in the latest layout. A tile SHALL be drawn at its strip position less the viewed band's camera position, counted from the ribbon area's left column, from the ribbon area's top row. While an animation runs, the tile's position and size, the camera and the band's top row SHALL be the drawn values the animations capability defines. At rest they equal the values above. Each tile SHALL show a one-cell border around the window's grid, which is drawn from its top-left corner. The border SHALL be drawn with the client's tile border options, as the borders capability defines. The focused window's border SHALL be drawn in a style distinct from the other borders.
@@ -103,7 +99,7 @@ The terminal's cursor SHALL sit where the focused window's cursor is. It SHALL b
 - **THEN** this client draws the top 30 rows of the 60-column tile on screen columns 1 to 60
 - **AND** column 0 shows the sidebar
 
-#### Scenario: Ribbon below a top status line
+#### Scenario: Ribbon beside the sidebar
 - **WHEN** the client's 80×24 terminal sets the screen area, the sidebar is a left bar 1 column wide, and the viewed band holds two columns of width 1/2 with the first focused
 - **THEN** the first tile spans screen columns 1 to 40, the second is cut after column 79, and column 0 shows the sidebar
 
@@ -155,6 +151,8 @@ The terminal's cursor SHALL sit where the focused window's cursor is. It SHALL b
 #### Scenario: Cursor under a floating window
 - **WHEN** a tiled window is focused and its cursor sits in a cell that a floating window covers
 - **THEN** the cursor is hidden
+
+## MODIFIED Requirements
 
 ### Requirement: Key bindings
 The client SHALL take its key tables, its modes and its prefix key from the configuration, as the configuration capability defines them. The client SHALL keep one active key table, which SHALL be `root` outside a key sequence and outside a mode. While `root` is active, a key bound in `root` SHALL run its binding, and the prefix key SHALL make `prefix` the active table. The client SHALL send neither to the server. Any other key while `root` is active SHALL go to the focused plugin window when there is one, as the plugin-windows capability defines, and SHALL otherwise be sent to the focused window.
@@ -410,3 +408,17 @@ Where a scenario of this requirement names no key style, the modal key style is 
 #### Scenario: Move a floating window
 - **WHEN** the client's 80×24 terminal sets the screen area, the client has no bar, a floating window is focused with its box starting at column 20, and the user presses Ctrl+Space then Ctrl+L
 - **THEN** the box is drawn from column 28
+
+## REMOVED Requirements
+
+### Requirement: Send input
+**Reason**: Renamed to "Input to the server" so that its scenarios can drop the status line names; the requirement is otherwise as this change modifies it.
+**Migration**: See "Input to the server".
+
+### Requirement: Ribbon area
+**Reason**: Renamed to "Ribbon area beside the bars" so that its scenarios can drop the status line names; the requirement is otherwise as this change modifies it.
+**Migration**: See "Ribbon area beside the bars".
+
+### Requirement: Present the ribbon
+**Reason**: Renamed to "Ribbon presentation" so that its scenarios can drop the status line names; the requirement is otherwise as this change modifies it.
+**Migration**: See "Ribbon presentation".

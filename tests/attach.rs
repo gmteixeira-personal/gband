@@ -245,7 +245,7 @@ fn leader_equals_grows_the_column() {
     client.send(b"\x00=\r");
     client.wait_for("a tile 48 columns wide", |screen| {
         let tiles = tiles(screen);
-        tiles.len() == 1 && tiles[0].left == 20 && tiles[0].right == 67
+        tiles.len() == 1 && tiles[0].left == 1 && tiles[0].right == 48
     });
     thread::sleep(Duration::from_millis(300));
     client.run("clear; tput cols");
@@ -255,7 +255,7 @@ fn leader_equals_grows_the_column() {
 #[test]
 fn leader_c_centers_the_column() {
     let env = TestEnv::new("center");
-    env.write_config(&gband_lua::DEFAULTS.replace("gband.plugin(\"gband.statusline\")", ""));
+    env.write_config(&gband_lua::DEFAULTS.replace("gband.plugin(\"gband.sidebar\")", ""));
     let mut client = Attached::start(&env, 80, 24);
     client.wait_for_prompt();
     client.shell_pid(&env);
@@ -426,15 +426,16 @@ fn leader_h_focuses_the_left_window() {
     let mut client = open_second_window(&env);
     client.send(b"\x00h\r");
     client.wait_for("the first tile focused", |screen| {
-        let tiles = tiles(screen);
-        tiles.len() == 1 && tiles[0].focused && tiles[0].left == 20
+        tiles(screen)
+            .iter()
+            .any(|tile| tile.focused && tile.left == 1)
     });
     client.run("echo left");
     client.wait_for_line("left");
     let contents = client.contents();
     let right: Vec<String> = contents
         .lines()
-        .map(|row| row.chars().skip(60).collect())
+        .map(|row| row.chars().skip(41).collect())
         .collect();
     assert!(!right.iter().any(|part| part.contains("left")), "{right:?}");
 }
@@ -447,7 +448,7 @@ fn leader_q_closes_the_focused_window() {
     client.send(b"\x00q\r");
     client.wait_for("one tile left", |screen| {
         let tiles = tiles(screen);
-        tiles.len() == 1 && tiles[0].focused && tiles[0].left == 20
+        tiles.len() == 1 && tiles[0].focused && tiles[0].left == 1
     });
     wait_until(|| !is_running(second), "the closed shell to stop");
     client.run("echo after-close");

@@ -573,7 +573,7 @@ impl Runtime {
         self.within_callback(|lua| ui::set_state(lua, state).map(|()| false))
     }
 
-    pub fn refresh_statusline(&self) -> Outcome {
+    pub fn refresh_plugins(&self) -> Outcome {
         self.within_callback(|lua| ui::after_event(lua, None).map(|()| false))
     }
 

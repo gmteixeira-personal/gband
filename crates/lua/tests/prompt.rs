@@ -155,10 +155,10 @@ fn require_gives_the_plugin_and_its_path() {
 fn bundled_plugins_still_set_up_once() {
     let scratch = Scratch::new("prompt-bundled");
     scratch.write(
-        "local before = gband.ui.statusline\n\
-         first = gband.plugin('gband.statusline')\n\
+        "local before = gband.bar\n\
+         first = gband.plugin('gband.sidebar')\n\
          second = gband.plugin('gband.errors')\n\
-         same = before == gband.ui.statusline and require('gband.statusline') == package.loaded['gband.statusline']",
+         same = before == gband.bar and require('gband.sidebar') == package.loaded['gband.sidebar']",
     );
     let config = scratch.loaded();
     assert!(config.errors.is_empty(), "{:?}", config.errors);
@@ -357,11 +357,11 @@ fn open_a_plugin_window() {
 #[test]
 fn names_are_not_namespaced() {
     let prompt = Prompt::new("prompt-names");
-    clean(&prompt.run("id = gband.ui.statusline.add({ id = 'greet', render = function() end })"));
+    clean(&prompt.run("id = gband.bar.add({ id = 'greet', side = 'left' })"));
     assert_eq!(global::<String>(&prompt.config, "id"), "greet");
     assert!(eval::<bool>(
         &prompt.config,
-        "return gband.ui.statusline.list()[1].plugin == nil"
+        "return gband.bar.list()[1].plugin == nil"
     ));
 }
 
@@ -414,7 +414,7 @@ fn endless_loop() {
     prompt.open();
     assert_eq!(prompt.open_windows().len(), 1);
     prompt.config.runtime.take_frames();
-    clean(&prompt.config.runtime.refresh_statusline());
+    clean(&prompt.config.runtime.refresh_plugins());
     assert_eq!(prompt.open_windows().len(), 1);
     prompt.type_text("ran = true");
     let outcome = prompt.press("enter");

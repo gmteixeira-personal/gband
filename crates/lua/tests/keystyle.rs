@@ -283,9 +283,8 @@ fn bundled_plugins_set_up_by_the_preset() {
         assert!(names.contains(&"keylist.open".to_owned()), "{style}");
         assert!(names.contains(&"prompt.open".to_owned()), "{style}");
         assert!(!names.contains(&"errors.open".to_owned()), "{style}");
-        let components: i64 = eval(&config, "return #gband.ui.statusline.list()");
         let bars: i64 = eval(&config, "return #gband.bar.list()");
-        assert_eq!((components, bars), (0, 0), "{style}");
+        assert_eq!(bars, 0, "{style}");
     }
 }
 

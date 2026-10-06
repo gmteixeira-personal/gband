@@ -270,63 +270,17 @@ end)",
 #[test]
 fn plugin_option_errors_name_the_plugin() {
     let scratch = Scratch::new("plugin-error");
-    let file = scratch.client_plugin(
-        "hello",
-        "\ngband.opt.statusline_height = 'tall'\nafter = true",
-    );
+    let file = scratch.client_plugin("hello", "\ngband.opt.tab_height = 'tall'\nafter = true");
     let config = scratch.loaded();
-    let error = error_naming(&config.errors, "statusline_height");
+    let error = error_naming(&config.errors, "tab_height");
     assert_eq!(
         error.plugin.as_deref(),
         Some("hello"),
         "{:?}",
         config.errors
     );
-    assert_error_at(error, &file, 2, "statusline_height");
+    assert_error_at(error, &file, 2, "tab_height");
     assert!(global::<bool>(&config, "after"));
-}
-
-#[test]
-fn invalid_status_line_height() {
-    let scratch = Scratch::new("statusline-height");
-    let path = scratch.write("\ngband.opt.statusline_height = 2\nafter = true");
-    let config = scratch.loaded();
-    assert!(global::<bool>(&config, "after"));
-    let error = error_naming(&config.errors, "statusline_height");
-    assert_error_at(error, &path, 2, "statusline_height");
-    assert!(error.message.contains("gband.statusline"), "{error}");
-}
-
-#[test]
-fn removed_status_line_options_through_gband_set_load_anyway() {
-    let scratch = Scratch::new("statusline-set");
-    let path = scratch.write(
-        "gband.set { statusline_position = 'top', loop_bands = false }\ngband.set { statusline_separator = ' | ' }\nafter = true",
-    );
-    let config = scratch.loaded();
-    assert!(global::<bool>(&config, "after"));
-    assert!(!config.options.loop_bands);
-    assert_error_at(
-        error_naming(&config.errors, "statusline_position"),
-        &path,
-        1,
-        "statusline_position",
-    );
-    assert_error_at(
-        error_naming(&config.errors, "statusline_separator"),
-        &path,
-        2,
-        "statusline_separator",
-    );
-    assert_eq!(config.errors.len(), 2, "{:?}", config.errors);
-}
-
-#[test]
-fn removed_status_line_options_read_nil() {
-    let scratch = Scratch::new("statusline-read");
-    scratch.write("missing = gband.opt.statusline_position == nil");
-    let config = scratch.loaded();
-    assert!(global::<bool>(&config, "missing"));
 }
 
 #[test]

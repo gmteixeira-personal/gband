@@ -189,27 +189,6 @@ fn foreign(lua: &Lua, name: &str) -> Option<String> {
     })
 }
 
-const REMOVED: [&str; 3] = [
-    "statusline_position",
-    "statusline_height",
-    "statusline_separator",
-];
-
-pub(crate) fn report_removed(lua: &Lua, name: &str) -> bool {
-    if crate::runtime::side(lua) != Side::Client || !REMOVED.contains(&name) {
-        return false;
-    }
-    report(
-        lua,
-        caller(lua),
-        owner::current(lua),
-        format!(
-            "the option `{name}` was removed; set up the status line with gband.plugin(\"gband.statusline\", {{ side = \"left\" }}), or leave it out for no status line"
-        ),
-    );
-    true
-}
-
 pub(crate) fn check_name(lua: &Lua, name: &str) -> Result<(), String> {
     if own(lua, name) {
         return Ok(());
@@ -499,9 +478,6 @@ fn assign(lua: &Lua, (_, name, value): (Value, Value, Value)) -> mlua::Result<()
         ));
     }
     require_loading(lua, "setting an option")?;
-    if report_removed(lua, &name) {
-        return Ok(());
-    }
     let location = caller(lua);
     let owner = owner::current(lua);
     if let Some(message) = foreign(lua, &name) {
@@ -969,9 +945,6 @@ mod tests {
             "{ default_column_width = 'wide' }",
             "{ center_focused_column = 'sometimes' }",
             "{ prefix = 'ctrl+hyper' }",
-            "{ statusline_position = 'left' }",
-            "{ statusline_height = 2 }",
-            "{ statusline_separator = ' | ' }",
             "{ notify_style = 'osc8' }",
             "{ loop_bands = 'yes' }",
             "{ width_step = 0 }",

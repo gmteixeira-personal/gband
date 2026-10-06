@@ -165,9 +165,6 @@ fn set(lua: &Lua, options: Value) -> mlua::Result<()> {
                 ));
             }
         };
-        if is_loading(lua) && options::report_removed(lua, &name) {
-            continue;
-        }
         options::check_name(lua, &name).map_err(|message| ConfigError::raise(lua, message))?;
         let patch = options::patch(lua, &name, value)
             .map_err(|reason| ConfigError::raise(lua, options::invalid(&name, &reason)))?;

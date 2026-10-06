@@ -239,7 +239,6 @@ fn new_actions_resolve_against_the_view() {
         Step::Nothing
     );
     assert_eq!(display.focused(), Some(windows[1]));
-    assert_eq!(display.view_state("root").column, None);
     assert_eq!(
         sent(&mut display, SessionCommand::MoveWindow(Vertical::Down)),
         Step::Send(ClientMessage::Action(SessionAction::MoveWindow {

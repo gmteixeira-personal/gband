@@ -22,7 +22,7 @@ fn env(name: &str) -> TestEnv {
     let env = TestEnv::new(name);
     env.write_config(&format!(
         "{}\n{BINDINGS}",
-        DEFAULTS.replace("gband.plugin(\"gband.statusline\")", "")
+        DEFAULTS.replace("gband.plugin(\"gband.sidebar\")", "")
     ));
     env
 }
