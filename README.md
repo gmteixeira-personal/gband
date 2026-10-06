@@ -153,6 +153,7 @@ The client options, set in `user/init.lua`, and their defaults:
 |---|---|---|
 | `prefix` | one key | `"ctrl+space"` |
 | `center_focused_column` | `"never"`, `"always"` or `"on-overflow"` | `"never"` |
+| `loop_bands` | `true` or `false`: whether focus goes round from a band's last column to its first, drawing a long enough band as a loop | `true` |
 | `statusline_position` | `"bottom"`, `"top"` or `"off"` | `"bottom"` |
 | `statusline_height` | the rows the status line takes, from 1 to 8 | `1` |
 | `statusline_separator` | the text between two status line segments | `" │ "` |

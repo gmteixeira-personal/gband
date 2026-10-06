@@ -119,6 +119,52 @@ Under `"on-overflow"`, when focus moves from one column to another column C of t
 - **WHEN** `loop_bands` is off, the policy is `"always"`, the terminal is 80 columns wide, a band holds three columns of 40 cells at strip positions 0, 40 and 80, and the first column is focused
 - **THEN** the camera is at -20 and the 20 cells left of the first column are drawn empty
 
+### Requirement: Center the focused column
+While the tiled layer is active, the `center_column` view action SHALL move the viewed band's camera so that the focused window's column sits in the middle of the client's terminal, as niri's `center-column` does. The camera SHALL move to the column's start less half the difference between the terminal's width and the column's width, rounded down. When the column is at least as wide as the terminal, the camera SHALL move to the column's start. While the band's strip loops, as the Camera requirement defines, the column's start SHALL be that of the copy needing the smallest camera move, and the camera SHALL then be held within the strip. The action SHALL change neither the focused window nor the viewed band, and SHALL send nothing to the server. On a band with no focused window, it SHALL leave the view unchanged.
+
+While the floating layer is active, the action SHALL instead centre the focused floating window in the session's screen area, as niri's `center-column` does for a floating window. The client SHALL send the server the placing of that window, as the floating-windows capability defines, at a column of half the difference between the area's width and the box's width, and a row of half the difference between the area's height and the box's height, each rounded down, where the box is as placed in the current screen area. The client SHALL send nothing when the box already sits there. The action SHALL change neither the camera, the focused window nor the viewed band.
+
+After the action, every later change of focus, of the layout or of the client's terminal width SHALL move the camera by the `center_focused_column` policy, as the Camera requirement defines, starting from the centred camera.
+
+#### Scenario: Center a column at the right edge
+- **WHEN** the policy is `"never"`, the terminal is 80 columns wide, a band holds three columns of 40 cells at strip positions 0, 40 and 80, the third is focused with the camera at 40, and the client runs `center_column`
+- **THEN** the camera moves to 60
+- **AND** the third column is still focused
+
+#### Scenario: Center the first column
+- **WHEN** the terminal is 80 columns wide, the band holds only the focused column, 40 cells wide at strip position 0, the camera is at 0, and the client runs `center_column`
+- **THEN** the camera moves to -20 and the 20 cells left of the column are drawn empty
+
+#### Scenario: Column wider than the terminal
+- **WHEN** the terminal is 80 columns wide, the focused column is 100 cells wide at strip position 40, and the client runs `center_column`
+- **THEN** the camera moves to 40
+
+#### Scenario: Centred column keeps the camera
+- **WHEN** the policy is `"never"`, the terminal is 80 columns wide, a band holds three columns of 40 cells at strip positions 0, 40 and 80, the second is focused, the client runs `center_column`, and the terminal then narrows to 78 columns
+- **THEN** the camera stays at 20
+
+#### Scenario: Policy resumes on the next focus change
+- **WHEN** `loop_bands` is off, the policy is `"never"`, the terminal is 80 columns wide, a band holds three columns of 40 cells at strip positions 0, 40 and 80, the first is focused, the client runs `center_column`, and focus then moves to the third column
+- **THEN** the camera moves to 40
+
+#### Scenario: Center a floating window
+- **WHEN** the screen area is 80×24, the camera is at 40, the focused floating window's box is 40 columns wide and 4 rows high at column 0 and row 0, and the client runs `center_column`
+- **THEN** the client sends the placing of that window at column 20 and row 10
+- **AND** the camera stays at 40 and the floating window is still focused
+
+#### Scenario: Floating window already centred
+- **WHEN** the screen area is 80×24, the focused floating window's box is 40 columns wide and 20 rows high at column 20 and row 2, and the client runs `center_column`
+- **THEN** the client sends nothing
+
+#### Scenario: Empty band
+- **WHEN** the client views an empty band with its camera at 0 and runs `center_column`
+- **THEN** the camera stays at 0
+
+#### Scenario: Center the first column of a looping strip
+- **WHEN** `loop_bands` is on, the terminal is 80 columns wide, a band holds three columns of 40 cells at strip positions 0, 40 and 80, the first is focused with the camera at 0, and the client runs `center_column`
+- **THEN** the camera moves to -20, which is held at 100
+- **AND** the terminal shows the last 20 cells of the third column, then the first column, then the first 20 cells of the second column
+
 ### Requirement: Shown windows
 A view's shown windows SHALL be the windows of its viewed band whose tile, as the layout capability's tile geometry gives it for the screen area, or whose box, as the floating-windows capability places it, has at least one cell inside the client's terminal. A tile's cells SHALL be placed at its strip position less the viewed band's camera position, from the terminal's top row. While the band's strip loops, as the Camera requirement defines, a tile's cells SHALL be placed at its drawn copy's position instead, and a tile with no drawn copy SHALL NOT be shown. Wherever the client-attach and animations capabilities draw a tile at its strip position less a camera, they SHALL use its drawn copy while the strip loops. A box's cells SHALL be placed at its column and row, from the terminal's top-left cell, whatever the camera. A tile that a box covers SHALL still be shown. A view of an empty band SHALL show no window.
 

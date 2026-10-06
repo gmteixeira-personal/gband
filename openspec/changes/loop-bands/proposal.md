@@ -22,7 +22,7 @@ Out of scope:
 None.
 
 ### Modified Capabilities
-- `layout-view`: "Focus across columns" loops, "Camera" gains the looping strip and its copies, "Shown windows" places tiles at the copy inside the terminal.
+- `layout-view`: "Focus across columns" loops, "Camera" gains the looping strip and its copies, "Shown windows" places tiles at the copy inside the terminal, "Center the focused column" centres the copy nearest the camera.
 - `animations`: "Camera scroll" scrolls across the seam without a jump.
 - `configuration`: "Options" gains the client option `loop_bands`.
 

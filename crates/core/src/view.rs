@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 use crate::action::SessionCommand;
-use crate::geometry::{Size, Span, WindowBox, boxes, column_spans, tiles};
-use crate::layout::{Band, BandId, Layout, Location, Place, SessionAction, WindowId};
+use crate::geometry::{Size, Span, WindowBox, boxes, column_spans, drawn_copy, loop_width, tiles};
+use crate::layout::{Band, BandId, Direction, Layout, Location, Place, SessionAction, WindowId};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ViewAction {
@@ -42,6 +42,7 @@ struct BandView {
     tiled: Option<WindowId>,
     floating: Option<WindowId>,
     camera: i64,
+    travel: i64,
 }
 
 impl BandView {
@@ -68,6 +69,7 @@ pub struct View {
     recency: HashMap<WindowId, u64>,
     tick: u64,
     policy: CenterFocusedColumn,
+    loop_bands: bool,
 }
 
 impl View {
@@ -84,6 +86,7 @@ impl View {
             recency: HashMap::new(),
             tick: 0,
             policy,
+            loop_bands: true,
         };
         if let Some(window) = first.first_window() {
             view.focus(first, window);
@@ -94,6 +97,10 @@ impl View {
 
     pub fn set_center_focused_column(&mut self, policy: CenterFocusedColumn) {
         self.policy = policy;
+    }
+
+    pub fn set_loop_bands(&mut self, loop_bands: bool) {
+        self.loop_bands = loop_bands;
     }
 
     pub fn band(&self) -> BandId {
@@ -123,6 +130,19 @@ impl View {
 
     pub fn camera(&self) -> i64 {
         self.bands.get(&self.band).map_or(0, |state| state.camera)
+    }
+
+    pub fn travel(&self) -> i64 {
+        self.bands.get(&self.band).map_or(0, |state| state.travel)
+    }
+
+    pub fn strip(&self, scene: Scene<'_>) -> Option<u32> {
+        let band = scene.layout.band(self.band)?;
+        self.looping(&column_spans(band, scene.area), scene.viewport.cols)
+    }
+
+    fn looping(&self, spans: &[Span], viewport: u16) -> Option<u32> {
+        loop_width(spans, viewport).filter(|_| self.loop_bands)
     }
 
     pub fn resolve(&self, command: SessionCommand) -> Option<SessionAction> {
@@ -184,15 +204,18 @@ impl View {
         let Some(band) = scene.layout.band(self.band) else {
             return Vec::new();
         };
-        let left = self.camera();
-        let right = left + i64::from(scene.viewport.cols);
+        let camera = self.camera();
+        let strip = self.strip(scene);
+        let cols = scene.viewport.cols;
         let tiled = tiles(band, scene.area)
             .into_iter()
             .filter(|tile| {
+                let left = i64::from(tile.x) - camera;
+                let left = strip.map_or(left, |strip| drawn_copy(left, strip, cols));
                 tile.width > 0
                     && tile.height > 0
-                    && i64::from(tile.x) < right
-                    && i64::from(tile.span().end()) > left
+                    && left < i64::from(cols)
+                    && left + i64::from(tile.width) > 0
                     && tile.y < scene.viewport.rows
             })
             .map(|tile| tile.window);
@@ -215,6 +238,7 @@ impl View {
             _ => {}
         }
         let previous = self.focused();
+        let mut heading = None;
         let Some(index) = scene.layout.band_index(self.band) else {
             self.sync(scene);
             return;
@@ -235,6 +259,11 @@ impl View {
                 };
                 if let Some(window) = target {
                     self.focus(band, window);
+                    heading = match (self.layer(), action) {
+                        (Layer::Tiled, ViewAction::FocusLeft) => Some(Direction::Left),
+                        (Layer::Tiled, ViewAction::FocusRight) => Some(Direction::Right),
+                        _ => None,
+                    };
                 }
             }
             ViewAction::SwitchLayer => {
@@ -255,9 +284,8 @@ impl View {
                 else {
                     return;
                 };
-                let span = column_spans(band, scene.area)[column];
-                self.bands.entry(band.id).or_default().camera =
-                    centred(span, i64::from(scene.viewport.cols));
+                let spans = column_spans(band, scene.area);
+                self.aim(band.id, &spans, column, scene.viewport.cols, true, None);
             }
             ViewAction::BandDown | ViewAction::BandUp => {
                 let target = match action {
@@ -274,7 +302,7 @@ impl View {
             }
             ViewAction::FocusWindow(_) | ViewAction::ViewBand(_) => {}
         }
-        self.settle(scene, previous);
+        self.settle(scene, previous, heading);
     }
 
     pub fn view_band(&mut self, band: BandId, scene: Scene<'_>) {
@@ -286,7 +314,7 @@ impl View {
         };
         let previous = self.focused();
         self.enter(target);
-        self.settle(scene, previous);
+        self.settle(scene, previous, None);
     }
 
     pub fn focus_window(&mut self, window: WindowId, scene: Scene<'_>) {
@@ -299,14 +327,14 @@ impl View {
         let band = &scene.layout.bands()[index];
         self.band = band.id;
         self.focus(band, window);
-        self.settle(scene, previous);
+        self.settle(scene, previous, None);
     }
 
     pub fn sync(&mut self, scene: Scene<'_>) {
-        self.settle(scene, None);
+        self.settle(scene, None, None);
     }
 
-    fn settle(&mut self, scene: Scene<'_>, previous: Option<WindowId>) {
+    fn settle(&mut self, scene: Scene<'_>, previous: Option<WindowId>, heading: Option<Direction>) {
         let layout = scene.layout;
         self.bands.retain(|&id, _| layout.band_index(id).is_some());
         self.recency.retain(|&window, _| layout.contains(window));
@@ -349,7 +377,7 @@ impl View {
                 row: 0,
             },
         };
-        self.follow(band, scene, previous);
+        self.follow(band, scene, previous, heading);
     }
 
     fn enter(&mut self, band: &Band) {
@@ -383,10 +411,16 @@ impl View {
 
     fn neighbour_column(&self, band: &Band, action: ViewAction) -> Option<WindowId> {
         let (column, _) = band.locate(self.focused()?)?;
+        let last = band.columns.len() - 1;
         let target = match action {
+            ViewAction::FocusLeft if column == 0 && self.loop_bands => last,
             ViewAction::FocusLeft => column.checked_sub(1)?,
+            _ if column == last && self.loop_bands => 0,
             _ => column + 1,
         };
+        if target == column {
+            return None;
+        }
         let windows = &band.columns.get(target)?.windows;
         let recent = windows
             .iter()
@@ -461,35 +495,89 @@ impl View {
         self.recency.insert(window, self.tick);
     }
 
-    fn follow(&mut self, band: &Band, scene: Scene<'_>, previous: Option<WindowId>) {
+    fn follow(
+        &mut self,
+        band: &Band,
+        scene: Scene<'_>,
+        previous: Option<WindowId>,
+        heading: Option<Direction>,
+    ) {
         let Some((column, _)) = self.tiled_focus().and_then(|window| band.locate(window)) else {
             return;
         };
         let spans = column_spans(band, scene.area);
-        let span = spans[column];
         let viewport = i64::from(scene.viewport.cols);
-        let state = self.bands.entry(band.id).or_default();
+        let from = previous
+            .and_then(|window| band.locate(window))
+            .map(|(from, _)| from)
+            .filter(|&from| from != column);
         let centre = match self.policy {
             CenterFocusedColumn::Never => false,
             CenterFocusedColumn::Always => true,
-            CenterFocusedColumn::OnOverflow => previous
-                .and_then(|window| band.locate(window))
-                .filter(|&(from, _)| from != column)
-                .is_some_and(|(from, _)| {
-                    let beside = if from < column {
-                        column - 1
-                    } else {
-                        column + 1
-                    };
-                    let (left, right) = (spans[column.min(beside)], spans[column.max(beside)]);
-                    i64::from(right.end()) - i64::from(left.x) > viewport
-                }),
+            CenterFocusedColumn::OnOverflow => from.is_some_and(|from| {
+                let looping = self.looping(&spans, scene.viewport.cols).is_some();
+                let beside = match heading {
+                    Some(_) if looping => from,
+                    _ if from < column => column - 1,
+                    _ => column + 1,
+                };
+                i64::from(spans[beside].width) + i64::from(spans[column].width) > viewport
+            }),
         };
-        state.camera = if centre {
-            centred(span, viewport)
-        } else {
-            revealed(span, viewport, state.camera)
+        let anchor = heading.zip(from);
+        self.aim(band.id, &spans, column, scene.viewport.cols, centre, anchor);
+    }
+
+    fn aim(
+        &mut self,
+        band: BandId,
+        spans: &[Span],
+        column: usize,
+        cols: u16,
+        centre: bool,
+        anchor: Option<(Direction, usize)>,
+    ) {
+        let viewport = i64::from(cols);
+        let strip = self.looping(spans, cols);
+        let state = self.bands.entry(band).or_default();
+        let camera = state.camera;
+        let width = i64::from(spans[column].width);
+        let place = |x: i64| {
+            if centre {
+                centred(x, width, viewport)
+            } else {
+                revealed(x, width, viewport, camera)
+            }
         };
+        let x = i64::from(spans[column].x);
+        let Some(strip) = strip else {
+            state.camera = place(x);
+            state.travel = state.camera;
+            return;
+        };
+        let period = i64::from(strip);
+        let beside = anchor.and_then(|(heading, from)| {
+            let span = spans[from];
+            let left = drawn_copy(i64::from(span.x) - camera, strip, cols);
+            let from_width = i64::from(span.width);
+            (left < viewport && left + from_width > 0).then(|| {
+                let start = camera + left;
+                match heading {
+                    Direction::Right => x - (x - start - from_width).div_euclid(period) * period,
+                    Direction::Left => x + (start - x - width).div_euclid(period) * period,
+                }
+            })
+        });
+        let copy = beside.unwrap_or_else(|| {
+            let nearest = (camera - x).div_euclid(period);
+            (nearest - 1..=nearest + 2)
+                .map(|lap| x + lap * period)
+                .min_by_key(|&copy| ((place(copy) - camera).abs(), copy))
+                .unwrap_or(x)
+        });
+        let moved = place(copy);
+        state.travel += moved - camera;
+        state.camera = moved.rem_euclid(period);
     }
 }
 
@@ -500,9 +588,7 @@ fn tiled_target(band: &Band, state: BandView) -> Option<WindowId> {
         .or_else(|| band.first_window())
 }
 
-fn centred(span: Span, viewport: i64) -> i64 {
-    let width = i64::from(span.width);
-    let x = i64::from(span.x);
+fn centred(x: i64, width: i64, viewport: i64) -> i64 {
     if width >= viewport {
         x
     } else {
@@ -510,12 +596,8 @@ fn centred(span: Span, viewport: i64) -> i64 {
     }
 }
 
-fn revealed(span: Span, viewport: i64, camera: i64) -> i64 {
-    let (x, end, width) = (
-        i64::from(span.x),
-        i64::from(span.end()),
-        i64::from(span.width),
-    );
+fn revealed(x: i64, width: i64, viewport: i64, camera: i64) -> i64 {
+    let end = x + width;
     if x >= camera && end <= camera + viewport {
         camera
     } else if width >= viewport || x < camera {

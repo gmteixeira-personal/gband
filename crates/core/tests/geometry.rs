@@ -1,6 +1,6 @@
 use gband_core::geometry::{
-    Size, Span, Tile, WindowBox, boxes, column_spans, column_width, height_step, placed, tiles,
-    width_step, window_heights,
+    Size, Span, Tile, WindowBox, boxes, column_spans, column_width, drawn_copy, height_step,
+    loop_width, placed, tiles, width_step, window_heights,
 };
 use gband_core::layout::{
     Band, BandId, Column, Direction, FloatingWindow, Layout, LayoutOptions, Proportion,
@@ -359,4 +359,32 @@ fn band_boxes_follow_the_floating_list() {
         .map(|placed| placed.window)
         .collect();
     assert_eq!(placed, [WindowId(1), WindowId(2)]);
+}
+
+fn spans_of(widths: &[u16]) -> Vec<Span> {
+    let mut x = 0;
+    widths
+        .iter()
+        .map(|&width| {
+            let span = Span { x, width };
+            x = span.end();
+            span
+        })
+        .collect()
+}
+
+#[test]
+fn strip_loops_when_it_outlasts_the_terminal_by_its_widest_column() {
+    assert_eq!(loop_width(&spans_of(&[40, 40, 40]), 80), Some(120));
+    assert_eq!(loop_width(&spans_of(&[40, 40]), 80), None);
+    assert_eq!(loop_width(&spans_of(&[40, 30, 50]), 80), None);
+    assert_eq!(loop_width(&[], 80), None);
+}
+
+#[test]
+fn drawn_copy_is_the_one_inside_the_terminal() {
+    assert_eq!(drawn_copy(-80, 120, 80), 40);
+    assert_eq!(drawn_copy(40, 120, 80), 40);
+    assert_eq!(drawn_copy(80, 120, 80), -40);
+    assert_eq!(drawn_copy(-20, 120, 80), -20);
 }

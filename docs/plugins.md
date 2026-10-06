@@ -258,7 +258,7 @@ Each built-in option belongs to one side, and each process knows only its own si
 
 | side | options |
 |---|---|
-| client | `prefix`, `center_focused_column`, `statusline_position`, `statusline_height`, `statusline_separator`, `notify_style` |
+| client | `prefix`, `center_focused_column`, `loop_bands`, `statusline_position`, `statusline_height`, `statusline_separator`, `notify_style` |
 | server | `default_column_width`, `width_presets` |
 
 ```lua
@@ -266,6 +266,8 @@ Each built-in option belongs to one side, and each process knows only its own si
 gband.opt.default_column_width = 1/3
 local presets = gband.opt.width_presets
 ```
+
+`loop_bands`, `true` by default, lets focus go round from a band's last column to its first; `false` stops focus at either end.
 
 An invalid value is reported at the line of the assignment, does not fail the load, and resets the option to its default.
 Setting an option of the other side is reported naming the side that owns it, and reading one returns nil.
