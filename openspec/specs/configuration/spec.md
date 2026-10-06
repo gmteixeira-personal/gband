@@ -355,7 +355,15 @@ A callback SHALL be a binding function, the function of a registered action, the
 - **THEN** a new window running `fish` opens
 
 ### Requirement: Configuration errors
-A configuration error SHALL be reported as the file's path, a colon, the line, a colon and a message. The line SHALL be the line of a syntax error, the line where a runtime error was raised, or the line of the call or assignment that received the invalid value. A plugin error SHALL be reported the same way, preceded by the plugin's name, a colon and a space. Each process SHALL record every configuration error and plugin error of its own Lua in its log. The client SHALL also report the errors of the server's Lua that the server sends it, as the server-runtime capability defines, preceded by `server: `, and the plugin requirement errors of the plugin-bridge capability. The client SHALL keep its error list: every error it has reported since its configuration last loaded with none of its own, oldest first. A load with none of its own SHALL empty the list. `gband.errors()` SHALL return a new list of the error list's texts, oldest first. The client SHALL show the latest error until the list is emptied. While the status line is drawn, the client SHALL show the status line's error item, as the status-line capability defines, and the error's text only through the error list. While no status line is drawn, the client SHALL show it as a banner on the bottom row of the ribbon area, over the ribbon and cut to the ribbon area's width. Neither SHALL change the size the client reports.
+A configuration error SHALL be reported as the file's path, a colon, the line, a colon and a message. The line SHALL be the line of a syntax error, the line where a runtime error was raised, or the line of the call or assignment that received the invalid value. A plugin error SHALL be reported the same way, preceded by the plugin's name, a colon and a space. Each process SHALL record every configuration error and plugin error of its own Lua in its log. The client SHALL also report the errors of the server's Lua that the server sends it, as the server-runtime capability defines, preceded by `server: `, and the plugin requirement errors of the plugin-bridge capability. The client SHALL keep its error list: every error it has reported since the list was last emptied, oldest first. A load with none of its own SHALL empty the list, and so SHALL clearing the errors. `gband.errors()` SHALL return a new list of the error list's texts, oldest first. The client SHALL show the latest error until the list is emptied. While the status line is drawn, the client SHALL show the status line's error item, as the status-line capability defines, and the error's text only through the error list. While no status line is drawn, the client SHALL show it as a banner on the bottom row of the ribbon area, over the ribbon and cut to the ribbon area's width. Neither SHALL change the size the client reports.
+
+`gband.clear_errors()` SHALL clear the client's errors. It SHALL be callable wherever an action value is, and calling it while the configuration loads SHALL be an error at the line of the call. It SHALL empty the error list at once, so `gband.errors()` returns an empty list in the same callback. Once that callback returns, the client SHALL show no error until it reports another. An error raised while that callback runs, before or after the call, SHALL be reported after the clear.
+
+Clearing SHALL change nothing else:
+- It SHALL NOT reload the configuration.
+- It SHALL NOT enable a status line component or a callback that an error disabled, and SHALL NOT clear a plugin's failed mark. These SHALL wait for the next load, as before.
+- It SHALL NOT remove an error from any log.
+- It SHALL clear only the calling client's errors. An error of the server's Lua SHALL leave only this client's error list. Other clients SHALL keep it, and the server SHALL still send its latest error to each client that attaches, as the server-runtime capability defines.
 
 #### Scenario: Syntax error
 - **WHEN** `XDG_CONFIG_HOME` is unset, the home directory is `/home/u`, line 12 of `user/init.lua` holds a syntax error, and a client attaches
@@ -388,6 +396,40 @@ A configuration error SHALL be reported as the file's path, a colon, the line, a
 #### Scenario: Errors kept in order
 - **WHEN** two plugins raise errors while the configuration loads, `alpha` first and then `beta`
 - **THEN** `gband.errors()` returns the error of `alpha` and then the error of `beta`
+
+#### Scenario: Cleared by hand
+- **WHEN** `gband.errors()` holds two errors and a binding function calls `gband.clear_errors()` and then reads `gband.errors()`
+- **THEN** the binding function reads an empty list
+- **AND** once it returns, the status line shows no error item
+- **AND** the client log still records both errors
+
+#### Scenario: Banner cleared by hand
+- **WHEN** `user/init.lua` does not set up `gband.statusline`, the client's bottom row shows a plugin error over a tile, and a binding function calls `gband.clear_errors()`
+- **THEN** the bottom row shows the tile again
+
+#### Scenario: Error after a clear
+- **WHEN** a binding function has called `gband.clear_errors()`, and a status line component's `render` then raises `boom`
+- **THEN** `gband.errors()` holds only that error
+- **AND** the status line's error item shows `error`
+
+#### Scenario: Error in the clearing callback
+- **WHEN** a binding function calls `gband.clear_errors()` and then raises an error on line 9 of `user/init.lua`
+- **THEN** `gband.errors()` holds only the error at `user/init.lua` line 9
+
+#### Scenario: Clear while loading
+- **WHEN** line 4 of `user/init.lua` calls `gband.clear_errors()` at the top level
+- **THEN** loading fails with an error at `user/init.lua` line 4
+
+#### Scenario: Clearing keeps a failed plugin failed
+- **WHEN** the plugin `broken` registers the action `broken.go`, binds `alt+b` to it, then raises an error in `setup`, and a binding function calls `gband.clear_errors()`
+- **THEN** `gband.errors()` returns an empty list and no `ConfigReloaded` event is emitted
+- **AND** Alt+B still does nothing
+
+#### Scenario: Server error cleared in one client
+- **WHEN** line 2 of `user/server.lua` holds a syntax error, two clients are attached and both show an error beginning `server: `, and a binding function in the first calls `gband.clear_errors()`
+- **THEN** the first client shows no error
+- **AND** the second client still shows the error
+- **AND** a third client that attaches then shows the error
 
 ### Requirement: Last good configuration
 Loading SHALL apply all of a configuration or none of it. An error raised by the init file, including one a `gband` call raises while it runs, SHALL fail the load. A plugin error and an invalid value set through `gband.opt` SHALL NOT fail the load. When loading fails, the process SHALL keep the configuration it last loaded, or, when it has loaded none, its side's default configuration with the side files of the runtimepath's plugins.
