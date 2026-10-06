@@ -1,5 +1,5 @@
 size 80x24 cursor 22:7 hidden
- 0|I┌─────────────────────────────────────┐
+ 0|I╭─────────────────────────────────────╮
  1| │$                                    │
  2|1│                                     │
  3|2│                                     │
@@ -24,54 +24,77 @@ size 80x24 cursor 22:7 hidden
 22| │:abc                                                                         │
 23| └─────────────────────────────────────────────────────────────────────────────┘
 --
-0:0 fg=#7aa2f7 bold
-0:1-39 bold
-1:1 bold
-1:39 bold
-2:0 fg=#c0caf5 bold
-2:1 bold
-2:39 bold
-3:0 fg=#565f89
-3:1 bold
-3:39 bold
-4:1 bold
-4:39 bold
-5:1 bold
-5:39 bold
-6:1 bold
-6:39 bold
-7:1 bold
-7:39 bold
-8:1 bold
-8:39 bold
-9:1 bold
-9:39 bold
-10:1 bold
-10:39 bold
-11:1 bold
-11:39 bold
-12:1 bold
-12:39 bold
-13:1 bold
-13:39 bold
-14:1 bold
-14:39 bold
-15:1 bold
-15:39 bold
-16:1 bold
-16:39 bold
-17:1 bold
-17:39 bold
-18:1 bold
-18:39 bold
-19:1 bold
-19:39 bold
-20:1 bold
-20:39 bold
-21:1 fg=8
-21:2-4 fg=8 bold
-21:5-79 fg=8
-22:1 fg=8
-22:6 inverse
-22:79 fg=8
-23:1-79 fg=8
+0:0 fg=4 bg=0 bold
+0:1-39 fg=4 bold
+1:0 bg=0
+1:1 fg=4 bold
+1:39 fg=4 bold
+2:0 fg=15 bg=0 bold
+2:1 fg=4 bold
+2:39 fg=4 bold
+3:0 fg=8 bg=0
+3:1 fg=4 bold
+3:39 fg=4 bold
+4:0 bg=0
+4:1 fg=4 bold
+4:39 fg=4 bold
+5:0 bg=0
+5:1 fg=4 bold
+5:39 fg=4 bold
+6:0 bg=0
+6:1 fg=4 bold
+6:39 fg=4 bold
+7:0 bg=0
+7:1 fg=4 bold
+7:39 fg=4 bold
+8:0 bg=0
+8:1 fg=4 bold
+8:39 fg=4 bold
+9:0 bg=0
+9:1 fg=4 bold
+9:39 fg=4 bold
+10:0 bg=0
+10:1 fg=4 bold
+10:39 fg=4 bold
+11:0 bg=0
+11:1 fg=4 bold
+11:39 fg=4 bold
+12:0 bg=0
+12:1 fg=4 bold
+12:39 fg=4 bold
+13:0 bg=0
+13:1 fg=4 bold
+13:39 fg=4 bold
+14:0 bg=0
+14:1 fg=4 bold
+14:39 fg=4 bold
+15:0 bg=0
+15:1 fg=4 bold
+15:39 fg=4 bold
+16:0 bg=0
+16:1 fg=4 bold
+16:39 fg=4 bold
+17:0 bg=0
+17:1 fg=4 bold
+17:39 fg=4 bold
+18:0 bg=0
+18:1 fg=4 bold
+18:39 fg=4 bold
+19:0 bg=0
+19:1 fg=4 bold
+19:39 fg=4 bold
+20:0 bg=0
+20:1 fg=4 bold
+20:39 fg=4 bold
+21:0 bg=0
+21:1 fg=8 bg=0
+21:2-4 fg=4 bg=0 bold
+21:5-79 fg=8 bg=0
+22:0 bg=0
+22:1 fg=8 bg=0
+22:2-5 fg=7 bg=0
+22:6 fg=7 bg=0 inverse
+22:7-78 fg=7 bg=0
+22:79 fg=8 bg=0
+23:0 bg=0
+23:1-79 fg=8 bg=0

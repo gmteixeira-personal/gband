@@ -1,5 +1,5 @@
 size 21x8 cursor 6:19 hidden
-0|I┌────────┐
+0|I╭────────╮
 1| │$       │
 2|1│        │
 3|2│        │
@@ -8,22 +8,28 @@ size 21x8 cursor 6:19 hidden
 6| │jklmnopqrstuvwxyz │
 7| └──────────────────┘
 --
-0:0 fg=#7aa2f7 bold
-0:1-10 bold
-1:1 bold
-1:10 bold
-2:0 fg=#c0caf5 bold
-2:1 bold
-2:10 bold
-3:0 fg=#565f89
-3:1 bold
-3:10 bold
-4:1 bold
-4:10 bold
-5:1 fg=8
-5:2-4 fg=8 bold
-5:5-20 fg=8
-6:1 fg=8
-6:19 inverse
-6:20 fg=8
-7:1-20 fg=8
+0:0 fg=4 bg=0 bold
+0:1-10 fg=4 bold
+1:0 bg=0
+1:1 fg=4 bold
+1:10 fg=4 bold
+2:0 fg=15 bg=0 bold
+2:1 fg=4 bold
+2:10 fg=4 bold
+3:0 fg=8 bg=0
+3:1 fg=4 bold
+3:10 fg=4 bold
+4:0 bg=0
+4:1 fg=4 bold
+4:10 fg=4 bold
+5:0 bg=0
+5:1 fg=8 bg=0
+5:2-4 fg=4 bg=0 bold
+5:5-20 fg=8 bg=0
+6:0 bg=0
+6:1 fg=8 bg=0
+6:2-18 fg=7 bg=0
+6:19 fg=7 bg=0 inverse
+6:20 fg=8 bg=0
+7:0 bg=0
+7:1-20 fg=8 bg=0
