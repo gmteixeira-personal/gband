@@ -76,6 +76,7 @@ Out of scope:
 - tests/prompt.rs
 - tests/lua/prompt_spec.lua
 - tests/lua/screenshots/prompt_spec/
+- tests/lua/screenshots/keylist_spec/default-list--last-page.txt
 - tests/lua_specs.rs
 - README.md
 - docs/plugins.md
