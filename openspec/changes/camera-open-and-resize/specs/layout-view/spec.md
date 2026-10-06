@@ -15,7 +15,7 @@ Under `"never"`, the default:
 - When the focused window's column lies wholly inside the view, the camera SHALL not move.
 - Otherwise, when the column is at least as wide as the terminal or starts left of the view, the camera SHALL move to the column's start.
 - Otherwise, the camera SHALL move so that the column's end meets the terminal's right edge.
-- After a change of the screen area or of the terminal's width, once the camera has moved as above, when the strip does not loop, the camera is above 0 and the strip's end lies left of the terminal's right edge, the camera SHALL move left so that the strip's end meets the terminal's right edge, and SHALL NOT move below 0.
+- Once the camera has moved as above, when the strip does not loop, the camera is above 0 and the strip's end lies left of the terminal's right edge, the camera SHALL move left so that the strip's end meets the terminal's right edge, and SHALL NOT move below 0. This SHALL apply after every change that moves the camera by this policy, whether a change of focus, of the layout, of the screen area or of the terminal's width.
 
 Under `"always"`, the camera SHALL centre the focused column: it SHALL move to the column's start less half the difference between the terminal's width and the column's width, rounded down. When the column is at least as wide as the terminal, the camera SHALL move to the column's start.
 
@@ -93,6 +93,15 @@ Under `"on-overflow"`, when focus moves from one column to another column C of t
 - **WHEN** `loop_bands` is on, the policy is `"never"`, the terminal is 80 columns wide, a band holds two columns of 40 cells at strip positions 0 and 40, the second is focused with the camera at 0, and the layout opens a column of 40 cells right of the second, which the client focuses
 - **THEN** the camera moves to 40
 - **AND** the terminal shows the second column in cells 0 to 39 and the new column in cells 40 to 79
+
+#### Scenario: Closing the last column pulls the camera back
+- **WHEN** `loop_bands` is off, the policy is `"never"`, the terminal is 80 columns wide, a band holds three columns of 40 cells at strip positions 0, 40 and 80, the third is focused with the camera at 40, and the third column's only window exits
+- **THEN** the client focuses the second column and the camera moves to 0
+- **AND** the terminal shows the first column in cells 0 to 39 and the second in cells 40 to 79
+
+#### Scenario: Shrinking the last column pulls the camera back
+- **WHEN** `loop_bands` is off, the policy is `"never"`, the terminal is 80 columns wide, a band holds three columns of 40 cells at strip positions 0, 40 and 80, the third is focused with the camera at 40, and the third column's width becomes 20 cells
+- **THEN** the camera moves to 20 and the third column is drawn in cells 60 to 79
 
 #### Scenario: Narrower area pulls the camera back
 - **WHEN** the policy is `"never"`, the terminal is 60 columns wide, a band holds two columns of 40 cells at strip positions 0 and 40, the second is focused with the camera at 20, and the screen area changes so the columns are 30 cells wide at strip positions 0 and 30
