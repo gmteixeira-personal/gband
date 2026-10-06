@@ -45,7 +45,7 @@ A cursor key, F1 to F4 as `\x1b[1;mP` to `\x1b[1;mS`, or a tilde key as `\x1b[n;
 - **THEN** gband reads `a` and nothing else
 
 ### Requirement: Incomplete input from the terminal
-gband SHALL read each key, mouse report, focus report and paste as soon as its last byte arrives, however the terminal's bytes are split across reads. When the bytes read so far end in an incomplete escape sequence, gband SHALL hold them until more bytes arrive. When no byte arrives for 25 ms, gband SHALL resolve what it holds: a lone ESC SHALL become Escape, and ESC with bytes that complete no sequence SHALL become Escape followed by those bytes read as keys.
+gband SHALL read each key, mouse report, focus report and paste as soon as its last byte arrives, however the terminal's bytes are split across reads. When the bytes read so far end in an incomplete escape sequence, gband SHALL hold them until more bytes arrive. When no byte arrives for 25 ms, gband SHALL resolve what it holds, as zellij resolves it: a lone ESC SHALL become Escape, and ESC with `[` or `O` and bytes that complete no sequence SHALL become Alt with `[` or `O`, followed by the remaining bytes read as keys. ESC with `[` or `O` followed by a byte that can continue no sequence SHALL be read the same way without waiting. An incomplete UTF-8 character SHALL stay held until its remaining bytes arrive.
 
 #### Scenario: Lone Escape
 - **WHEN** the terminal sends `\x1b` and nothing more
@@ -62,6 +62,14 @@ gband SHALL read each key, mouse report, focus report and paste as soon as its l
 #### Scenario: Escape then a later key
 - **WHEN** the terminal sends `\x1b` and, 100 ms later, `[`
 - **THEN** gband reads Escape and then `[`
+
+#### Scenario: Alt with a left bracket
+- **WHEN** the terminal sends `\x1b[` and nothing more
+- **THEN** gband reads Alt+`[` about 25 ms later
+
+#### Scenario: Unfinished sequence after its timeout
+- **WHEN** the terminal sends `\x1b[11` and nothing more
+- **THEN** gband reads Alt+`[`, then `1` and `1`, about 25 ms later
 
 ### Requirement: ESC before another input
 When ESC is followed, without a 25 ms gap, by the bytes of a key, gband SHALL read one key: that key with Alt added. When ESC is followed, without a 25 ms gap, by a mouse report, a focus report or the start of a paste, gband SHALL read Escape and then that mouse event, focus change or paste. gband SHALL NOT drop an Escape in either case, and SHALL NOT read the bytes of an escape sequence as typed characters.

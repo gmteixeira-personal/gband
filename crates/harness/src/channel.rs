@@ -225,10 +225,10 @@ impl Endpoint {
     pub fn settle(
         &mut self,
         round: u32,
-        markers: Option<u64>,
+        input: Option<u64>,
         deadline: Instant,
     ) -> Result<u64, Waited> {
-        self.send(&ToProcess::Settle { round, markers })?;
+        self.send(&ToProcess::Settle { round, input })?;
         self.wait(deadline, |message| match message {
             FromProcess::Settled {
                 round: settled,
