@@ -1182,3 +1182,150 @@ fn other_clients_keep_their_order() {
     assert_eq!(first.stacking(scene(&layout)).last(), Some(&floated[0]));
     assert_eq!(second.stacking(scene(&layout)).last(), Some(&floated[1]));
 }
+
+fn centre_third_of_three(policy: CenterFocusedColumn) {
+    let (layout, windows) = row_of_columns(3);
+    let mut view = view_with(&layout, policy);
+    act(
+        &mut view,
+        &layout,
+        &[ViewAction::FocusRight, ViewAction::FocusRight],
+    );
+    assert_eq!(view.camera(), 40);
+    act(&mut view, &layout, &[ViewAction::CenterColumn]);
+    assert_eq!(view.camera(), 60);
+    assert_eq!(view.focused(), Some(windows[2]));
+}
+
+#[test]
+fn center_a_column_at_the_right_edge() {
+    centre_third_of_three(CenterFocusedColumn::Never);
+}
+
+#[test]
+fn center_a_column_at_the_right_edge_on_overflow() {
+    centre_third_of_three(CenterFocusedColumn::OnOverflow);
+}
+
+#[test]
+fn center_the_first_column() {
+    let (layout, windows) = row_of_columns(1);
+    let mut view = View::new(scene(&layout));
+    assert_eq!(view.camera(), 0);
+    act(&mut view, &layout, &[ViewAction::CenterColumn]);
+    assert_eq!(view.camera(), -20);
+    assert_eq!(view.focused(), Some(windows[0]));
+}
+
+#[test]
+fn center_a_column_wider_than_the_terminal() {
+    let (mut layout, windows) = row_of_columns(2);
+    apply(
+        &mut layout,
+        SessionAction::SetWidth {
+            window: windows[1],
+            width: Proportion::new(5, 4),
+        },
+    );
+    let mut view = View::new(scene(&layout));
+    act(
+        &mut view,
+        &layout,
+        &[ViewAction::FocusRight, ViewAction::CenterColumn],
+    );
+    assert_eq!(view.camera(), 40);
+}
+
+#[test]
+fn centred_column_keeps_the_camera() {
+    let (layout, _) = row_of_columns(3);
+    let mut view = View::new(scene(&layout));
+    act(
+        &mut view,
+        &layout,
+        &[ViewAction::FocusRight, ViewAction::CenterColumn],
+    );
+    assert_eq!(view.camera(), 20);
+    view.sync(Scene {
+        layout: &layout,
+        area: AREA,
+        viewport: Size::new(78, 24),
+    });
+    assert_eq!(view.camera(), 20);
+}
+
+#[test]
+fn policy_resumes_on_the_next_focus_change() {
+    let (layout, windows) = row_of_columns(3);
+    let mut view = View::new(scene(&layout));
+    act(
+        &mut view,
+        &layout,
+        &[
+            ViewAction::CenterColumn,
+            ViewAction::FocusWindow(windows[2]),
+        ],
+    );
+    assert_eq!(view.camera(), 40);
+}
+
+#[test]
+fn center_column_on_the_floating_layer_keeps_the_camera() {
+    let (layout, windows, floated) = with_floating(3, 1);
+    let mut view = View::new(scene(&layout));
+    act(
+        &mut view,
+        &layout,
+        &[ViewAction::FocusRight, ViewAction::FocusRight],
+    );
+    assert_eq!(view.focused(), Some(windows[2]));
+    assert_eq!(view.camera(), 40);
+    act(
+        &mut view,
+        &layout,
+        &[ViewAction::SwitchLayer, ViewAction::CenterColumn],
+    );
+    assert_eq!(view.camera(), 40);
+    assert_eq!(view.focused(), Some(floated[0]));
+}
+
+#[test]
+fn centred_box_centres_the_focused_floating_window() {
+    let (mut layout, _, floated) = with_floating(1, 1);
+    place(&mut layout, floated[0], 0, 0, Proportion::ONE_HALF);
+    let mut view = View::new(scene(&layout));
+    act(&mut view, &layout, &[ViewAction::FocusWindow(floated[0])]);
+    assert_eq!(
+        view.centred_box(scene(&layout)),
+        Some(SessionAction::SetPosition {
+            window: floated[0],
+            col: 20,
+            row: 10,
+        })
+    );
+}
+
+#[test]
+fn centred_box_of_a_centred_floating_window_is_nothing() {
+    let (layout, _, floated) = with_floating(1, 1);
+    let mut view = View::new(scene(&layout));
+    act(&mut view, &layout, &[ViewAction::FocusWindow(floated[0])]);
+    assert_eq!(view.centred_box(scene(&layout)), None);
+}
+
+#[test]
+fn centred_box_of_a_tiled_focus_is_nothing() {
+    let (layout, windows, _) = with_floating(1, 1);
+    let view = View::new(scene(&layout));
+    assert_eq!(view.focused(), Some(windows[0]));
+    assert_eq!(view.centred_box(scene(&layout)), None);
+}
+
+#[test]
+fn center_column_on_an_empty_band_changes_nothing() {
+    let layout = Layout::new();
+    let mut view = View::new(scene(&layout));
+    act(&mut view, &layout, &[ViewAction::CenterColumn]);
+    assert_eq!(view.camera(), 0);
+    assert_eq!(view.focused(), None);
+}

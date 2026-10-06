@@ -233,6 +233,19 @@ fn leader_equals_grows_the_column() {
     client.wait_for_line("46");
 }
 
+#[test]
+fn leader_c_centers_the_column() {
+    let env = TestEnv::new("center");
+    let mut client = Attached::start(&env, 80, 24);
+    client.wait_for_prompt();
+    client.shell_pid(&env);
+    client.send(b"\x00c");
+    client.wait_for("one tile from column 20", |screen| {
+        let tiles = tiles(screen);
+        tiles.len() == 1 && tiles[0].left == 20
+    });
+}
+
 fn install(path: &Path) {
     let staged = path.with_extension("staged");
     fs::copy(GBAND, &staged).unwrap();

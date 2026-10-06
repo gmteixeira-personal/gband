@@ -167,6 +167,7 @@ mod tests {
             ('k', Action::View(ViewAction::FocusUp)),
             ('u', Action::View(ViewAction::BandDown)),
             ('i', Action::View(ViewAction::BandUp)),
+            ('c', Action::View(ViewAction::CenterColumn)),
             ('q', Action::Session(SessionCommand::CloseWindow)),
             (
                 '[',

@@ -186,6 +186,7 @@ fn defaults_reproduce_the_built_in_behaviour() {
         (char_key('k'), Action::View(ViewAction::FocusUp)),
         (char_key('u'), Action::View(ViewAction::BandDown)),
         (char_key('i'), Action::View(ViewAction::BandUp)),
+        (char_key('c'), Action::View(ViewAction::CenterColumn)),
         (
             ("prefix", Chord::Key(Key::plain(KeyCode::Enter))),
             Action::Session(SessionCommand::OpenWindow),
@@ -296,7 +297,7 @@ fn every_default_binding_is_described() {
     );
     assert!(undescribed.is_empty(), "{undescribed:?}");
     let count: usize = eval(&config, "return #gband.keymap.list('prefix')");
-    assert_eq!(count, 29);
+    assert_eq!(count, 30);
 }
 
 #[test]
@@ -317,6 +318,7 @@ fn every_action_is_named() {
         "focus_window_up",
         "focus_band_down",
         "focus_band_up",
+        "center_column",
         "switch_focus_floating_tiled",
         "open_window",
         "close_window",
@@ -340,6 +342,18 @@ fn every_action_is_named() {
     expected.sort();
     assert_eq!(names, expected);
     assert_eq!(ACTIONS.len(), expected.len());
+}
+
+#[test]
+fn center_column_is_a_client_action_on_the_server() {
+    let (path, error) = server_failure("center", "\nlocal _ = gband.action.center_column");
+    assert_failure_at(&error, &path, 2, "center_column");
+    assert!(
+        error
+            .message
+            .contains("`gband.action.center_column` is a client action; this is the server"),
+        "{error}"
+    );
 }
 
 #[test]

@@ -63,6 +63,7 @@ The default key bindings all follow the prefix key, Ctrl+Space:
 | `h`, `l` | focus the column to the left or right |
 | `j`, `k` | focus the window below or above |
 | `u`, `i` | view the band below or above |
+| `c` | center the focused column in the view, or the focused floating window on the screen |
 | `enter` | open a window running your shell |
 | `q` | close the window |
 | `[`, `]` | move the window into or out of the column to the left or right |
@@ -197,6 +198,7 @@ The actions in `gband.action`:
 | `focus_column_left`, `focus_column_right` | focus the column to the left or right |
 | `focus_window_down`, `focus_window_up` | focus the window below or above |
 | `focus_band_down`, `focus_band_up` | view the band below or above |
+| `center_column` | scroll the view so the focused column sits in its middle, or move the focused floating window to the middle of the screen |
 | `switch_focus_floating_tiled` | move focus between the band's floating windows and its tiled windows |
 | `open_window` | open a window running your shell right of the focused column |
 | `close_window` | close the focused window |

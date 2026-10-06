@@ -685,19 +685,19 @@ A binding to a function shows its `desc`, and takes no hint without one.
 
 | action | short label | action | short label |
 |---|---|---|---|
-| `focus_column_left` | `left` | `consume_or_expel_right` | `stack right` |
-| `focus_column_right` | `right` | `cycle_column_width` | `width` |
-| `focus_window_down` | `down` | `toggle_full_width` | `full` |
-| `focus_window_up` | `up` | `grow_column_width` | `wider` |
-| `focus_band_down` | `band down` | `shrink_column_width` | `narrower` |
-| `focus_band_up` | `band up` | `grow_window_height` | `taller` |
-| `open_window` | `new` | `shrink_window_height` | `shorter` |
-| `close_window` | `close` | `reset_window_height` | `reset height` |
-| `consume_or_expel_left` | `stack left` | `detach` | `detach` |
-| `move_column_left` | `move left` | `send_prefix` | `send prefix` |
-| `move_column_right` | `move right` | `toggle_window_floating` | `float` |
-| `move_window_down` | `move down` | `switch_focus_floating_tiled` | `layer` |
-| `move_window_up` | `move up` | | |
+| `focus_column_left` | `left` | `move_window_down` | `move down` |
+| `focus_column_right` | `right` | `move_window_up` | `move up` |
+| `focus_window_down` | `down` | `toggle_window_floating` | `float` |
+| `focus_window_up` | `up` | `switch_focus_floating_tiled` | `layer` |
+| `focus_band_down` | `band down` | `cycle_column_width` | `width` |
+| `focus_band_up` | `band up` | `toggle_full_width` | `full` |
+| `center_column` | `center` | `grow_column_width` | `wider` |
+| `open_window` | `new` | `shrink_column_width` | `narrower` |
+| `close_window` | `close` | `grow_window_height` | `taller` |
+| `consume_or_expel_left` | `stack left` | `shrink_window_height` | `shorter` |
+| `consume_or_expel_right` | `stack right` | `reset_window_height` | `reset height` |
+| `move_column_left` | `move left` | `detach` | `detach` |
+| `move_column_right` | `move right` | `send_prefix` | `send prefix` |
 
 
 The segment fits itself to its `ctx.width`: it shows the leading hints that fit, followed by ` …` when some are left out, and hides itself when not even the first fits.

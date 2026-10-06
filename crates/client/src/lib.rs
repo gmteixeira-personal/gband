@@ -26,7 +26,7 @@ use gband_core::input::Key;
 use gband_core::layout::{
     BandId, FloatingWindow, Layout, Program, Proportion, SessionAction, WindowId,
 };
-use gband_core::view::{CenterFocusedColumn, Scene, View, ViewAction};
+use gband_core::view::{CenterFocusedColumn, Layer, Scene, View, ViewAction};
 use gband_emulator::{Emulator, Grid};
 use gband_lua::{
     BandState, Binding, ColumnState, Config, ConfigError, Dispatch, Event, Options, Outcome as Ran,
@@ -1085,6 +1085,18 @@ fn spawn(display: &mut Display, program: Option<Program>) -> Step {
 
 pub fn dispatch(display: &mut Display, action: Action) -> Step {
     let message = match action {
+        Action::View(ViewAction::CenterColumn)
+            if display
+                .view
+                .as_ref()
+                .is_some_and(|view| view.layer() == Layer::Floating) =>
+        {
+            display
+                .view
+                .as_ref()
+                .and_then(|view| view.centred_box(display.scene()))
+                .map(ClientMessage::Action)
+        }
         Action::View(action) => {
             display.view_action(action);
             None
