@@ -8,21 +8,15 @@ With no configuration file, `root` SHALL bind no mouse name, so every mouse even
 | `leftmouse` | `prefix leftmouse` | move the window with the mouse, or slide the band from empty ribbon | client |
 | `rightmouse` | `prefix rightmouse` | resize the window with the mouse | client |
 | `middlemouse` | `prefix middlemouse` | slide the band with the mouse | client |
-| `wheeldown` | `prefix wheeldown` | view the band below | view |
-| `wheelup` | `prefix wheelup` | view the band above | view |
-| `wheelright` | `prefix wheelright` | focus the column to the right | view |
-| `wheelleft` | `prefix wheelleft` | focus the column to the left | view |
-| `alt+wheeldown` | `prefix alt+wheeldown` | focus the column to the right | view |
-| `alt+wheelup` | `prefix alt+wheelup` | focus the column to the left | view |
-| any other mouse name | — | discard the event; navigation mode stays active | — |
+| any other mouse name | — | discard the press; navigation mode stays active | — |
 
 #### Scenario: Drag a floating window in navigation mode
 - **WHEN** the default configuration is in use, navigation mode is active, and the user drags a floating window 6 cells right with the left button
 - **THEN** the floating window's box moves 6 cells right and navigation mode stays active
 
-#### Scenario: Wheel views the band below
-- **WHEN** the default configuration is in use, two bands hold windows, the first is viewed, navigation mode is active, and the user turns the wheel down
-- **THEN** the second band is viewed
+#### Scenario: Wheel in navigation mode reaches the program
+- **WHEN** the default configuration is in use, two bands hold windows, the first is viewed, navigation mode is active, and the user turns the wheel down over `htop` with mouse reporting
+- **THEN** `htop` receives the wheel step, the first band is still viewed, and navigation mode stays active
 
 #### Scenario: Left drag on a tile in interactive mode selects
 - **WHEN** the default configuration is in use, interactive mode is active, and the user drags across a shell window with the left button

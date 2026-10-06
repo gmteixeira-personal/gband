@@ -13,10 +13,10 @@
 
 ## 3. Lua: names, actions, events, plugin windows
 
-- [ ] 3.1 Parse mouse names in `crates/lua/src/keys.rs` and add `Chord::Mouse` in `crates/lua/src/api.rs`, rejecting them for the `prefix` option and plugin window `keys`, and verify the configuration "Key names" scenarios in `crates/lua/tests/keymap.rs` and `crates/lua/tests/config.rs`
+- [ ] 3.1 Parse the button mouse names, with no wheel names, in `crates/lua/src/keys.rs` and add `Chord::Mouse` in `crates/lua/src/api.rs`, rejecting them for the `prefix` option and plugin window `keys`, and verify the configuration "Key names" scenarios in `crates/lua/tests/keymap.rs` and `crates/lua/tests/config.rs`
 - [ ] 3.2 Add `drag_window`, `drag_resize_window` and `drag_band` to `crates/lua/src/actions.rs` and `ClientAction` in `crates/core/src/action.rs`, and verify `gband.action.list()` in `crates/lua/tests/config.rs` holds exactly the actions "Lua names of actions" lists
 - [ ] 3.3 Add `MousePressed`, `MouseReleased`, `MouseDragged` and `MouseScrolled` with their payloads to `crates/lua/src/events.rs`, and pass the payload to a binding function bound to a mouse name in `crates/lua/src/runtime.rs`, and verify in `crates/lua/tests/events.rs`
-- [ ] 3.4 Add `on_mouse`, `hooks.mouse` and the mouse defaults to `crates/lua/src/runtime/gband/win.lua`, plus a host entry in `crates/lua/src/plugin_windows.rs` that sets a floating plugin window's box in one step, and verify the plugin-windows "Mouse in plugin windows" scenarios in `crates/lua/tests/plugin_windows.rs`
+- [ ] 3.4 Add `on_mouse`, `hooks.mouse`, the mouse defaults and wheel scrolling in any key table or mode to `crates/lua/src/runtime/gband/win.lua`, plus a host entry in `crates/lua/src/plugin_windows.rs` that sets a floating plugin window's box in one step, and verify the plugin-windows "Mouse in plugin windows" scenarios in `crates/lua/tests/plugin_windows.rs`
 - [ ] 3.5 Add `is_mouse` to `crates/lua/src/runtime/gband/keyform.lua` and skip mouse bindings in `statusline/hints.lua` and `keylist.lua`, and verify in `crates/lua/tests/key_hints.rs` and `tests/lua/keylist_spec.lua`
 - [ ] 3.6 Add the navigation mode mouse bindings to `crates/lua/src/defaults.lua`, and verify `gband.keymap.list("prefix")` in `crates/lua/tests/config.rs` ends with the client-attach "Default mouse bindings" rows in order
 
@@ -31,9 +31,10 @@
 ## 5. Client: interactive defaults
 
 - [ ] 5.1 Click to focus windows, floating windows and plugin windows, and verify "Click to focus" and "Click a floating window" in `tests/mouse.rs`
-- [ ] 5.2 Forward presses, drags, releases, motion and wheel to the grabbing or hovered window by its grid's mouse mode, with Alt as the override, and verify "Forwarded click", "Wheel over an unfocused mouse program", "Drag outside the window" and "Alt selects in a mouse program" in `tests/mouse.rs`
-- [ ] 5.3 Track, draw and clear the selection, copy it to the copy buffer and with OSC 52, and verify the "Selection and copy" scenarios in `tests/mouse.rs` and a selection screenshot in `tests/lua/mouse_spec.lua`
-- [ ] 5.4 Paste the copy buffer on a right press, keeping the buffer across reloads, and verify "Right click pastes" and "Buffer survives a reload" in `tests/mouse.rs`
+- [ ] 5.2 Forward presses, drags, releases and motion to the grabbing or hovered window by its grid's mouse mode, with Alt as the override, and verify "Forwarded click", "Drag outside the window" and "Alt selects in a mouse program" in `tests/mouse.rs`
+- [ ] 5.3 Send every wheel step to the window or plugin window under the pointer, bypassing the leader and any gesture, and verify every "Wheel" scenario and "Wheel in navigation mode reaches the program" in `tests/mouse.rs`
+- [ ] 5.4 Track, draw and clear the selection, copy it to the copy buffer and with OSC 52, and verify the "Selection and copy" scenarios in `tests/mouse.rs` and a selection screenshot in `tests/lua/mouse_spec.lua`
+- [ ] 5.5 Paste the copy buffer on a right press, keeping the buffer across reloads, and verify "Right click pastes" and "Buffer survives a reload" in `tests/mouse.rs`
 
 ## 6. Client: gestures
 

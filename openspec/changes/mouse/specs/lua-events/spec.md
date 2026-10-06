@@ -33,7 +33,7 @@ The client SHALL emit these events, and no other built-in events:
 - `content_col` and `content_row`: the target's content cell, and nil without one.
 - `table`: the name of the key table active when the event arrived.
 
-The client SHALL emit a mouse event for every press, release, motion with a button held to another cell, and wheel step the terminal reports, after handling it, whether a binding, a default, a gesture or a program took it. A motion with no button held SHALL emit none.
+The client SHALL emit a mouse event for every press, release, motion with a button held to another cell, and wheel step the terminal reports, after handling it, whether a binding, a default, a gesture or a program took it. A motion with no button held SHALL emit none. Mouse events SHALL only report: a handler SHALL NOT keep an event from the window, plugin window or gesture that takes it.
 
 The first layout after attaching SHALL emit no `WindowOpened` and no `LayoutChanged`, and establishing the client's first view SHALL emit neither `FocusChanged` nor `BandChanged`. A layout that opens or closes a window SHALL emit `LayoutChanged` after its `WindowOpened` and `WindowClosed` events.
 

@@ -25,7 +25,7 @@ See proposal.md for why. The code today:
 ## Decisions
 
 ### Mouse names are a chord kind, not new key codes
-Add `MouseKey { trigger, modifiers }` to `crates/core/src/input.rs`, where `trigger` is `Left | Middle | Right | WheelUp | WheelDown | WheelLeft | WheelRight`. Add `Chord::Mouse(MouseKey)` beside `Chord::Key`. `parse_key` in `crates/lua/src/keys.rs` returns a small enum of either a key or a mouse key. Every caller that must reject mouse names says so explicitly: the `prefix` option and plugin windows' `keys`.
+Add `MouseKey { trigger, modifiers }` to `crates/core/src/input.rs`, where `trigger` is `Left | Middle | Right`. The wheel has no `MouseKey`. Add `Chord::Mouse(MouseKey)` beside `Chord::Key`. `parse_key` in `crates/lua/src/keys.rs` returns a small enum of either a key or a mouse key. Every caller that must reject mouse names says so explicitly: the `prefix` option and plugin windows' `keys`.
 
 `Leader` gains `handle_mouse(keymap, MouseKey) -> Command` with the same table and mode rules as `handle`. `Command::Send` becomes "apply the default" for a mouse key.
 
@@ -47,9 +47,11 @@ Add `crates/client/src/mouse.rs`, which holds:
 
 `Controls` routes `Event::Mouse` there:
 1. Convert the event and resolve its target.
-2. Run `Leader::handle_mouse` on presses and wheel steps.
+2. Run `Leader::handle_mouse` on presses only.
 3. Run the binding, the default or the gesture.
 4. Queue the Lua mouse event.
+
+A wheel step skips the leader and the gesture. It goes straight to its target's window as a `ClientMessage::Mouse`, or to the plugin window's hook.
 
 Motion events are coalesced: an event whose cell equals the previous one is dropped before any work. Mode 1003 reports every pixel row on some terminals.
 
@@ -75,7 +77,14 @@ Naming a reference window, rather than column indices, makes the action robust t
 This mirrors keys: the server's grid is authoritative for modes at write time. The client still reads its own grid's mode to decide between forwarding and selecting, because that decision is UI and must not wait for a round trip. A mode change racing a click can at worst produce one dropped report.
 
 ### Alt, not Shift, overrides forwarding
-Kitty, Alacritty, WezTerm, foot and VTE keep Shift with a mouse event for their own selection and never report it while mouse reporting is on. A Shift override would therefore never reach gband. Alt reaches gband in those terminals, and Shift+drag stays the terminal's native selection, which is a second, independent way to copy. The default navigation bindings use `alt+wheel` for columns, where niri uses Shift, for the same reason.
+Kitty, Alacritty, WezTerm, foot and VTE keep Shift with a mouse event for their own selection and never report it while mouse reporting is on. A Shift override would therefore never reach gband. Alt reaches gband in those terminals, and Shift+drag stays the terminal's native selection, which is a second, independent way to copy.
+
+### The wheel bypasses gband
+Every wheel step is sent to the window under the pointer, whatever the mode, the modifiers or a running gesture. gband binds nothing to it, so a program never loses a scroll to gband. The client does not check the window's mouse mode before sending a wheel step. The server's encoder already drops steps a mode does not report, and checking twice would only add a way for the two sides to disagree.
+
+Plugin windows keep the wheel: they have no program to receive it. A floating plugin window scrolls, or passes the step to its `on_mouse`. `MouseScrolled` lets plugins observe the wheel without taking it, since events never consume.
+
+*Alternative:* niri's Mod+wheel band and column switching in navigation mode. Rejected: the wheel must always reach programs.
 
 ### Mouse capture is written explicitly
 The client writes `?1000h ?1002h ?1003h ?1006h` itself rather than crossterm's `EnableMouseCapture`, which also enables 1015 (urxvt). It disables them in reverse in `TerminalGuard`'s drop, before leaving the alternate screen, so the spec'd bytes are exact. crossterm still parses the SGR reports.

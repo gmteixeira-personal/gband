@@ -5,4 +5,4 @@ The key list SHALL hold no line for a binding whose key is a mouse name, as the 
 
 #### Scenario: Default key list
 - **WHEN** the default configuration is in use and the user opens the key list
-- **THEN** no line shows `leftmouse`, `rightmouse`, `middlemouse` or a wheel name
+- **THEN** no line shows `leftmouse`, `rightmouse` or `middlemouse`

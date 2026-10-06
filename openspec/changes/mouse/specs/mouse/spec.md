@@ -1,6 +1,6 @@
 ## Purpose
 
-Defines how the client takes the mouse: what a mouse event points at, how mouse buttons take part in key tables, what interactive mode does with a click, a drag, a right click and the wheel, how text is selected and copied, and the niri-like gestures that move windows, resize them and slide the band.
+Defines how the client takes the mouse: what a mouse event points at, how mouse buttons take part in key tables, what interactive mode does with a click, a drag and a right click, how every wheel step reaches the program under the pointer, how text is selected and copied, and the niri-like gestures that move windows, resize them and slide the band.
 
 ## ADDED Requirements
 
@@ -43,7 +43,7 @@ A tile whose window is a tiled plugin window's drawn window SHALL be that plugin
 - **THEN** the target is empty ribbon
 
 ### Requirement: Mouse names in key tables
-A press of the left, middle or right button, and each step of the wheel, SHALL be matched against the active key table as a key, under the mouse names the configuration capability defines, with the Ctrl, Alt and Shift the terminal reports. A release and a motion SHALL never match a binding.
+A press of the left, middle or right button SHALL be matched against the active key table as a key, under the mouse names the configuration capability defines, with the Ctrl, Alt and Shift the terminal reports. A release, a motion and a wheel step SHALL never match a binding.
 
 - While a mode is active, a bound mouse name SHALL run its binding, and an unbound one SHALL be discarded. The mode SHALL stay active, as for a key.
 - While a table that is neither `root` nor a mode is active, a bound mouse name SHALL run its binding and end the sequence, and an unbound one SHALL be discarded and end the sequence, as for a key.
@@ -51,7 +51,7 @@ A press of the left, middle or right button, and each step of the wheel, SHALL b
 
 The release and every motion that follow a press whose binding ran SHALL go to the gesture that binding started, when it started one, and SHALL otherwise be discarded.
 
-A binding function bound to a mouse name SHALL run with one argument, the payload of the event as the lua-events capability defines it for `MousePressed` or `MouseScrolled`.
+A binding function bound to a mouse name SHALL run with one argument, the payload of the event as the lua-events capability defines it for `MousePressed`.
 
 #### Scenario: Bound in root
 - **WHEN** `root` binds `leftmouse` to a function and the user clicks a window that is not focused
@@ -63,7 +63,7 @@ A binding function bound to a mouse name SHALL run with one argument, the payloa
 - **THEN** nothing happens and navigation mode stays active
 
 #### Scenario: Modifier with a mouse name
-- **WHEN** a mode binds `ctrl+wheeldown` and the user turns the wheel down with Ctrl held
+- **WHEN** a mode binds `alt+rightmouse` and the user presses the right button with Alt held
 - **THEN** the binding runs
 
 ### Requirement: Interactive mode defaults
@@ -74,9 +74,8 @@ While `root` is active, a mouse event whose mouse name `root` does not bind SHAL
 | left, middle or right press | focus the window, then forward the press when the program reports the mouse and Alt is not held | focus the plugin window | nothing |
 | left press, not forwarded | start a selection at the cell | move the cursor line to the line at the cell, with `cursorline` on | — |
 | right press, not forwarded | paste the copy buffer into the window | nothing | — |
-| wheel step | forward the step when the program reports the mouse and Alt is not held, and otherwise nothing | as Down or Up, or nothing for left and right | nothing |
 
-Focusing a window SHALL dispatch focus of that window, as `gband.window.focus` does, which raises a floating window and switches the layer. Focusing a floating plugin window SHALL make it the focused floating plugin window. Focusing a tiled plugin window SHALL focus its drawn window. A wheel step SHALL change no focus.
+Focusing a window SHALL dispatch focus of that window, as `gband.window.focus` does, which raises a floating window and switches the layer. Focusing a floating plugin window SHALL make it the focused floating plugin window. Focusing a tiled plugin window SHALL focus its drawn window.
 
 A program SHALL report the mouse when its grid's mouse tracking mode, as the terminal-emulator capability defines, is any mode other than none. A press on a border cell SHALL focus and SHALL NOT be forwarded, start a selection or paste.
 
@@ -98,14 +97,6 @@ Pasting the copy buffer SHALL send it as a paste naming the window, as a termina
 - **WHEN** a window's program reports the mouse and the user drags across it with the left button and Alt held
 - **THEN** the program receives nothing and the dragged text is selected
 
-#### Scenario: Wheel over a program without mouse reporting
-- **WHEN** a shell prompt with no mouse mode is under the pointer and the user turns the wheel
-- **THEN** nothing is sent to the window and nothing changes
-
-#### Scenario: Wheel over an unfocused mouse program
-- **WHEN** `htop` with mouse reporting is shown in an unfocused tile and the user turns the wheel down over it
-- **THEN** `htop` receives the wheel step and focus does not change
-
 #### Scenario: Right click pastes
 - **WHEN** the copy buffer holds `ls` and the user right-clicks a shell window whose program reports no mouse
 - **THEN** the window is focused and receives `ls` as a paste
@@ -113,6 +104,30 @@ Pasting the copy buffer SHALL send it as a paste naming the window, as a termina
 #### Scenario: Click a plugin window line
 - **WHEN** a floating plugin window with `cursorline` on shows lines 1 to 10 and the user clicks its fourth content row
 - **THEN** the plugin window is focused and its cursor line is 4
+
+### Requirement: Wheel
+gband SHALL make no use of the wheel for itself. Every wheel step SHALL go to its target alone, whatever key table or mode is active, whatever modifiers are held, and while a gesture runs. It SHALL never match a binding, and SHALL change no focus, view or camera.
+
+- Over a window, the client SHALL send the step to that window as a mouse message, as the wire-protocol capability defines, with the content cell under the pointer, or the nearest content cell when the pointer is on the border. The server SHALL write it as the session-server capability defines, so the program receives it whenever its mouse tracking mode reports the wheel.
+- Over a plugin window, the step SHALL go to the plugin window, as the plugin-windows capability's "Mouse in plugin windows" defines.
+- Over empty ribbon or outside, the step SHALL do nothing.
+
+#### Scenario: Wheel over an unfocused mouse program
+- **WHEN** `htop` with mouse reporting is shown in an unfocused tile and the user turns the wheel down over it
+- **THEN** `htop` receives the wheel step and focus does not change
+
+#### Scenario: Wheel in navigation mode
+- **WHEN** navigation mode is active and the user turns the wheel up over content column 2 and row 1 of a window whose program enabled modes 1000 and 1006
+- **THEN** the program receives `\x1b[<64;3;2M`
+- **AND** navigation mode stays active and the view is unchanged
+
+#### Scenario: Wheel with Alt
+- **WHEN** a window's program enabled modes 1000 and 1006 and the user turns the wheel down with Alt held over its content cell at column 0 and row 0
+- **THEN** the program receives `\x1b[<73;1;1M`
+
+#### Scenario: Wheel over a program without mouse reporting
+- **WHEN** a shell prompt with no mouse mode is under the pointer and the user turns the wheel
+- **THEN** the shell receives nothing and nothing changes
 
 ### Requirement: Selection and copy
 A selection SHALL belong to one window and run from the cell where it started, its anchor, to the cell under the pointer, its head. Each motion with the left button held SHALL move the head to the cell under the pointer, kept inside the window's content area. The client SHALL draw the selected cells of its own screen with their foreground and background swapped. Other clients SHALL draw no change.
@@ -141,7 +156,7 @@ A press that does not move SHALL make no selection and copy nothing. A selection
 - **THEN** the selection is no longer drawn
 
 ### Requirement: Forwarding to a program
-A forwarded press SHALL make its window the grabbing window until every button is released. The client SHALL send that window the press, every motion while a button is held, and the release, each with its content cell. A cell outside the content area SHALL be moved to the nearest content cell. A forwarded wheel step SHALL be sent to the window under the pointer. A motion with no button held SHALL be sent to the focused window when the pointer is inside its content area and its program reports the mouse.
+A forwarded press SHALL make its window the grabbing window until every button is released. The client SHALL send that window the press, every motion while a button is held, and the release, each with its content cell. A cell outside the content area SHALL be moved to the nearest content cell. A motion with no button held SHALL be sent to the focused window when the pointer is inside its content area and its program reports the mouse.
 
 Each forwarded event SHALL be sent as a mouse message, as the wire-protocol capability defines, and the server SHALL write it as the session-server capability defines.
 
@@ -152,7 +167,7 @@ Each forwarded event SHALL be sent as a mouse message, as the wire-protocol capa
 ### Requirement: Drag gestures
 The client actions `drag_window`, `drag_resize_window` and `drag_band` SHALL start a gesture when they are dispatched while the client handles a mouse press, from that press's binding or from a binding function it runs. Dispatched at any other time, they SHALL do nothing.
 
-A gesture SHALL hold the press's button, target, cell, and the geometry drawn at the press. It SHALL take every motion until that button is released, and end at the release. While it runs, other presses and wheel steps SHALL be discarded, and keys SHALL be handled as usual. A gesture whose window leaves the layout SHALL end at once with no further change.
+A gesture SHALL hold the press's button, target, cell, and the geometry drawn at the press. It SHALL take every motion until that button is released, and end at the release. While it runs, other presses SHALL be discarded, wheel steps SHALL be handled as "Wheel" defines, and keys SHALL be handled as usual. A gesture whose window leaves the layout SHALL end at once with no further change.
 
 The changes a gesture sends to the server SHALL be sent at most once per frame, and only when the size or position they set differs from the last one sent.
 

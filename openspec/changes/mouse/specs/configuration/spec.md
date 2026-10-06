@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Key names
-A key name SHALL be a key optionally preceded by modifiers, joined by `+`. The modifiers SHALL be `ctrl`, `alt` and `shift`, in any order. The key SHALL be one character, or one of `enter`, `tab`, `backtab`, `backspace`, `escape`, `esc`, `space`, `up`, `down`, `left`, `right`, `home`, `end`, `insert`, `delete`, `pageup`, `pagedown` and `f1` to `f12`, or a mouse name: `leftmouse`, `middlemouse`, `rightmouse`, `wheelup`, `wheeldown`, `wheelleft` and `wheelright`, which name a press of a mouse button or a step of the wheel, as the mouse capability defines. Modifier and key names longer than one character SHALL be read without regard to case, and a one-character key SHALL be read as written, so `D` and `d` differ. A `+` that ends the name SHALL be the key, so `alt++` is Alt with `+`. `shift` with a lowercase letter SHALL name the uppercase letter. `shift` with any other character SHALL be an error, because the shifted character is written instead. `shift` with a mouse name SHALL name that mouse name with Shift. A mouse name SHALL be valid only as the key of a binding in a key table, and SHALL be an error as the `prefix` option or as a key of a plugin window's `keys`. Any other name SHALL be an error.
+A key name SHALL be a key optionally preceded by modifiers, joined by `+`. The modifiers SHALL be `ctrl`, `alt` and `shift`, in any order. The key SHALL be one character, or one of `enter`, `tab`, `backtab`, `backspace`, `escape`, `esc`, `space`, `up`, `down`, `left`, `right`, `home`, `end`, `insert`, `delete`, `pageup`, `pagedown` and `f1` to `f12`, or a mouse name: `leftmouse`, `middlemouse` or `rightmouse`, which name a press of that mouse button, as the mouse capability defines. The wheel has no name, because every wheel step goes to the window under the pointer. Modifier and key names longer than one character SHALL be read without regard to case, and a one-character key SHALL be read as written, so `D` and `d` differ. A `+` that ends the name SHALL be the key, so `alt++` is Alt with `+`. `shift` with a lowercase letter SHALL name the uppercase letter. `shift` with any other character SHALL be an error, because the shifted character is written instead. `shift` with a mouse name SHALL name that mouse name with Shift. A mouse name SHALL be valid only as the key of a binding in a key table, and SHALL be an error as the `prefix` option or as a key of a plugin window's `keys`. Any other name SHALL be an error.
 
 #### Scenario: Modifier and character
 - **WHEN** a binding names `alt+h`
@@ -24,8 +24,12 @@ A key name SHALL be a key optionally preceded by modifiers, joined by `+`. The m
 - **THEN** loading fails with an error at `init.lua` line 5 naming `alt+hyper`
 
 #### Scenario: Mouse name with modifiers
-- **WHEN** a binding names `Shift+WheelDown`
-- **THEN** it names a step of the wheel down with Shift
+- **WHEN** a binding names `Shift+RightMouse`
+- **THEN** it names a press of the right button with Shift
+
+#### Scenario: Wheel name
+- **WHEN** line 4 of `init.lua` binds `prefix wheelup`
+- **THEN** loading fails with an error at `init.lua` line 4 naming `wheelup`
 
 #### Scenario: Mouse name as the prefix
 - **WHEN** line 3 of `init.lua` sets `gband.opt.prefix = "leftmouse"`

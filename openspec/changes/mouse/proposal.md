@@ -6,27 +6,25 @@ gband ignores the mouse. It never turns on mouse reporting, and the client drops
 
 - **Mouse capture**: the client turns on the terminal's mouse reporting (presses, releases, any motion, SGR encoding) when it takes the terminal, and turns it off whenever it gives the terminal back.
 - **Pointer targets**: each mouse event resolves against the frame drawn last to a floating plugin window, a floating window, a tile, empty ribbon or the space outside the ribbon. Border cells belong to their window.
-- **Mouse names in key tables**: `leftmouse`, `middlemouse`, `rightmouse`, `wheelup`, `wheeldown`, `wheelleft` and `wheelright`, with optional `ctrl`, `alt` and `shift`, become key names. A press or a wheel step matches the active key table as a key does. A binding function bound to a mouse name receives the event's payload. Hints and the key list leave mouse bindings out.
-- **Interactive mode defaults**, for a mouse name `root` does not bind:
+- **Mouse names in key tables**: `leftmouse`, `middlemouse` and `rightmouse`, with optional `ctrl`, `alt` and `shift`, become key names. A press matches the active key table as a key does. A binding function bound to a mouse name receives the event's payload. Hints and the key list leave mouse bindings out.
+- **The wheel belongs to programs**: gband makes no use of the wheel for itself. Every wheel step goes to the window under the pointer, in every mode, with any modifiers, and during a gesture. It never matches a key table and never changes focus or the view. The program gets it whenever its mouse mode reports the wheel. Over a plugin window, the step goes to the plugin window, which scrolls or passes it to `on_mouse`. gband keeps no scrollback.
+- **Interactive mode defaults**, for a mouse press `root` does not bind:
   - A left, middle or right press focuses the window under the pointer.
-  - When that window's program asked for mouse reporting and Alt is not held, the event is forwarded to the program, encoded as the program's mode asks.
+  - When that window's program asked for mouse reporting and Alt is not held, the press, its drags and its release are forwarded to the program, encoded as the program's mode asks.
   - Alt is the override, not Shift: most terminals keep Shift with a mouse event for their own selection, so gband would never see it. Shift+drag stays the terminal's native selection.
   - Otherwise, a left drag selects text in that window, shown in reverse video in this client. Release copies the text to the host terminal's clipboard with OSC 52, and to the client's copy buffer.
   - A right press pastes the copy buffer into the window under the pointer as a paste.
-  - The wheel goes to the window under the pointer when its program reports the mouse, and otherwise does nothing. gband keeps no scrollback.
-  - In a plugin window, a press moves the cursor line and the wheel scrolls.
+  - In a plugin window, a press moves the cursor line.
 - **Drag gestures**: three new client actions, which start a gesture when a mouse press runs them and do nothing otherwise:
   - `drag_window` moves a window. A floating window or floating plugin window follows the pointer. A tiled window lifts, follows the pointer, and drops into the place under it: a new column left or right of a column, or above or below a window in a column. A press on empty ribbon slides the band instead.
   - `drag_resize_window` resizes from the edges nearest the press, picked by thirds of the box as niri does. It sets the column's width or the window's height for a tiled window, and the box's size and position for a floating window or floating plugin window.
   - `drag_band` slides the viewed band's camera with the pointer. On release, focus moves to the column at the ribbon's middle.
 - **Default navigation mode mouse bindings**, as holding niri's modifier:
   - `leftmouse` is `drag_window`, `rightmouse` is `drag_resize_window`, and `middlemouse` is `drag_band`.
-  - `wheeldown` and `wheelup` view the band below and above.
-  - `wheelright`, `wheelleft`, `alt+wheeldown` and `alt+wheelup` focus the column right or left. niri uses Shift here, but the terminal would keep Shift with the wheel.
 - **Move a window to a place**: a new session action moves a tiled window into a new column beside another window's column, or above or below another window in its column. Dropping a dragged tiled window sends it.
 - **Mouse reports to programs**: a new client message carries a mouse event for a window. The server encodes it with the window's mouse tracking mode and encoding: X10, normal, button-event or any-event tracking, in the default, UTF-8 or SGR encoding. The server drops the event when the mode does not report it. The emulator exposes each grid's mouse modes.
 - **Lua**:
-  - New built-in client events `MousePressed`, `MouseReleased`, `MouseDragged` and `MouseScrolled`. Their payloads carry the button or direction, the modifiers, the terminal cell, the target and its content-relative cell.
+  - New built-in client events `MousePressed`, `MouseReleased`, `MouseDragged` and `MouseScrolled`. Their payloads carry the button or direction, the modifiers, the terminal cell, the target and its content-relative cell. `MouseScrolled` only observes: the wheel step still reaches the program.
   - Plugin windows take an `on_mouse` callback.
 - **Plugin testing**: `g.mouse(...)` writes a mouse report to the client's terminal as xterm sends it.
 - **BREAKING**: the protocol version goes up, because of the new client message and session action.
@@ -37,18 +35,17 @@ Out of scope:
 - Double-click word selection, triple-click line selection, and rectangular selection.
 - Scrolling the camera when a drag nears the ribbon's edge, and dropping a dragged window into another band.
 - Reading the host clipboard with OSC 52, and middle-click paste.
-- A cooldown between wheel steps.
 - Forwarding a program's own OSC 52 to the host terminal.
 
 ## Capabilities
 
 ### New Capabilities
 
-- `mouse`: mouse capture, pointer targets, mouse names in key tables, the interactive mode defaults, selection and copy, forwarding to programs, the drag gestures, and how plugin windows and floating plugin windows take them.
+- `mouse`: mouse capture, pointer targets, mouse names in key tables, the wheel, the interactive mode defaults, selection and copy, forwarding to programs, the drag gestures, and how plugin windows and floating plugin windows take them.
 
 ### Modified Capabilities
 
-- `configuration`: mouse names in "Key names". "Binding functions" passes the mouse payload to a function bound to a mouse name.
+- `configuration`: button mouse names in "Key names", with no wheel names. "Binding functions" passes the mouse payload to a function bound to a mouse name.
 - `actions`: `drag_window`, `drag_resize_window` and `drag_band`, and how the client kind sends session actions for them.
 - `client-attach`: the default navigation mode mouse bindings.
 - `key-hints`: mouse bindings are not hinted.
