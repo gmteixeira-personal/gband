@@ -90,7 +90,7 @@ Bars SHALL change only the ribbon area. They SHALL NOT change the client's repor
 - **THEN** the second column is still fully shown, on screen columns 40 to 79
 
 ### Requirement: Bar contents
-A bar's lines SHALL have the form of a window's lines, as the plugin-windows capability defines, with the bar's `hl` group in place of `Window`. Row `r` of a bar, counted from 0, SHALL show line `r + 1`, and a bar SHALL NOT scroll. Each row SHALL be drawn from the bar's left column as the plugin-windows capability draws a row of a content area, and cut at the bar's right edge. Every cell of a shown bar that no span covers SHALL be blank in the resolved style of the bar's `hl` group. Lines beyond the bar's rows SHALL NOT be drawn.
+A bar's lines SHALL have the form of a window's lines, as the plugin-windows capability defines, with the bar's `hl` group in place of `PluginWindow`. Row `r` of a bar, counted from 0, SHALL show line `r + 1`, and a bar SHALL NOT scroll. Each row SHALL be drawn from the bar's left column as the plugin-windows capability draws a row of a content area, and cut at the bar's right edge. Every cell of a shown bar that no span covers SHALL be blank in the resolved style of the bar's `hl` group. Lines beyond the bar's rows SHALL NOT be drawn.
 
 #### Scenario: Styled bar
 - **WHEN** a left bar of size 10 with `hl = "Bar"` holds the line `{ { text = "gband", hl = "Title" } }`, `Bar` resolves to `{ bg = 236 }` and `Title` to `{ bold = true }`

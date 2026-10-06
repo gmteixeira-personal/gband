@@ -7,9 +7,9 @@ Defines the bundled error list: a client plugin whose action and command open a 
 ### Requirement: Error list plugin
 gband SHALL bundle the client plugin module `gband.errors`, whose plugin name is `errors`. Its `setup` SHALL take one option, `kind`, which is `"floating"` or `"tiled"` and `"floating"` by default. Any other field, or a `kind` of another value, SHALL make `setup` raise an error naming the field. `setup` SHALL register:
 - the action `errors.open`, with the description `list the errors`, which opens the error list with the setup's `kind`;
-- the command `errors.open`, which takes one optional argument, `kind`, and opens the error list with that `kind`, or with the setup's `kind` when the argument is absent.
+- the command `errors.open`, registered with `args = { "kind" }`, which opens the error list with the `kind` field of its arguments table, or with the setup's `kind` when that field is nil.
 
-A `kind` argument of another value SHALL make the command raise an error naming it.
+A `kind` field of another value SHALL make the command raise an error naming `kind`.
 
 #### Scenario: Action registered
 - **WHEN** `user/init.lua` calls `gband.plugin("gband.errors")` and reads `gband.action.list()`
@@ -20,7 +20,7 @@ A `kind` argument of another value SHALL make the command raise an error naming 
 - **THEN** the error list opens as a tiled plugin window
 
 #### Scenario: Kind from the command
-- **WHEN** the plugin is set up with no options and a binding function calls `gband.cmd.run("errors.open", "tiled")`
+- **WHEN** the plugin is set up with no options and a binding function calls `gband.cmd.run("errors.open", { kind = "tiled" })`
 - **THEN** the error list opens as a tiled plugin window
 
 #### Scenario: Unknown option

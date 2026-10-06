@@ -18,7 +18,7 @@ Scripts can fill the status line, but they cannot take any other part of the scr
   - Leaving the plugin out removes the status line.
 - **Errors**: while an error is reported, the status line shows the word `error` in red instead of the message.
   - `gband.errors()` returns the client's error list.
-  - A new bundled plugin, `gband.errors`, registers the action and command `errors.open`. They open the error list in a plugin window, floating by default or tiled with `kind = "tiled"`.
+  - A new bundled plugin, `gband.errors`, registers the action and command `errors.open`. They open the error list in a plugin window, floating by default or tiled with `kind = "tiled"`. `kind` is a setup option and a field of the command's arguments table, as in `gband.cmd.run("errors.open", { kind = "tiled" })`.
   - Without a status line, the latest error still shows on the ribbon's bottom row.
 - **BREAKING**: the client options `statusline_position`, `statusline_height` and `statusline_separator` are removed. A user file that still sets them gets a configuration error naming the option, and loads anyway.
 - **BREAKING**: component `align` takes `"top"`, `"center"` or `"bottom"` in place of `"left"`, `"center"` or `"right"`. The bundled segments and the example plugins move to the new values. Segments no longer have separators.
@@ -94,11 +94,12 @@ Out of scope:
 - crates/lua/src/api.rs
 - crates/lua/src/bars.rs
 - crates/lua/src/bundled.rs
+- crates/lua/src/control.rs
 - crates/lua/src/defaults.lua
-- crates/lua/src/guard.rs
 - crates/lua/src/lib.rs
 - crates/lua/src/options.rs
 - crates/lua/src/runtime.rs
+- crates/lua/src/sides.rs
 - crates/lua/src/ui.rs
 - crates/lua/src/plugin_windows.rs
 - crates/lua/src/runtime/gband/

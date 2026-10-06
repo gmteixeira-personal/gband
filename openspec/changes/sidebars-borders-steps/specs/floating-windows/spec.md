@@ -5,7 +5,7 @@ The width actions SHALL change a floating window's box width and full-width flag
 
 The height actions SHALL change a floating window's `rows`. Let `h` be its box height as placed in the session's current screen area, and the step in rows the area's height multiplied by the step the request names, rounded to the nearest whole number with halves rounded up, and at least 1:
 - Growing SHALL set `rows` to `h` plus the step in rows, and shrinking to `h` less the step in rows.
-- Resetting SHALL set `rows` to half the area's height, rounded down.
+- Resetting SHALL set `rows` to the height of a new box, as "Float a window" defines.
 - Setting a number of rows SHALL set `rows` to that number.
 - Setting a weight SHALL leave the window unchanged.
 
@@ -25,7 +25,7 @@ The new `rows` SHALL be kept between 3 and the area's height. When the result eq
 
 #### Scenario: Reset a floating height
 - **WHEN** the area is 80×25 and a floating window's height is reset
-- **THEN** its `rows` is 12
+- **THEN** its `rows` is 19
 
 #### Scenario: Consume or expel a floating window
 - **WHEN** a floating window is consumed or expelled to the left

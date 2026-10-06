@@ -3,9 +3,9 @@
 See proposal.md for the motivation. The code today:
 
 - **Status line.** `gband/statusline.lua` already owns the component API, render scheduling and layout. It hands the client a positioned line through `host.present`, kept as `ui::StatusLine` in `crates/lua/src/ui.rs`. The client splits the terminal into ribbon and status rows in `crates/client/src/placement.rs`, from the `statusline_*` options in `crates/lua/src/options.rs`, and reports the ribbon's size to the server. `render::draw_status` draws the spans.
-- **Floating plugin windows.** `gband/win.lua` validates plugin windows and presents frames through `host.present_window`, and `windows::ribbon_resized` replaces floating plugin windows after a ribbon change. Bars follow the same split.
+- **Floating plugin windows.** `gband/win.lua` validates plugin windows and presents frames through `host.present_window`, and `plugin_windows::ribbon_resized` replaces floating plugin windows after a ribbon change. Bars follow the same split.
 - **Borders.** Every tile border is `Block::bordered()` with the `FOCUSED_BORDER` or `UNFOCUSED_BORDER` style in `crates/client/src/render.rs`. Floating plugin windows use `Block::bordered()` with `PluginWindowBorder`. The window's terminal size is always its tile less 2 by 2, in `gband_core::geometry`.
-- **Steps.** `Action::StepWidth(Step)` and `StepHeight(Step)` carry only grow or shrink. `Column::step_width` adds `1/10` through `Proportion::step`, and `Column::step_height` computes `(rows + 5) / 10` rows.
+- **Steps.** `SessionCommand::StepWidth(Step)` and `StepHeight(Step)` carry only grow or shrink. `Column::step_width` adds `1/10` through `Proportion::step`, and `Column::step_height` computes `(rows + 5) / 10` rows.
 - **Dependencies.** This change depends on `floating-windows` and `navigation-mode`. Its deltas are written against their versions of the requirements they share: floating-windows' "Present the ribbon", "Action targets", "Session actions resolve against the view", "Client messages", "Handshake" and the new `floating-windows` spec; navigation-mode's status-line "Layout" and "Bundled segment plugins", and key-hints "Hints of the active table" and "Default setup". floating-windows' "Client messages" predates the `command` message from split-plugin-runtime, so this change's delta restores that row and its scenario.
 
 ## Goals / Non-Goals
@@ -27,7 +27,7 @@ See proposal.md for the motivation. The code today:
 
 A pure function, `bars::place(bars, terminal) -> (Vec<Option<Rect>>, Rect)`, in a new `crates/lua/src/bars.rs`, gives each bar's rectangle and the ribbon. Lua reaches it as `host.place_bars`, so `gband.bar.info` answers synchronously. The client calls it on every terminal resize and every presentation, so the ribbon is known before the next frame without a Lua round trip.
 
-After a placement changes, the client calls a `bars_resized` hook. `bar.lua` then runs each changed bar's `on_resize`, the way `windows::ribbon_resized` serves floating plugin windows.
+After a placement changes, the client calls a `bars_resized` hook. `bar.lua` then runs each changed bar's `on_resize`, the way `plugin_windows::ribbon_resized` serves floating plugin windows.
 
 Alternative: place bars in Lua only. Rejected, because a terminal resize would then need a Lua call before the client could size its ribbon and draw.
 
@@ -69,15 +69,15 @@ The client's `Configuration` already tracks the latest error and when it clears.
 ### Borders are drawn by one helper, independent of ratatui's `Block`
 A new `draw_border(buffer, rect, sides, chars, style)` in `render.rs` follows the borders spec cell by cell: sides, corners, a corner on one side, and blank cells. The interior is always the rectangle inset by one. The same helper serves tiled windows, floating windows and floating plugin windows, so all three kinds draw a border the same way.
 
-The client options become a `Border { sides: Sides, chars: BorderChars }` per window kind in `Options`. `Ribbon` gains `tile_border` and `floating_border`, and `FloatFrame::border` becomes `Option<Border>`.
+The client options become a `Border { sides: Sides, chars: BorderChars }` per window kind in `Options`. `Ribbon` gains `tile_border` and `floating_border`, and `FloatingFrame::border` becomes `Option<Border>`.
 
 Alternative: keep `Block` with `Borders` flags and `border_set`. Rejected because `Block::inner` shrinks only by the drawn sides, and its corner handling on a missing side is not the spec's.
 
 ### Steps travel with the request
-- `Action::StepWidth` and `StepHeight` become `StepWidth { step, by: Proportion }` and `StepHeight { step, by: Proportion }`. `SessionAction` carries the same fields.
+- `SessionCommand::StepWidth` and `StepHeight` become `StepWidth { step, by: Proportion }` and `StepHeight { step, by: Proportion }`. `SessionAction` carries the same fields.
 - `Column::step_width` adds or subtracts `by`. `Column::step_height` uses `round_half_up(rows × by).max(1)` rows.
 - `bindings.rs` fills `by` from `width_step` or `height_step` when it resolves a binding.
-- `actions.rs` fills it from the target's `step`, or the same options. The server's Lua uses `1/10` when no step is given.
+- `control.rs` fills it from the client target's `step`, or the same options. `actions.rs` fills it from the server target's `step`. The server's Lua uses `1/10` when no step is given.
 - The floating-window sizing that floating-windows adds receives the same `by`.
 
 Alternative: server options for the steps. Rejected because the user wants each client to have its own settings, while the resulting sizes stay shared.

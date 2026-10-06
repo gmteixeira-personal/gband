@@ -18,7 +18,7 @@ A target passed to a view action or to `detach` SHALL be an error. Each of these
 - A field the action does not take.
 - A `step` out of its range.
 - A window or band number not in the client's layout.
-- An `after` window not in `band`, or, for `toggle_window_floating`, not a tiled window of `window`'s band.
+- An `after` window not in `band`, or a floating `after` window for `open_window` or `gband.spawn`, or, for `toggle_window_floating`, an `after` that is not a tiled window of `window`'s band.
 
 Calling an action value with no target SHALL resolve it against the view, as the actions capability defines.
 

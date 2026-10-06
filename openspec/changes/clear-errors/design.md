@@ -7,7 +7,7 @@ See proposal.md for the motivation. This change starts from the code sidebars-bo
 - **The banner.** The client draws the latest error over the ribbon's bottom row when an error is reported and no error item is drawn.
 - **Dispatches.** Client functions such as `gband.win.open` queue a `Dispatch` with `api::queue`. The client applies the queue after the callback returns, then reports the callback's errors, then pushes the state again. `api::outside_callback` raises the error for a call made while loading.
 - **The plugin.** `crates/lua/src/runtime/gband/errors.lua` opens the error list from a snapshot of `gband.errors()`, wraps it again in `on_resize`, and binds `q` in `keys`. The plugin window defaults are Up and `k`, Down and `j`, PageUp, PageDown, Home, End, and `q` and Escape for a floating window.
-- **The client-only fields.** The list is `CLIENT_ONLY` in `crates/lua/src/sides.rs`. sidebars-borders-steps' task 3.3 names `guard.rs`, but the list lives in `sides.rs`.
+- **The client-only fields.** The list is `CLIENT_ONLY` in `crates/lua/src/sides.rs`, where sidebars-borders-steps adds `bar` and `errors`.
 
 ## Goals / Non-Goals
 
