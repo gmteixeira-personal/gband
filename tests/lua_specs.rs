@@ -40,6 +40,11 @@ fn bundled_key_list() {
 }
 
 #[test]
+fn bundled_error_list() {
+    gband_test(root(), &["tests/lua/errors_spec.lua"]);
+}
+
+#[test]
 fn looping_bands() {
     gband_test(root(), &["tests/lua/loop_bands_spec.lua"]);
 }

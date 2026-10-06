@@ -347,11 +347,18 @@ Each segment takes the options `align`, `"top"`, `"center"` or `"bottom"`, `prio
 ### Errors
 
 The client keeps every configuration and plugin error since the last load without one, oldest first, and `gband.errors()` returns them.
+`gband.clear_errors()`, called from a binding function or another callback, empties the list and dismisses the error item or the banner until the next error.
+It does not reload the configuration, so a status line component or a plugin that an error disabled stays disabled until the next load.
+The logs keep every error, and other clients keep theirs: a server error still shows in each client that attaches.
+
 The bundled `gband.errors` plugin, set up by the default configuration, registers the action and command `errors.open`, which list them in a floating window; `q` or Escape closes it.
-No key is bound to it by default:
+It also registers the action and command `errors.clear`, which clear the errors.
+In the error list, floating or tiled, `c` clears them and the list shows `no errors`; a floating list holding errors is titled `errors  c clear`.
+No key is bound to either action by default:
 
 ```lua
 gband.keymap.set("prefix", "e", gband.action["errors.open"], { desc = "list the errors" })
+gband.keymap.set("prefix", "C", gband.action["errors.clear"], { desc = "clear the errors" })
 -- or in a tiled window
 gband.bind("prefix E", function() gband.cmd.run("errors.open", { kind = "tiled" }) end)
 ```

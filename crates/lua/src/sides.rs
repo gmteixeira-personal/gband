@@ -9,7 +9,7 @@ use crate::actions::ACTIONS;
 use crate::error::{ConfigError, caller};
 use crate::removed;
 
-pub(crate) const CLIENT_ONLY: [&str; 19] = [
+pub(crate) const CLIENT_ONLY: [&str; 20] = [
     "bind",
     "unbind",
     "spawn",
@@ -24,6 +24,7 @@ pub(crate) const CLIENT_ONLY: [&str; 19] = [
     "win",
     "bar",
     "errors",
+    "clear_errors",
     "rpc",
     "notify",
     "bell",

@@ -1,4 +1,7 @@
 local OWN = "errors.open"
+local CLEAR = "errors.clear"
+local TITLE = "errors"
+local HINTED = "errors  c clear"
 local KINDS = { floating = true, tiled = true }
 
 local current = nil
@@ -45,6 +48,19 @@ local function is_open(win)
   return false
 end
 
+local function clear()
+  gband.clear_errors()
+  if not (current and is_open(current)) then
+    return
+  end
+  texts = {}
+  local info = gband.win.info(current)
+  if info.kind == "floating" then
+    gband.win.set_config(current, { title = TITLE })
+  end
+  gband.win.set_lines(current, lines_of(info.cols or 1))
+end
+
 local function open(kind)
   gband.keymap.enter("root")
   if current and is_open(current) then
@@ -59,6 +75,7 @@ local function open(kind)
       q = function(win)
         gband.win.close(win)
       end,
+      c = clear,
     },
     on_resize = function(win, cols)
       gband.win.set_lines(win, lines_of(cols))
@@ -71,7 +88,7 @@ local function open(kind)
   }
   if kind == "floating" then
     local state = gband.view()
-    spec.title = "errors"
+    spec.title = #texts > 0 and HINTED or TITLE
     spec.width = math.max(1, state.cols * 3 // 4)
     spec.height = math.max(1, state.rows // 2)
     spec.row = "center"
@@ -112,5 +129,7 @@ return {
       check_kind(requested, "kind")
       open(requested or kind)
     end, { desc = "list the errors", args = { "kind" } })
+    gband.action.register(CLEAR, clear, { desc = "clear the errors" })
+    gband.cmd.register(CLEAR, clear, { desc = "clear the errors" })
   end,
 }

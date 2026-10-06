@@ -65,7 +65,10 @@ pub struct Style {
 }
 
 #[derive(Default)]
-struct State(ViewState);
+struct State {
+    view: ViewState,
+    cleared: bool,
+}
 
 #[derive(Default)]
 struct Hooks {
@@ -313,16 +316,21 @@ pub(crate) fn after_event(lua: &Lua, name: Option<&str>) -> mlua::Result<()> {
 pub(crate) fn current_state(lua: &Lua) -> ViewState {
     lua.app_data_ref::<State>()
         .expect("the state is installed with the runtime")
-        .0
+        .view
         .clone()
 }
 
+pub(crate) fn clear_errors(lua: &Lua) {
+    let mut stored = lua
+        .app_data_mut::<State>()
+        .expect("the state is installed with the runtime");
+    stored.view.error = None;
+    stored.view.errors.clear();
+    stored.cleared = true;
+}
+
 fn state(lua: &Lua, (): ()) -> mlua::Result<Table> {
-    let state = lua
-        .app_data_ref::<State>()
-        .expect("the state is installed with the runtime")
-        .0
-        .clone();
+    let state = current_state(lua);
     let table = lua.create_table()?;
     table.set("table", state.table)?;
     let band = lua.create_table()?;
@@ -371,9 +379,9 @@ pub(crate) fn set_state(lua: &Lua, state: ViewState) -> mlua::Result<()> {
         let mut stored = lua
             .app_data_mut::<State>()
             .expect("the state is installed with the runtime");
-        let changed = stored.0.error != state.error;
-        let resized = stored.0.ribbon != state.ribbon;
-        stored.0 = state;
+        let changed = std::mem::take(&mut stored.cleared) || stored.view.error != state.error;
+        let resized = stored.view.ribbon != state.ribbon;
+        stored.view = state;
         (changed, resized)
     };
     let (changed, resized) = changed;
