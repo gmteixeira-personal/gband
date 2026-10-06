@@ -51,10 +51,12 @@ None.
 - crates/client/src/channel.rs
 - crates/client/tests/key_translation.rs
 - crates/protocol/src/test.rs
+- crates/protocol/tests/messages.rs
 - crates/harness/src/case.rs
 - crates/harness/src/channel.rs
 - crates/harness/src/terminal.rs
 - tests/lua/escape_spec.lua
 - tests/lua/sidebar_spec.lua
+- tests/lua_specs.rs
 - docs/testing.md
 - openspec/changes/input-decoder/

@@ -3,7 +3,6 @@ pub mod bindings;
 mod channel;
 pub mod color;
 mod connect;
-pub mod input;
 pub mod mouse;
 pub mod plugin_windows;
 pub mod render;
@@ -11,15 +10,15 @@ mod requests;
 mod transport;
 
 use std::cmp::Ordering;
-use std::collections::{BTreeMap, HashMap};
-use std::io::{Write, stdout};
+use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::io::{Read, Write, stdin, stdout};
 use std::sync::Arc;
 use std::thread;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use crossterm::cursor::Show;
-use crossterm::event::{self, DisableBracketedPaste, EnableBracketedPaste, Event as TerminalEvent};
+use crossterm::event::{DisableBracketedPaste, EnableBracketedPaste};
 use crossterm::execute;
 use crossterm::style::Print;
 use gband_core::action::{Action, ClientAction, SessionCommand};
@@ -28,6 +27,7 @@ use gband_core::input::Key;
 use gband_core::layout::{
     BandId, FloatingWindow, Layout, LayoutOptions, Program, Proportion, SessionAction, WindowId,
 };
+use gband_core::terminal_input::{Decoder, TerminalInput};
 use gband_core::view::{CenterFocusedColumn, Layer, Scene, View, ViewAction};
 use gband_emulator::{Emulator, Grid};
 use gband_lua::{
@@ -38,6 +38,7 @@ use gband_lua::{
 use gband_protocol::{ClientMessage, ExecutableId, Requirement, ServerMessage, SessionName, Value};
 use ratatui::layout::Rect;
 use ratatui::{DefaultTerminal, Frame};
+use tokio::signal::unix::{SignalKind, signal};
 use tokio::sync::mpsc;
 
 use crate::animation::{
@@ -49,7 +50,6 @@ use crate::channel::{Channel, Served};
 pub use crate::channel::{Loader, TestChannel};
 use crate::color::ColorSupport;
 pub use crate::connect::{Connection, connect};
-use crate::input::{key_from_event, mouse_from_event};
 use crate::mouse::{
     Axis, DropPlace, Edges, Geometry, Gesture, Held, Hit, Motion, Pointer, Pressing, Resized,
     Sends, drop_columns, drop_place,
@@ -1581,7 +1581,13 @@ async fn attach(
     configuration: Configuration,
     session: &SessionName,
 ) -> Result<Outcome> {
-    let mut events = spawn_events();
+    let mut chunks = spawn_input();
+    let mut decoder = Decoder::new();
+    let mut inputs = VecDeque::new();
+    let mut unread = 0;
+    let mut held = None;
+    let mut window_changes =
+        signal(SignalKind::window_change()).context("cannot watch for terminal resizes")?;
     let size = terminal.size()?;
     let mut display = Display::new(Size::new(size.width, size.height), animations);
     display.set_colors(ColorSupport::detect());
@@ -1616,6 +1622,19 @@ async fn attach(
             && !display.is_animating(now)
         {
             channel.drawn(connection.sent).await?;
+        }
+        if let Some(input) = inputs.pop_front() {
+            if let Some(outcome) = deliver(connection, &mut controls, &mut display, input).await? {
+                return Ok(outcome);
+            }
+            if inputs.is_empty()
+                && let Some(channel) = &mut channel
+            {
+                channel
+                    .read(std::mem::take(&mut unread), decoder.holds())
+                    .await?;
+            }
+            continue;
         }
         let frame = display
             .is_animating(now)
@@ -1663,52 +1682,74 @@ async fn attach(
                     return Ok(outcome);
                 }
             }
-            event = events.recv(), if controls.is_attached() => match event {
-                Some(TerminalEvent::Key(key_event)) => {
-                    let Some(key) = key_from_event(&key_event) else { continue };
-                    let steps = controls.press(&mut display, key);
-                    if let Some(outcome) = perform(connection, steps).await? {
-                        return Ok(outcome);
-                    }
+            () = tokio::time::sleep_until(held.unwrap_or_else(tokio::time::Instant::now)),
+                if held.is_some() => {
+                held = None;
+                inputs.extend(decoder.flush());
+                if inputs.is_empty()
+                    && let Some(channel) = &mut channel
+                {
+                    channel.read(0, decoder.holds()).await?;
                 }
-                Some(TerminalEvent::Mouse(mouse_event)) => {
-                    let Some(event) = mouse_from_event(&mouse_event) else { continue };
-                    let steps = controls.mouse(&mut display, event, Instant::now());
-                    if let Some(outcome) = perform(connection, steps).await? {
-                        return Ok(outcome);
-                    }
+            }
+            chunk = chunks.recv(), if controls.is_attached() => {
+                let Some(chunk) = chunk else { return Ok(Outcome::LostServer) };
+                inputs.extend(decoder.push(&chunk));
+                unread += chunk.len() as u64;
+                held = decoder
+                    .holds()
+                    .then(|| tokio::time::Instant::now() + ESCAPE_TIME);
+                if inputs.is_empty()
+                    && let Some(channel) = &mut channel
+                {
+                    channel.read(std::mem::take(&mut unread), decoder.holds()).await?;
                 }
-                Some(TerminalEvent::Paste(text)) => {
-                    let steps = controls.paste(&mut display, text);
-                    if let Some(outcome) = perform(connection, steps).await? {
-                        return Ok(outcome);
-                    }
+            }
+            _ = window_changes.recv(), if controls.is_attached() => {
+                let (cols, rows) = crossterm::terminal::size()
+                    .context("cannot read the terminal size")?;
+                terminal.autoresize()?;
+                let steps = controls.resize(&mut display, Size::new(cols, rows));
+                if let Some(outcome) = perform(connection, steps).await? {
+                    return Ok(outcome);
                 }
-                Some(TerminalEvent::FocusGained) => {
-                    if let Some(channel) = &mut channel {
-                        channel.marker(connection.sent).await?;
-                    }
-                }
-                Some(TerminalEvent::Resize(cols, rows)) => {
-                    terminal.autoresize()?;
-                    let steps = controls.resize(&mut display, Size::new(cols, rows));
-                    if let Some(outcome) = perform(connection, steps).await? {
-                        return Ok(outcome);
-                    }
-                }
-                Some(_) => {}
-                None => return Ok(Outcome::LostServer),
-            },
+            }
         }
     }
 }
 
-fn spawn_events() -> mpsc::UnboundedReceiver<TerminalEvent> {
+const ESCAPE_TIME: Duration = Duration::from_millis(25);
+
+async fn deliver(
+    connection: &mut Connection,
+    controls: &mut Controls,
+    display: &mut Display,
+    input: TerminalInput,
+) -> Result<Option<Outcome>> {
+    let steps = match input {
+        TerminalInput::Key(key) => controls.press(display, key),
+        TerminalInput::Mouse(event) => controls.mouse(display, event, Instant::now()),
+        TerminalInput::Paste(text) => controls.paste(display, text),
+        TerminalInput::Focus(_) => return Ok(None),
+    };
+    perform(connection, steps).await
+}
+
+fn spawn_input() -> mpsc::UnboundedReceiver<Vec<u8>> {
     let (sender, receiver) = mpsc::unbounded_channel();
     thread::spawn(move || {
-        while let Ok(event) = event::read() {
-            if sender.send(event).is_err() {
-                break;
+        let mut buffer = [0u8; 8192];
+        let mut input = stdin();
+        loop {
+            match input.read(&mut buffer) {
+                Ok(0) => break,
+                Ok(read) => {
+                    if sender.send(buffer[..read].to_vec()).is_err() {
+                        break;
+                    }
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {}
+                Err(_) => break,
             }
         }
     });

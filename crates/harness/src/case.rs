@@ -24,7 +24,6 @@ use crate::terminal::Attached;
 pub const SETTLE_TIMEOUT: Duration = Duration::from_secs(10);
 const START_TIMEOUT: Duration = Duration::from_secs(10);
 const SETTLE_ROUNDS: u32 = 10;
-const NUDGE: Duration = Duration::from_millis(250);
 const EXIT_GRACE: Duration = Duration::from_secs(3);
 const POLL: Duration = Duration::from_millis(20);
 
@@ -47,7 +46,6 @@ pub struct Case {
     terminal: Option<Attached>,
     client: Option<Endpoint>,
     server: Option<Endpoint>,
-    markers: u64,
     round: u32,
     settled: BTreeSet<u32>,
     notifications: Vec<(Option<String>, String)>,
@@ -196,7 +194,6 @@ impl Case {
             terminal: Some(terminal),
             client: None,
             server: None,
-            markers: 0,
             round: 0,
             settled: BTreeSet::new(),
             notifications: Vec::new(),
@@ -269,32 +266,22 @@ impl Case {
         self.terminal().screen().modes()
     }
 
-    pub fn keys(&self, keys: &[Key]) -> Result<(), String> {
+    pub fn keys(&mut self, keys: &[Key]) -> Result<(), String> {
         for &key in keys {
             let bytes = encode_key(key, self.modes());
             self.write(&bytes)?;
             if bytes.last() == Some(&0x1b) {
-                self.drained()?;
+                self.input_read(Instant::now() + START_TIMEOUT)
+                    .map_err(|_| "the client did not read an escape key in time".to_owned())?;
             }
         }
         Ok(())
     }
 
-    fn drained(&self) -> Result<(), String> {
-        let deadline = Instant::now() + START_TIMEOUT;
-        loop {
-            let pending = self
-                .terminal()
-                .input_pending()
-                .map_err(|error| format!("cannot read the client's input queue: {error}"))?;
-            if pending == 0 {
-                return Ok(());
-            }
-            if Instant::now() >= deadline {
-                return Err("the client did not read an escape key in time".to_owned());
-            }
-            thread::sleep(Duration::from_millis(2));
-        }
+    fn input_read(&mut self, deadline: Instant) -> Result<u64, Waited> {
+        let written = self.terminal().written();
+        let round = self.next_round();
+        self.endpoint(false).settle(round, Some(written), deadline)
     }
 
     pub fn mouse(&self, event: MouseEvent) -> Result<(), String> {
@@ -462,22 +449,8 @@ impl Case {
     pub fn settle(&mut self) -> Result<(), String> {
         let deadline = Instant::now() + SETTLE_TIMEOUT;
         let failed = |step: &str| format!("settle did not finish in 10 seconds: {step}");
-        loop {
-            self.write(b"\x1b[I")?;
-            self.markers += 1;
-            let markers = self.markers;
-            let round = self.next_round();
-            let nudge = (Instant::now() + NUDGE).min(deadline);
-            match self.endpoint(false).settle(round, Some(markers), nudge) {
-                Ok(_) => break,
-                Err(Waited::TimedOut) if Instant::now() < deadline => {}
-                Err(_) => {
-                    return Err(failed(
-                        "the client did not read the input written before it",
-                    ));
-                }
-            }
-        }
+        self.input_read(deadline)
+            .map_err(|_| failed("the client did not read the input written before it"))?;
         for _ in 0..SETTLE_ROUNDS {
             let round = self.next_round();
             let server = self

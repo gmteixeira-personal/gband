@@ -606,11 +606,11 @@ fn test_channel_messages_round_trip() {
     });
     round_trip(ToProcess::Settle {
         round: 1,
-        markers: Some(3),
+        input: Some(3),
     });
     round_trip(ToProcess::Settle {
         round: 2,
-        markers: None,
+        input: None,
     });
     round_trip(ToProcess::Reload { id: 4 });
     round_trip(ToProcess::SetTime { time: Some(0) });
