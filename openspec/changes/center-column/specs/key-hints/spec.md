@@ -23,6 +23,12 @@ A binding to a function SHALL be labelled by its `desc`, and SHALL be left out w
 | `close_window` | `close` |
 | `consume_or_expel_left` | `stack left` |
 | `consume_or_expel_right` | `stack right` |
+| `move_column_left` | `move left` |
+| `move_column_right` | `move right` |
+| `move_window_down` | `move down` |
+| `move_window_up` | `move up` |
+| `toggle_window_floating` | `float` |
+| `switch_focus_floating_tiled` | `layer` |
 | `cycle_column_width` | `width` |
 | `toggle_full_width` | `full` |
 | `grow_column_width` | `wider` |
@@ -65,3 +71,6 @@ A binding to a function SHALL be labelled by its `desc`, and SHALL be left out w
 - **WHEN** `user/init.lua` binds `prefix x` to a Lua function with no description
 - **THEN** the prefix table's hints hold no hint for `x`
 
+#### Scenario: Floating keys
+- **WHEN** the default bindings are in use, the segment is wide enough for every hint, and the user presses Ctrl+Space
+- **THEN** the hints include `v float`, `V layer`, `C-h move left` and `C-left move left`
