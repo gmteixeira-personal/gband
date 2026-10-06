@@ -240,7 +240,12 @@ def rename_main():
 def check():
     for path in sorted(MAIN.glob("*/spec.md")):
         capability = path.parent.name
+        removed = False
         for number, line in enumerate(path.read_text().splitlines(), 1):
+            if line.startswith("### Requirement:"):
+                removed = line.startswith("### Requirement: Removed pane names")
+            if removed or not re.search(r"pane", line, re.IGNORECASE):
+                continue
             if rename(line, capability) != line:
                 print(f"{path.relative_to(ROOT)}:{number}: {line.strip()[:100]}")
 
