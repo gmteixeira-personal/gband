@@ -1,4 +1,5 @@
 use anyhow::{Context, Result, bail};
+use gband_core::geometry::Size;
 use gband_protocol::{
     ClientMessage, ExecutableId, Hello, HelloReply, MessageReader, MessageWriter, PROTOCOL_VERSION,
     ServerMessage,
@@ -35,13 +36,21 @@ enum Handshake {
     Replace(String),
 }
 
-pub async fn connect(config: &ClientConfig, transport: &impl Transport) -> Result<Connection> {
+pub(crate) fn terminal_size() -> Size {
     let (cols, rows) = crossterm::terminal::size().unwrap_or((80, 24));
+    Size::new(cols, rows)
+}
+
+pub async fn connect(
+    config: &ClientConfig,
+    transport: &impl Transport,
+    size: Size,
+) -> Result<Connection> {
     let mut replaced = false;
     loop {
-        let link = transport.open().await?;
+        let link = transport.open(size).await?;
         let may_replace = !replaced && config.replace_mismatched && transport.may_replace_server();
-        match handshake(link, config, cols, rows, may_replace).await? {
+        match handshake(link, config, size, may_replace).await? {
             Handshake::Ready(connection) => return Ok(connection),
             Handshake::Replace(reason) => {
                 tracing::info!("replacing the server: {reason}");
@@ -55,8 +64,7 @@ pub async fn connect(config: &ClientConfig, transport: &impl Transport) -> Resul
 async fn handshake(
     link: Link,
     config: &ClientConfig,
-    cols: u16,
-    rows: u16,
+    size: Size,
     may_replace: bool,
 ) -> Result<Handshake> {
     let mut reader = MessageReader::new(link.reader);
@@ -65,8 +73,8 @@ async fn handshake(
         &mut writer,
         &Hello {
             version: PROTOCOL_VERSION,
-            cols,
-            rows,
+            cols: size.cols,
+            rows: size.rows,
         },
     )
     .await?;

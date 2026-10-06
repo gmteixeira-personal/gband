@@ -58,9 +58,9 @@ fn height_beside_the_sidebar() {
     let tiles = client.tiles();
     assert_eq!(tiles.len(), 1);
     assert_eq!((tiles[0].top, tiles[0].bottom), (0, 23));
-    assert_eq!((tiles[0].left, tiles[0].right), (1, 40));
+    assert_eq!((tiles[0].left, tiles[0].right), (1, 39));
     tput(&mut client, "lines", "22");
-    tput(&mut client, "cols", "38");
+    tput(&mut client, "cols", "37");
 }
 
 #[test]

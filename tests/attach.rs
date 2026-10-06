@@ -224,9 +224,14 @@ fn named_server_starts_on_demand() {
     assert!(!env.socket().exists());
 }
 
+fn without_bars(env: &TestEnv) {
+    env.write_config(&gband_lua::DEFAULTS.replace("gband.plugin(\"gband.sidebar\")", ""));
+}
+
 #[test]
 fn terminal_resize_reaches_the_program() {
     let env = TestEnv::new("resize");
+    without_bars(&env);
     let mut client = Attached::start(&env, 80, 24);
     client.wait_for_prompt();
     client.shell_pid(&env);
@@ -237,15 +242,85 @@ fn terminal_resize_reaches_the_program() {
 }
 
 #[test]
+fn terminal_resize_beside_the_sidebar() {
+    let env = TestEnv::new("resize-sidebar");
+    let mut client = Attached::start(&env, 80, 24);
+    client.wait_for_prompt();
+    client.shell_pid(&env);
+    client.resize(71, 24);
+    thread::sleep(Duration::from_millis(300));
+    client.run("clear; tput cols");
+    client.wait_for_line("33");
+}
+
+#[test]
+fn started_server_takes_the_first_report() {
+    let mut env = TestEnv::new("first-report-start");
+    env.set_var("GBAND_LOG", Some("debug".as_ref()));
+    let mut client = Attached::start(&env, 80, 24);
+    client.wait_for_prompt();
+    client.shell_pid(&env);
+    client.run("clear; tput cols");
+    client.wait_for_line("37");
+    thread::sleep(Duration::from_millis(300));
+    let log = env.log_text("server");
+    assert!(log.contains("client attached session=default"), "{log}");
+    assert!(!log.contains("PTY resized"), "{log}");
+}
+
+#[test]
+fn first_report_beside_the_sidebar() {
+    let mut env = TestEnv::new("first-report");
+    env.set_var("GBAND_LOG", Some("debug".as_ref()));
+    let mut server = env.start_server("/bin/sh");
+    let mut client = Attached::start_with(
+        &env,
+        &env.executable,
+        &["attach", "-s", "fresh"],
+        80,
+        24,
+        |_| {},
+    );
+    client.wait_for_prompt();
+    client.shell_pid(&env);
+    client.run("clear; tput cols");
+    client.wait_for_line("37");
+    thread::sleep(Duration::from_millis(300));
+    let log = env.log_text("server");
+    assert!(log.contains("client attached session=fresh"), "{log}");
+    assert!(!log.contains("PTY resized"), "{log}");
+    let killed = env.command(GBAND, &["kill-server"]).status().unwrap();
+    assert!(killed.success());
+    wait_process_exit(&mut server);
+}
+
+#[test]
+fn full_width_beside_the_sidebar() {
+    let env = TestEnv::new("full-width-sidebar");
+    let mut client = Attached::start(&env, 80, 24);
+    client.wait_for_prompt();
+    client.shell_pid(&env);
+    client.send(b"\x00f\r");
+    client.wait_for("a tile 79 columns wide", |screen| {
+        let tiles = tiles(screen);
+        tiles.len() == 1 && tiles[0].left == 1 && tiles[0].right == 79
+    });
+    thread::sleep(Duration::from_millis(300));
+    client.run("clear; tput cols");
+    client.wait_for_line("77");
+}
+
+#[test]
 fn leader_equals_grows_the_column() {
     let env = TestEnv::new("grow");
+    without_bars(&env);
     let mut client = Attached::start(&env, 80, 24);
     client.wait_for_prompt();
     client.shell_pid(&env);
     client.send(b"\x00=\r");
     client.wait_for("a tile 48 columns wide", |screen| {
         let tiles = tiles(screen);
-        tiles.len() == 1 && tiles[0].left == 1 && tiles[0].right == 48
+        tiles.len() == 1 && tiles[0].left == 0 && tiles[0].right == 47
     });
     thread::sleep(Duration::from_millis(300));
     client.run("clear; tput cols");
@@ -255,7 +330,7 @@ fn leader_equals_grows_the_column() {
 #[test]
 fn leader_c_centers_the_column() {
     let env = TestEnv::new("center");
-    env.write_config(&gband_lua::DEFAULTS.replace("gband.plugin(\"gband.sidebar\")", ""));
+    without_bars(&env);
     let mut client = Attached::start(&env, 80, 24);
     client.wait_for_prompt();
     client.shell_pid(&env);
@@ -363,14 +438,12 @@ fn window_number(lines: &[String]) -> Option<u32> {
 
 fn second_focused(screen: &Grid) -> bool {
     let tiles = tiles(screen);
-    tiles.len() == 1
-        && tiles[0].focused
-        && tiles[0].left == 40
-        && screen
-            .contents()
-            .lines()
-            .next()
-            .is_some_and(|row| row.chars().nth(39) == Some('┐'))
+    tiles.len() == 2
+        && !tiles[0].focused
+        && tiles[0].left == 1
+        && tiles[1].focused
+        && tiles[1].left == 40
+        && tiles[1].right == 78
 }
 
 fn open_second_window(env: &TestEnv) -> Attached {

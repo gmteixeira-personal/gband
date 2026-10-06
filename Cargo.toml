@@ -47,6 +47,7 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+gband-core.workspace = true
 gband-lua.workspace = true
 gband-protocol.workspace = true
 gband-server.workspace = true
@@ -63,7 +64,6 @@ tracing-appender.workspace = true
 anyhow.workspace = true
 
 [dev-dependencies]
-gband-core.workspace = true
 gband-emulator.workspace = true
 gband-test-support.workspace = true
 portable-pty.workspace = true

@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Screen area follows the latest client
-Each session SHALL have its own screen area. A session's screen area SHALL be the reported size of the client that most recently attached to that session or reported a resize from it, as the client-attach capability defines the reported size: the client's terminal less the columns its bars take. It SHALL be 80 columns by 24 rows before any client has, unless the session was created on attach. A client detaching SHALL NOT change the screen area. A client SHALL NOT change the screen area of a session it is not attached to. Each window's terminal size SHALL be the terminal size the layout capability's tile geometry gives that window for its session's screen area. The server SHALL bring each window's PTY to its terminal size as "Window resizes" defines.
+Each session SHALL have its own screen area. A session's screen area SHALL be the reported size of the client that most recently attached to that session or reported a resize from it, as the client-attach capability defines the reported size: the client's terminal less the columns its bars take. Before any client has, it SHALL be the area the session started at, as "Session on start" and "Attach creates a missing session" define. A client detaching SHALL NOT change the screen area. A client SHALL NOT change the screen area of a session it is not attached to. Each window's terminal size SHALL be the terminal size the layout capability's tile geometry gives that window for its session's screen area. The server SHALL bring each window's PTY to its terminal size as "Window resizes" defines.
 
 #### Scenario: Newer client sets the area
 - **WHEN** a client reporting the size 120×40 is attached and a second client reporting the size 100×30 attaches, and the session holds one shown window in a column of width 1/2
@@ -41,3 +41,17 @@ When a client asks to attach to a session the server does not host, the server S
 - **WHEN** the user runs `sleep 100` in session `work`, detaches, and runs `gband attach -s work` again
 - **THEN** the client shows `sleep 100` still running
 
+### Requirement: Session on start
+On start, the server SHALL create one session, named by the `-s` option the command-line capability defines. That session's working directory SHALL be the server's working directory, and its screen area SHALL start as the size `gband server`'s `--size` option gives, as the command-line capability defines, or 80 columns by 24 rows without it.
+
+#### Scenario: Default session
+- **WHEN** the user runs `gband server` without `-s` and a client lists the sessions
+- **THEN** the list holds exactly one session, named `default`
+
+#### Scenario: Named session
+- **WHEN** the user runs `gband server -s work` and a client lists the sessions
+- **THEN** the list holds exactly one session, named `work`
+
+#### Scenario: Session started at a size
+- **WHEN** the user runs `gband server --size 79x24` and no client has attached
+- **THEN** the session's first window, in a column of width 1/2, has a PTY of 37 columns by 22 rows

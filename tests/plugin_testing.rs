@@ -556,7 +556,7 @@ t.case("resize", function(g)
   g.start({ size = "60x12" })
   g.resize("50x10")
   g.settle()
-  t.eq(g.client("return gband.layout().cols"), 50)
+  t.eq(g.client("return gband.layout().cols"), 49)
   t.eq(g.screen().cols, 50)
 end)
 

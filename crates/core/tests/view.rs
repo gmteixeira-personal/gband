@@ -1496,6 +1496,37 @@ fn on_overflow_scrolls_just_enough_across_the_seam() {
 }
 
 #[test]
+fn strip_one_cell_short_of_the_terminal_loops() {
+    let (layout, windows) = row_of_columns(3);
+    let narrow = Scene {
+        layout: &layout,
+        area: Size::new(79, 24),
+        viewport: Size::new(79, 24),
+    };
+    let mut view = View::with_policy(narrow, CenterFocusedColumn::Never);
+    for _ in 0..2 {
+        view.apply(ViewAction::FocusRight, narrow);
+    }
+    assert_eq!((view.focused(), view.camera()), (Some(windows[2]), 38));
+    view.apply(ViewAction::FocusRight, narrow);
+    assert_eq!((view.focused(), view.camera()), (Some(windows[0]), 77));
+    let strip = view.strip(narrow).expect("the strip loops");
+    let shown = view.shown(narrow);
+    let drawn: Vec<(WindowId, i64)> = tiles(&layout.bands()[0], narrow.area)
+        .into_iter()
+        .filter(|tile| shown.contains(&tile.window))
+        .map(|tile| {
+            let left = i64::from(tile.x) - view.camera();
+            (tile.window, drawn_copy(left, strip, 79))
+        })
+        .collect();
+    assert_eq!(
+        drawn,
+        [(windows[0], 40), (windows[1], -38), (windows[2], 1)]
+    );
+}
+
+#[test]
 fn short_strip_does_not_loop() {
     let (layout, windows) = row_of_columns(2);
     let mut view = view_with(&layout, CenterFocusedColumn::Always);

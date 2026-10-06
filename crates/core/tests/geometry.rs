@@ -376,6 +376,8 @@ fn spans_of(widths: &[u16]) -> Vec<Span> {
 #[test]
 fn strip_loops_when_it_outlasts_the_terminal_by_its_widest_column() {
     assert_eq!(loop_width(&spans_of(&[40, 40, 40]), 80), Some(120));
+    assert_eq!(loop_width(&spans_of(&[39, 39, 39]), 79), Some(117));
+    assert_eq!(loop_width(&spans_of(&[39, 39, 39]), 80), None);
     assert_eq!(loop_width(&spans_of(&[40, 40]), 80), None);
     assert_eq!(loop_width(&spans_of(&[40, 30, 50]), 80), None);
     assert_eq!(loop_width(&[], 80), None);

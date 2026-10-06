@@ -15,7 +15,8 @@ Bars SHALL narrow the client's reported size to the size of the ribbon area they
 
 #### Scenario: Camera follows the narrower ribbon
 - **WHEN** the client's terminal is 80×24, the client sets the screen area, the client has no bar, the viewed band holds two columns of width 1/2 with the second focused, and a binding function adds a left bar of size 20
-- **THEN** each tile is 30 columns wide, and the second column is still fully shown, on screen columns 50 to 79
+- **THEN** each tile is 30 columns wide, the camera stays at strip position 20, and the second column is still fully shown, on screen columns 30 to 59
+- **AND** screen columns 60 to 79 are blank
 
 #### Scenario: Full width beside a bar
 - **WHEN** the client's terminal is 80×24, the client sets the screen area, its only bar is a left bar of size 20, and the only window sits in a column with full width on

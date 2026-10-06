@@ -9,7 +9,7 @@ use gband_core::input::{Modifiers, MouseButton, MouseEvent, MouseKind};
 use gband_core::layout::{Layout, LayoutOptions, WindowId};
 use gband_lua::keys::parse_key;
 use gband_lua::{Bar, Color, Config, ConfigError, DEFAULTS, LoadOptions, Locations, Style};
-use gband_protocol::ServerMessage;
+use gband_protocol::{ClientMessage, ServerMessage};
 use insta::assert_snapshot;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
@@ -87,7 +87,8 @@ struct Client {
 impl Client {
     fn new(config: Config, terminal: Size) -> Self {
         let mut display = Display::new(terminal, Animations::Off);
-        let controls = Controls::new(config, &mut display);
+        let mut controls = Controls::new(config, &mut display);
+        controls.place_bars(&mut display);
         Self {
             display,
             controls,
@@ -249,7 +250,14 @@ fn line(row: usize, text: &str) -> (usize, String) {
 #[test]
 fn rows_of_a_new_session() {
     let (_scratch, mut client) = defaults("new-session", "", Size::new(80, 24));
-    client.attach(1, 0);
+    assert_eq!(client.display.reported_size(), Size::new(79, 24));
+    let steps = client.attach(1, 0);
+    assert!(
+        !steps
+            .iter()
+            .any(|step| matches!(step, Step::Send(ClientMessage::Resize { .. }))),
+        "{steps:?}"
+    );
     assert_eq!(client.sidebar_area(), Some(Rect::new(0, 0, 1, 24)));
     assert_eq!(client.display.ribbon_area(), Rect::new(1, 0, 79, 24));
     assert_eq!(client.rows(), [line(0, "I"), line(2, "1"), line(3, "2")]);
@@ -438,13 +446,25 @@ fn theme_the_viewed_band() {
 
 #[test]
 fn turning_the_sidebar_off() {
-    let scratch = Scratch::new("off");
-    let config = scratch.load(&without_sidebar()).unwrap();
-    let mut client = Client::new(config, Size::new(80, 24));
+    let (scratch, mut client) = defaults("off", "", Size::new(80, 24));
     client.attach(1, 0);
-    assert_eq!(client.display.reported_size(), Size::new(80, 24));
+    let steps = client
+        .controls
+        .reload(&mut client.display, scratch.load(&without_sidebar()));
+    let resizes: Vec<&Step> = steps
+        .iter()
+        .filter(|step| matches!(step, Step::Send(ClientMessage::Resize { .. })))
+        .collect();
+    assert_eq!(
+        resizes,
+        [&Step::Send(ClientMessage::Resize { cols: 80, rows: 24 })]
+    );
+    client.send_layout();
     assert_eq!(client.display.ribbon_area(), Rect::new(0, 0, 80, 24));
     assert_eq!(client.sidebar_area(), None);
+    let screen = client.screen(Size::new(80, 24));
+    let top = format!("\"┌{}┐{}\"", "─".repeat(38), " ".repeat(40));
+    assert!(screen.contains(&top), "{screen}");
 }
 
 #[test]
@@ -477,7 +497,7 @@ fn plugin_error_at_start() {
         .eval()
         .unwrap();
     assert_eq!(listed, std::slice::from_ref(&expected));
-    assert_eq!(client.display.reported_size(), Size::new(200, 24));
+    assert_eq!(client.display.reported_size(), Size::new(199, 24));
     let screen = client.screen(Size::new(200, 24));
     assert!(!screen.contains("boom"), "{screen}");
 }
