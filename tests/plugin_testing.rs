@@ -292,7 +292,7 @@ fn case_environment() {
         "lua/window/init.lua",
         "local M = { name = 'window' }\n\
          function M.setup()\n\
-           gband.ui.statusline.add({ align = 'right', render = function() return 'WINDOW-SEGMENT' end })\n\
+           gband.ui.statusline.add({ align = 'bottom', render = function() return 'WINDOW-SEGMENT' end })\n\
          end\n\
          return M\n",
     );
@@ -304,17 +304,18 @@ t.case("configuration of the case", function(g)
   g.start({
     size = "40x6",
     config = [[
-      gband.opt.statusline_position = "top"
+      gband.plugin("gband.statusline", { side = "right" })
       gband.plugin("gband.statusline.band")
     ]],
   })
-  t.match(g.screen().row(0), "^band 1")
+  t.match(g.screen().row(0), "┐band 1 *$")
   t.eq(g.screen().cols, 40)
   t.eq(g.screen().rows, 6)
 end)
 
 t.case("plugin under test is installed", function(g)
-  g.start({ config = [[gband.plugin("window")]] })
+  g.start({ config = [[gband.plugin("gband.statusline")
+gband.plugin("window")]] })
   t.match(g.screen().text(), "WINDOW%-SEGMENT")
 end)
 
@@ -334,7 +335,7 @@ t.case("call order", function(g)
     g.keys("enter")
   end)
   t.eq(ok, false)
-  t.match(err, "environment_spec.lua:34: call g.start before g.keys")
+  t.match(err, "environment_spec.lua:35: call g.start before g.keys")
   g.start()
   ok, err = pcall(g.start)
   t.match(err, "already called")
@@ -343,7 +344,7 @@ end)
     );
     project.file(
         "../outer-config/gband/user/init.lua",
-        "gband.opt.statusline_position = 'off'",
+        "error('the outer configuration was read')",
     );
     let output = project.run(&[]);
     assert_passed(&output);
@@ -468,7 +469,7 @@ t.case("open a window by key", function(g)
   g.keys("ctrl+space n")
   g.settle()
   t.eq(g.client("return #gband.layout().bands[1].columns"), 2)
-  local _, corners = g.screen().row(0):gsub("┌", "")
+  local _, corners = g.screen().row(0):gsub("┐", "")
   t.eq(corners, 2)
 end)
 
@@ -531,8 +532,8 @@ fn observing_a_case() {
 
 t.case("status line colour", function(g)
   g.start()
-  t.eq(g.screen().cell(23, 0).fg, "#c0caf5")
-  t.eq(g.screen().cell(23, 0).char, "b")
+  t.eq(g.screen().cell(0, 0).fg, "#c0caf5")
+  t.eq(g.screen().cell(0, 0).char, "b")
   t.eq(g.screen().cursor.visible, true)
 end)
 
@@ -612,7 +613,7 @@ fn screenshot_references() {
         "tests/window_spec.lua",
         "local t = require('gband.test')\n\
          t.case('Shows the focused window', function(g)\n\
-           g.start({ size = '30x5', config = [[gband.plugin('gband.statusline.band')]] })\n\
+           g.start({ size = '30x5', config = [[gband.plugin('gband.statusline') gband.plugin('gband.statusline.band')]] })\n\
            g.expect_screenshot('two windows')\n\
          end)\n",
     );
@@ -634,7 +635,7 @@ fn screenshot_references() {
     assert!(!pending.exists());
     let shot = fs::read_to_string(&reference).unwrap();
     assert!(shot.starts_with("size 30x5 cursor"), "{shot}");
-    assert!(shot.contains("\n4|band 1"), "{shot}");
+    assert!(shot.contains("\n0|band 1"), "{shot}");
 
     assert_passed(&project.run(&[]));
 }
@@ -647,6 +648,7 @@ fn failure_shows_the_diff_and_the_logs() {
         "local t = require('gband.test')\n\
          t.case('drawn', function(g)\n\
            g.start({ size = '30x5', config = [[\n\
+             gband.plugin('gband.statusline')\n\
              gband.plugin('gband.statusline.band')\n\
              print('drawn')\n\
            ]] })\n\
@@ -656,14 +658,14 @@ fn failure_shows_the_diff_and_the_logs() {
     assert_passed(&project.run(&["--update"]));
     let reference = project.dir.join("tests/screenshots/diff_spec/drawn.txt");
     let shot = fs::read_to_string(&reference).unwrap();
-    fs::write(&reference, shot.replace("4|band 1", "4|band 9")).unwrap();
+    fs::write(&reference, shot.replace("0|band 1", "0|band 9")).unwrap();
     let output = project.run(&[]);
     assert_eq!(output.status.code(), Some(1), "{}", report(&output));
     let text = stdout(&output);
     line_with(&text, "the screenshot differs from");
-    line_with(&text, "-4|band 9");
-    line_with(&text, "+4|band 1");
-    assert!(!text.contains("-0|"), "{text}");
+    line_with(&text, "-0|band 9");
+    line_with(&text, "+0|band 1");
+    assert!(!text.contains("-1|"), "{text}");
     line_with(&text, "client log:");
     line_with(&text, "drawn");
 }
@@ -770,7 +772,8 @@ fn reloading() {
 t.case("reload after editing a plugin", function(g)
   g.start({
     files = { ["user/lua/segment.lua"] = "return { setup = function() gband.ui.statusline.add({ id = 'seg', render = function() return 'first' end }) end }" },
-    config = [[gband.plugin("segment")]],
+    config = [[gband.plugin("gband.statusline")
+gband.plugin("segment")]],
   })
   t.match(g.screen().text(), "first")
   g.write("user/lua/segment.lua", "return { setup = function() gband.ui.statusline.add({ id = 'seg', render = function() return 'second' end }) end }")
@@ -791,7 +794,8 @@ t.case("plugin file changed", function(g)
 end)
 
 t.case("broken file", function(g)
-  g.start({ config = [[gband.plugin("gband.statusline.band")]] })
+  g.start({ config = [[gband.plugin("gband.statusline")
+gband.plugin("gband.statusline.band")]] })
   g.write("user/init.lua", "error('bad')")
   t.match(g.reload(), "bad")
   g.settle()
@@ -799,7 +803,8 @@ t.case("broken file", function(g)
 end)
 
 t.case("clock segment frozen and moved", function(g)
-  g.start({ config = [[gband.plugin("gband.statusline.clock")]] })
+  g.start({ config = [[gband.plugin("gband.statusline")
+gband.plugin("gband.statusline.clock")]] })
   t.match(g.screen().text(), "12:00")
   g.set_time("2025-01-01 12:05:00")
   g.wait_text("12:05", { timeout = 3 })
@@ -821,7 +826,7 @@ t.case("key effect is drawn", function(g)
   g.start({ size = "60x12" })
   g.keys("ctrl+space n")
   g.settle()
-  local _, corners = g.screen().row(0):gsub("┌", "")
+  local _, corners = g.screen().row(0):gsub("┐", "")
   t.eq(corners, 2)
 end)
 
@@ -833,6 +838,7 @@ t.case("server handler effect is drawn", function(g)
       end)
     ]],
     config = [[
+      gband.plugin("gband.statusline")
       gband.keymap.set("prefix", "enter", gband.action.open_window)
       gband.ui.statusline.add({
         id = "agent",

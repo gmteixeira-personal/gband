@@ -1,105 +1,128 @@
-size 80x24 cursor 17:68 hidden
- 0|┌──────────────────────────────────────┐
- 1|│$                                     │
- 2|│                                      │
- 3|│                                      │
- 4|│          ┌navigation keys─────────────────────────────────────────┐
- 5|│          │C-left   move the column or floating window to the left │
- 6|│          │C-right  move the column or floating window to the right│
- 7|│          │C-down   move the window down                           │
- 8|│          │C-up     move the window up                             │
- 9|│          │?        list the keys                                  │
-10|│          │D        detach                                         │
-11|│          │esc      interactive mode                               │
-12|│          │enter    interactive mode                               │
-13|│          │left     focus the column to the left                   │
-14|│          │right    focus the column to the right                  │
-15|│          │down     focus the window below                         │
-16|│          │up       focus the window above                         │
-17|│          │C-space  send the prefix key                            │
-18|│          └────────────────────────────────────────────────────────┘
-19|│                                      │
-20|│                                      │
-21|│                                      │
-22|└──────────────────────────────────────┘
-23|band 1 │ C-space navigation                                                  1/1
+size 80x24 cursor 17:78 hidden
+ 0|band 1              ┌──────────────────────────────────────┐
+ 1|C-space navigation  │$                                     │
+ 2|                    │                                      │
+ 3|                    │                                      │
+ 4|                    │┌navigation keys─────────────────────────────────────────┐
+ 5|                    ││C-left   move the column or floating window to the left │
+ 6|                    ││C-right  move the column or floating window to the right│
+ 7|                    ││C-down   move the window down                           │
+ 8|                    ││C-up     move the window up                             │
+ 9|                    ││?        list the keys                                  │
+10|                    ││D        detach                                         │
+11|                    ││esc      interactive mode                               │
+12|                    ││enter    interactive mode                               │
+13|                    ││left     focus the column to the left                   │
+14|                    ││right    focus the column to the right                  │
+15|                    ││down     focus the window below                         │
+16|                    ││up       focus the window above                         │
+17|                    ││C-space  send the prefix key                            │
+18|                    │└────────────────────────────────────────────────────────┘
+19|                    │                                      │
+20|                    │                                      │
+21|                    │                                      │
+22|                    │                                      │
+23|1/1                 └──────────────────────────────────────┘
 --
-0:0-39 bold
-1:0 bold
-1:39 bold
-2:0 bold
-2:39 bold
-3:0 bold
-3:39 bold
-4:0 bold
-4:11 fg=8
-4:12-26 fg=8 bold
-4:27-68 fg=8
-5:0 bold
-5:11 fg=8
-5:12-20 fg=#7aa2f7 bold
-5:68 fg=8
-6:0 bold
-6:11 fg=8
-6:12-20 fg=#7aa2f7 bold
-6:68 fg=8
-7:0 bold
-7:11 fg=8
-7:12-20 fg=#7aa2f7 bold
-7:68 fg=8
-8:0 bold
-8:11 fg=8
-8:12-20 fg=#7aa2f7 bold
-8:68 fg=8
-9:0 bold
-9:11 fg=8
-9:12-20 fg=#7aa2f7 bold
-9:21-33 fg=#9aa5ce
-9:68 fg=8
-10:0 bold
-10:11 fg=8
-10:12-20 fg=#7aa2f7 bold
-10:68 fg=8
-11:0 bold
-11:11 fg=8
-11:12-20 fg=#7aa2f7 bold
-11:68 fg=8
-12:0 bold
-12:11 fg=8
-12:12-20 fg=#7aa2f7 bold
-12:68 fg=8
-13:0 bold
-13:11 fg=8
-13:12-20 fg=#7aa2f7 bold
-13:68 fg=8
-14:0 bold
-14:11 fg=8
-14:12-20 fg=#7aa2f7 bold
-14:68 fg=8
-15:0 bold
-15:11 fg=8
-15:12-20 fg=#7aa2f7 bold
-15:68 fg=8
-16:0 bold
-16:11 fg=8
-16:12-20 fg=#7aa2f7 bold
-16:68 fg=8
-17:0 bold
-17:11 fg=8
-17:12-20 fg=#7aa2f7 bold inverse
-17:21-67 inverse
-17:68 fg=8
-18:0 bold
-18:11-68 fg=8
-19:0 bold
-19:39 bold
-20:0 bold
-20:39 bold
-21:0 bold
-21:39 bold
-22:0-39 bold
-23:0-5 fg=#c0caf5 bg=#24283b
-23:6-8 fg=#565f89 bg=#24283b
-23:9-15 fg=#7aa2f7 bg=#24283b bold
-23:16-76 fg=#c0caf5 bg=#24283b
-23:77-79 fg=#9aa5ce bg=#24283b
+0:0-19 fg=#c0caf5 bg=#24283b
+0:20-59 bold
+1:0-6 fg=#7aa2f7 bg=#24283b bold
+1:7-19 fg=#c0caf5 bg=#24283b
+1:20 bold
+1:59 bold
+2:0-19 fg=#c0caf5 bg=#24283b
+2:20 bold
+2:59 bold
+3:0-19 fg=#c0caf5 bg=#24283b
+3:20 bold
+3:59 bold
+4:0-19 fg=#c0caf5 bg=#24283b
+4:20 bold
+4:21 fg=8
+4:22-36 fg=8 bold
+4:37-78 fg=8
+5:0-19 fg=#c0caf5 bg=#24283b
+5:20 bold
+5:21 fg=8
+5:22-30 fg=#7aa2f7 bold
+5:78 fg=8
+6:0-19 fg=#c0caf5 bg=#24283b
+6:20 bold
+6:21 fg=8
+6:22-30 fg=#7aa2f7 bold
+6:78 fg=8
+7:0-19 fg=#c0caf5 bg=#24283b
+7:20 bold
+7:21 fg=8
+7:22-30 fg=#7aa2f7 bold
+7:78 fg=8
+8:0-19 fg=#c0caf5 bg=#24283b
+8:20 bold
+8:21 fg=8
+8:22-30 fg=#7aa2f7 bold
+8:78 fg=8
+9:0-19 fg=#c0caf5 bg=#24283b
+9:20 bold
+9:21 fg=8
+9:22-30 fg=#7aa2f7 bold
+9:31-43 fg=#9aa5ce
+9:78 fg=8
+10:0-19 fg=#c0caf5 bg=#24283b
+10:20 bold
+10:21 fg=8
+10:22-30 fg=#7aa2f7 bold
+10:78 fg=8
+11:0-19 fg=#c0caf5 bg=#24283b
+11:20 bold
+11:21 fg=8
+11:22-30 fg=#7aa2f7 bold
+11:78 fg=8
+12:0-19 fg=#c0caf5 bg=#24283b
+12:20 bold
+12:21 fg=8
+12:22-30 fg=#7aa2f7 bold
+12:78 fg=8
+13:0-19 fg=#c0caf5 bg=#24283b
+13:20 bold
+13:21 fg=8
+13:22-30 fg=#7aa2f7 bold
+13:78 fg=8
+14:0-19 fg=#c0caf5 bg=#24283b
+14:20 bold
+14:21 fg=8
+14:22-30 fg=#7aa2f7 bold
+14:78 fg=8
+15:0-19 fg=#c0caf5 bg=#24283b
+15:20 bold
+15:21 fg=8
+15:22-30 fg=#7aa2f7 bold
+15:78 fg=8
+16:0-19 fg=#c0caf5 bg=#24283b
+16:20 bold
+16:21 fg=8
+16:22-30 fg=#7aa2f7 bold
+16:78 fg=8
+17:0-19 fg=#c0caf5 bg=#24283b
+17:20 bold
+17:21 fg=8
+17:22-30 fg=#7aa2f7 bold inverse
+17:31-77 inverse
+17:78 fg=8
+18:0-19 fg=#c0caf5 bg=#24283b
+18:20 bold
+18:21-78 fg=8
+19:0-19 fg=#c0caf5 bg=#24283b
+19:20 bold
+19:59 bold
+20:0-19 fg=#c0caf5 bg=#24283b
+20:20 bold
+20:59 bold
+21:0-19 fg=#c0caf5 bg=#24283b
+21:20 bold
+21:59 bold
+22:0-19 fg=#c0caf5 bg=#24283b
+22:20 bold
+22:59 bold
+23:0-2 fg=#9aa5ce bg=#24283b
+23:3-19 fg=#c0caf5 bg=#24283b
+23:20-59 bold

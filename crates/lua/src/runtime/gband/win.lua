@@ -292,6 +292,21 @@ local function check_boolean(opts, field, default)
   return value
 end
 
+local function check_border(opts, default)
+  local value = opts.border
+  if value == nil or type(value) == "boolean" then
+    return check_boolean(opts, "border", default)
+  end
+  if type(value) ~= "table" then
+    error("`border` must be a boolean or a border table", 3)
+  end
+  local border, reason = host.border(value)
+  if not border then
+    error("`border`: " .. reason, 3)
+  end
+  return border
+end
+
 local function check_function(opts, field)
   local value = opts[field]
   if value ~= nil and type(value) ~= "function" then
@@ -404,7 +419,7 @@ function api.open(opts)
     win.col = check_position(opts, "col")
     win.width = check_size(opts, "width")
     win.height = check_size(opts, "height")
-    win.border = check_boolean(opts, "border", true)
+    win.border = check_border(opts, true)
     win.title = check_title(opts)
   else
     local ok, band, after = host.open_target(opts.band, opts.after)
@@ -513,7 +528,7 @@ function api.set_config(id, config)
     col = config.col ~= nil and check_position(config, "col") or nil,
     width = check_size(config, "width"),
     height = check_size(config, "height"),
-    border = check_boolean(config, "border", nil),
+    border = check_border(config, nil),
     title = check_title(config),
   }
   for field, value in pairs(changes) do

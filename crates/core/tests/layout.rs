@@ -737,7 +737,11 @@ type Resize = gband_core::layout::Step;
 
 fn step_width(layout: &mut Layout, window: WindowId, step: Resize) -> Vec<LayoutEvent> {
     layout.apply(
-        SessionAction::StepWidth { window, step },
+        SessionAction::StepWidth {
+            window,
+            step,
+            by: Proportion::TENTH,
+        },
         AREA,
         &LayoutOptions::default(),
     )
@@ -789,6 +793,33 @@ fn width_grows_from_a_preset_of_thirds() {
 }
 
 #[test]
+fn width_grows_by_another_step() {
+    let (mut layout, first) = started();
+    layout.apply(
+        SessionAction::StepWidth {
+            window: first,
+            step: Grow,
+            by: Proportion::new(1, 4),
+        },
+        AREA,
+        &LayoutOptions::default(),
+    );
+    assert_eq!(width_of(&layout, first), (Proportion::new(3, 4), false));
+}
+
+#[test]
+fn proportion_steps_keep_large_denominators_in_range() {
+    let width = Proportion::new(1, 97).step(Grow, Proportion::new(1, 89));
+    assert_eq!(width, Proportion::new(186, 8633));
+    let mut width = Proportion::new(1, 2);
+    for den in [97, 89, 83, 79, 73, 71, 67] {
+        width = width.step(Grow, Proportion::new(1, den));
+    }
+    assert!(width.den > 0);
+    assert!(width.num < width.den);
+}
+
+#[test]
 fn width_shrinks_to_zero_and_stops() {
     let (mut layout, first) = started();
     assert_eq!(
@@ -819,10 +850,10 @@ fn width_stops_growing_at_the_limit() {
     let mut column = Column::new(WindowId(1), Proportion::ONE_HALF);
     column.width = Proportion::new(Proportion::MAX, 1);
     let before = column.clone();
-    column.step_width(Grow);
+    column.step_width(Grow, Proportion::TENTH);
     assert_eq!(column, before);
     assert_eq!(
-        Proportion::new(99999, 10).step(Grow),
+        Proportion::new(99999, 10).step(Grow, Proportion::TENTH),
         Proportion::new(10000, 1)
     );
 }
@@ -857,10 +888,22 @@ fn width_steps_from_full_width() {
 
 #[test]
 fn proportion_steps_stay_in_lowest_terms() {
-    assert_eq!(Proportion::new(2, 4).step(Grow), Proportion::new(3, 5));
-    assert_eq!(Proportion::new(1, 10).step(Shrink), Proportion::new(0, 1));
-    assert_eq!(Proportion::new(0, 1).step(Shrink), Proportion::new(0, 1));
-    assert_eq!(Proportion::new(9, 10).step(Grow), Proportion::WHOLE);
+    assert_eq!(
+        Proportion::new(2, 4).step(Grow, Proportion::TENTH),
+        Proportion::new(3, 5)
+    );
+    assert_eq!(
+        Proportion::new(1, 10).step(Shrink, Proportion::TENTH),
+        Proportion::new(0, 1)
+    );
+    assert_eq!(
+        Proportion::new(0, 1).step(Shrink, Proportion::TENTH),
+        Proportion::new(0, 1)
+    );
+    assert_eq!(
+        Proportion::new(9, 10).step(Grow, Proportion::TENTH),
+        Proportion::WHOLE
+    );
 }
 
 #[test]
@@ -899,7 +942,11 @@ fn step_height(
     area: Size,
 ) -> Vec<LayoutEvent> {
     layout.apply(
-        SessionAction::StepHeight { window, step },
+        SessionAction::StepHeight {
+            window,
+            step,
+            by: Proportion::TENTH,
+        },
         area,
         &LayoutOptions::default(),
     )
@@ -922,6 +969,25 @@ fn each_height_step_adds_the_same_rows() {
         heights_of(&layout, windows[0]),
         [WindowHeight::Fixed(18), auto(1, 1)]
     );
+}
+
+#[test]
+fn height_step_from_the_request() {
+    let (mut layout, windows) = stacked(2);
+    layout.apply(
+        SessionAction::StepHeight {
+            window: windows[0],
+            step: Grow,
+            by: Proportion::new(1, 4),
+        },
+        AREA,
+        &LayoutOptions::default(),
+    );
+    assert_eq!(
+        heights_of(&layout, windows[0]),
+        [WindowHeight::Fixed(18), auto(1, 1)]
+    );
+    assert_eq!(rows_of(&layout, windows[0], AREA), [18, 6]);
 }
 
 #[test]
@@ -1537,6 +1603,7 @@ fn floating_width_follows_the_column_rules() {
         SessionAction::StepWidth {
             window: windows[1],
             step,
+            by: Proportion::TENTH,
         },
         AREA,
     );
@@ -1552,6 +1619,22 @@ fn floating_width_follows_the_column_rules() {
         (Proportion::new(2, 5), false)
     );
     assert_eq!((floating.col, floating.row), (before.col, before.row));
+}
+
+#[test]
+fn grow_a_floating_width_by_another_step() {
+    let (mut layout, windows) = floated(2);
+    box_at(&mut layout, windows[1], 0, 0, Proportion::ONE_HALF, 12);
+    act(
+        &mut layout,
+        SessionAction::StepWidth {
+            window: windows[1],
+            step: Grow,
+            by: Proportion::new(1, 5),
+        },
+        AREA,
+    );
+    assert_eq!(record(&layout, windows[1]).width, Proportion::new(7, 10));
 }
 
 #[test]

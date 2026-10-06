@@ -123,7 +123,8 @@ cp ~/.config/gband/defaults/init.lua ~/.config/gband/user/init.lua
 
 Without `user/init.lua`, the defaults apply.
 Saving `user/init.lua`, or any other `.lua` file under `user/`, reloads the configuration while gband runs, and deleting `user/init.lua` returns to the defaults.
-An error in the file shows in the status line with its line number, and gband keeps the last configuration that loaded.
+An error in the file shows `error` at the top of the status line, and gband keeps the last configuration that loaded.
+Ctrl+Space then the key you bind to `errors.open` lists the errors with their files and line numbers; see [Errors](#errors).
 
 ```lua
 -- Set options one at a time through gband.opt.
@@ -132,7 +133,7 @@ gband.opt.prefix = "ctrl+b"
 -- Or change several at once. Each call changes only the options it names.
 gband.set {
   center_focused_column = "on-overflow",
-  statusline_position = "top",
+  width_step = 1/20,
 }
 
 -- A root binding acts without the prefix key.
@@ -163,9 +164,12 @@ The client options, set in `user/init.lua`, and their defaults:
 | `prefix` | one key | `"ctrl+space"` |
 | `center_focused_column` | `"never"`, `"always"` or `"on-overflow"` | `"never"` |
 | `loop_bands` | `true` or `false`: whether focus goes round from a band's last column to its first, drawing a long enough band as a loop | `true` |
-| `statusline_position` | `"bottom"`, `"top"` or `"off"` | `"bottom"` |
-| `statusline_height` | the rows the status line takes, from 1 to 8 | `1` |
-| `statusline_separator` | the text between two status line segments | `" │ "` |
+| `tile_border_sides` | the sides of a tiled window's border that are drawn: a list of `"top"`, `"right"`, `"bottom"` and `"left"` | `{ "top", "right", "bottom", "left" }` |
+| `tile_border_chars` | the border's characters: `"plain"`, `"rounded"`, `"double"`, `"thick"`, or a list of eight one-cell strings | `"plain"` |
+| `floating_border_sides` | the drawn sides of a floating window's border | `{ "top", "right", "bottom", "left" }` |
+| `floating_border_chars` | a floating window border's characters | `"plain"` |
+| `width_step` | how much growing or shrinking changes a column's width, as a fraction of the screen | `1/10` |
+| `height_step` | how much growing or shrinking changes a window's height, as a fraction of the screen, at most 1 | `1/10` |
 | `notify_style` | how a plugin's desktop notification reaches your terminal: `"osc9"`, `"osc777"`, `"bell"` or `"none"` | `"osc9"` |
 
 The server options, set in `user/server.lua`, and their defaults:
@@ -242,12 +246,30 @@ The actions in `gband.action`:
 | `toggle_window_floating` | float the focused window over the band, or tile it again |
 | `cycle_column_width` | step the column's width through the presets |
 | `toggle_full_width` | toggle full width of the column |
-| `grow_column_width`, `shrink_column_width` | widen or narrow the column by a tenth of the screen |
+| `grow_column_width`, `shrink_column_width` | widen or narrow the column by `width_step`, a tenth of the screen by default |
 | `grow_window_height`, `shrink_window_height`, `reset_window_height` | change or reset the height of the focused window |
 | `detach` | detach the client |
 | `send_prefix` | send the prefix key to the focused window |
 
 `gband.action.list()` lists every action with its description.
+A target table names the window an action acts on, and the four grow and shrink actions also take a `step`, so one binding can resize by another amount than the options give:
+
+```lua
+gband.bind("prefix W", function()
+  gband.action.grow_column_width({ step = 1/4 })
+end)
+```
+
+### Borders
+
+Each client draws window borders with its own options, so two clients attached to the same session can draw them differently.
+A side that is not drawn still takes its cell, which stays blank, so the border options never change a window's size:
+
+```lua
+gband.opt.tile_border_sides = { "top", "bottom" }
+gband.opt.tile_border_chars = "rounded"
+gband.opt.floating_border_chars = "double"
+```
 
 ### Floating windows
 
@@ -283,31 +305,59 @@ gband.keymap.set("prefix", "?", gband.action["keylist.open"], { desc = "list the
 
 ### Status line
 
-The status line takes the bottom row of the terminal, and the windows get the rows above it.
-By default it shows the viewed band on the left, such as `band 1`, the label of the active mode after the prefix key, such as `navigation`, hints for the keys of that mode, and the focused column on the right, such as `2/3`.
-The hints show `C-space navigation` until the prefix key is pressed, then each key of navigation mode with a short label, such as `h left  l right`, cut with `…` when the line is full.
-The latest configuration or plugin error shows first, in red.
+The status line is a side bar at the left of the terminal, 20 columns wide by default and as tall as the terminal.
+The windows keep the size they would have without it: they are drawn in the columns it leaves, and the view scrolls inside them, so a 1/2 column of an 80-column terminal is still 40 columns wide beside the bar.
+By default it shows the viewed band at the top, such as `band 1`, the label of the active mode below it after the prefix key, such as `navigation`, hints for the keys of that mode, and the focused column at the bottom, such as `2/3`.
+The hints show `C-space navigation` until the prefix key is pressed, then each key of navigation mode with a short label, such as `h left  l right`, wrapped onto as many rows as fit and ended with `…` when some are left out.
+While a configuration or plugin error is reported, the first row shows `error` in red.
 
-`statusline_position = "top"` moves it to the top row, and `"off"` removes it, so the windows get the whole terminal.
-`statusline_height` gives it more rows.
-Both apply on the next reload, and the windows are resized to match.
-
-Each segment is a plugin bundled with gband, set up by the default configuration.
-A `user/init.lua` replaces the defaults, so it sets the segments up itself with the same calls; a copy of `defaults/init.lua` already holds them:
+The status line is a plugin bundled with gband, `gband.statusline`, and each segment is another.
+The default configuration sets them up.
+A `user/init.lua` replaces the defaults, so it sets them up itself with the same calls; a copy of `defaults/init.lua` already holds them:
 
 ```lua
+gband.plugin("gband.statusline")
 gband.plugin("gband.statusline.band")
 gband.plugin("gband.statusline.mode")
 gband.plugin("gband.statusline.hints")
 gband.plugin("gband.statusline.position")
 ```
 
-Without these calls the status line is drawn empty.
-Each takes the options `align`, `priority` and `order`, all but `hints` also take `hl`, and `gband.plugin("gband.statusline.clock")` adds a clock.
+Leaving out `gband.plugin("gband.statusline")` removes the status line, and the windows take the whole terminal.
+Its options place and size it:
+
+```lua
+gband.plugin("gband.statusline", {
+  side = "right",   -- "left" by default
+  min_width = 16,   -- 20 by default
+  max_width = 30,   -- 40 by default
+  order = 0,        -- the order among bars on the same side
+})
+```
+
+The status line widens with its widest segment, between `min_width` and `max_width`, and is not drawn when the terminal is too narrow for it.
+The `statusline_*` options of earlier versions are gone: a file that still sets one gets an error naming the option and loads anyway.
+Turning the status line off becomes leaving the plugin out, and placing it on a row becomes choosing a `side`.
+
+Each segment takes the options `align`, `"top"`, `"center"` or `"bottom"`, `priority` and `order`, all but `hints` also take `hl`, and `gband.plugin("gband.statusline.clock")` adds a clock.
 `hints` also takes `labels`, which renames or hides an action's hint, and `root = false`, which hides it until the prefix key.
-A `user/init.lua` written before the hints segment existed adds the `gband.plugin("gband.statusline.hints")` line to get it.
 `gband.colorscheme(name)` loads a colorscheme, and `gband.hl.set` styles any part of the line.
-[docs/plugins.md](docs/plugins.md) describes the segments, highlight groups, colorschemes and writing your own segment.
+[docs/plugins.md](docs/plugins.md) describes the segments, highlight groups, colorschemes, writing your own segment and adding bars of your own with `gband.bar`.
+
+### Errors
+
+The client keeps every configuration and plugin error since the last load without one, oldest first, and `gband.errors()` returns them.
+The bundled `gband.errors` plugin, set up by the default configuration, registers the action and command `errors.open`, which list them in a floating window; `q` or Escape closes it.
+No key is bound to it by default:
+
+```lua
+gband.keymap.set("prefix", "e", gband.action["errors.open"], { desc = "list the errors" })
+-- or in a tiled window
+gband.bind("prefix E", function() gband.cmd.run("errors.open", { kind = "tiled" }) end)
+```
+
+`gband.plugin("gband.errors", { kind = "tiled" })` makes `errors.open` open a tiled window.
+Without a status line, the latest error shows on the bottom row of the windows instead.
 
 ### Plugins
 

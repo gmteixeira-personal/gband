@@ -22,13 +22,11 @@ end)",
     );
 }
 
-fn bottom_row(screen: &Grid) -> String {
-    screen
-        .contents()
-        .lines()
-        .nth(usize::from(screen.size().rows) - 1)
-        .unwrap_or_default()
-        .to_owned()
+fn focused_left(screen: &Grid) -> Option<u16> {
+    tiles(screen)
+        .into_iter()
+        .find(|tile| tile.focused)
+        .map(|tile| tile.left)
 }
 
 #[test]
@@ -44,20 +42,26 @@ fn agent_status_example() {
     client.wait_for_prompt();
     client.shell_pid(&env);
     client.send(b"\x00n");
-    client.wait_for("two tiles with the second focused", |screen| {
-        let tiles = tiles(screen);
-        tiles.len() == 2 && tiles[1].focused
+    client.wait_for("the second tile focused", |screen| {
+        focused_left(screen) == Some(50)
     });
     client.wait_for_prompt();
     client.send(b"printf 'Do you want to proceed?\\n'\r");
     client.wait_for("the waiting count", |screen| {
-        bottom_row(screen).contains("agents waiting: 1")
+        screen.contents().lines().any(|row| {
+            row.chars()
+                .take(20)
+                .collect::<String>()
+                .contains("agents waiting: 1")
+        })
     });
     client.send(b"\x00h");
-    client.wait_for("the first tile focused", |screen| tiles(screen)[0].focused);
+    client.wait_for("the first tile focused", |screen| {
+        focused_left(screen) == Some(20)
+    });
     client.send(b"a");
     client.wait_for("the waiting tile focused", |screen| {
-        tiles(screen)[1].focused
+        focused_left(screen) == Some(50)
     });
     assert!(!env.log_text("client").contains("requires the plugin"));
     assert!(!env.log_text("server").contains("configuration error"));

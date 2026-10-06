@@ -226,19 +226,31 @@ fn defaults_reproduce_the_built_in_behaviour() {
         ),
         (
             char_key('-'),
-            Action::Session(SessionCommand::StepWidth(Step::Shrink)),
+            Action::Session(SessionCommand::StepWidth {
+                step: Step::Shrink,
+                by: Proportion::TENTH,
+            }),
         ),
         (
             char_key('='),
-            Action::Session(SessionCommand::StepWidth(Step::Grow)),
+            Action::Session(SessionCommand::StepWidth {
+                step: Step::Grow,
+                by: Proportion::TENTH,
+            }),
         ),
         (
             char_key('_'),
-            Action::Session(SessionCommand::StepHeight(Step::Shrink)),
+            Action::Session(SessionCommand::StepHeight {
+                step: Step::Shrink,
+                by: Proportion::TENTH,
+            }),
         ),
         (
             char_key('+'),
-            Action::Session(SessionCommand::StepHeight(Step::Grow)),
+            Action::Session(SessionCommand::StepHeight {
+                step: Step::Grow,
+                by: Proportion::TENTH,
+            }),
         ),
         (char_key('R'), Action::Session(SessionCommand::ResetHeight)),
         (
@@ -330,6 +342,40 @@ fn defaults_reproduce_the_built_in_behaviour() {
         component_ids(&config),
         ["band", "hints", "mode", "position"]
     );
+    let plugins: Vec<String> = eval(
+        &config,
+        "local open = {} for _, a in ipairs(gband.action.list()) do if a.name:find('%.') then open[#open + 1] = a.name end end return open",
+    );
+    assert_eq!(plugins, ["errors.open", "keylist.open"]);
+    clean(&config.runtime.set_state(drawn(80)));
+    let bars: Vec<String> = eval(
+        &config,
+        "local out = {} for _, b in ipairs(gband.bar.list()) do out[#out + 1] = b.id .. ' ' .. b.side .. ' ' .. b.width end return out",
+    );
+    assert_eq!(bars, ["statusline left 20"]);
+}
+
+#[test]
+fn errors_kept_in_order() {
+    let scratch = Scratch::new("errors-order");
+    scratch.client_plugin("alpha", "error('first')");
+    scratch.client_plugin("beta", "error('second')");
+    scratch.write("seen = #gband.errors()");
+    let config = scratch.loaded();
+    assert_eq!(global::<i64>(&config, "seen"), 0);
+    let reported: Vec<String> = config.errors.iter().map(ToString::to_string).collect();
+    assert_eq!(reported.len(), 2, "{reported:?}");
+    assert!(reported[0].starts_with("alpha: "), "{reported:?}");
+    assert!(reported[1].starts_with("beta: "), "{reported:?}");
+    let mut state = drawn(80);
+    state.error = reported.last().cloned();
+    state.errors = reported.clone();
+    clean(&config.runtime.set_state(state));
+    let listed: Vec<String> = eval(
+        &config,
+        "local l = gband.errors() l[1] = 'changed' return gband.errors()",
+    );
+    assert_eq!(listed, reported);
 }
 
 fn component_ids(config: &Config) -> Vec<String> {
@@ -427,10 +473,11 @@ fn every_action_is_named() {
         "detach",
         "send_prefix",
         "keylist.open",
+        "errors.open",
     ];
     expected.sort();
     assert_eq!(names, expected);
-    assert_eq!(ACTIONS.len() + 1, expected.len());
+    assert_eq!(ACTIONS.len() + 2, expected.len());
 }
 
 #[test]

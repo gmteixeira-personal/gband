@@ -1,4 +1,4 @@
-use gband_core::action::{Action, ClientAction, SessionCommand};
+use gband_core::action::{Action, ClientAction, SessionCommand, Steps};
 use gband_core::geometry::placed;
 use gband_core::input::{Key, KeyCode};
 use gband_core::layout::{
@@ -212,6 +212,60 @@ fn fields(target: &Table, allowed: &[&str], action: &str) -> Result<(), String> 
     Ok(())
 }
 
+pub(crate) fn read_step(
+    value: &Value,
+    command: SessionCommand,
+    name: &str,
+) -> Result<Option<Proportion>, String> {
+    let limit = match command {
+        SessionCommand::StepHeight { .. } => options::HEIGHT_STEP_LIMIT,
+        _ => options::WIDTH_STEP_LIMIT,
+    };
+    match value {
+        Value::Nil => Ok(None),
+        value => {
+            let number = real(value).ok_or_else(|| {
+                format!(
+                    "the `step` of `{name}` must be a number, found {}",
+                    value.type_name()
+                )
+            })?;
+            options::step(number, limit)
+                .map(Some)
+                .map_err(|reason| format!("the `step` of `{name}`: {reason}"))
+        }
+    }
+}
+
+fn step_target(
+    lua: &Lua,
+    target: &Table,
+    name: &str,
+    command: SessionCommand,
+) -> Result<Dispatch, String> {
+    fields(target, &["window", "step"], name)?;
+    let step = read_step(&get(target, "step")?, command, name)?;
+    let command = match step {
+        Some(by) => command.stepped(Steps {
+            width: by,
+            height: by,
+        }),
+        None => command.stepped(options::current(lua).steps),
+    };
+    let value = get(target, "window")?;
+    if value.is_nil() {
+        if step.is_none() {
+            return Err(format!("the target of `{name}` must name a `window`"));
+        }
+        return Ok(Dispatch::Action(Action::Session(command)));
+    }
+    let window = self::window(lua, &value)?;
+    let action = command
+        .on_window(window)
+        .expect("every command but open window names a window");
+    Ok(Dispatch::Session(action))
+}
+
 fn window_target(lua: &Lua, target: &Table, action: &str) -> Result<WindowId, String> {
     fields(target, &["window"], action)?;
     let value: Value = target.get("window").map_err(|error| error.to_string())?;
@@ -245,6 +299,9 @@ pub(crate) fn targeted(
         Action::Session(SessionCommand::ToggleFloating) => {
             toggle_floating_target(lua, target, name)
         }
+        Action::Session(
+            command @ (SessionCommand::StepWidth { .. } | SessionCommand::StepHeight { .. }),
+        ) => step_target(lua, target, name, command),
         Action::Session(command) => {
             let window = window_target(lua, target, name)?;
             let action = command

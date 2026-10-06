@@ -1,11 +1,12 @@
 use mlua::{Function, IntoLuaMulti, Lua, MultiValue, Table};
 
-pub(crate) const API: [(&str, &str); 4] = [
+pub(crate) const API: [(&str, &str); 5] = [
     ("hl.lua", include_str!("runtime/gband/hl.lua")),
     (
         "colorscheme.lua",
         include_str!("runtime/gband/colorscheme.lua"),
     ),
+    ("bar.lua", include_str!("runtime/gband/bar.lua")),
     (
         "statusline.lua",
         include_str!("runtime/gband/statusline.lua"),
@@ -13,7 +14,8 @@ pub(crate) const API: [(&str, &str); 4] = [
     ("win.lua", include_str!("runtime/gband/win.lua")),
 ];
 
-const MODULES: [(&str, &str); 7] = [
+const MODULES: [(&str, &str); 8] = [
+    ("errors.lua", include_str!("runtime/gband/errors.lua")),
     ("keyform.lua", include_str!("runtime/gband/keyform.lua")),
     ("keylist.lua", include_str!("runtime/gband/keylist.lua")),
     (

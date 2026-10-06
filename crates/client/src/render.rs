@@ -4,13 +4,13 @@ use gband_core::geometry::{BORDER, Size, Tile, WindowBox, drawn_copy, placed, ti
 use gband_core::layout::{Layout, WindowId};
 use gband_core::view::{Scene, View};
 use gband_emulator::{Emulator, Grid};
-use gband_lua::StatusLine;
-use gband_lua::plugin_windows::FloatingFrame;
+use gband_lua::plugin_windows::{FloatingFrame, Run};
+use gband_lua::{Bar, Border};
 use ratatui::Frame;
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Position, Rect};
 use ratatui::style::{Color, Modifier, Style};
-use ratatui::widgets::{Block, Clear, Widget};
+use ratatui::widgets::{Clear, Widget};
 use tui_term::widget::{Cursor, PseudoTerminal, Screen};
 
 use crate::animation::{Drawn, DrawnTile};
@@ -20,10 +20,9 @@ pub const FOCUSED_BORDER: Style = Style::new().add_modifier(Modifier::BOLD);
 pub const UNFOCUSED_BORDER: Style = Style::new().add_modifier(Modifier::DIM);
 pub const BANNER: Style = Style::new().fg(Color::Red).add_modifier(Modifier::REVERSED);
 
-pub struct StatusArea<'a> {
+pub struct Shown<'a> {
+    pub bar: &'a Bar,
     pub area: Rect,
-    pub line: Option<&'a StatusLine>,
-    pub colors: ColorSupport,
 }
 
 pub struct Ribbon<'a> {
@@ -33,11 +32,13 @@ pub struct Ribbon<'a> {
     pub grids: &'a HashMap<WindowId, Grid>,
     pub drawn: &'a Drawn,
     pub region: Rect,
+    pub tile_border: &'a Border,
+    pub floating_border: &'a Border,
     pub floats: Vec<&'a FloatingFrame>,
     pub float_focused: bool,
     pub colors: ColorSupport,
     pub banner: Option<&'a str>,
-    pub status: Option<StatusArea<'a>>,
+    pub bars: Vec<Shown<'a>>,
 }
 
 pub fn draw_frame(frame: &mut Frame<'_>, ribbon: &Ribbon<'_>) {
@@ -45,10 +46,11 @@ pub fn draw_frame(frame: &mut Frame<'_>, ribbon: &Ribbon<'_>) {
     for float in &ribbon.floats {
         draw_float(frame.buffer_mut(), ribbon.region, float, ribbon.colors);
     }
-    match (&ribbon.status, ribbon.banner) {
-        (Some(status), _) => draw_status(frame.buffer_mut(), status),
-        (None, Some(banner)) => draw_banner(frame.buffer_mut(), ribbon.region, banner),
-        (None, None) => {}
+    for shown in &ribbon.bars {
+        draw_bar(frame.buffer_mut(), shown, ribbon.colors);
+    }
+    if let Some(banner) = ribbon.banner {
+        draw_banner(frame.buffer_mut(), ribbon.region, banner);
     }
     if let Some(cursor) = cursor.filter(|_| !ribbon.float_focused) {
         frame.set_cursor_position(cursor);
@@ -68,10 +70,8 @@ fn draw_float(buffer: &mut Buffer, region: Rect, float: &FloatingFrame, colors: 
     }
     Clear.render(area, buffer);
     buffer.set_style(area, colors.style(&float.base));
-    let inner = if float.border {
-        Block::bordered()
-            .border_style(colors.style(&float.border_style))
-            .render(area, buffer);
+    let inner = if let Some(border) = &float.border {
+        draw_border(buffer, area, border, colors.style(&float.border_style));
         if let Some(title) = &float.title {
             let room = area.width.saturating_sub(2);
             let cells = (gband_lua::ui::width(title) as u16).min(room);
@@ -85,11 +85,15 @@ fn draw_float(buffer: &mut Buffer, region: Rect, float: &FloatingFrame, colors: 
                 colors.style(&float.title_style),
             );
         }
-        Block::bordered().inner(area)
+        interior(area)
     } else {
         area
     };
-    for (row, runs) in float.lines.iter().enumerate() {
+    draw_lines(buffer, inner, &float.lines, colors);
+}
+
+fn draw_lines(buffer: &mut Buffer, inner: Rect, lines: &[Vec<Run>], colors: ColorSupport) {
+    for (row, runs) in lines.iter().enumerate() {
         let Some(y) = u16::try_from(row)
             .ok()
             .map(|row| inner.y + row)
@@ -117,31 +121,84 @@ fn draw_float(buffer: &mut Buffer, region: Rect, float: &FloatingFrame, colors: 
     }
 }
 
-fn draw_status(buffer: &mut Buffer, status: &StatusArea<'_>) {
-    let area = status.area.intersection(buffer.area);
+fn draw_bar(buffer: &mut Buffer, shown: &Shown<'_>, colors: ColorSupport) {
+    let area = shown.area.intersection(buffer.area);
     if area.is_empty() {
         return;
     }
     Clear.render(area, buffer);
-    let Some(line) = status.line else {
+    buffer.set_style(area, colors.style(&shown.bar.base));
+    draw_lines(buffer, area, &shown.bar.lines, colors);
+}
+
+pub fn interior(area: Rect) -> Rect {
+    Rect::new(
+        area.x.saturating_add(BORDER),
+        area.y.saturating_add(BORDER),
+        area.width.saturating_sub(2 * BORDER),
+        area.height.saturating_sub(2 * BORDER),
+    )
+}
+
+pub fn draw_border(buffer: &mut Buffer, area: Rect, border: &Border, style: Style) {
+    if area.is_empty() {
         return;
-    };
-    buffer.set_style(area, status.colors.style(&line.base));
-    for span in &line.spans {
-        let Some(room) = area.width.checked_sub(span.col).filter(|room| *room > 0) else {
-            continue;
-        };
-        let cells = gband_lua::ui::width(&span.text).min(usize::from(room)) as u16;
-        let x = area.x + span.col;
-        buffer.set_style(Rect::new(x, area.y, cells, 1), Style::reset());
-        buffer.set_stringn(
-            x,
-            area.y,
-            &span.text,
-            usize::from(cells),
-            status.colors.style(&span.style),
-        );
     }
+    let [
+        top_left,
+        top,
+        top_right,
+        right,
+        bottom_right,
+        bottom,
+        bottom_left,
+        left,
+    ] = border.chars.glyphs();
+    let sides = border.sides;
+    let (first_x, last_x) = (area.left(), area.right() - 1);
+    let (first_y, last_y) = (area.top(), area.bottom() - 1);
+    let mut put = |x: u16, y: u16, symbol: &str| {
+        if let Some(cell) = buffer.cell_mut((x, y)) {
+            cell.set_symbol(symbol).set_style(style);
+        }
+    };
+    let side = |drawn: bool, symbol| if drawn { symbol } else { " " };
+    for x in first_x..=last_x {
+        put(x, first_y, side(sides.top, top));
+        put(x, last_y, side(sides.bottom, bottom));
+    }
+    for y in first_y..=last_y {
+        put(first_x, y, side(sides.left, left));
+        put(last_x, y, side(sides.right, right));
+    }
+    let corner = |vertical: bool, horizontal: bool, both, vertical_side, horizontal_side| match (
+        vertical, horizontal,
+    ) {
+        (true, true) => both,
+        (true, false) => vertical_side,
+        (false, true) => horizontal_side,
+        (false, false) => " ",
+    };
+    put(
+        first_x,
+        first_y,
+        corner(sides.top, sides.left, top_left, top, left),
+    );
+    put(
+        last_x,
+        first_y,
+        corner(sides.top, sides.right, top_right, top, right),
+    );
+    put(
+        last_x,
+        last_y,
+        corner(sides.bottom, sides.right, bottom_right, bottom, right),
+    );
+    put(
+        first_x,
+        last_y,
+        corner(sides.bottom, sides.left, bottom_left, bottom, left),
+    );
 }
 
 fn draw_banner(buffer: &mut Buffer, region: Rect, text: &str) {
@@ -180,7 +237,8 @@ pub fn render(ribbon: &Ribbon<'_>, buffer: &mut Buffer) -> Option<Position> {
             };
             let is_focused = focused == Some(window);
             let grid = ribbon.grids.get(&window);
-            paint(buffer, target, &tile, &placement, grid, is_focused);
+            let border = (ribbon.tile_border, is_focused);
+            paint(buffer, target, &tile, &placement, grid, border);
             if is_focused && ribbon.drawn.settled {
                 cursor = grid.and_then(|grid| cursor_position(&tile, &placement, grid, target));
             }
@@ -205,7 +263,8 @@ pub fn render(ribbon: &Ribbon<'_>, buffer: &mut Buffer) -> Option<Position> {
         }
         let is_focused = focused == Some(window);
         let grid = ribbon.grids.get(&window);
-        paint(buffer, target, &tile, &placement, grid, is_focused);
+        let border = (ribbon.floating_border, is_focused);
+        paint(buffer, target, &tile, &placement, grid, border);
         if is_focused && ribbon.drawn.settled {
             cursor = grid.and_then(|grid| cursor_position(&tile, &placement, grid, target));
         }
@@ -225,9 +284,9 @@ fn paint(
     tile: &DrawnTile,
     placement: &Placement,
     grid: Option<&Grid>,
-    focused: bool,
+    border: (&Border, bool),
 ) {
-    let (scratch, shift) = draw_tile(tile, grid, focused, &placement.clip);
+    let (scratch, shift) = draw_tile(tile, grid, border, &placement.clip);
     let clip = &placement.clip;
     for row in clip.top..clip.bottom {
         for column in clip.start..clip.end {
@@ -331,7 +390,12 @@ impl<S: Screen> Screen for Shifted<'_, S> {
     }
 }
 
-fn draw_tile(tile: &DrawnTile, grid: Option<&Grid>, focused: bool, clip: &Clip) -> (Buffer, Shift) {
+fn draw_tile(
+    tile: &DrawnTile,
+    grid: Option<&Grid>,
+    (border, focused): (&Border, bool),
+    clip: &Clip,
+) -> (Buffer, Shift) {
     let cut_left = u16::from(clip.start > 0);
     let cut_right = u16::from(clip.end < tile.width);
     let cut_top = u16::from(clip.top > 0);
@@ -352,9 +416,8 @@ fn draw_tile(tile: &DrawnTile, grid: Option<&Grid>, focused: bool, clip: &Clip) 
     } else {
         UNFOCUSED_BORDER
     };
-    let block = Block::bordered().border_style(style);
-    let inner = block.inner(area);
-    block.render(area, &mut scratch);
+    draw_border(&mut scratch, area, border, style);
+    let inner = interior(area);
     if let Some(grid) = grid {
         let screen = Shifted {
             screen: grid.screen(),

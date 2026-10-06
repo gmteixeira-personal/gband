@@ -65,8 +65,8 @@ There `gband.side` is `"test"`, `gband.api_version` is `1`, and every other fiel
 local t = require("gband.test")
 
 t.case("the segment shows the focused window", function(g)
-  g.start({ config = [[gband.plugin("window")]] })
-  t.match(g.screen().row(23), "window 1")
+  g.start({ config = [[gband.plugin("gband.statusline") gband.plugin("window")]] })
+  t.match(g.screen().row(23), "^window 1 ")
 end)
 ```
 
@@ -106,7 +106,7 @@ Call it once, before any other function of the handle.
 | `env` | environment variables to set, or to remove with `false` | none |
 | `time` | the frozen instant: Unix seconds, `"YYYY-MM-DD HH:MM:SS"` in UTC, or `false` for the real time | `"2025-01-01 12:00:00"` |
 
-A `config` replaces the default configuration, as `user/init.lua` does, so give the status line segments and bindings the case needs.
+A `config` replaces the default configuration, as `user/init.lua` does, so give the status line, its segments and the bindings the case needs.
 
 Each case gets a new directory tree under the system's temporary directory, holding its own configuration, data, state and runtime directories and a working directory.
 The plugin under test, every `--plugin` and every `plugins` entry are linked into its plugins directory under their directory names.
@@ -191,22 +191,27 @@ The handle also returns what the client wrote to its terminal since `g.start`, a
 `g.screenshot(opts)` returns the screen as text:
 
 ```
-size 60x4 cursor 1:3 shown
-0|┌────────────────────────────┐┌────────────────────────────┐
-1|│$                           ││$                           │
-2|└────────────────────────────┘└────────────────────────────┘
-3|band 1                                                window 1
+size 60x4 cursor 1:23 shown
+0|band 1              ┌────────────────────────────┐┌─────────
+1|                    │$                           ││$
+2|                    │                            ││
+3|window 1            └────────────────────────────┘└─────────
 --
-0:0-29 bold
-0:30-59 dim
-1:0 bold
-1:29 bold
-1:30 dim
-1:59 dim
-2:0-29 bold
-2:30-59 dim
-3:0-53 fg=#c0caf5 bg=#24283b
-3:54-59 fg=#7aa2f7 bg=#24283b bold
+0:0-19 fg=#c0caf5 bg=#24283b
+0:20-49 bold
+0:50-59 dim
+1:0-19 fg=#c0caf5 bg=#24283b
+1:20 bold
+1:49 bold
+1:50 dim
+2:0-19 fg=#c0caf5 bg=#24283b
+2:20 bold
+2:49 bold
+2:50 dim
+3:0-7 fg=#7aa2f7 bg=#24283b bold
+3:8-19 fg=#c0caf5 bg=#24283b
+3:20-49 bold
+3:50-59 dim
 ```
 
 - The header gives the size, the cursor's row and column, and `shown` or `hidden`.
@@ -237,8 +242,8 @@ The instant does not advance by itself, and timers still fire on the real clock,
 `TZ=UTC` makes `os.date` the same on every machine.
 
 ```lua
-g.start({ config = [[gband.plugin("gband.statusline.clock")]] })
-t.match(g.screen().row(23), "12:00$")
+g.start({ config = [[gband.plugin("gband.statusline") gband.plugin("gband.statusline.clock")]] })
+t.match(g.screen().row(23), "^12:00 ")
 g.set_time("2025-01-01 12:05:00")
 g.wait_text("12:05")
 ```
@@ -299,6 +304,7 @@ local t = require("gband.test")
 local CONFIG = [[
   gband.keymap.set("prefix", "enter", gband.action.open_window)
   gband.keymap.set("prefix", "h", gband.action.focus_column_left)
+  gband.plugin("gband.statusline")
   gband.plugin("gband.statusline.band")
   gband.plugin("window")
 ]]
@@ -312,13 +318,13 @@ end
 
 t.case("shows the focused window", function(g)
   g.start({ size = "60x4", config = CONFIG })
-  t.match(g.screen().row(3), "window 1$")
+  t.match(g.screen().row(3), "^window 1 ")
   g.keys("ctrl+space enter")
   g.settle()
-  t.match(g.screen().row(3), "window 2$")
+  t.match(g.screen().row(3), "^window 2 ")
   g.keys("ctrl+space h")
   g.settle()
-  t.match(g.screen().row(3), "window 1$")
+  t.match(g.screen().row(3), "^window 1 ")
   prompts(g, 2)
   g.expect_screenshot("two windows")
 end)
@@ -333,7 +339,7 @@ cd examples/plugins/window
 gband test - --show <<'EOF'
 local t = require("gband.test")
 t.case("look", function(g)
-  g.start({ size = "60x4", config = [[gband.plugin("gband.statusline.band") gband.plugin("window")]] })
+  g.start({ size = "60x4", config = [[gband.plugin("gband.statusline") gband.plugin("gband.statusline.band") gband.plugin("window")]] })
   g.expect_screenshot()
 end)
 EOF

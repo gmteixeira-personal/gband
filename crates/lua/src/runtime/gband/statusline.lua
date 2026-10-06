@@ -1,12 +1,14 @@
 local host = ...
 
-local ALIGN = { left = true, center = true, right = true }
+local ALIGN = { top = true, center = true, bottom = true }
 local FIELDS = {
   id = true, render = true, align = true, priority = true, order = true,
   hl = true, redraw_on = true, redraw_interval = true, fill = true,
 }
+local OPTIONS = { side = true, min_width = true, max_width = true, order = true }
 local MIN_INTERVAL = 100
-local REGIONS = { "left", "center", "right" }
+local REGIONS = { "top", "center", "bottom" }
+local BAR = "statusline"
 
 local EVENTS = { User = true }
 for _, name in ipairs(host.events) do
@@ -22,7 +24,8 @@ gband.hl.default("StatusLineError", { fg = "red", bold = true })
 
 local components = {}
 local sequence = 0
-local rendered_width = nil
+local placement = nil
+local rendered_height = nil
 
 local function clean(text)
   return (text:gsub("[%z\1-\31\127]", ""):gsub("\194[\128-\159]", ""))
@@ -76,9 +79,9 @@ local function validate(spec)
   if type(spec.render) ~= "function" then
     return nil, "`render` must be a function"
   end
-  local align = spec.align or "left"
+  local align = spec.align or "top"
   if not ALIGN[align] then
-    return nil, "`align` must be \"left\", \"center\" or \"right\", found " .. tostring(spec.align)
+    return nil, "`align` must be \"top\", \"center\" or \"bottom\", found " .. tostring(spec.align)
   end
   if spec.priority ~= nil and type(spec.priority) ~= "number" then
     return nil, "`priority` must be a number"
@@ -129,35 +132,28 @@ local function shown(component)
   return component.enabled and component.output ~= nil and not host.failed(component.plugin)
 end
 
-local function separator()
-  return gband.opt.statusline_separator
-end
-
 local function error_item(state)
   if not state.error then
     return nil
   end
-  local text = clean(state.error:match("^[^\n]*"))
-  if text == "" then
-    return nil
-  end
   return {
-    spans = { { text = text, hl = "StatusLineError" } },
-    width = gband.ui.width(text),
+    lines = { { { text = "error", hl = "StatusLineError" } } },
+    width = gband.ui.width("error"),
     priority = math.huge,
     seq = -1,
+    error = true,
   }
 end
 
 local function arrange(state, counted)
-  local regions = { left = {}, center = {}, right = {} }
+  local regions = { top = {}, center = {}, bottom = {} }
   local item = error_item(state)
   if item then
-    regions.left[1] = item
+    regions.top[1] = item
   end
   local ordered = {}
   for _, component in ipairs(components) do
-    if component == counted or shown(component) then
+    if component ~= counted and shown(component) then
       ordered[#ordered + 1] = component
     end
   end
@@ -171,31 +167,29 @@ local function arrange(state, counted)
     local list = regions[component.align]
     list[#list + 1] = {
       component = component,
-      spans = component == counted and {} or component.output,
-      width = component == counted and 0 or component.width,
+      lines = component.output,
+      width = component.width,
       priority = component.priority,
       seq = component.seq,
+      fill = component.fill,
     }
   end
   return regions
 end
 
-local function region_width(list, gap)
-  if #list == 0 then
-    return 0
-  end
-  local total = gap * (#list - 1)
+local function region_height(list)
+  local total = 0
   for _, item in ipairs(list) do
-    total = total + item.width
+    total = total + #item.lines
   end
   return total
 end
 
-local function line_width(regions, gap)
+local function total_height(regions)
   local total, filled = 0, 0
   for _, name in ipairs(REGIONS) do
     if #regions[name] > 0 then
-      total = total + region_width(regions[name], gap)
+      total = total + region_height(regions[name])
       filled = filled + 1
     end
   end
@@ -206,7 +200,7 @@ local function line_width(regions, gap)
 end
 
 local function count(regions)
-  return #regions.left + #regions.center + #regions.right
+  return #regions.top + #regions.center + #regions.bottom
 end
 
 local function drop_lowest(regions)
@@ -222,107 +216,130 @@ local function drop_lowest(regions)
   table.remove(regions[lowest_region], lowest_index)
 end
 
-local function cut(item, limit)
-  local spans = {}
+local function fit(regions, height)
+  while total_height(regions) > height and count(regions) > 1 do
+    drop_lowest(regions)
+  end
+  for _, name in ipairs(REGIONS) do
+    local item = regions[name][1]
+    if item and #item.lines > height then
+      local kept = {}
+      for row = 1, height do
+        kept[row] = item.lines[row]
+      end
+      regions[name][1] = {
+        lines = kept, width = item.width, priority = item.priority, seq = item.seq,
+        fill = item.fill, error = item.error,
+      }
+    end
+  end
+end
+
+local function widest(regions)
+  local cells = 0
+  for _, name in ipairs(REGIONS) do
+    for _, item in ipairs(regions[name]) do
+      if not item.fill then
+        cells = math.max(cells, item.width)
+      end
+    end
+  end
+  return cells
+end
+
+local function clamp(cells)
+  return math.max(placement.min_width, math.min(placement.max_width, cells))
+end
+
+local function cut(spans, limit)
+  local result = {}
   local left = limit - 1
-  for _, span in ipairs(item.spans) do
+  for _, span in ipairs(spans) do
     local cells = gband.ui.width(span.text)
     if cells <= left then
-      spans[#spans + 1] = span
+      result[#result + 1] = span
       left = left - cells
     else
-      spans[#spans + 1] = { text = gband.ui.truncate(span.text, left + 1), hl = span.hl }
+      result[#result + 1] = { text = gband.ui.truncate(span.text, left + 1), hl = span.hl }
       break
     end
   end
-  item.spans = spans
-  item.width = limit
+  return result
 end
 
-local function fit(regions, total, gap)
-  while line_width(regions, gap) > total and count(regions) > 1 do
-    drop_lowest(regions)
+local function line_width(spans)
+  local cells = 0
+  for _, span in ipairs(spans) do
+    cells = cells + gband.ui.width(span.text)
   end
-  if count(regions) == 1 and line_width(regions, gap) > total then
-    for _, name in ipairs(REGIONS) do
-      local item = regions[name][1]
-      if item then
-        if total == 0 then
-          regions[name] = {}
-        else
-          cut(item, total)
-        end
-      end
-    end
-  end
-end
-
-local function merged(base, group)
-  local style = {}
-  for field, value in pairs(base) do
-    style[field] = value
-  end
-  for field, value in pairs(host.hl.drawn(group)) do
-    style[field] = value
-  end
-  return style
+  return cells
 end
 
 local function layout(state)
-  if not state.drawn then
+  if not placement or state.height == 0 then
     return
   end
-  local total = state.width
-  local sep = separator()
-  local gap = gband.ui.width(sep)
+  local height = state.height
   local regions = arrange(state)
-  fit(regions, total, gap)
-  local base = host.hl.drawn("StatusLine")
-  local styles = {}
-  local function style(group)
-    styles[group] = styles[group] or merged(base, group)
-    return styles[group]
+  fit(regions, height)
+  local width = clamp(widest(regions))
+  if width ~= placement.size then
+    placement.size = width
+    gband.bar.set_config(BAR, { size = width })
   end
-  local left = region_width(regions.left, gap)
-  local right = region_width(regions.right, gap)
-  local center = region_width(regions.center, gap)
-  local starts = { left = 0, right = total - right }
-  local start = (total - center) // 2
-  if #regions.left > 0 then
-    start = math.max(start, left + 1)
+  local heights = {
+    top = region_height(regions.top),
+    center = region_height(regions.center),
+    bottom = region_height(regions.bottom),
+  }
+  local start = (height - heights.center) // 2
+  if heights.top > 0 then
+    start = math.max(start, heights.top + 1)
   end
-  if #regions.right > 0 then
-    start = math.min(start, total - right - 1 - center)
+  if heights.bottom > 0 then
+    start = math.min(start, height - heights.bottom - 1 - heights.center)
   end
-  starts.center = start
-  local spans = {}
+  local starts = { top = 0, center = start, bottom = height - heights.bottom }
+  local lines = {}
+  local item_shown = false
   for _, name in ipairs(REGIONS) do
-    local col = starts[name]
-    for index, item in ipairs(regions[name]) do
-      if index > 1 then
-        spans[#spans + 1] = { col = col, text = sep, style = style("StatusLineSeparator") }
-        col = col + gap
+    local row = starts[name]
+    for _, item in ipairs(regions[name]) do
+      if item.error then
+        item_shown = true
       end
-      for _, span in ipairs(item.spans) do
-        spans[#spans + 1] = { col = col, text = span.text, style = style(span.hl) }
-        col = col + gband.ui.width(span.text)
+      for _, spans in ipairs(item.lines) do
+        if row >= 0 and row < height then
+          lines[row + 1] = line_width(spans) > width and cut(spans, width) or spans
+        end
+        row = row + 1
       end
     end
   end
-  host.present({ height = gband.opt.statusline_height, base = base, spans = spans })
+  for row = 1, height do
+    lines[row] = lines[row] or {}
+  end
+  gband.bar.set_lines(BAR, lines)
+  host.error_item(item_shown and gband.bar.info(BAR).shown)
 end
 
 local function available(component, state)
   local regions = arrange(state, component)
-  return math.max(0, state.width - line_width(regions, gband.ui.width(separator())))
+  return clamp(widest(regions)), math.max(0, state.height - total_height(regions))
 end
 
 local function context(component, state)
+  local width, height = placement.max_width, state.height
+  if component.fill then
+    width, height = available(component, state)
+  end
   return {
     id = component.id,
     side = "client",
-    total_width = state.width,
-    width = available(component, state),
+    total_width = placement.max_width,
+    total_height = state.height,
+    width = width,
+    height = height,
     table = state.table,
     band = { number = state.band.number, index = state.band.index, count = state.band.count },
     column = state.column and { index = state.column.index, count = state.column.count },
@@ -331,7 +348,7 @@ local function context(component, state)
   }
 end
 
-local function normalise(result, group)
+local function normalise_line(line, group)
   local spans = {}
   local function add(text, hl)
     text = clean(text)
@@ -339,28 +356,50 @@ local function normalise(result, group)
       spans[#spans + 1] = { text = text, hl = hl }
     end
   end
-  if result == nil then
-    return nil
-  elseif type(result) == "string" then
-    add(result, group)
-  elseif type(result) == "table" then
-    for _, item in ipairs(result) do
+  if type(line) == "string" then
+    add(line, group)
+  elseif type(line) == "table" then
+    for _, item in ipairs(line) do
       if type(item) == "string" then
         add(item, group)
       elseif type(item) == "table" and type(item.text) == "string"
         and (item.hl == nil or valid_group(item.hl)) then
         add(item.text, item.hl or group)
       else
-        return nil, "returned a list holding an invalid span"
+        return nil, "returned a line holding an invalid span"
       end
     end
   else
-    return nil, "returned a " .. type(result) .. ", not a string or a list of spans"
-  end
-  if #spans == 0 then
-    return nil
+    return nil, "returned a " .. type(line) .. ", not a string or a list of spans"
   end
   return spans
+end
+
+local function normalise(result, group)
+  if result == nil then
+    return nil
+  end
+  local list = { result }
+  if type(result) == "table" and result.lines ~= nil then
+    if type(result.lines) ~= "table" then
+      return nil, "returned `lines` that is not a list of lines"
+    end
+    list = result.lines
+  end
+  local lines = {}
+  local filled = false
+  for _, line in ipairs(list) do
+    local spans, reason = normalise_line(line, group)
+    if not spans then
+      return nil, reason
+    end
+    lines[#lines + 1] = spans
+    filled = filled or #spans > 0
+  end
+  if not filled then
+    return nil
+  end
+  return lines
 end
 
 local function cancel(component)
@@ -386,22 +425,22 @@ local function render(component, state)
     return
   end
   local ctx = context(component, state)
-  component.context_width = ctx.width
+  component.context_width, component.context_height = ctx.width, ctx.height
   local ok, result = host.call(component.plugin, nil, component.render, ctx)
   if not ok then
     disable(component)
     return
   end
-  local spans, reason = normalise(result, component.hl)
+  local lines, reason = normalise(result, component.hl)
   if reason then
     host.report(component.plugin, "the status line component `" .. component.id .. "` " .. reason)
     disable(component)
     return
   end
-  component.output = spans
+  component.output = lines
   local cells = 0
-  for _, span in ipairs(spans or {}) do
-    cells = cells + gband.ui.width(span.text)
+  for _, spans in ipairs(lines or {}) do
+    cells = math.max(cells, line_width(spans))
   end
   component.width = cells
 end
@@ -425,7 +464,8 @@ local function refill(state)
   end
   table.sort(fills, render_order)
   for _, component in ipairs(fills) do
-    if available(component, state) ~= component.context_width then
+    local width, height = available(component, state)
+    if width ~= component.context_width or height ~= component.context_height then
       render(component, state)
     end
   end
@@ -442,11 +482,11 @@ local function start_timer(component)
     return
   end
   component.timer = host.timer(component.interval, function()
-    local state = host.state()
-    if not state.drawn then
+    if not placement then
       stop_timers()
       return
     end
+    local state = host.state()
     render(component, state)
     refill(state)
     layout(state)
@@ -461,18 +501,19 @@ local function snapshot()
   return list
 end
 
-host.after_event(function(name)
-  local state = host.state()
-  if not state.drawn then
-    stop_timers()
+local function redraw(every, name)
+  if not placement then
     return
   end
-  local every = name == nil or name == "HighlightChanged" or name == "ColorschemeChanged"
-    or (name == "TerminalResized" and state.width ~= rendered_width)
+  local state = host.state()
+  if state.height == 0 then
+    return
+  end
+  every = every or (rendered_height ~= nil and state.height ~= rendered_height)
   local due = {}
   for _, component in ipairs(snapshot()) do
     start_timer(component)
-    if every or component.redraw_on[name] then
+    if every or (name and component.redraw_on[name]) then
       due[#due + 1] = component
     end
   end
@@ -481,20 +522,21 @@ host.after_event(function(name)
     render(component, state)
   end
   if every then
-    rendered_width = state.width
+    rendered_height = state.height
   end
   if #due > 0 then
     refill(state)
   end
   layout(state)
+end
+
+host.after_event(function(name)
+  redraw(name == nil or name == "HighlightChanged" or name == "ColorschemeChanged", name)
 end)
 
 host.on_state(function()
-  local state = host.state()
-  if state.drawn then
-    layout(state)
-  else
-    stop_timers()
+  if placement then
+    layout(host.state())
   end
 end)
 
@@ -522,14 +564,12 @@ function statusline.add(spec)
   component.plugin = owner
   component.seq = sequence
   components[#components + 1] = component
-  if not host.loading() then
-    local state = host.state()
-    if state.drawn then
-      start_timer(component)
-      render(component, state)
-      refill(state)
-      layout(state)
-    end
+  local state = host.state()
+  if placement and not host.loading() and state.height > 0 then
+    start_timer(component)
+    render(component, state)
+    refill(state)
+    layout(state)
   end
   return id
 end
@@ -541,7 +581,7 @@ function statusline.remove(id)
   end
   cancel(component)
   table.remove(components, index)
-  if not host.loading() then
+  if placement and not host.loading() then
     layout(host.state())
   end
   return true
@@ -568,3 +608,57 @@ function statusline.list()
 end
 
 gband.ui.statusline = statusline
+
+local function check_options(opts)
+  if type(opts) ~= "table" then
+    error("the options of `statusline` must be a table", 3)
+  end
+  for field in pairs(opts) do
+    if not OPTIONS[field] then
+      error("unknown option `" .. tostring(field) .. "`", 3)
+    end
+  end
+  local side = opts.side or "left"
+  if side ~= "left" and side ~= "right" then
+    error("`side` must be \"left\" or \"right\", found " .. tostring(opts.side), 3)
+  end
+  local function width(name, default, least)
+    local value = opts[name]
+    if value == nil then
+      return default
+    end
+    if type(value) ~= "number" or not is_integer(value) or value < least or value > 65535 then
+      error("`" .. name .. "` must be an integer of at least " .. least, 3)
+    end
+    return math.tointeger(value)
+  end
+  local min_width = width("min_width", 20, 1)
+  local max_width = width("max_width", math.max(40, min_width), min_width)
+  if opts.order ~= nil and type(opts.order) ~= "number" then
+    error("`order` must be a number", 3)
+  end
+  return {
+    side = side,
+    min_width = min_width,
+    max_width = max_width,
+    order = opts.order or 0,
+  }
+end
+
+return {
+  name = "statusline",
+  setup = function(opts)
+    local options = check_options(opts)
+    gband.bar.add({
+      side = options.side,
+      size = options.min_width,
+      order = options.order,
+      hl = "StatusLine",
+      on_resize = function()
+        redraw(false, nil)
+      end,
+    })
+    options.size = options.min_width
+    placement = options
+  end,
+}

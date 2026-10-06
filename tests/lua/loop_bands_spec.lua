@@ -27,9 +27,9 @@ end
 
 t.case("focus right goes round the strip without end", function(g)
   three_windows(g)
-  shows(g, "3,1")
+  shows(g, "3")
   g.keys("ctrl+space")
-  for _, expected in ipairs({ "3,1", "1,2", "2,3", "3,1", "1,2", "2,3", "3,1" }) do
+  for _, expected in ipairs({ "1", "2", "3", "1", "2", "3", "1" }) do
     g.keys("l")
     shows(g, expected)
   end
@@ -38,7 +38,7 @@ end)
 t.case("focus left goes round the strip without end", function(g)
   three_windows(g)
   g.keys("ctrl+space l")
-  shows(g, "3,1")
+  shows(g, "1")
   for _, expected in ipairs({ "3,1", "2,3", "1,2", "3,1", "2,3", "1,2", "3,1" }) do
     g.keys("h")
     shows(g, expected)

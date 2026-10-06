@@ -7,7 +7,7 @@ use gband_client::animation::Animations;
 use gband_client::{Controls, Display, Step};
 use gband_core::geometry::Size;
 use gband_core::input::Key;
-use gband_core::layout::{Direction, Layout, LayoutOptions, SessionAction, WindowId};
+use gband_core::layout::{Direction, Layout, LayoutOptions, Proportion, SessionAction, WindowId};
 use gband_lua::keys::parse_key;
 use gband_lua::{Config, ConfigError, DEFAULTS, LoadOptions, Locations};
 use gband_protocol::{ClientMessage, ServerMessage};
@@ -287,6 +287,7 @@ fn heights_alone_are_no_layout_change() {
         SessionAction::StepHeight {
             window: windows[0],
             step: gband_core::layout::Step::Grow,
+            by: Proportion::TENTH,
         },
         Size::new(80, 24),
         &LayoutOptions::default(),
@@ -583,7 +584,7 @@ fn infinite_loop_in_a_callback() {
     assert!(banner.contains("instruction limit"), "{banner}");
     client.press("alt+l");
     assert_eq!(client.display.focused(), Some(windows[1]));
-    client.display.set_banner(None);
+    client.display.clear_errors();
     assert_eq!(client.press("alt+s"), []);
     assert_eq!(client.display.banner(), None);
 }

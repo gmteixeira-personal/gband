@@ -117,6 +117,12 @@ pub(crate) fn install(lua: &Lua, gband: &Table, side: Side) -> mlua::Result<()> 
     gband.set("bind", lua.create_function(bind)?)?;
     gband.set("unbind", lua.create_function(unbind)?)?;
     gband.set("spawn", lua.create_function(spawn)?)?;
+    gband.set(
+        "errors",
+        lua.create_function(|lua, ()| {
+            lua.create_sequence_from(crate::ui::current_state(lua).errors)
+        })?,
+    )?;
     Ok(())
 }
 
@@ -139,6 +145,9 @@ fn set(lua: &Lua, options: Value) -> mlua::Result<()> {
                 ));
             }
         };
+        if is_loading(lua) && options::report_removed(lua, &name) {
+            continue;
+        }
         options::check_name(lua, &name).map_err(|message| ConfigError::raise(lua, message))?;
         let patch = options::patch(lua, &name, value)
             .map_err(|reason| ConfigError::raise(lua, options::invalid(&name, &reason)))?;

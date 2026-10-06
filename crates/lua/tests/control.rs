@@ -3,7 +3,7 @@ mod common;
 use std::sync::Arc;
 
 use common::*;
-use gband_core::action::Action;
+use gband_core::action::{Action, SessionCommand};
 use gband_core::geometry::Size;
 use gband_core::input::{Key, KeyCode, Modifiers};
 use gband_core::layout::{
@@ -479,6 +479,7 @@ fn every_window_action_takes_a_target() {
             SessionAction::StepWidth {
                 window: WindowId(1),
                 step: Step::Grow,
+                by: Proportion::TENTH,
             },
         ),
         (
@@ -486,6 +487,7 @@ fn every_window_action_takes_a_target() {
             SessionAction::StepWidth {
                 window: WindowId(1),
                 step: Step::Shrink,
+                by: Proportion::TENTH,
             },
         ),
         (
@@ -493,6 +495,7 @@ fn every_window_action_takes_a_target() {
             SessionAction::StepHeight {
                 window: WindowId(1),
                 step: Step::Grow,
+                by: Proportion::TENTH,
             },
         ),
         (
@@ -500,6 +503,7 @@ fn every_window_action_takes_a_target() {
             SessionAction::StepHeight {
                 window: WindowId(1),
                 step: Step::Shrink,
+                by: Proportion::TENTH,
             },
         ),
         (
@@ -583,6 +587,105 @@ fn send_prefix_to_a_named_window() {
             input: WindowInput::Key(Key::new(KeyCode::Char(' '), Modifiers::CTRL)),
         }]
     );
+}
+
+#[test]
+fn grow_by_a_given_step() {
+    let view = || state(two_bands(), 1, Some(1), "root");
+    assert_eq!(
+        dispatched(
+            "step-given",
+            view(),
+            "gband.action.grow_column_width({ step = 1/4 })"
+        ),
+        [Dispatch::Action(Action::Session(
+            SessionCommand::StepWidth {
+                step: Step::Grow,
+                by: Proportion::new(1, 4),
+            }
+        ))]
+    );
+    assert_eq!(
+        dispatched(
+            "step-from-a-target",
+            view(),
+            "gband.action.shrink_window_height({ window = 2, step = 1/4 })"
+        ),
+        [session(SessionAction::StepHeight {
+            window: WindowId(2),
+            step: Step::Shrink,
+            by: Proportion::new(1, 4),
+        })]
+    );
+}
+
+#[test]
+fn steps_from_the_client_options() {
+    let source = format!("gband.opt.width_step = 1/20\ngband.opt.height_step = 1/5\n{JOB}");
+    let (_scratch, config) = loaded_with(
+        "step-options",
+        &source,
+        state(two_bands(), 1, Some(1), "root"),
+    );
+    let outcome = run_job(
+        &config,
+        "gband.action.grow_column_width()\ngband.action.grow_window_height({ window = 2 })",
+    );
+    clean(&outcome);
+    assert_eq!(
+        outcome.dispatched,
+        [
+            Dispatch::Action(Action::Session(SessionCommand::StepWidth {
+                step: Step::Grow,
+                by: Proportion::new(1, 20),
+            })),
+            session(SessionAction::StepHeight {
+                window: WindowId(2),
+                step: Step::Grow,
+                by: Proportion::new(1, 5),
+            }),
+        ]
+    );
+}
+
+#[test]
+fn step_out_of_range() {
+    let view = || state(two_bands(), 1, Some(1), "root");
+    for (index, code) in [
+        "gband.action.grow_window_height({ step = 2 })",
+        "gband.action.shrink_column_width({ window = 1, step = 0 })",
+        "gband.action.grow_column_width({ step = 10001 })",
+        "gband.action.grow_column_width({ step = 'big' })",
+        "gband.action.close_window({ window = 1, step = 1/4 })",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        failed(&format!("step-out-of-range-{index}"), view(), code, "step");
+    }
+    let scratch = Scratch::new("step-out-of-range-line");
+    let path = scratch.write(
+        "\n\n\ngband.bind('alt+s', function() gband.action.grow_window_height({ step = 2 }) end)\n",
+    );
+    let config = scratch.loaded();
+    clean(
+        &config
+            .runtime
+            .set_state(state(two_bands(), 1, Some(1), "root")),
+    );
+    let chord = gband_lua::Chord::Key(key("alt+s"));
+    let Some((_, gband_lua::Binding::Callback(callback))) = config.keymap["root"]
+        .iter()
+        .find(|(bound, _)| *bound == chord)
+    else {
+        panic!("alt+s is not bound to a function");
+    };
+    let outcome = config.runtime.call(*callback);
+    assert!(outcome.dispatched.is_empty());
+    let [error] = outcome.errors.as_slice() else {
+        panic!("{:?}", outcome.errors);
+    };
+    assert_error_at(error, &path, 4, "step");
 }
 
 #[test]

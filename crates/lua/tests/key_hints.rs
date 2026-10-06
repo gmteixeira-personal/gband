@@ -1,9 +1,15 @@
 mod common;
 
 use common::*;
-use gband_lua::{Color, Config, StatusLine, Style, ViewState};
+use gband_lua::{Bar, Color, Config, ViewState};
 
-const HINTS: &str = "gband.plugin('gband.statusline.hints')";
+const HINTS: &str = "gband.plugin('gband.statusline', { min_width = 40, max_width = 40 })\ngband.plugin('gband.statusline.hints')";
+
+fn hints_at(width: u16) -> String {
+    format!(
+        "gband.plugin('gband.statusline', {{ min_width = {width}, max_width = {width} }})\ngband.plugin('gband.statusline.hints')"
+    )
+}
 
 fn loaded(name: &str, source: &str) -> (Scratch, Config) {
     let scratch = Scratch::new(name);
@@ -14,30 +20,45 @@ fn loaded(name: &str, source: &str) -> (Scratch, Config) {
 }
 
 fn defaults_with(name: &str, opts: &str) -> (Scratch, Config) {
-    let source = gband_lua::DEFAULTS.replace(
-        "gband.plugin(\"gband.statusline.hints\")",
-        &format!("gband.plugin(\"gband.statusline.hints\", {opts})"),
-    );
+    let source = gband_lua::DEFAULTS
+        .replace(
+            "gband.plugin(\"gband.statusline.hints\")",
+            &format!("gband.plugin(\"gband.statusline.hints\", {opts})"),
+        )
+        .replace(
+            "gband.plugin(\"gband.statusline\")",
+            "gband.plugin(\"gband.statusline\", { min_width = 40 })",
+        );
     loaded(name, &source)
 }
 
-fn state(table: &str, width: u16) -> ViewState {
-    let mut state = drawn(width);
+fn state(table: &str, rows: u16) -> ViewState {
+    let mut state = sized(200, rows);
     state.table = table.to_owned();
     state
 }
 
-fn shown(config: &Config, table: &str, width: u16) -> String {
-    let line = presented(config, state(table, width));
-    text(&line, width).trim_end().to_owned()
+fn bar(config: &Config, table: &str, rows: u16) -> Bar {
+    presented(config, state(table, rows))
 }
 
-fn style_at(line: &StatusLine, col: u16) -> Style {
-    line.spans
+fn lines(config: &Config, table: &str, rows: u16) -> Vec<String> {
+    shown_rows(&bar(config, table, rows))
+        .into_iter()
+        .map(|(_, text)| text)
+        .collect()
+}
+
+fn shown(config: &Config, table: &str) -> String {
+    lines(config, table, 24).join("\n")
+}
+
+fn hints(config: &Config, table: &str) -> Vec<String> {
+    lines(config, table, 80)
         .iter()
-        .find(|span| span.col == col)
-        .map(|span| span.style)
-        .unwrap_or_else(|| panic!("no span at {col}: {line:?}"))
+        .flat_map(|row| row.split("  "))
+        .map(str::to_owned)
+        .collect()
 }
 
 fn resolved(config: &Config, group: &str) -> Vec<String> {
@@ -60,7 +81,7 @@ fn component_entry() {
     );
     assert_eq!(
         entry,
-        ["hints", "left", "0", "30", "KeyHintLabel", "hints", "true"]
+        ["hints", "top", "0", "30", "KeyHintLabel", "hints", "true"]
     );
 }
 
@@ -68,13 +89,13 @@ fn component_entry() {
 fn options_replace_the_settings() {
     let (_scratch, config) = loaded(
         "options",
-        "gband.plugin('gband.statusline.hints', { align = 'right', priority = 4, order = 2 })",
+        "gband.plugin('gband.statusline.hints', { align = 'bottom', priority = 4, order = 2 })",
     );
     let entry: Vec<String> = eval(
         &config,
         "local e = gband.ui.statusline.list()[1]\nreturn { e.align, tostring(e.priority), tostring(e.order) }",
     );
-    assert_eq!(entry, ["right", "4", "2"]);
+    assert_eq!(entry, ["bottom", "4", "2"]);
 }
 
 #[test]
@@ -85,6 +106,7 @@ fn invalid_option() {
         ("{ labels = { close_window = true } }", "labels"),
         ("{ labels = { 'kill' } }", "labels"),
         ("{ align = 'middle' }", "align"),
+        ("{ align = 'left' }", "align"),
         ("{ priority = 'high' }", "priority"),
         ("{ order = {} }", "order"),
         ("{ root = 'no' }", "root"),
@@ -127,8 +149,8 @@ fn theme_override() {
         "gband.colorscheme('dusk')\ngband.keymap.set('prefix', 'h', gband.action.focus_column_left)\n{HINTS}"
     ));
     let config = scratch.loaded();
-    let line = presented(&config, state("root", 40));
-    assert_eq!(style_at(&line, 0).fg, Some(Color::Index(3)));
+    let bar = bar(&config, "root", 24);
+    assert_eq!(bar.lines[0][0].style.fg, Some(Color::Index(3)));
 }
 
 fn keys(name: &str, bindings: &[&str]) -> (Scratch, Config) {
@@ -157,7 +179,7 @@ fn key_form() {
         ("[", "["),
     ] {
         let (_scratch, config) = keys("key-form", &[written]);
-        assert_eq!(shown(&config, "keys", 40), format!("{form} x"), "{written}");
+        assert_eq!(shown(&config, "keys"), format!("{form} x"), "{written}");
     }
 }
 
@@ -169,7 +191,7 @@ fn prefix_in_a_named_table() {
             "gband.opt.prefix = 'ctrl+b'\ngband.keymap.set('move', 'prefix', function() end, {{ desc = 'back' }})\n{HINTS}"
         ),
     );
-    assert_eq!(shown(&config, "move", 40), "C-b back");
+    assert_eq!(shown(&config, "move"), "C-b back");
 }
 
 #[test]
@@ -180,13 +202,13 @@ fn prefix_hint_follows_the_option() {
             "gband.opt.prefix = 'ctrl+b'\ngband.keymap.set('prefix', 'h', gband.action.focus_column_left)\n{HINTS}"
         ),
     );
-    assert_eq!(shown(&config, "root", 40), "C-b prefix");
+    assert_eq!(shown(&config, "root"), "C-b prefix");
 }
 
 #[test]
 fn root_with_the_defaults() {
     let config = gband_lua::defaults(gband_lua::Side::Client);
-    assert_eq!(shown(&config, "root", 80), "band 1 │ C-space navigation");
+    assert_eq!(shown(&config, "root"), "band 1\nC-space navigation");
 }
 
 #[test]
@@ -195,16 +217,33 @@ fn prefix_table_that_is_not_a_mode() {
         "prefix-not-a-mode",
         &format!("gband.keymap.set('prefix', 'h', gband.action.focus_column_left)\n{HINTS}"),
     );
-    assert_eq!(shown(&config, "root", 40), "C-space prefix");
+    assert_eq!(shown(&config, "root"), "C-space prefix");
 }
 
 #[test]
 fn prefix_table_with_the_defaults() {
     let config = gband_lua::defaults(gband_lua::Side::Client);
-    let shown = shown(&config, "prefix", 520);
-    assert_eq!(shown, format!("band 1 │ navigation │ {PREFIX_HINTS}"));
-    assert!(shown.starts_with("band 1 │ navigation │ h left  l right  j down  k up  u band down  i band up  c center  n open a window  q close"));
-    assert!(shown.ends_with("D detach  esc interactive mode  enter interactive mode  left left  right right  down down  up up  C-space send the prefix key"));
+    let first = lines(&config, "prefix", 40);
+    assert_eq!(
+        first[..6],
+        [
+            "band 1",
+            "navigation",
+            "h left  l right",
+            "j down  k up",
+            "u band down",
+            "i band up  c center"
+        ]
+    );
+    let all: Vec<&str> = PREFIX_HINTS.split("  ").collect();
+    let detach = all.iter().position(|hint| *hint == "D detach").unwrap();
+    let hints = hints(&config, "prefix");
+    assert_eq!(hints[..2], ["band 1", "navigation"]);
+    assert_eq!(hints[2..hints.len() - 1], all[..detach]);
+    assert_eq!(hints.last().unwrap(), "D detach …");
+    let (_scratch, wide) = defaults_with("prefix-wide", "{}");
+    let hints = self::hints(&wide, "prefix");
+    assert_eq!(hints[2..], all);
 }
 
 #[test]
@@ -215,7 +254,7 @@ fn named_table() {
             "gband.keymap.set('move', 'h', function() end, {{ desc = 'west' }})\ngband.keymap.set('move', 'l', function() end, {{ desc = 'east' }})\n{HINTS}"
         ),
     );
-    assert_eq!(shown(&config, "move", 40), "h west  l east");
+    assert_eq!(shown(&config, "move"), "h west  l east");
 }
 
 #[test]
@@ -224,17 +263,17 @@ fn no_prefix_bindings() {
         "no-prefix",
         &format!("gband.keymap.set('root', 'alt+h', gband.action.focus_column_left)\n{HINTS}"),
     );
-    assert_eq!(shown(&config, "root", 40), "A-h left");
+    assert_eq!(shown(&config, "root"), "A-h left");
 }
 
 #[test]
 fn root_hints_turned_off() {
     let (_scratch, config) = defaults_with("root-off", "{ root = false }");
-    assert_eq!(shown(&config, "root", 80), "band 1");
-    let shown = shown(&config, "prefix", 80);
-    assert!(
-        shown.starts_with("band 1 │ navigation │ h left  l right"),
-        "{shown}"
+    assert_eq!(shown(&config, "root"), "band 1");
+    let lines = lines(&config, "prefix", 24);
+    assert_eq!(
+        lines[..3],
+        ["band 1", "navigation", "h left  l right  j down  k up"]
     );
 }
 
@@ -246,12 +285,10 @@ fn groups() {
             "gband.keymap.set('prefix', 'h', gband.action.focus_column_left)\n{HINTS}\ngband.hl.set('KeyHintKey', {{ fg = 1 }})\ngband.hl.set('KeyHintLabel', {{ fg = 2 }})"
         ),
     );
-    let line = presented(&config, state("root", 40));
-    assert_eq!(text(&line, 40).trim_end(), "C-space prefix");
-    let spans: Vec<(&str, Option<Color>)> = line
-        .spans
+    let bar = bar(&config, "root", 24);
+    let spans: Vec<(&str, Option<Color>)> = bar.lines[0]
         .iter()
-        .map(|span| (span.text.as_str(), span.style.fg))
+        .map(|run| (run.text.as_str(), run.style.fg))
         .collect();
     assert_eq!(
         spans,
@@ -267,25 +304,29 @@ fn separators_and_ellipsis_in_the_label_group() {
     let (_scratch, config) = loaded(
         "separator-group",
         &format!(
-            "gband.keymap.set('move', 'h', function() end, {{ desc = 'west' }})\ngband.keymap.set('move', 'l', function() end, {{ desc = 'east' }})\ngband.keymap.set('move', 'j', function() end, {{ desc = 'down' }})\n{HINTS}\ngband.hl.set('KeyHintLabel', {{ fg = 2 }})"
+            "gband.keymap.set('move', 'h', function() end, {{ desc = 'west' }})\ngband.keymap.set('move', 'l', function() end, {{ desc = 'east' }})\ngband.keymap.set('move', 'j', function() end, {{ desc = 'down' }})\n{}\ngband.hl.set('KeyHintLabel', {{ fg = 2 }})",
+            hints_at(16)
         ),
     );
-    let line = presented(&config, state("move", 16));
-    assert_eq!(text(&line, 16).trim_end(), "h west  l east …");
-    assert_eq!(style_at(&line, 6).fg, Some(Color::Index(2)));
-    assert_eq!(style_at(&line, 14).fg, Some(Color::Index(2)));
+    let bar = bar(&config, "move", 1);
+    assert_eq!(rows(&bar), ["h west  l east …"]);
+    let line = &bar.lines[0];
+    assert_eq!(line[2].text, "  ");
+    assert_eq!(line[2].style.fg, Some(Color::Index(2)));
+    assert_eq!(line[5].text, " …");
+    assert_eq!(line[5].style.fg, Some(Color::Index(2)));
 }
 
 #[test]
 fn default_description_gives_the_short_label() {
     let config = gband_lua::defaults(gband_lua::Side::Client);
-    assert!(shown(&config, "prefix", 520).contains("  r width  "));
+    assert!(hints(&config, "prefix").contains(&"r width".to_owned()));
 }
 
 #[test]
 fn center_label() {
     let config = gband_lua::defaults(gband_lua::Side::Client);
-    assert!(shown(&config, "prefix", 520).contains("  c center  "));
+    assert!(hints(&config, "prefix").contains(&"c center".to_owned()));
 }
 
 #[test]
@@ -296,35 +337,38 @@ fn own_description() {
             "gband.keymap.set('prefix', 'g', gband.action.focus_column_left, {{ desc = 'go west' }})\n{HINTS}"
         ),
     );
-    assert_eq!(shown(&config, "prefix", 40), "g go west");
+    assert_eq!(shown(&config, "prefix"), "g go west");
 }
 
 #[test]
 fn floating_keys() {
     let config = gband_lua::defaults(gband_lua::Side::Client);
-    let shown = shown(&config, "prefix", 520);
+    let hints = hints(&config, "prefix");
     for hint in ["v float", "V layer", "C-h move left", "C-left move left"] {
-        assert!(shown.contains(&format!("  {hint}  ")), "{hint}: {shown}");
+        assert!(hints.contains(&hint.to_owned()), "{hint}: {hints:?}");
     }
 }
 
 #[test]
 fn label_option() {
     let (_scratch, config) = defaults_with("label", "{ labels = { close_window = 'kill' } }");
-    let shown = shown(&config, "prefix", 520);
-    assert!(shown.contains("  q kill  "), "{shown}");
+    assert!(hints(&config, "prefix").contains(&"q kill".to_owned()));
 }
 
 #[test]
 fn label_option_hides_an_action() {
     let (_scratch, config) = defaults_with("label-hide", "{ labels = { detach = false } }");
-    let shown = shown(&config, "prefix", 520);
-    assert!(!shown.contains("detach"), "{shown}");
+    let hints = hints(&config, "prefix");
     assert!(
-        shown.contains("  ? list the keys  esc interactive mode  "),
-        "{shown}"
+        !hints.iter().any(|hint| hint.contains("detach")),
+        "{hints:?}"
     );
-    assert!(shown.ends_with("C-space send the prefix key"), "{shown}");
+    let list = hints
+        .iter()
+        .position(|hint| hint == "? list the keys")
+        .unwrap();
+    assert_eq!(hints[list + 1], "esc interactive mode");
+    assert_eq!(hints.last().unwrap(), "C-space send the prefix key");
 }
 
 fn registered(name: &str, opts: &str) -> (Scratch, Config) {
@@ -345,16 +389,13 @@ fn registered(name: &str, opts: &str) -> (Scratch, Config) {
 #[test]
 fn registered_action() {
     let (_scratch, config) = registered("registered", ", { desc = 'say hi' }");
-    assert_eq!(shown(&config, "root", 40), "C-space prefix  A-g say hi");
+    assert_eq!(shown(&config, "root"), "C-space prefix  A-g say hi");
 }
 
 #[test]
 fn registered_action_without_a_description() {
     let (_scratch, config) = registered("registered-bare", "");
-    assert_eq!(
-        shown(&config, "root", 40),
-        "C-space prefix  A-g hello.greet"
-    );
+    assert_eq!(shown(&config, "root"), "C-space prefix  A-g hello.greet");
 }
 
 #[test]
@@ -365,7 +406,7 @@ fn function_without_a_description() {
             "gband.keymap.set('prefix', 'x', function() end)\ngband.keymap.set('prefix', 'y', function() end, {{ desc = '' }})\ngband.keymap.set('prefix', 'h', gband.action.focus_column_left)\n{HINTS}"
         ),
     );
-    assert_eq!(shown(&config, "prefix", 40), "h left");
+    assert_eq!(shown(&config, "prefix"), "h left");
 }
 
 #[test]
@@ -377,40 +418,73 @@ fn some_hints_left_out() {
             .replace("gband.plugin(\"gband.statusline.mode\")", "")
             .replace("gband.plugin(\"gband.statusline.position\")", ""),
     );
-    assert_eq!(shown(&config, "prefix", 20), "h left  l right …");
+    assert_eq!(
+        lines(&config, "prefix", 2),
+        ["h left  l right", "j down  k up …"]
+    );
 }
 
 #[test]
 fn all_hints_fit() {
+    let source = |width| {
+        format!(
+            "gband.keymap.set('move', 'h', function() end, {{ desc = 'west' }})\ngband.keymap.set('move', 'l', function() end, {{ desc = 'east' }})\n{}",
+            hints_at(width)
+        )
+    };
+    let (_scratch, config) = loaded("all-fit", &source(14));
+    assert_eq!(lines(&config, "move", 1), ["h west  l east"]);
+    let (_scratch, config) = loaded("all-fit-narrow", &source(13));
+    assert_eq!(lines(&config, "move", 1), ["h west …"]);
+    assert_eq!(lines(&config, "move", 2), ["h west", "l east"]);
+}
+
+#[test]
+fn last_line_makes_room_for_the_ellipsis() {
     let (_scratch, config) = loaded(
-        "all-fit",
+        "ellipsis-room",
         &format!(
-            "gband.keymap.set('move', 'h', function() end, {{ desc = 'west' }})\ngband.keymap.set('move', 'l', function() end, {{ desc = 'east' }})\n{HINTS}"
+            "gband.keymap.set('move', 'h', function() end, {{ desc = 'wester' }})\ngband.keymap.set('move', 'l', function() end, {{ desc = 'east' }})\ngband.keymap.set('move', 'j', function() end, {{ desc = 'down' }})\n{}",
+            hints_at(16)
         ),
     );
-    assert_eq!(shown(&config, "move", 14), "h west  l east");
-    assert_eq!(shown(&config, "move", 13), "h west …");
+    assert_eq!(lines(&config, "move", 1), ["h wester …"]);
 }
 
 #[test]
 fn nothing_fits() {
     let (_scratch, config) = loaded(
         "nothing",
-        &format!("gband.keymap.set('prefix', 'h', gband.action.focus_column_left)\n{HINTS}"),
+        &format!(
+            "gband.keymap.set('prefix', 'h', gband.action.focus_column_left)\n{}",
+            hints_at(3)
+        ),
     );
-    let line = presented(&config, state("root", 3));
-    assert!(line.spans.is_empty(), "{line:?}");
+    assert!(lines(&config, "root", 24).is_empty());
+}
+
+#[test]
+fn no_rows_left() {
+    let (_scratch, config) = loaded(
+        "no-rows",
+        &format!(
+            "gband.keymap.set('prefix', 'h', gband.action.focus_column_left)\ngband.ui.statusline.add({{ id = 'a', order = 1, priority = 5, render = function(ctx) return 'a' end }})\ngband.ui.statusline.add({{ id = 'probe', fill = true, priority = -1, render = function(ctx) seen = ctx.height end }})\n{HINTS}"
+        ),
+    );
+    assert_eq!(lines(&config, "root", 1), ["a"]);
+    assert_eq!(global::<i64>(&config, "seen"), 0);
 }
 
 #[test]
 fn wide_character_hint() {
-    let (_scratch, config) = loaded(
-        "wide",
-        &format!(
-            "gband.keymap.set('move', 'h', function() end, {{ desc = '日本' }})\ngband.keymap.set('move', 'l', function() end, {{ desc = 'east' }})\n{HINTS}"
-        ),
-    );
-    assert_eq!(shown(&config, "move", 8), "h 日本 …");
-    let line = presented(&config, state("move", 7));
-    assert!(line.spans.is_empty(), "{line:?}");
+    let source = |width| {
+        format!(
+            "gband.keymap.set('move', 'h', function() end, {{ desc = '日本' }})\ngband.keymap.set('move', 'l', function() end, {{ desc = 'east' }})\n{}",
+            hints_at(width)
+        )
+    };
+    let (_scratch, config) = loaded("wide", &source(8));
+    assert_eq!(lines(&config, "move", 1), ["h 日本 …"]);
+    let (_scratch, config) = loaded("wide-narrow", &source(7));
+    assert!(lines(&config, "move", 1).is_empty());
 }

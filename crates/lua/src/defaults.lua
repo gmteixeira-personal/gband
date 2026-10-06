@@ -1,12 +1,16 @@
 gband.opt.prefix = "ctrl+space"
 gband.opt.center_focused_column = "never"
 gband.opt.loop_bands = true
-gband.opt.statusline_position = "bottom"
-gband.opt.statusline_height = 1
-gband.opt.statusline_separator = " │ "
 gband.opt.notify_style = "osc9"
+gband.opt.tile_border_sides = { "top", "right", "bottom", "left" }
+gband.opt.tile_border_chars = "plain"
+gband.opt.floating_border_sides = { "top", "right", "bottom", "left" }
+gband.opt.floating_border_chars = "plain"
+gband.opt.width_step = 1/10
+gband.opt.height_step = 1/10
 
 gband.plugin("gband.keylist")
+gband.plugin("gband.errors")
 
 local set = gband.keymap.set
 local action = gband.action
@@ -61,6 +65,7 @@ set("prefix", "prefix", function()
   interactive()
 end, { desc = "send the prefix key" })
 
+gband.plugin("gband.statusline")
 gband.plugin("gband.statusline.band")
 gband.plugin("gband.statusline.mode")
 gband.plugin("gband.statusline.hints")

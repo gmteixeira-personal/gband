@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 
-use gband_core::action::{Action, ClientAction, SessionCommand};
+use gband_core::action::{Action, ClientAction, SessionCommand, Steps};
 use gband_core::layout::{
-    BandId, Direction, SessionAction, Step, Vertical, WindowContent, WindowId,
+    BandId, Direction, Proportion, SessionAction, Step, Vertical, WindowContent, WindowId,
 };
 use gband_core::view::ViewAction;
 use mlua::{Lua, MetaMethod, Table, UserData, UserDataMethods, Value};
@@ -121,22 +121,34 @@ pub const ACTIONS: [BuiltinAction; 26] = [
     ),
     builtin(
         "grow_column_width",
-        Action::Session(SessionCommand::StepWidth(Step::Grow)),
+        Action::Session(SessionCommand::StepWidth {
+            step: Step::Grow,
+            by: Proportion::TENTH,
+        }),
         "grow the width of the window's column",
     ),
     builtin(
         "shrink_column_width",
-        Action::Session(SessionCommand::StepWidth(Step::Shrink)),
+        Action::Session(SessionCommand::StepWidth {
+            step: Step::Shrink,
+            by: Proportion::TENTH,
+        }),
         "shrink the width of the window's column",
     ),
     builtin(
         "grow_window_height",
-        Action::Session(SessionCommand::StepHeight(Step::Grow)),
+        Action::Session(SessionCommand::StepHeight {
+            step: Step::Grow,
+            by: Proportion::TENTH,
+        }),
         "grow the height of the window",
     ),
     builtin(
         "shrink_window_height",
-        Action::Session(SessionCommand::StepHeight(Step::Shrink)),
+        Action::Session(SessionCommand::StepHeight {
+            step: Step::Shrink,
+            by: Proportion::TENTH,
+        }),
         "shrink the height of the window",
     ),
     builtin(
@@ -173,7 +185,8 @@ impl UserData for LuaAction {
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
         methods.add_meta_method(MetaMethod::Call, |lua, this, target: Value| match this {
             LuaAction::Builtin { action, .. } if target.is_nil() => {
-                api::queue(lua, Dispatch::Action(*action), "an action")
+                let action = action.stepped(crate::options::current(lua).steps);
+                api::queue(lua, Dispatch::Action(action), "an action")
             }
             LuaAction::Builtin { name, action } => {
                 if !api::in_callback(lua) {
@@ -226,6 +239,9 @@ fn session_target(name: &str, command: SessionCommand, target: &Value) -> Result
     let allowed: &[&str] = match command {
         SessionCommand::OpenWindow => &["session", "band", "after", "program", "floating"],
         SessionCommand::ToggleFloating => &["session", "window", "after"],
+        SessionCommand::StepWidth { .. } | SessionCommand::StepHeight { .. } => {
+            &["session", "window", "step"]
+        }
         _ => &["session", "window"],
     };
     for pair in target.pairs::<Value, Value>() {
@@ -317,7 +333,13 @@ fn session_target(name: &str, command: SessionCommand, target: &Value) -> Result
         }
     } else {
         let window = WindowId(number("window", true)?.expect("required"));
+        let by =
+            crate::control::read_step(&get("step")?, command, name)?.unwrap_or(Proportion::TENTH);
         command
+            .stepped(Steps {
+                width: by,
+                height: by,
+            })
             .on_window(window)
             .expect("every command but open window names a window")
     };

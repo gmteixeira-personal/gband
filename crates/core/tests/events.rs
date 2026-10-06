@@ -244,6 +244,7 @@ fn growing_a_column_width_reports_it_once() {
     let grow = SessionAction::StepWidth {
         window: first,
         step: Step::Grow,
+        by: Proportion::TENTH,
     };
     assert_eq!(
         layout.apply(grow, AREA, &LayoutOptions::default()),
@@ -257,6 +258,7 @@ fn growing_a_column_width_reports_it_once() {
     let shrink = SessionAction::StepWidth {
         window: first,
         step: Step::Shrink,
+        by: Proportion::TENTH,
     };
     for _ in 0..6 {
         layout.apply(shrink.clone(), AREA, &LayoutOptions::default());
@@ -292,6 +294,7 @@ fn growing_a_window_height_reports_the_column() {
             SessionAction::StepHeight {
                 window: top,
                 step: Step::Grow,
+                by: Proportion::TENTH,
             },
             AREA,
             &LayoutOptions::default()
@@ -308,7 +311,11 @@ fn growing_a_window_height_reports_the_column() {
 fn height_steps_at_the_limits_produce_nothing() {
     for (step, presses) in [(Step::Grow, 5), (Step::Shrink, 5)] {
         let (mut layout, top, _) = second_column_stack();
-        let action = SessionAction::StepHeight { window: top, step };
+        let action = SessionAction::StepHeight {
+            window: top,
+            step,
+            by: Proportion::TENTH,
+        };
         for _ in 0..presses {
             assert!(
                 !layout

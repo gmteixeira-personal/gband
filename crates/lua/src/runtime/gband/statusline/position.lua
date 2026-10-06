@@ -6,7 +6,7 @@ return {
       error("the options of `position` must be a table", 2)
     end
     gband.ui.statusline.add({
-      align = opts.align or "right",
+      align = opts.align or "bottom",
       priority = opts.priority or 10,
       order = opts.order or 10,
       hl = opts.hl or "StatusLineMuted",

@@ -1,3 +1,4 @@
+use gband_core::action::Steps;
 use gband_core::input::{Key, KeyCode};
 use gband_lua::{Binding, Chord, KeyTables, Modes};
 
@@ -6,14 +7,16 @@ pub const PREFIX: &str = "prefix";
 
 pub struct Keymap {
     pub prefix: Key,
+    pub steps: Steps,
     pub tables: KeyTables,
     pub modes: Modes,
 }
 
 impl Keymap {
-    pub fn new(prefix: Key, tables: KeyTables, modes: Modes) -> Self {
+    pub fn new(prefix: Key, steps: Steps, tables: KeyTables, modes: Modes) -> Self {
         Self {
             prefix,
+            steps,
             tables,
             modes,
         }
@@ -34,7 +37,10 @@ impl Keymap {
         self.table(table)
             .iter()
             .find(|&&(chord, _)| matches(self.chord_key(chord), key))
-            .map(|&(_, binding)| binding)
+            .map(|&(_, binding)| match binding {
+                Binding::Action(action) => Binding::Action(action.stepped(self.steps)),
+                binding => binding,
+            })
     }
 }
 
@@ -109,7 +115,7 @@ fn matches(bound: Key, key: Key) -> bool {
 mod tests {
     use gband_core::action::{Action, ClientAction, SessionCommand};
     use gband_core::input::{Modes, Modifiers, encode_key};
-    use gband_core::layout::{Direction, Step, Vertical};
+    use gband_core::layout::{Direction, Proportion, Step, Vertical};
     use gband_core::view::ViewAction;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -119,7 +125,12 @@ mod tests {
 
     fn defaults() -> Keymap {
         let config = gband_lua::defaults(gband_lua::Side::Client);
-        Keymap::new(config.options.prefix, config.keymap, config.modes)
+        Keymap::new(
+            config.options.prefix,
+            config.options.steps,
+            config.keymap,
+            config.modes,
+        )
     }
 
     fn default_prefix_entries() -> Vec<(String, Option<String>, String)> {
@@ -174,7 +185,12 @@ mod tests {
         )
         .unwrap();
         let _ = std::fs::remove_dir_all(&dir);
-        Keymap::new(config.options.prefix, config.keymap, config.modes)
+        Keymap::new(
+            config.options.prefix,
+            config.options.steps,
+            config.keymap,
+            config.modes,
+        )
     }
 
     fn key(name: &str) -> Key {
@@ -222,14 +238,32 @@ mod tests {
             ('f', Action::Session(SessionCommand::ToggleFullWidth)),
             (
                 '-',
-                Action::Session(SessionCommand::StepWidth(Step::Shrink)),
+                Action::Session(SessionCommand::StepWidth {
+                    step: Step::Shrink,
+                    by: Proportion::TENTH,
+                }),
             ),
-            ('=', Action::Session(SessionCommand::StepWidth(Step::Grow))),
+            (
+                '=',
+                Action::Session(SessionCommand::StepWidth {
+                    step: Step::Grow,
+                    by: Proportion::TENTH,
+                }),
+            ),
             (
                 '_',
-                Action::Session(SessionCommand::StepHeight(Step::Shrink)),
+                Action::Session(SessionCommand::StepHeight {
+                    step: Step::Shrink,
+                    by: Proportion::TENTH,
+                }),
             ),
-            ('+', Action::Session(SessionCommand::StepHeight(Step::Grow))),
+            (
+                '+',
+                Action::Session(SessionCommand::StepHeight {
+                    step: Step::Grow,
+                    by: Proportion::TENTH,
+                }),
+            ),
             ('R', Action::Session(SessionCommand::ResetHeight)),
             ('v', Action::Session(SessionCommand::ToggleFloating)),
             ('V', Action::View(ViewAction::SwitchLayer)),
@@ -348,7 +382,10 @@ mod tests {
     #[test]
     fn plus_grows_the_height_with_or_without_the_shift_flag() {
         let keymap = defaults();
-        let grow = Some(Action::Session(SessionCommand::StepHeight(Step::Grow)));
+        let grow = Some(Action::Session(SessionCommand::StepHeight {
+            step: Step::Grow,
+            by: Proportion::TENTH,
+        }));
         assert_eq!(
             after_prefix(&keymap, Key::new(KeyCode::Char('+'), Modifiers::SHIFT)),
             grow
@@ -437,7 +474,10 @@ gband.keymap.set('root', 'alt+r', function() gband.keymap.enter('resize') end)",
         );
         let mut leader = Leader::default();
         leader.enter("resize".to_owned());
-        let grow = Some(Action::Session(SessionCommand::StepWidth(Step::Grow)));
+        let grow = Some(Action::Session(SessionCommand::StepWidth {
+            step: Step::Grow,
+            by: Proportion::TENTH,
+        }));
         assert_eq!(ran(leader.handle(&keymap, char_key('='))), grow);
         assert_eq!(ran(leader.handle(&keymap, char_key('='))), grow);
         assert_eq!(leader.handle(&keymap, char_key('x')), Command::Discard);

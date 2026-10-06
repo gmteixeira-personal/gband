@@ -12,13 +12,26 @@ fn attached(env: &TestEnv) -> Attached {
     client
 }
 
-fn bottom_row(screen: &Grid) -> String {
-    screen
+fn bar(screen: &Grid, row: usize) -> String {
+    let line = screen
         .contents()
         .lines()
-        .nth(usize::from(screen.size().rows) - 1)
+        .nth(row)
         .unwrap_or_default()
+        .to_owned();
+    line.chars()
+        .take(20)
+        .collect::<String>()
+        .trim_end()
         .to_owned()
+}
+
+fn navigation(screen: &Grid) -> bool {
+    bar(screen, 1) == "navigation"
+}
+
+fn interactive(screen: &Grid) -> bool {
+    bar(screen, 1) == "C-space navigation"
 }
 
 fn labelled(client: &mut Attached, label: &str) {
@@ -77,7 +90,7 @@ fn repeated_focus_moves() {
     });
     client.send(b"\x00lll");
     client.wait_for("the fourth window focused in navigation mode", |screen| {
-        focused_shows(screen, "W4") && bottom_row(screen).starts_with("band 1 │ navigation │")
+        focused_shows(screen, "W4") && navigation(screen)
     });
     assert!(untouched_prompt(&client.screen()));
 }
@@ -89,12 +102,10 @@ fn repeated_resize_then_escape() {
     client.send(b"\x00==");
     client.wait_for("a tile 56 columns wide", |screen| {
         let tiles = tiles(screen);
-        tiles.len() == 1 && tiles[0].left == 0 && tiles[0].right == 55
+        tiles.len() == 1 && tiles[0].left == 20 && tiles[0].right == 75
     });
     client.send(b"\x1b");
-    client.wait_for("interactive mode", |screen| {
-        bottom_row(screen).starts_with("band 1 │ C-space navigation")
-    });
+    client.wait_for("interactive mode", interactive);
     thread::sleep(Duration::from_millis(300));
     client.run("clear; tput cols");
     client.wait_for_line("54");
@@ -105,9 +116,7 @@ fn enter_returns_to_interactive_mode() {
     let env = TestEnv::new("navigation-enter");
     let mut client = attached(&env);
     client.send(b"\x00\r");
-    client.wait_for("interactive mode", |screen| {
-        bottom_row(screen).starts_with("band 1 │ C-space navigation")
-    });
+    client.wait_for("interactive mode", interactive);
     client.run("echo still-one");
     client.wait_for_line("still-one");
     assert_eq!(client.tiles().len(), 1);
@@ -118,16 +127,16 @@ fn n_opens_a_window_in_interactive_mode() {
     let env = TestEnv::new("navigation-open");
     let mut client = attached(&env);
     client.send(b"\x00n");
-    client.wait_for("two tiles with the second focused", |screen| {
+    client.wait_for("the second tile focused", |screen| {
         let tiles = tiles(screen);
-        tiles.len() == 2 && tiles[1].focused && tiles[1].left == 40
+        tiles.len() == 1 && tiles[0].focused && tiles[0].left == 40
     });
     client.wait_for_prompt();
     client.run("echo window=$GBAND_WINDOW");
     client.wait_for_focused("the second window number", |lines| {
         lines.iter().any(|line| line.starts_with("window="))
     });
-    assert!(bottom_row(&client.screen()).starts_with("band 1 │ C-space navigation"));
+    assert!(interactive(&client.screen()));
 }
 
 #[test]

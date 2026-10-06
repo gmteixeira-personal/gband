@@ -6,7 +6,7 @@ return {
       error("the options of `mode` must be a table", 2)
     end
     gband.ui.statusline.add({
-      align = opts.align or "left",
+      align = opts.align or "top",
       priority = opts.priority or 30,
       order = opts.order or 20,
       hl = opts.hl or "StatusLineAccent",

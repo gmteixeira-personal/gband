@@ -445,6 +445,7 @@ fn on_overflow_follows_a_width_change_as_never() {
         SessionAction::StepWidth {
             window: windows[1],
             step: Step::Grow,
+            by: Proportion::TENTH,
         },
         AREA,
         &LayoutOptions::default(),
@@ -542,31 +543,47 @@ fn session_commands_resolve_to_the_focused_window() {
             SessionAction::open(band, Some(windows[2]), None),
         ),
         (
-            SessionCommand::StepWidth(Step::Grow),
+            SessionCommand::StepWidth {
+                step: Step::Grow,
+                by: Proportion::TENTH,
+            },
             SessionAction::StepWidth {
                 window: windows[2],
                 step: Step::Grow,
+                by: Proportion::TENTH,
             },
         ),
         (
-            SessionCommand::StepWidth(Step::Shrink),
+            SessionCommand::StepWidth {
+                step: Step::Shrink,
+                by: Proportion::TENTH,
+            },
             SessionAction::StepWidth {
                 window: windows[2],
                 step: Step::Shrink,
+                by: Proportion::TENTH,
             },
         ),
         (
-            SessionCommand::StepHeight(Step::Grow),
+            SessionCommand::StepHeight {
+                step: Step::Grow,
+                by: Proportion::TENTH,
+            },
             SessionAction::StepHeight {
                 window: windows[2],
                 step: Step::Grow,
+                by: Proportion::TENTH,
             },
         ),
         (
-            SessionCommand::StepHeight(Step::Shrink),
+            SessionCommand::StepHeight {
+                step: Step::Shrink,
+                by: Proportion::TENTH,
+            },
             SessionAction::StepHeight {
                 window: windows[2],
                 step: Step::Shrink,
+                by: Proportion::TENTH,
             },
         ),
         (
@@ -590,8 +607,14 @@ fn commands_on_a_window_resolve_to_nothing_without_focus() {
         SessionCommand::ConsumeOrExpel(Direction::Right),
         SessionCommand::CycleWidth,
         SessionCommand::ToggleFullWidth,
-        SessionCommand::StepWidth(Step::Grow),
-        SessionCommand::StepHeight(Step::Shrink),
+        SessionCommand::StepWidth {
+            step: Step::Grow,
+            by: Proportion::TENTH,
+        },
+        SessionCommand::StepHeight {
+            step: Step::Shrink,
+            by: Proportion::TENTH,
+        },
         SessionCommand::ResetHeight,
     ] {
         assert_eq!(view.resolve(command), None, "{command:?}");

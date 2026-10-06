@@ -75,6 +75,7 @@ fn bundled_default_sets_every_built_in_group() {
         "StatusLineMuted",
         "StatusLineAccent",
         "StatusLineError",
+        "Bar",
     ] {
         let set: bool = eval(&config, &format!("return gband.hl.get('{group}') ~= nil"));
         assert!(set, "{group}");

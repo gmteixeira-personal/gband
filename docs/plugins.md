@@ -2,7 +2,7 @@
 
 A gband plugin is a directory of Lua files.
 gband finds it on the runtimepath, reads its manifest, runs the file of its side, and lets your configuration set it up.
-Plugins can add actions, commands, options, key bindings, event handlers, status line components, plugin windows, highlight groups and colorschemes in the client, and event handlers, shared window state, events and commands in the server.
+Plugins can add actions, commands, options, key bindings, event handlers, status line components, side bars, plugin windows, highlight groups and colorschemes in the client, and event handlers, shared window state, events and commands in the server.
 
 The [sample plugin](../examples/plugins/hello) uses most of what the client API offers.
 The [status line sample](../examples/plugins/window) adds a component, a highlight group and a colorscheme.
@@ -176,9 +176,16 @@ Names registered by code that belongs to no plugin are used as given.
 ## Errors
 
 gband runs every manifest, every side file, every `setup` and every callback protected.
-An error there is a plugin error: gband records it in the process's log and shows the latest as `<plugin>: <file>:<line>: <message>`.
-While the status line is drawn, the error shows as its first item.
-While it is not, the error shows on the bottom row of the ribbon.
+An error there is a plugin error: gband records it in the process's log as `<plugin>: <file>:<line>: <message>`, and the client adds it to its error list.
+While the status line is drawn, its first row shows `error`.
+While it is not, the latest error shows on the bottom row of the ribbon.
+
+`gband.errors()` returns a new list of the client's errors since its configuration last loaded without one of its own, oldest first.
+The bundled plugin `gband.errors`, plugin `errors`, registers the action and command `errors.open`, both described as `list the errors`.
+They open the list in a plugin window titled `errors`, three quarters of the ribbon wide and half of it high, wrapping each error by display width and leaving an empty line between two, and enter `root` so the keys that follow reach it.
+Its `setup` takes `kind`, `"floating"` by default or `"tiled"`, and the command takes the same `kind` in its arguments table: `gband.cmd.run("errors.open", { kind = "tiled" })`.
+`q` closes the list, and so does Escape when it floats.
+The default configuration sets the plugin up and binds no key to it.
 
 The server sends each error of its own Lua to every attached client, and the latest one to each client that attaches, until its configuration next loads without errors.
 A client shows them preceded by `server: `, such as `server: agent-status: /srv/.../server.lua:5: boom`.
@@ -258,7 +265,7 @@ Each built-in option belongs to one side, and each process knows only its own si
 
 | side | options |
 |---|---|
-| client | `prefix`, `center_focused_column`, `loop_bands`, `statusline_position`, `statusline_height`, `statusline_separator`, `notify_style` |
+| client | `prefix`, `center_focused_column`, `loop_bands`, `notify_style`, `tile_border_sides`, `tile_border_chars`, `floating_border_sides`, `floating_border_chars`, `width_step`, `height_step` |
 | server | `default_column_width`, `width_presets` |
 
 ```lua
@@ -448,6 +455,11 @@ end, { desc = "describe the layout" })
 A built-in action that acts on the focused window also takes a target, a table naming the window: `close_window`, `consume_or_expel_left`, `consume_or_expel_right`, `move_column_left`, `move_column_right`, `move_window_down`, `move_window_up`, `cycle_column_width`, `toggle_full_width`, `grow_column_width`, `shrink_column_width`, `grow_window_height`, `shrink_window_height` and `reset_window_height`.
 `gband.action.close_window({ window = 3 })` closes window 3, whichever window is focused.
 
+`grow_column_width`, `shrink_column_width`, `grow_window_height` and `shrink_window_height` also take `step`, the amount to grow or shrink by as a fraction of the screen: greater than 0 and at most 10000 for a width, and at most 1 for a height.
+Without `step` they use the client's `width_step` or `height_step` option, 1/10 by default.
+A target with `step` and no `window` acts on the focused window: `gband.action.grow_column_width({ step = 1/4 })`.
+The server's session actions take `step` the same way, and use 1/10 without it.
+
 `open_window` takes `band`, `after` or both: the new column follows `after`'s column, or is `band`'s first column when only `band` is given.
 `after` must be a tiled window.
 `floating = true` opens the window floating instead, in `band` or in the viewed band, centred at the default width and two height steps shorter than the screen; it cannot be given with `after`.
@@ -458,7 +470,7 @@ A floating window is tiled again as a new column after `after`, or, without it, 
 `send_prefix` takes `window` and sends the prefix key to it.
 `gband.spawn` takes `band` and `after` beside `cmd`.
 
-A target on a view action or on `detach`, a field the action does not take, or a window or band not in the layout is an error at the line of the call.
+A target on a view action or on `detach`, a field the action does not take, a `step` out of its range, or a window or band not in the layout is an error at the line of the call.
 
 ```lua
 gband.keymap.set("prefix", "N", function()
@@ -514,10 +526,14 @@ It is one of two kinds:
 | `on_close`, `on_resize` | both | function | none |
 | `row`, `col` | floating | integer of at least 0, or `"center"` | `"center"` |
 | `width`, `height` | floating | integer of at least 1 | half the ribbon |
-| `border` | floating | boolean | `true` |
+| `border` | floating | a boolean, or a border table `{ sides = ..., chars = ... }` | `true` |
 | `title` | floating | string | none |
 | `band`, `after` | tiled | as the `open_window` target takes them | the viewed band and focused window |
 | `column_width` | tiled | a width | the server's `default_column_width` |
+
+A border table draws the sides it lists, all four without `sides`, with the characters `chars` names, `"plain"` without it, as the client's border options do.
+A side left out still takes its cell, so the content area is the same whatever the table says, and the title is drawn on the top row even when the top side is not.
+`true` is all four sides in `"plain"`.
 
 A line is a string or a list of spans; a span is a string or `{ text = ..., hl = "Group" }`.
 Spans without `hl` use `PluginWindow`, and a span's style is its group's resolved style over `PluginWindow`'s.
@@ -564,13 +580,63 @@ gband.keymap.set("prefix", "P", function()
 end, { desc = "open a notes window" })
 ```
 
+## Side bars: `gband.bar`
+
+A bar reserves columns at the left or right of one client's terminal and shows lines of styled text there.
+Bars never change a window's size: the client still reports its whole terminal to the server, and draws the ribbon in the columns its bars leave, scrolling the view inside them.
+Each client has its own bars, and the server never sees them.
+
+`gband.bar.add(spec)` adds a bar and returns its full id:
+
+| field | value | default |
+|---|---|---|
+| `id` | a non-empty string, namespaced like action names | the plugin's name |
+| `side` | `"left"` or `"right"` | required |
+| `size` | the width in columns, an integer of at least 1 | `1` |
+| `order` | a number; bars on one side stack from the terminal's edge inward in ascending order | `0` |
+| `lines` | the lines, as a plugin window takes them | none |
+| `hl` | the group of spans without `hl` and of empty cells | `"Bar"` |
+| `on_resize` | a function | none |
+
+- `gband.bar.set_lines(id, lines)` replaces the lines; row `r` shows line `r + 1`, cut at the bar's edge, and a bar does not scroll.
+- `gband.bar.set_config(id, config)` changes `side`, `size`, `order` and `hl`.
+- `gband.bar.remove(id)` removes the bar and returns `true`, or returns `false` when no bar has that id.
+- `gband.bar.info(id)` returns `id`, `side`, `size`, `order`, `hl`, `plugin`, `shown`, and `col`, `width` and `height` while it is shown.
+- `gband.bar.list()` returns the same for every bar, in byte order of ids.
+
+All of them can be called while the configuration loads and in any callback.
+An id no bar has is an error, except for `remove`.
+
+The client places its bars each time it draws, from the whole terminal, in ascending `order` and then in the order they were added: a left bar takes the first `size` columns left, a right bar the last.
+A bar whose `size` is not less than the columns left is not shown, and the next bar is placed as if it were absent.
+`on_resize(id, width, height)` runs each time the bar's shown size changes, first after loading, with 0 and 0 while it is not shown.
+A reload removes every bar of the previous configuration, and a bar goes when its plugin is marked failed.
+The group `Bar` has no fields by default.
+
+```lua
+gband.bar.add({
+  id = "clock",
+  side = "right",
+  size = 7,
+  lines = { os.date("%H:%M") },
+})
+```
+
 ## Status line: `gband.ui.statusline`
 
-The status line takes `statusline_height` rows of the client's terminal, 1 by default.
-`statusline_position` places it: `"bottom"`, the default, `"top"` or `"off"`.
-The ribbon gets the rows the status line leaves, and gband reports that size to programs, so `tput lines` counts only the ribbon.
-The status line is not drawn when the terminal has no more rows than `statusline_height`.
-A reload that moves or removes the status line resizes the ribbon like a terminal resize.
+The status line is a bar that the bundled plugin `gband.statusline`, plugin `statusline`, adds with the id `statusline` and the group `StatusLine` when it is set up.
+It is as tall as the terminal, and as wide as the widest line that the error item and the components other than fill components show, kept between `min_width` and `max_width`.
+Its `setup` options:
+
+| option | value | default |
+|---|---|---|
+| `side` | `"left"` or `"right"` | `"left"` |
+| `min_width` | an integer of at least 1 | `20` |
+| `max_width` | an integer of at least `min_width` | `40` |
+| `order` | a number, its order among the bars of its side | `0` |
+
+Without `gband.plugin("gband.statusline")` there is no status line and no component renders, while `gband.ui.statusline` stays usable.
+The `statusline_*` options of earlier versions are gone; setting one reports an error naming it, and the file loads anyway.
 
 The status line is only a container.
 Everything on it is a component, and the segments gband bundles are plugins written with the same API as yours.
@@ -583,13 +649,13 @@ Everything on it is a component, and the segments gband bundles are plugins writ
 |---|---|---|
 | `id` | a non-empty string | the plugin's name |
 | `render` | a function | required |
-| `align` | `"left"`, `"center"` or `"right"` | `"left"` |
-| `priority` | a number; the lowest is dropped first when the line is too wide | `0` |
+| `align` | `"top"`, `"center"` or `"bottom"` | `"top"` |
+| `priority` | a number; the lowest is dropped first when the rows run out | `0` |
 | `order` | a number; components in a region are placed in ascending order | `0` |
 | `hl` | a highlight group name | `"StatusLineSegment"` |
 | `redraw_on` | a list of built-in event names and `"User"` | empty |
 | `redraw_interval` | an integer number of milliseconds, at least 100 | none |
-| `fill` | a boolean; a fill component renders again when the width left to it changes | `false` |
+| `fill` | a boolean; a fill component does not widen the status line, and renders again when the room left to it changes | `false` |
 
 Component ids are namespaced like action names.
 In the plugin `window`, `id = "count"` gives `window.count`, and a plugin adding one component can omit `id` to get `window`.
@@ -606,9 +672,9 @@ All three can be called while the configuration loads and in any callback.
 
 `render(ctx)` returns:
 
-- nil, an empty string, or only empty spans, to hide the component; it then takes no cell and no separator
-- a string, drawn in the component's `hl` group
-- a list of strings and spans `{ text = "...", hl = "Group" }`; a span without `hl` uses the component's group
+- nil, an empty string, or only empty spans, to hide the component; it then takes no row
+- a line: a string, drawn in the component's `hl` group, or a list of strings and spans `{ text = "...", hl = "Group" }`; a span without `hl` uses the component's group
+- `{ lines = { ... } }`, a list of lines, one row each
 
 gband removes control characters from the text, so a component cannot write escape sequences.
 
@@ -618,8 +684,10 @@ gband removes control characters from the text, so a component cannot write esca
 |---|---|
 | `id` | the component's full id |
 | `side` | `"client"` |
-| `total_width` | the status line's width in cells |
-| `width` | the cells left for this component, given the other components' latest output, separators and gaps; a hint, at least 0 |
+| `total_width` | the status line's `max_width` |
+| `total_height` | the status line's height, the terminal's height |
+| `width` | for a fill component, the status line's width as the other components set it; for any other, `total_width` |
+| `height` | for a fill component, the rows the other components and the gaps between regions leave, at least 0; for any other, `total_height` |
 | `table` | the active key table |
 | `band` | `{ number, index, count }`: the viewed band's number, its position from the top counting from 1, and the number of bands |
 | `column` | `{ index, count }`: the focused column's position counting from 1, and the band's column count; nil when the band is empty or a floating window is focused |
@@ -632,32 +700,32 @@ Both remove control characters first.
 
 ### When components render
 
-gband calls an enabled component's `render` only while the status line is drawn, and only:
+gband calls an enabled component's `render` only while the status line is set up, and only:
 
 - once when the client attaches, and once after each successful reload
 - once when the component is added after loading
 - once each time an event its `redraw_on` names is emitted, after that event's handlers
 - once each `redraw_interval` milliseconds
-- once when the terminal's width changes, and once when the status line starts being drawn
+- once when the terminal's height changes
 - once on each `HighlightChanged` and `ColorschemeChanged`
-- for a fill component, once more after any of these, when the width left to it differs from the `width` of its latest call
+- for a fill component, once more after any of these, when the `width` or `height` left to it differs from those of its latest call
 
 When one trigger renders several components, the others render first and the fill components after them, in descending `priority`, then in the order they were added.
-gband then lays the line out, and renders once more each enabled fill component whose `width` has changed, in the same order.
+gband then lays the status line out, and renders once more each enabled fill component whose `width` or `height` has changed, in the same order.
 Those renders trigger no further render.
-A component that fits its output to `ctx.width`, like the hints segment, sets `fill = true` so that width is never stale.
+A component that fits its output to `ctx.width` and `ctx.height`, like the hints segment, sets `fill = true` so they are never stale.
 
 Frames, animations included, draw the latest output and never call `render`.
 Keep `render` cheap anyway: it runs in the client's event loop.
 
 ### Layout
 
-Components sit in the left, center or right region, by `order` and then in the order they were added.
-The value of the `statusline_separator` option, `" │ "` by default, goes between adjacent components of a region, and regions are at least one cell apart.
-The left region starts at the first column, the right region ends at the last, and the center region is centered, moved as little as keeps it clear of the other two.
+Components sit in the top, center or bottom region, by `order` and then in the order they were added, one row per line, and regions are at least one row apart.
+The top region starts at the first row, the bottom region ends at the last, and the center region is centered, moved as little as keeps it clear of the other two.
+Each line starts at the status line's first column, and a line wider than the status line is cut with `…`.
 
-When the line is too wide, gband drops the component with the lowest `priority`, the one added last on a tie, until the line fits or one component is left.
-That last one is cut to fit with `…`.
+When the rows run out, gband drops the component with the lowest `priority`, the one added last on a tie, until the regions fit or one component is left.
+That last one shows only the lines that fit.
 Dropping only hides a component for that layout; it stays enabled.
 
 ### Errors
@@ -667,9 +735,9 @@ A loop in one component stops only that call: the other components and the code 
 When `render` raises an error, returns something else than the forms above, or hits the instruction limit, gband reports a plugin error and disables the component until the next load.
 Hitting the limit also marks the plugin failed, which hides all its components.
 
-The status line's error item shows the latest configuration or plugin error, the server's included, first in the left region, in `StatusLineError`.
-It is dropped last and cut like any last component.
-It stays until the configuration next loads without errors.
+While the client reports an error, the server's included, the status line's error item shows `error` in `StatusLineError` as the first row of the top region.
+It is dropped last, and stays until the configuration next loads without errors.
+`gband.errors()` and the `errors.open` action give the errors' text.
 
 ### Bundled segments
 
@@ -677,27 +745,27 @@ gband bundles five segment plugins:
 
 | module | plugin | shows | redraws on | align | priority | order | group |
 |---|---|---|---|---|---|---|---|
-| `gband.statusline.band` | `band` | `band ` and the viewed band's index | `BandChanged`, `LayoutChanged` | left | 20 | 10 | `StatusLineSegment` |
-| `gband.statusline.mode` | `mode` | the active key table's label, as `gband.keymap.label` gives it; hidden in `root` | `KeyTableChanged` | left | 30 | 20 | `StatusLineAccent` |
-| `gband.statusline.hints` | `hints` | the keys of the active key table and what each does, below | `KeyTableChanged`, and as a fill component | left | 0 | 30 | `KeyHintLabel` |
-| `gband.statusline.position` | `position` | the focused column and the column count, such as `3/7`; hidden in an empty band and while a floating window is focused | `FocusChanged`, `BandChanged`, `LayoutChanged` | right | 10 | 10 | `StatusLineMuted` |
-| `gband.statusline.clock` | `clock` | the local time, `os.date(opts.format)`, `"%H:%M"` by default | every `opts.interval` milliseconds, 1000 by default | right | 5 | 20 | `StatusLineMuted` |
+| `gband.statusline.band` | `band` | `band ` and the viewed band's index | `BandChanged`, `LayoutChanged` | top | 20 | 10 | `StatusLineSegment` |
+| `gband.statusline.mode` | `mode` | the active key table's label, as `gband.keymap.label` gives it; hidden in `root` | `KeyTableChanged` | top | 30 | 20 | `StatusLineAccent` |
+| `gband.statusline.hints` | `hints` | the keys of the active key table and what each does, below | `KeyTableChanged`, and as a fill component | top | 0 | 30 | `KeyHintLabel` |
+| `gband.statusline.position` | `position` | the focused column and the column count, such as `3/7`; hidden in an empty band and while a floating window is focused | `FocusChanged`, `BandChanged`, `LayoutChanged` | bottom | 10 | 10 | `StatusLineMuted` |
+| `gband.statusline.clock` | `clock` | the local time, `os.date(opts.format)`, `"%H:%M"` by default | every `opts.interval` milliseconds, 1000 by default | bottom | 5 | 20 | `StatusLineMuted` |
 
 Each takes the options `align`, `priority` and `order`, and each but `hints` takes `hl`.
 An option of the wrong type makes `setup` fail.
-The default configuration sets up `band`, `mode`, `hints` and `position`, in that order.
-A `user/init.lua` replaces the default configuration, so it gets the segments only with the same calls:
+The default configuration sets up the status line and then `band`, `mode`, `hints` and `position`, in that order.
+A `user/init.lua` replaces the default configuration, so it gets them only with the same calls:
 
 ```lua
+gband.plugin("gband.statusline")
 gband.plugin("gband.statusline.band")
-gband.plugin("gband.statusline.mode", { align = "right", order = 1 })
+gband.plugin("gband.statusline.mode", { align = "bottom", order = 1 })
 gband.plugin("gband.statusline.hints")
 gband.plugin("gband.statusline.position")
 gband.plugin("gband.statusline.clock", { format = "%H:%M:%S" })
 ```
 
-Without them the status line is drawn empty.
-Set `statusline_position = "off"` to give the ribbon the whole terminal.
+Without the segments the status line is drawn empty, and without `gband.statusline` the ribbon takes the whole terminal.
 
 ### The hints segment
 
@@ -736,8 +804,9 @@ A binding to a function shows its `desc`, and takes no hint without one.
 | `move_column_right` | `move right` | `send_prefix` | `send prefix` |
 
 
-The segment fits itself to its `ctx.width`: it shows the leading hints that fit, followed by ` …` when some are left out, and hides itself when not even the first fits.
-It is a fill component, so that width follows the other segments of the same render.
+The segment fits itself to its `ctx.width` and `ctx.height`: it places the hints in order, starting a new line when the next hint does not fit after the ones already on the line, and stops at the first hint that fits on no line, or would need a line beyond `ctx.height`.
+When hints are left out, the last line ends with ` …`, leaving out more hints from its end when needed, and the segment hides itself when not even the first fits.
+It is a fill component, so that room follows the other segments of the same render.
 
 Its options, besides `align`, `priority` and `order`:
 
@@ -761,7 +830,7 @@ local M = { name = "window", api = 1 }
 function M.setup()
   gband.hl.default("WindowSegment", { link = "StatusLineAccent" })
   gband.ui.statusline.add({
-    align = "right",
+    align = "bottom",
     hl = "WindowSegment",
     redraw_on = { "FocusChanged" },
     render = function(ctx)
@@ -847,7 +916,7 @@ The status line defines these groups, as defaults:
 |---|---|---|
 | `StatusLine` | `{ reverse = true }` | every status line cell |
 | `StatusLineSegment` | `{}` | components' default group |
-| `StatusLineSeparator` | `{ dim = true }` | separators |
+| `StatusLineSeparator` | `{ dim = true }` | free for components to use |
 | `StatusLineMuted` | `{ dim = true }` | secondary text |
 | `StatusLineAccent` | `{ bold = true }` | emphasised text |
 | `StatusLineError` | `{ fg = "red", bold = true }` | the error item |
@@ -864,7 +933,11 @@ The plugin window API defines these groups, as defaults:
 | `PluginWindowTitle` | `{ bold = true }` | a floating plugin window's title, over `PluginWindowBorder` |
 | `PluginWindowCursorLine` | `{ reverse = true }` | the cursor line |
 
-A change of any group redraws every plugin window.
+A change of any group redraws every plugin window and every bar.
+
+The client draws window borders with its own options, `tile_border_sides` and `tile_border_chars` for tiles and `floating_border_sides` and `floating_border_chars` for floating windows.
+A list of sides holds `"top"`, `"right"`, `"bottom"` and `"left"`, and a character set is `"plain"`, `"rounded"`, `"double"`, `"thick"`, or eight one-cell strings in the order top-left, top, top-right, right, bottom-right, bottom, bottom-left, left.
+A corner where only one of its sides is drawn takes that side's character, and the cells of a side not drawn stay blank, so borders never change a window's size.
 
 A span's style is its group's resolved style over `StatusLine`'s, field by field.
 
@@ -882,7 +955,7 @@ A colorscheme is a Lua file that sets groups with `gband.hl.set`.
 `gband.colorscheme(name)` runs `colors/<name>.lua` from the first runtimepath entry that holds one, or the colorscheme of that name bundled with gband.
 Names start with an ASCII letter or digit and hold letters, digits, `_` and `-`.
 
-gband bundles `default`, which sets every built-in status line group, and loads it before the init file.
+gband bundles `default`, which sets every built-in status line group and `Bar`, and loads it before the init file.
 `gband.colorscheme()` returns the active colorscheme's name.
 
 Switching first removes every group's explicit setting, keeping the defaults, then runs the file.

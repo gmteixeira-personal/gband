@@ -284,6 +284,7 @@ fn run(lua: &Lua, (table, key): (Value, Value)) -> mlua::Result<bool> {
     match binding {
         None => Ok(false),
         Some(Binding::Action(action)) => {
+            let action = action.stepped(crate::options::current(lua).steps);
             api::queue(lua, Dispatch::Action(action), function)?;
             Ok(true)
         }

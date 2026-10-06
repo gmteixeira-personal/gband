@@ -1,7 +1,6 @@
 local t = require("gband.test")
 
 local MINIMAL = [[
-  gband.opt.statusline_position = "off"
   gband.plugin("gband.keylist")
   gband.keymap.set("prefix", "h", gband.action.focus_column_left, { desc = "focus the column to the left" })
   gband.keymap.set("prefix", "l", gband.action.focus_column_right, { desc = "focus the column to the right" })
@@ -76,15 +75,16 @@ local MUTED = "#9aa5ce"
 local function muted_lines(g, win)
   local box = info(g, win)
   local screen = g.screen()
+  local left = box.col + screen.cols - g.client("return gband.view().cols")
   local muted = {}
   for row = box.row + 1, box.row + box.height - 2 do
     local chars = {}
-    for col = box.col + 1, box.col + box.width - 2 do
+    for col = left + 1, left + box.width - 2 do
       chars[#chars + 1] = screen.cell(row, col).char
     end
     local text = table.concat(chars)
     local start, desc = text:match("^%S+%s+()(.-)%s*$")
-    if start and screen.cell(row, box.col + start).fg == MUTED then
+    if start and screen.cell(row, left + start).fg == MUTED then
       muted[#muted + 1] = desc
     end
   end
@@ -95,6 +95,14 @@ local function prompts(g, count)
   g.wait(function(screen)
     local _, found = screen.text():gsub("│%$", "")
     return found == count
+  end)
+end
+
+local function prompt_beside_the_bar(g, count)
+  g.wait(function(screen)
+    local windows = g.client("return #gband.layout().bands[1].columns")
+    local _, found = screen.text():gsub("│%$", "")
+    return windows == count and found == 1
   end)
 end
 
@@ -226,7 +234,7 @@ t.case("run a resize from the list", function(g)
   g.start({})
   prompts(g, 1)
   g.keys("ctrl+space n")
-  prompts(g, 2)
+  prompt_beside_the_bar(g, 2)
   g.keys("ctrl+space [")
   g.settle()
   g.keys("k")
@@ -293,7 +301,7 @@ t.case("run n from the list", function(g)
   local win = open(g)
   move_to(g, win, "n")
   g.keys("enter")
-  prompts(g, 2)
+  prompt_beside_the_bar(g, 2)
   g.settle()
   t.eq(#g.client("return gband.layout().bands[1].columns"), 2)
   t.eq(lists(g), { win })
@@ -316,7 +324,7 @@ t.case("a line's key runs it", function(g)
   g.start({})
   prompts(g, 1)
   g.keys("ctrl+space n")
-  prompts(g, 2)
+  prompt_beside_the_bar(g, 2)
   g.keys("ctrl+space h")
   g.settle()
   local first = view(g).window
@@ -335,7 +343,7 @@ t.case("j runs its binding", function(g)
   g.start({})
   prompts(g, 1)
   g.keys("ctrl+space n")
-  prompts(g, 2)
+  prompt_beside_the_bar(g, 2)
   g.keys("ctrl+space [")
   g.settle()
   g.keys("k")
@@ -358,7 +366,7 @@ t.case("a function binding by its key", function(g)
   local win = open(g)
   t.eq(info(g, win).cursor, 1)
   g.keys("n")
-  prompts(g, 2)
+  prompt_beside_the_bar(g, 2)
   g.settle()
   t.eq(#g.client("return gband.layout().bands[1].columns"), 2)
   t.eq(info(g, win).cursor, line_of(g, win, "n"))
@@ -384,7 +392,7 @@ t.case("arrows move the cursor line", function(g)
   g.start({})
   prompts(g, 1)
   g.keys("ctrl+space n")
-  prompts(g, 2)
+  prompt_beside_the_bar(g, 2)
   local before = view(g).window
   local win = open(g)
   g.keys("down down up")
@@ -395,7 +403,6 @@ end)
 
 t.case("a line under an own key runs only through enter", function(g)
   g.start({ config = [[
-    gband.opt.statusline_position = "off"
     gband.plugin("gband.keylist")
     gband.keymap.set("prefix", "n", gband.action.open_window)
     gband.keymap.set("prefix", "?", gband.action["keylist.open"])
@@ -423,7 +430,6 @@ end)
 
 t.case("an unbound j moves the cursor line", function(g)
   g.start({ config = [[
-    gband.opt.statusline_position = "off"
     gband.plugin("gband.keylist")
     gband.keymap.set("prefix", "?", gband.action["keylist.open"])
     gband.keymap.set("prefix", "h", gband.action.focus_column_left)
@@ -449,7 +455,6 @@ end)
 
 t.case("q with no q binding", function(g)
   g.start({ config = [[
-    gband.opt.statusline_position = "off"
     gband.plugin("gband.keylist")
     gband.keymap.set("prefix", "?", gband.action["keylist.open"])
   ]] })
@@ -485,7 +490,7 @@ t.case("open again while open", function(g)
   g.start({})
   prompts(g, 1)
   g.keys("ctrl+space n")
-  prompts(g, 2)
+  prompt_beside_the_bar(g, 2)
   g.keys("ctrl+space h")
   g.settle()
   local win = open(g)

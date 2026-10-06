@@ -60,11 +60,11 @@ fn valid_spec() {
 fn named_color() {
     let (_scratch, config) = loaded(
         "named",
-        "gband.hl.set('Warn', { fg = 'bright_red' })\ngband.hl.set('StatusLine', { fg = 'bright_red' })",
+        "gband.plugin('gband.statusline')\ngband.hl.set('Warn', { fg = 'bright_red' })\ngband.hl.set('StatusLine', { fg = 'bright_red' })",
     );
     assert_eq!(get(&config, "Warn"), ["fg=bright_red"]);
-    let line = presented(&config, drawn(20));
-    assert_eq!(line.base.fg, Some(Color::Index(9)));
+    let bar = presented(&config, drawn(40));
+    assert_eq!(bar.base.fg, Some(Color::Index(9)));
 }
 
 #[test]

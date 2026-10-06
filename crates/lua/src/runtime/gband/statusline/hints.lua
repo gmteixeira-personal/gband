@@ -3,7 +3,7 @@ local key_form = require("gband.keyform")
 gband.hl.default("KeyHintKey", { link = "StatusLineAccent" })
 gband.hl.default("KeyHintLabel", { link = "StatusLineSegment" })
 
-local ALIGN = { left = true, center = true, right = true }
+local ALIGN = { top = true, center = true, bottom = true }
 
 local SHORT = {
   focus_column_left = "left",
@@ -79,39 +79,64 @@ local function hints(active, labels)
   return list
 end
 
-local function fitted(list, width)
-  local used, shown = 0, 0
-  for index, hint in ipairs(list) do
-    local cells = gband.ui.width(hint.key) + 1 + gband.ui.width(hint.label)
-    if index > 1 then
-      cells = cells + 2
-    end
-    local ellipsis = index < #list and 2 or 0
-    if used + cells + ellipsis > width then
+local function cells(hint)
+  return gband.ui.width(hint.key) + 1 + gband.ui.width(hint.label)
+end
+
+local function wrapped(list, width, height)
+  local rows = {}
+  local placed = 0
+  for _, hint in ipairs(list) do
+    local row = rows[#rows]
+    if row and row.width + 2 + cells(hint) <= width then
+      row.hints[#row.hints + 1] = hint
+      row.width = row.width + 2 + cells(hint)
+    elseif cells(hint) <= width and #rows < height then
+      rows[#rows + 1] = { hints = { hint }, width = cells(hint) }
+    else
       break
     end
-    used, shown = used + cells, index
+    placed = placed + 1
   end
-  if shown == 0 then
+  local cut = placed < #list
+  while cut and #rows > 0 and rows[#rows].width + 2 > width do
+    local row = rows[#rows]
+    local last = table.remove(row.hints)
+    if #row.hints == 0 then
+      table.remove(rows)
+    else
+      row.width = row.width - 2 - cells(last)
+    end
+  end
+  return rows, cut
+end
+
+local function fitted(list, width, height)
+  local rows, cut = wrapped(list, width, height)
+  if #rows == 0 then
     return nil
   end
-  local spans = {}
-  for index = 1, shown do
-    if index > 1 then
-      spans[#spans + 1] = { text = "  ", hl = "KeyHintLabel" }
+  local lines = {}
+  for index, row in ipairs(rows) do
+    local spans = {}
+    for position, hint in ipairs(row.hints) do
+      if position > 1 then
+        spans[#spans + 1] = { text = "  ", hl = "KeyHintLabel" }
+      end
+      spans[#spans + 1] = { text = hint.key, hl = "KeyHintKey" }
+      spans[#spans + 1] = { text = " " .. hint.label, hl = "KeyHintLabel" }
     end
-    spans[#spans + 1] = { text = list[index].key, hl = "KeyHintKey" }
-    spans[#spans + 1] = { text = " " .. list[index].label, hl = "KeyHintLabel" }
+    if cut and index == #rows then
+      spans[#spans + 1] = { text = " …", hl = "KeyHintLabel" }
+    end
+    lines[index] = spans
   end
-  if shown < #list then
-    spans[#spans + 1] = { text = " …", hl = "KeyHintLabel" }
-  end
-  return spans
+  return { lines = lines }
 end
 
 local function invalid(opts)
   if opts.align ~= nil and not ALIGN[opts.align] then
-    return "`align` must be \"left\", \"center\" or \"right\""
+    return "`align` must be \"top\", \"center\" or \"bottom\""
   end
   if opts.priority ~= nil and type(opts.priority) ~= "number" then
     return "`priority` must be a number"
@@ -149,7 +174,7 @@ return {
     local labels = opts.labels or {}
     local root = opts.root ~= false
     gband.ui.statusline.add({
-      align = opts.align or "left",
+      align = opts.align or "top",
       priority = opts.priority or 0,
       order = opts.order or 30,
       hl = "KeyHintLabel",
@@ -159,7 +184,7 @@ return {
         if ctx.table == "root" and not root then
           return nil
         end
-        return fitted(hints(ctx.table, labels), ctx.width)
+        return fitted(hints(ctx.table, labels), ctx.width, ctx.height)
       end,
     })
   end,

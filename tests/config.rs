@@ -40,24 +40,41 @@ fn two_windows_first_focused(env: &TestEnv) -> Attached {
     client.wait_for_prompt();
     client.shell_pid(env);
     client.send(b"\x00n");
-    client.wait_for("two tiles with the second focused", |screen| {
-        let tiles = tiles(screen);
-        tiles.len() == 2 && tiles[1].focused
-    });
+    client.wait_for("the second tile focused", second_focused);
     client.wait_for_prompt();
     client.shell_pid(env);
     client.send(b"\x00h\r");
-    client.wait_for("the first tile focused", |screen| tiles(screen)[0].focused);
+    client.wait_for("the first tile focused", |screen| {
+        focused_left(screen) == Some(20)
+    });
     client
 }
 
-fn bottom_row(screen: &Grid) -> String {
+fn focused_left(screen: &Grid) -> Option<u16> {
+    tiles(screen)
+        .into_iter()
+        .find(|tile| tile.focused)
+        .map(|tile| tile.left)
+}
+
+fn second_focused(screen: &Grid) -> bool {
+    focused_left(screen) == Some(40)
+}
+
+fn first_row(screen: &Grid) -> String {
     screen
         .contents()
         .lines()
-        .nth(usize::from(screen.size().rows) - 1)
+        .next()
         .unwrap_or_default()
         .to_owned()
+}
+
+fn error_logged(env: &TestEnv, expected: &str) {
+    wait_until(
+        || env.log_text("client").contains(expected),
+        "the client log to record the error",
+    );
 }
 
 fn tops(screen: &Grid) -> Vec<(u16, bool)> {
@@ -145,10 +162,7 @@ fn read_only_configuration_directory() {
         "the client log to record the failure",
     );
     client.send(b"\x00n");
-    client.wait_for("two tiles with the second focused", |screen| {
-        let tiles = tiles(screen);
-        tiles.len() == 2 && tiles[1].focused
-    });
+    client.wait_for("the second tile focused", second_focused);
 }
 
 #[test]
@@ -170,10 +184,7 @@ fn another_prefix_key_in_a_copy_of_the_defaults() {
     client.wait_for_prompt();
     client.shell_pid(&env);
     client.send(b"\x00n");
-    client.wait_for("two tiles with the second focused", |screen| {
-        let tiles = tiles(screen);
-        tiles.len() == 2 && tiles[1].focused
-    });
+    client.wait_for("the second tile focused", second_focused);
     client.wait_for_prompt();
     client.shell_pid(&env);
     let seen = reloads(&env, "client");
@@ -181,7 +192,9 @@ fn another_prefix_key_in_a_copy_of_the_defaults() {
     env.write_config(&format!("{copy}\ngband.set {{ prefix = 'ctrl+b' }}\n"));
     wait_for_reload(&env, "client", seen);
     client.send(b"\x02q\r");
-    client.wait_for("one tile", |screen| tiles(screen).len() == 1);
+    client.wait_for("one tile", |screen| {
+        tops(screen) == [(20, true)] && first_row(screen).chars().skip(60).all(|c| c == ' ')
+    });
     client.wait_for_prompt();
     echo_keys(&mut client);
     client.send(b"\x00\r");
@@ -198,10 +211,7 @@ fn defaults_file_edited_while_running() {
     thread::sleep(Duration::from_secs(1));
     assert_eq!(reloads(&env, "client"), 0);
     client.send(b"\x00n");
-    client.wait_for("two tiles with the second focused", |screen| {
-        let tiles = tiles(screen);
-        tiles.len() == 2 && tiles[1].focused
-    });
+    client.wait_for("the second tile focused", second_focused);
 }
 
 #[test]
@@ -211,10 +221,7 @@ fn no_configuration_file() {
     client.wait_for_prompt();
     client.shell_pid(&env);
     client.send(b"\x00n");
-    client.wait_for("two tiles with the second focused", |screen| {
-        let tiles = tiles(screen);
-        tiles.len() == 2 && tiles[1].focused && tiles[1].left == 40
-    });
+    client.wait_for("the second tile focused", second_focused);
     assert!(!env.log_text("client").contains("configuration error"));
     assert!(!env.log_text("server").contains("configuration error"));
 }
@@ -243,10 +250,7 @@ fn default_prefix() {
     client.wait_for_prompt();
     client.shell_pid(&env);
     client.send(b"\x00\r");
-    client.wait_for("two tiles with the second focused", |screen| {
-        let tiles = tiles(screen);
-        tiles.len() == 2 && tiles[1].focused
-    });
+    client.wait_for("the second tile focused", second_focused);
     client.wait_for_prompt();
     client.shell_pid(&env);
     client.send(b"\x00q");
@@ -304,7 +308,7 @@ fn spawn_a_command_line() {
 }
 
 #[test]
-fn syntax_error_is_shown_on_the_bottom_row() {
+fn syntax_error_is_shown_as_the_error_item() {
     let env = TestEnv::new("config-syntax");
     let home = env.root.join("home");
     let path = home
@@ -319,13 +323,10 @@ fn syntax_error_is_shown_on_the_bottom_row() {
         command.env("HOME", &home);
     });
     let expected = format!("{}:12:", path.display());
-    client.wait_for("the error banner", |screen| {
-        bottom_row(screen).starts_with(&expected)
+    client.wait_for("the error item", |screen| {
+        first_row(screen).starts_with("error ")
     });
-    wait_until(
-        || env.log_text("client").contains(&expected),
-        "the client log to record the error",
-    );
+    error_logged(&env, &expected);
 }
 
 #[test]
@@ -333,15 +334,16 @@ fn broken_file_at_start_keeps_the_defaults() {
     let env = TestEnv::new("config-broken-start");
     env.write_config("gband.set { prefix = 'ctrl+b' }\nerror('broken')\n");
     let mut client = Attached::start(&env, 80, 24);
-    client.wait_for("the error banner", |screen| {
-        bottom_row(screen).contains("init.lua:2: broken")
+    client.wait_for("the error item", |screen| {
+        first_row(screen).starts_with("error ")
     });
+    error_logged(&env, "init.lua:2: broken");
     client.wait_for_text("$");
     client.send(b"\x02\r");
     thread::sleep(Duration::from_millis(300));
     client.send(b"\x00n");
-    client.wait_for("two tiles with the second focused", |screen| {
-        focused_top(screen) == Some(40) && tops(screen).len() == 2
+    client.wait_for("the second tile focused", |screen| {
+        focused_top(screen) == Some(40) && tops(screen).len() == 1
     });
 }
 
@@ -353,18 +355,19 @@ fn broken_edit_keeps_the_running_configuration() {
     ));
     let mut client = two_windows_first_focused(&env);
     client.send(b"\x00l\r");
-    client.wait_for("the second tile focused", |screen| tiles(screen)[1].focused);
+    client.wait_for("the second tile focused", second_focused);
     let seen = reloads(&env, "client");
     env.write_config(&with_defaults(
         "gband.bind('alt+j', gband.action.focus_column_left)\nlocal = 1",
     ));
-    client.wait_for("the error banner", |screen| {
-        bottom_row(screen).contains("init.lua:2:")
+    client.wait_for("the error item", |screen| {
+        first_row(screen).starts_with("error ")
     });
+    error_logged(&env, "init.lua:2:");
     assert_eq!(reloads(&env, "client"), seen);
     client.send(b"\x1bh");
     client.wait_for("the first tile focused", |screen| {
-        focused_top(screen) == Some(0)
+        focused_top(screen) == Some(20)
     });
     echo_keys(&mut client);
     client.send(b"\x1bj\r");
@@ -379,7 +382,7 @@ fn new_binding_without_restart() {
     env.write_config("gband.bind('alt+l', gband.action.focus_column_right)");
     wait_for_reload(&env, "client", seen);
     client.send(b"\x1bl");
-    client.wait_for("the second tile focused", |screen| tiles(screen)[1].focused);
+    client.wait_for("the second tile focused", second_focused);
 }
 
 #[test]
@@ -398,7 +401,7 @@ fn editor_replaces_the_file() {
     wait_for_reload(&env, "client", client_seen);
     wait_for_reload(&env, "server", server_seen);
     client.send(b"\x1bl");
-    client.wait_for("the second tile focused", |screen| tiles(screen)[1].focused);
+    client.wait_for("the second tile focused", second_focused);
 }
 
 #[test]
@@ -426,7 +429,7 @@ fn plugin_sets_a_width_option() {
     client.send(b"\x00n");
     client.wait_for("a second column of width 1/3", |screen| {
         let tiles = tiles(screen);
-        tiles.len() == 2 && tiles[1].focused && tiles[1].left == 26
+        tiles.len() == 2 && tiles[1].focused && tiles[0].left == 20 && tiles[1].left == 46
     });
     assert!(!env.log_text("server").contains("configuration error"));
 }
@@ -442,13 +445,12 @@ fn default_configuration_with_a_plugin() {
     client.wait_for_prompt();
     client.shell_pid(&env);
     client.send(b"\x00n");
-    client.wait_for("two tiles with the second focused", |screen| {
-        let tiles = tiles(screen);
-        tiles.len() == 2 && tiles[1].focused
-    });
+    client.wait_for("the second tile focused", second_focused);
     client.wait_for_prompt();
     client.send(b"\x1bg");
-    client.wait_for("the first tile focused", |screen| tiles(screen)[0].focused);
+    client.wait_for("the first tile focused", |screen| {
+        focused_left(screen) == Some(20)
+    });
 }
 
 #[test]
@@ -461,14 +463,14 @@ fn infinite_loop_in_setup() {
     );
     env.write_config("gband.plugin('spin')\n");
     let mut client = Attached::start(&env, 120, 24);
-    client.wait_for("the plugin error banner", |screen| {
-        let row = bottom_row(screen);
-        row.starts_with("spin: ") && row.contains("instruction limit exceeded")
+    client.wait_for("the error item", |screen| {
+        first_row(screen).starts_with("error ")
     });
+    error_logged(&env, "spin: ");
     client.wait_for_text("$");
     client.send(b"\x00n");
-    client.wait_for("two tiles with the second focused", |screen| {
-        tops(screen).len() == 2 && focused_top(screen) == Some(60)
+    client.wait_for("the second tile focused", |screen| {
+        tops(screen).len() == 1 && focused_top(screen) == Some(60)
     });
     wait_until(
         || {
@@ -479,22 +481,19 @@ fn infinite_loop_in_setup() {
     );
 }
 
-fn open_second_window(client: &mut Attached, env: &TestEnv) -> (u16, u16, u16) {
+fn open_second_window(client: &mut Attached, env: &TestEnv) -> (u16, u16) {
     client.wait_for_prompt();
     client.shell_pid(env);
     client.send(b"\x00n");
-    let columns = Cell::new((0, 0, 0));
-    client.wait_for("two tiles with the second focused", |screen| {
-        let tiles = tiles(screen);
-        let found = tiles.len() == 2 && tiles[1].focused;
-        if found {
-            columns.set((
-                tiles[0].right - tiles[0].left + 1,
-                tiles[1].left,
-                tiles[1].right - tiles[1].left + 1,
-            ));
+    let columns = Cell::new((0, 0));
+    client.wait_for("the second tile focused", |screen| {
+        let focused = tiles(screen)
+            .into_iter()
+            .find(|tile| tile.focused && tile.left > 20);
+        if let Some(tile) = &focused {
+            columns.set((tile.left, tile.right - tile.left + 1));
         }
-        found
+        focused.is_some()
     });
     columns.get()
 }
@@ -504,16 +503,14 @@ fn width_set_for_the_server() {
     let env = TestEnv::new("config-server-width");
     env.write_server_config("gband.opt.default_column_width = 1/3");
     let mut client = Attached::start(&env, 80, 24);
-    let (_, left, _) = open_second_window(&mut client, &env);
-    assert_eq!(left, 26);
+    assert_eq!(open_second_window(&mut client, &env), (46, 26));
 }
 
 #[test]
 fn no_server_configuration_file() {
     let env = TestEnv::new("config-no-server-file");
     let mut client = Attached::start(&env, 80, 24);
-    let (first, left, _) = open_second_window(&mut client, &env);
-    assert_eq!((first, left), (40, 40));
+    assert_eq!(open_second_window(&mut client, &env), (40, 40));
     assert!(!env.log_text("server").contains("configuration error"));
     assert!(env.server_lua().parent().unwrap().is_dir());
     assert_eq!(
@@ -528,13 +525,14 @@ fn broken_server_file_at_start() {
     env.write_server_config("gband.opt.default_column_width = 1/3\nerror('broken')\n");
     let mut client = Attached::start(&env, 120, 24);
     let expected = format!("server: {}:2: broken", env.server_lua().display());
-    client.wait_for("the server error banner", |screen| {
-        bottom_row(screen).starts_with(&expected)
+    client.wait_for("the error item", |screen| {
+        first_row(screen).starts_with("error ")
     });
+    error_logged(&env, &expected);
     client.wait_for_text("$");
     client.send(b"\x00n");
     client.wait_for("a second column of width 1/2", |screen| {
-        tops(screen).len() == 2 && focused_top(screen) == Some(60)
+        tops(screen).len() == 1 && focused_top(screen) == Some(60)
     });
 }
 
@@ -544,9 +542,10 @@ fn server_error_in_the_client() {
     env.write_server_config("gband.set {}\nlocal = 1\n");
     let client = Attached::start(&env, 120, 24);
     let expected = format!("server: {}:2:", env.server_lua().display());
-    client.wait_for("the server error banner", |screen| {
-        bottom_row(screen).starts_with(&expected)
+    client.wait_for("the error item", |screen| {
+        first_row(screen).starts_with("error ")
     });
+    error_logged(&env, &expected);
     wait_until(
         || {
             env.log_text("server")
@@ -561,9 +560,10 @@ fn client_file_not_evaluated() {
     let env = TestEnv::new("config-client-not-in-server");
     env.write_config("error('client only')\n");
     let client = Attached::start(&env, 120, 24);
-    client.wait_for("the client error banner", |screen| {
-        bottom_row(screen).contains("init.lua:1: client only")
+    client.wait_for("the error item", |screen| {
+        first_row(screen).starts_with("error ")
     });
+    error_logged(&env, "init.lua:1: client only");
     wait_until(
         || env.log_text("server").contains("listening"),
         "the server to start",
@@ -580,7 +580,7 @@ fn new_default_width() {
     let seen = reloads(&env, "server");
     env.write_server_config("gband.opt.default_column_width = 1/3");
     wait_for_reload(&env, "server", seen);
-    let (first, left, second) = open_second_window(&mut client, &env);
-    assert_eq!((first, left), (40, 40));
-    assert!((26..=27).contains(&second), "{second}");
+    let (left, width) = open_second_window(&mut client, &env);
+    assert_eq!(left + width, 80);
+    assert!((26..=27).contains(&width), "{width}");
 }

@@ -226,7 +226,7 @@ fn leader_equals_grows_the_column() {
     client.send(b"\x00=\r");
     client.wait_for("a tile 48 columns wide", |screen| {
         let tiles = tiles(screen);
-        tiles.len() == 1 && tiles[0].left == 0 && tiles[0].right == 47
+        tiles.len() == 1 && tiles[0].left == 20 && tiles[0].right == 67
     });
     thread::sleep(Duration::from_millis(300));
     client.run("clear; tput cols");
@@ -236,6 +236,7 @@ fn leader_equals_grows_the_column() {
 #[test]
 fn leader_c_centers_the_column() {
     let env = TestEnv::new("center");
+    env.write_config(&gband_lua::DEFAULTS.replace("gband.plugin(\"gband.statusline\")", ""));
     let mut client = Attached::start(&env, 80, 24);
     client.wait_for_prompt();
     client.shell_pid(&env);
@@ -341,15 +342,24 @@ fn window_number(lines: &[String]) -> Option<u32> {
         .and_then(|number| number.parse().ok())
 }
 
+fn second_focused(screen: &Grid) -> bool {
+    let tiles = tiles(screen);
+    tiles.len() == 1
+        && tiles[0].focused
+        && tiles[0].left == 40
+        && screen
+            .contents()
+            .lines()
+            .next()
+            .is_some_and(|row| row.chars().nth(39) == Some('┐'))
+}
+
 fn open_second_window(env: &TestEnv) -> Attached {
     let mut client = Attached::start(env, 80, 24);
     client.wait_for_prompt();
     client.shell_pid(env);
     client.send(b"\x00n");
-    client.wait_for("two tiles with the second focused", |screen| {
-        let tiles = tiles(screen);
-        tiles.len() == 2 && tiles[1].focused && tiles[1].left == 40
-    });
+    client.wait_for("the second tile focused right of the first", second_focused);
     client.wait_for_prompt();
     client.shell_pid(env);
     client
@@ -381,10 +391,7 @@ fn leader_n_opens_a_focused_window() {
     let first = window_number(&client.focused_lines()).unwrap();
 
     client.send(b"\x00n");
-    client.wait_for("two tiles with the second focused", |screen| {
-        let tiles = tiles(screen);
-        tiles.len() == 2 && tiles[1].focused && tiles[1].left == 40
-    });
+    client.wait_for("the second tile focused right of the first", second_focused);
     client.wait_for_prompt();
     client.shell_pid(&env);
     client.run("echo window=$GBAND_WINDOW");
@@ -399,12 +406,18 @@ fn leader_h_focuses_the_left_window() {
     let env = TestEnv::new("focus-left");
     let mut client = open_second_window(&env);
     client.send(b"\x00h\r");
-    client.wait_for("the first tile focused", |screen| tiles(screen)[0].focused);
+    client.wait_for("the first tile focused", |screen| {
+        let tiles = tiles(screen);
+        tiles.len() == 1 && tiles[0].focused && tiles[0].left == 20
+    });
     client.run("echo left");
     client.wait_for_line("left");
-    let screen = client.screen();
-    let tiles = tiles(&screen);
-    assert!(!tiles[1].lines(&screen).iter().any(|line| line == "left"));
+    let contents = client.contents();
+    let right: Vec<String> = contents
+        .lines()
+        .map(|row| row.chars().skip(60).collect())
+        .collect();
+    assert!(!right.iter().any(|part| part.contains("left")), "{right:?}");
 }
 
 #[test]
@@ -415,7 +428,7 @@ fn leader_q_closes_the_focused_window() {
     client.send(b"\x00q\r");
     client.wait_for("one tile left", |screen| {
         let tiles = tiles(screen);
-        tiles.len() == 1 && tiles[0].focused && tiles[0].left == 0
+        tiles.len() == 1 && tiles[0].focused && tiles[0].left == 20
     });
     wait_until(|| !is_running(second), "the closed shell to stop");
     client.run("echo after-close");
@@ -489,10 +502,7 @@ fn animations_off_opens_a_window_without_motion() {
     client.wait_for_prompt();
     client.shell_pid(&env);
     client.send(b"\x00n");
-    client.wait_for("two tiles with the second focused", |screen| {
-        let tiles = tiles(screen);
-        tiles.len() == 2 && tiles[1].focused && tiles[1].left == 40
-    });
+    client.wait_for("the second tile focused right of the first", second_focused);
     client.wait_for_prompt();
     client.shell_pid(&env);
 }
