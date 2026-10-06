@@ -210,7 +210,9 @@ fn mouse_modes(tracking: MouseTracking, encoding: MouseEncoding) -> Modes {
     }
 }
 
-fn check_mouse(cases: &[(MouseKind, u16, u16, Modifiers, Modes, &[u8])]) {
+type MouseCase<'a> = (MouseKind, u16, u16, Modifiers, Modes, &'a [u8]);
+
+fn check_mouse(cases: &[MouseCase]) {
     for &(kind, col, row, modifiers, modes, expected) in cases {
         let event = MouseEvent::new(kind, col, row, modifiers);
         assert_eq!(

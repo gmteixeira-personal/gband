@@ -580,7 +580,7 @@ fn floating_box_follows_the_pointer_at_once() {
         layout.open(
             window,
             band,
-            Some(tiled).filter(|_| window != tiled),
+            (window != tiled).then_some(tiled),
             None,
             &LayoutOptions::default(),
         );
