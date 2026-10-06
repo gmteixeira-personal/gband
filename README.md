@@ -39,7 +39,6 @@ gband keeps niri's layout model but renames one of its parts:
 
 Windows, columns and the strip keep their niri names.
 What gband calls a window, tmux and Zellij call a pane.
-Some Lua API names still say pane, such as `gband.action.close_pane` and `gband.pane`, and each of them acts on windows.
 
 A plugin window is something else: text that a plugin draws, either floating over the windows or tiled in a column like a window.
 [docs/plugins.md](docs/plugins.md#plugin-windows-gbandwin) describes plugin windows.
@@ -130,7 +129,7 @@ gband.keymap.set("root", "alt+h", gband.action.focus_column_left, { desc = "focu
 gband.bind("alt+l", gband.action.focus_column_right)
 
 -- A prefix binding acts on the key pressed after the prefix key.
-gband.keymap.set("prefix", "x", gband.action.close_pane, { desc = "close the window" })
+gband.keymap.set("prefix", "x", gband.action.close_window, { desc = "close the window" })
 gband.bind("prefix c", gband.action.cycle_column_width)
 
 -- Remove a binding made earlier, such as one copied from the defaults.
@@ -196,19 +195,19 @@ The actions in `gband.action`:
 | action | effect |
 |---|---|
 | `focus_column_left`, `focus_column_right` | focus the column to the left or right |
-| `focus_pane_down`, `focus_pane_up` | focus the window below or above |
+| `focus_window_down`, `focus_window_up` | focus the window below or above |
 | `focus_band_down`, `focus_band_up` | view the band below or above |
 | `switch_focus_floating_tiled` | move focus between the band's floating windows and its tiled windows |
-| `open_pane` | open a window running your shell right of the focused column |
-| `close_pane` | close the focused window |
+| `open_window` | open a window running your shell right of the focused column |
+| `close_window` | close the focused window |
 | `consume_or_expel_left`, `consume_or_expel_right` | move the focused window into or out of the neighbouring column |
 | `move_column_left`, `move_column_right` | swap the column with its neighbour, or move a floating window left or right |
-| `move_pane_down`, `move_pane_up` | swap the window with its neighbour in the column, or move a floating window down or up |
-| `toggle_pane_floating` | float the focused window over the band, or tile it again |
+| `move_window_down`, `move_window_up` | swap the window with its neighbour in the column, or move a floating window down or up |
+| `toggle_window_floating` | float the focused window over the band, or tile it again |
 | `cycle_column_width` | step the column's width through the presets |
 | `toggle_full_width` | toggle full width of the column |
 | `grow_column_width`, `shrink_column_width` | widen or narrow the column by a tenth of the screen |
-| `grow_pane_height`, `shrink_pane_height`, `reset_pane_height` | change or reset the height of the focused window |
+| `grow_window_height`, `shrink_window_height`, `reset_window_height` | change or reset the height of the focused window |
 | `detach` | detach the client |
 | `send_prefix` | send the prefix key to the focused window |
 
@@ -264,7 +263,7 @@ A plugin has a manifest, `plugin.lua`, and a `client.lua` that each client runs,
 In the client, a plugin can add actions, commands, options, key bindings, event handlers, status line segments, plugin windows, notifications and colorschemes.
 In the server, it can watch window output and input, keep state per window, emit events to clients, queue them while no client is attached, and answer commands clients call.
 [docs/plugins.md](docs/plugins.md) explains how to write one.
-[examples/plugins/hello](examples/plugins/hello) is a sample to start from, [examples/plugins/pane](examples/plugins/pane) adds a status line segment and a colorscheme, and [examples/plugins/agent-status](examples/plugins/agent-status) notifies you when a coding agent in a window waits for an answer.
+[examples/plugins/hello](examples/plugins/hello) is a sample to start from, [examples/plugins/window](examples/plugins/window) adds a status line segment and a colorscheme, and [examples/plugins/agent-status](examples/plugins/agent-status) notifies you when a coding agent in a window waits for an answer.
 `gband test` runs a plugin's Lua tests against a real client and server in a terminal of their own, and compares what they draw with committed screenshots; [docs/testing.md](docs/testing.md) explains how to write them.
 
 ## Installing

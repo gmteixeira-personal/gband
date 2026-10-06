@@ -22,7 +22,7 @@
 ## 5. Samples and docs
 
 - [x] 5.1 `git mv examples/plugins/pane examples/plugins/window`, rename its module, component, group `PaneSegment` to `WindowSegment`, test file and screenshots, and update `hello` and `agent-status` to the new names. Regenerate only the screenshots whose text changed with `gband test --update`, and check each with `git diff`. Verify that `gband test` passes in each of the three sample directories
-- [ ] 5.2 Update `README.md`, `docs/plugins.md`, `docs/testing.md`, the sample READMEs and `summary.txt` to the new Lua names, and say floating plugin window wherever they say float, and remove the README line saying that some Lua API names still say pane. Keep the README's comparison with tmux and Zellij. Verify with `cargo test -p gband-lua --locked guide`, which runs the guide's examples, and by reading the README's Names section
+- [x] 5.2 Update `README.md`, `docs/plugins.md`, `docs/testing.md`, the sample READMEs and `summary.txt` to the new Lua names, and say floating plugin window wherever they say float, and remove the README line saying that some Lua API names still say pane. Keep the README's comparison with tmux and Zellij. Verify with `cargo test -p gband-lua --locked guide`, which runs the guide's examples, and by reading the README's Names section
 
 ## 6. Check
 
