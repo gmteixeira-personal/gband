@@ -81,12 +81,15 @@ Out of scope:
 - crates/lua/tests/keystyle.rs
 - crates/lua/tests/config.rs
 - crates/client/src/bindings.rs
+- crates/client/tests/plugin_windows.rs
+- crates/client/tests/statusline.rs
 - crates/harness/src/case.rs
 - crates/harness/src/runner.rs
 - tests/common/mod.rs
 - tests/config.rs
 - tests/keystyle.rs
 - tests/plugin_testing.rs
+- tests/lua_specs.rs
 - tests/lua/keystyle_spec.lua
 - tests/lua/screenshots/keystyle_spec/
 - README.md
