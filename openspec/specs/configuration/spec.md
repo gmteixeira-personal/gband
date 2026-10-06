@@ -94,6 +94,7 @@ Every option SHALL have a name, a type, a declared default and a description, an
 |---|---|---|
 | `prefix` | one key, as "Key names" defines | `"ctrl+space"` |
 | `center_focused_column` | `"never"`, `"always"` or `"on-overflow"` | `"never"` |
+| `loop_bands` | a boolean | `true` |
 | `statusline_position` | `"bottom"`, `"top"` or `"off"` | `"bottom"` |
 | `statusline_height` | an integer from 1 to 8 | `1` |
 | `statusline_separator` | a string | `" │ "` |
@@ -110,7 +111,7 @@ A process SHALL know only the options of its own side, and options declared in i
 
 `gband.set` SHALL take one table of options. Each call SHALL change only the options the table names, and a later call SHALL override an earlier one. An unknown option name, a value of the wrong type, a value out of range or an unknown camera policy given to `gband.set` SHALL be a configuration error naming the option.
 
-Reading `gband.opt.<name>` SHALL return the option's current value: a key name for `prefix`, a number for a width, a list of numbers in ascending order for `width_presets`, a string for `center_focused_column`, `statusline_position`, `statusline_separator` and `notify_style`, an integer for `statusline_height`, and the value as set for a declared option. Assigning `gband.opt.<name>` SHALL set the option. A value that the option's type rejects SHALL be reported as a configuration error at the line of the assignment, SHALL NOT fail the load, and SHALL set the option to its declared default. An assignment to a name no option declares SHALL be held until an option of that name is declared later in the same load, and then validated; one still undeclared when loading finishes SHALL be reported as a configuration error at the line of the assignment, and SHALL NOT fail the load. The error for a built-in option of the other side SHALL name the side that owns it.
+Reading `gband.opt.<name>` SHALL return the option's current value: a key name for `prefix`, a number for a width, a list of numbers in ascending order for `width_presets`, a string for `center_focused_column`, `statusline_position`, `statusline_separator` and `notify_style`, an integer for `statusline_height`, a boolean for `loop_bands`, and the value as set for a declared option. Assigning `gband.opt.<name>` SHALL set the option. A value that the option's type rejects SHALL be reported as a configuration error at the line of the assignment, SHALL NOT fail the load, and SHALL set the option to its declared default. An assignment to a name no option declares SHALL be held until an option of that name is declared later in the same load, and then validated; one still undeclared when loading finishes SHALL be reported as a configuration error at the line of the assignment, and SHALL NOT fail the load. The error for a built-in option of the other side SHALL name the side that owns it.
 
 `gband.opt.declare(name, spec)` SHALL declare an option under its full name, as the plugins capability defines, and return that full name. `spec.type` SHALL be `"boolean"`, `"integer"`, `"number"` or `"string"`. `spec.values`, optional, SHALL list the only values allowed. `spec.default` SHALL be a valid value, and `spec.desc` an optional description. Declaring a name already declared, an unknown type, or an invalid default SHALL be an error at the line of the call. `gband.opt.list()` SHALL return one table per option of its side, built-in and declared, in ascending byte order of names, each holding `name`, `type`, `default`, `value` and `desc`.
 
@@ -185,6 +186,19 @@ Options SHALL be set and declared only while the configuration loads. Setting or
 - **WHEN** line 2 of `user/init.lua` sets `gband.opt.statusline_height = 0`
 - **THEN** loading succeeds with a status line height of 1
 - **AND** an error at `user/init.lua` line 2 naming `statusline_height` is reported
+
+#### Scenario: Looping bands by default
+- **WHEN** `user/init.lua` does not set `loop_bands` and reads `gband.opt.loop_bands`
+- **THEN** the value read is `true`
+
+#### Scenario: Looping bands turned off
+- **WHEN** line 3 of `user/init.lua` is `gband.set { loop_bands = false }`
+- **THEN** loading succeeds and `gband.opt.loop_bands` reads `false`
+
+#### Scenario: Looping bands of the wrong type
+- **WHEN** line 3 of `user/init.lua` sets `gband.opt.loop_bands = "yes"`
+- **THEN** loading succeeds with `loop_bands` set to `true`
+- **AND** an error at `user/init.lua` line 3 naming `loop_bands` is reported
 
 ### Requirement: Key names
 A key name SHALL be a key optionally preceded by modifiers, joined by `+`. The modifiers SHALL be `ctrl`, `alt` and `shift`, in any order. The key SHALL be one character, or one of `enter`, `tab`, `backtab`, `backspace`, `escape`, `esc`, `space`, `up`, `down`, `left`, `right`, `home`, `end`, `insert`, `delete`, `pageup`, `pagedown` and `f1` to `f12`. Modifier and key names longer than one character SHALL be read without regard to case, and a one-character key SHALL be read as written, so `D` and `d` differ. A `+` that ends the name SHALL be the key, so `alt++` is Alt with `+`. `shift` with a lowercase letter SHALL name the uppercase letter. `shift` with any other character SHALL be an error, because the shifted character is written instead. Any other name SHALL be an error.
