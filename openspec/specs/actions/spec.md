@@ -14,7 +14,7 @@ Every action SHALL be exactly one of three kinds:
 | session | the server, which applies it to the shared layout | open, close, consume or expel a window, change a column's width |
 | client | the client alone, outside the view | detach, send the prefix key to the focused window |
 
-One view action sends a message: `center_column`, while the floating layer is active, sends the placing of the focused floating window, as the layout-view capability's "Center the focused column" defines.
+The drag actions, `drag_window`, `drag_resize_window` and `drag_band`, are client actions that act only while the client handles a mouse press, and then send session actions and move the camera as the mouse capability defines. One view action sends a message: `center_column`, while the floating layer is active, sends the placing of the focused floating window, as the layout-view capability's "Center the focused column" defines.
 
 A key binding SHALL name exactly one action or one Lua function. Pressing a key bound to an action SHALL have the same effect as dispatching that action from any other source.
 
@@ -29,6 +29,10 @@ A key binding SHALL name exactly one action or one Lua function. Pressing a key 
 #### Scenario: Action from another source
 - **WHEN** a test dispatches the close-window session action to a client whose focused window is the second of two
 - **THEN** the second window closes, as it does when the user presses Ctrl+Space then `q`
+
+#### Scenario: Drag action sends session actions
+- **WHEN** navigation mode binds `rightmouse` to `drag_resize_window` and the user drags a column's right edge
+- **THEN** the client sends set width naming that column's window
 
 ### Requirement: Session actions resolve against the view
 A session action from a binding SHALL name no window. Before sending it, the client SHALL resolve it against its view: the window is the focused window, tiled or floating, and open window also takes the viewed band. A session action that needs a window SHALL be dropped when no window is focused.
@@ -124,6 +128,9 @@ Every built-in action SHALL have one Lua name, under which `gband.action` holds 
 | `reset_window_height` | reset the height of the window | session |
 | `detach` | detach | client |
 | `send_prefix` | send the prefix key to the focused window | client |
+| `drag_window` | move the window with the mouse | client |
+| `drag_resize_window` | resize the window with the mouse | client |
+| `drag_band` | slide the band with the mouse | client |
 
 A width action named after a window's column SHALL act on the box of a floating window, as the floating-windows capability defines.
 

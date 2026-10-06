@@ -204,3 +204,10 @@ The default configuration SHALL set up `gband.statusline.hints` with `gband.plug
 #### Scenario: Hints in the default line
 - **WHEN** no `user/init.lua` exists and a client attaches with an 80×24 terminal
 - **THEN** row 0 shows `band 1`, row 1 shows `C-space navigation`, and row 23 shows the position, each from column 0
+
+### Requirement: Mouse bindings are not hinted
+The hints segment SHALL give no hint to a binding whose key is a mouse name, as the configuration capability defines mouse names.
+
+#### Scenario: Navigation mode hints
+- **WHEN** the default configuration is in use and navigation mode is active
+- **THEN** no hint shows `leftmouse`, `rightmouse` or `middlemouse`

@@ -140,6 +140,7 @@ The handle SHALL provide:
 | `g.type(text)` | writes `text` to the client's terminal as typed characters |
 | `g.paste(text)` | writes `text` as a bracketed paste when the client enabled bracketed paste, and as typed characters otherwise |
 | `g.run(line)` | types `line` followed by Enter |
+| `g.mouse(kind, button, col, row, mods)` | writes a mouse report to the client's terminal as an xterm with SGR mouse encoding sends it: `kind` is `"press"`, `"release"`, `"drag"`, `"move"` or `"scroll"`, `button` is `"left"`, `"middle"` or `"right"`, or for `"scroll"` `"up"`, `"down"`, `"left"` or `"right"`, and nil for `"move"`, `col` and `row` are the terminal cell counted from 0, and `mods` is an optional string of modifiers as a key name writes them, such as `"ctrl+shift"` |
 | `g.resize(size)` | resizes the client's terminal to `"<cols>x<rows>"` |
 | `g.write(path, contents)` | writes a file relative to the case's configuration directory |
 | `g.reload()` | reloads the client's and the server's configuration as the test-channel capability defines, and returns the error message of a failed load, or nil |
@@ -167,6 +168,14 @@ The handle SHALL provide:
 - **WHEN** a case calls `g.wait_text("never", { timeout = 1 })`
 - **THEN** the case fails after about one second
 - **AND** the failure holds the screenshot taken when it gave up
+
+#### Scenario: Click a window
+- **WHEN** a case with the default configuration has two windows open with the second focused, `col` is a terminal column inside the first window, and the case calls `g.mouse("press", "left", col, 2)`, `g.mouse("release", "left", col, 2)` and `g.settle()`
+- **THEN** `g.client("return gband.view().window")` returns the first window's number
+
+#### Scenario: Invalid mouse kind
+- **WHEN** a case calls `g.mouse("hover", "left", 0, 0)`
+- **THEN** the call raises an error at its line naming `hover`
 
 ### Requirement: Observing a case
 `g.screen()` SHALL return a new table describing the client's terminal as the runner's emulator holds it: `cols`, `rows`, `cursor` holding `row`, `col` and `visible`, `row(n)`, a function returning row `n` as text, `text()`, a function returning every row joined with newlines, and `cell(row, col)`, a function returning `{ char, fg, bg, bold, dim, italic, underline, inverse }` for one cell. Rows and columns SHALL be counted from 0, top left. Text SHALL omit trailing spaces. A colour SHALL be a string `#rrggbb` for a direct colour, an integer 0 to 255 for a palette colour, and nil for the default colour.

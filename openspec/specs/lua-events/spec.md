@@ -75,6 +75,22 @@ The client SHALL emit these events, and no other built-in events:
 | `ColorschemeChanged` | `name`, `previous`: colorscheme names | a colorscheme loads after the configuration has loaded, as the colorschemes capability defines |
 | `ServerEvent` | `name`, `data`, `queued`, `time` | the server sends an event, as the plugin-bridge capability defines |
 | `WindowStateChanged` | `window`, `key`, `value`, `previous` | the server changes a window's state, as the plugin-bridge capability defines |
+| `MousePressed` | `button`, and the mouse fields | the user presses a mouse button |
+| `MouseReleased` | `button`, and the mouse fields | the user releases a mouse button |
+| `MouseDragged` | `button`, and the mouse fields | the pointer moves to another cell while a button is held |
+| `MouseScrolled` | `direction`, and the mouse fields | the user turns the wheel one step |
+
+`button` SHALL be `"left"`, `"middle"` or `"right"`, and `direction` `"up"`, `"down"`, `"left"` or `"right"`. The mouse fields SHALL be:
+
+- `col` and `row`: the terminal cell under the pointer, counted from 0.
+- `ctrl`, `alt` and `shift`: booleans, the modifiers the terminal reports.
+- `target`: `"window"`, `"plugin_window"`, `"ribbon"` or `"outside"`, the target of the cell under the pointer as the mouse capability's "Pointer targets" defines, with a floating plugin window or a tiled plugin window's drawn window as `"plugin_window"`.
+- `window`: the number of the target's window, or of a tiled plugin window's drawn window, and nil otherwise.
+- `plugin_window`: the target plugin window's number, and nil otherwise.
+- `content_col` and `content_row`: the target's content cell, and nil without one.
+- `table`: the name of the key table active when the event arrived.
+
+The client SHALL emit a mouse event for every press, release, motion with a button held to another cell, and wheel step the terminal reports, after handling it, whether a binding, a default, a gesture or a program took it. A motion with no button held SHALL emit none. Mouse events SHALL only report: a handler SHALL NOT keep an event from the window, plugin window or gesture that takes it.
 
 The first layout after attaching SHALL emit no `WindowOpened` and no `LayoutChanged`, and establishing the client's first view SHALL emit neither `FocusChanged` nor `BandChanged`. A layout that opens or closes a window SHALL emit `LayoutChanged` after its `WindowOpened` and `WindowClosed` events.
 
@@ -109,6 +125,18 @@ The first layout after attaching SHALL emit no `WindowOpened` and no `LayoutChan
 #### Scenario: Floating box moved
 - **WHEN** a floating window's box moves one step right and the client receives the new layout
 - **THEN** `LayoutChanged` runs once
+
+#### Scenario: Click event
+- **WHEN** a handler of `MousePressed` is registered and the user clicks content column 4 and row 2 of window 1 with the left button
+- **THEN** the handler runs once with `button` `"left"`, `target` `"window"`, `window` 1, `content_col` 4, `content_row` 2 and `table` `"root"`
+
+#### Scenario: Drag events
+- **WHEN** a handler of `MouseDragged` is registered and the user drags with the left button across three cells of one row and releases
+- **THEN** the handler runs three times, and `MouseReleased` runs once after them
+
+#### Scenario: Wheel event
+- **WHEN** a handler of `MouseScrolled` is registered and the user turns the wheel two steps up over empty ribbon
+- **THEN** the handler runs twice with `direction` `"up"` and `target` `"ribbon"`
 
 ### Requirement: Actions from handlers
 A handler MAY call action values, `gband.spawn` and `gband.keymap.enter` as a binding function does. The actions it dispatches SHALL run after it returns, in the order dispatched. Events that those actions cause SHALL be emitted in turn. An event emitted while ten events are already being delivered, each caused by the one before, SHALL NOT be delivered, and the process SHALL record a warning in its log.

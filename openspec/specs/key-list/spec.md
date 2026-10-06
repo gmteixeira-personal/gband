@@ -144,3 +144,10 @@ Every other key a line shows SHALL run that line, even when the plugin-windows c
 #### Scenario: An unbound j moves the cursor line
 - **WHEN** `user/init.lua` sets up `gband.keylist`, binds `prefix ?` to `gband.action["keylist.open"]`, `prefix h` and `prefix l`, binds no `prefix j`, the key list is open on its first line, and the user presses `j`
 - **THEN** the cursor line is on the second line
+
+### Requirement: Mouse bindings in the key list
+The key list SHALL hold no line for a binding whose key is a mouse name, as the configuration capability defines mouse names. The order of the other lines SHALL be unchanged.
+
+#### Scenario: Default key list
+- **WHEN** the default configuration is in use and the user opens the key list
+- **THEN** no line shows `leftmouse`, `rightmouse` or `middlemouse`

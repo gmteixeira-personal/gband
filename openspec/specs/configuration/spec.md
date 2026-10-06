@@ -240,7 +240,7 @@ Options SHALL be set and declared only while the configuration loads. Setting or
 - **AND** an error at `user/init.lua` line 3 naming `loop_bands` is reported
 
 ### Requirement: Key names
-A key name SHALL be a key optionally preceded by modifiers, joined by `+`. The modifiers SHALL be `ctrl`, `alt` and `shift`, in any order. The key SHALL be one character, or one of `enter`, `tab`, `backtab`, `backspace`, `escape`, `esc`, `space`, `up`, `down`, `left`, `right`, `home`, `end`, `insert`, `delete`, `pageup`, `pagedown` and `f1` to `f12`. Modifier and key names longer than one character SHALL be read without regard to case, and a one-character key SHALL be read as written, so `D` and `d` differ. A `+` that ends the name SHALL be the key, so `alt++` is Alt with `+`. `shift` with a lowercase letter SHALL name the uppercase letter. `shift` with any other character SHALL be an error, because the shifted character is written instead. Any other name SHALL be an error.
+A key name SHALL be a key optionally preceded by modifiers, joined by `+`. The modifiers SHALL be `ctrl`, `alt` and `shift`, in any order. The key SHALL be one character, or one of `enter`, `tab`, `backtab`, `backspace`, `escape`, `esc`, `space`, `up`, `down`, `left`, `right`, `home`, `end`, `insert`, `delete`, `pageup`, `pagedown` and `f1` to `f12`, or a mouse name: `leftmouse`, `middlemouse` or `rightmouse`, which name a press of that mouse button, as the mouse capability defines. The wheel has no name, because every wheel step goes to the window under the pointer. Modifier and key names longer than one character SHALL be read without regard to case, and a one-character key SHALL be read as written, so `D` and `d` differ. A `+` that ends the name SHALL be the key, so `alt++` is Alt with `+`. `shift` with a lowercase letter SHALL name the uppercase letter. `shift` with any other character SHALL be an error, because the shifted character is written instead. `shift` with a mouse name SHALL name that mouse name with Shift. A mouse name SHALL be valid only as the key of a binding in a key table, and SHALL be an error as the `prefix` option or as a key of a plugin window's `keys`. Any other name SHALL be an error.
 
 #### Scenario: Modifier and character
 - **WHEN** a binding names `alt+h`
@@ -261,6 +261,18 @@ A key name SHALL be a key optionally preceded by modifiers, joined by `+`. The m
 #### Scenario: Unknown key
 - **WHEN** line 5 of `init.lua` binds `alt+hyper`
 - **THEN** loading fails with an error at `init.lua` line 5 naming `alt+hyper`
+
+#### Scenario: Mouse name with modifiers
+- **WHEN** a binding names `Shift+RightMouse`
+- **THEN** it names a press of the right button with Shift
+
+#### Scenario: Wheel name
+- **WHEN** line 4 of `init.lua` binds `prefix wheelup`
+- **THEN** loading fails with an error at `init.lua` line 4 naming `wheelup`
+
+#### Scenario: Mouse name as the prefix
+- **WHEN** line 3 of `init.lua` sets `gband.opt.prefix = "leftmouse"`
+- **THEN** loading reports a configuration error at `init.lua` line 3 naming `leftmouse`
 
 ### Requirement: Bind and unbind keys
 Key bindings SHALL live in key tables. The table `root` SHALL hold the bindings of keys pressed outside a sequence, `prefix` the bindings of the key pressed after the prefix key, and any other name a table a callback enters, as the client-attach capability defines.
@@ -360,7 +372,7 @@ A key list of more than two keys, two keys whose first is not `prefix`, an inval
 - **THEN** the call raises an error naming `width`
 
 ### Requirement: Binding functions
-A callback SHALL be a binding function, the function of a registered action, the function of a command, or an event handler. A callback SHALL run in the client, never in the server. A binding function SHALL run with no arguments when its keys are pressed. Calling an action value, `gband.spawn` or `gband.keymap.enter` outside a callback SHALL be a configuration error. Wherever this capability allows a call inside a binding function, the call SHALL be allowed inside any callback. An error raised while a callback runs SHALL be reported as "Configuration errors" defines, and the actions the callback dispatched before the error SHALL stand.
+A callback SHALL be a binding function, the function of a registered action, the function of a command, or an event handler. A callback SHALL run in the client, never in the server. A binding function SHALL run with no arguments when its keys are pressed, except that a binding function bound to a mouse name SHALL run with one argument, the mouse event's payload, as the mouse capability defines. Calling an action value, `gband.spawn` or `gband.keymap.enter` outside a callback SHALL be a configuration error. Wherever this capability allows a call inside a binding function, the call SHALL be allowed inside any callback. An error raised while a callback runs SHALL be reported as "Configuration errors" defines, and the actions the callback dispatched before the error SHALL stand.
 
 #### Scenario: Action during evaluation
 - **WHEN** line 7 of `init.lua` calls `gband.action.close_window()` at the top level
@@ -374,6 +386,10 @@ A callback SHALL be a binding function, the function of a registered action, the
 #### Scenario: Spawn from an event handler
 - **WHEN** a `User` handler calls `gband.spawn({ cmd = "fish" })` and a binding function emits that event
 - **THEN** a new window running `fish` opens
+
+#### Scenario: Mouse binding function
+- **WHEN** navigation mode binds `leftmouse` to a function that records its argument, and the user clicks terminal column 12 and row 3
+- **THEN** the function runs with a table whose `button` is `"left"`, `col` is 12 and `row` is 3
 
 ### Requirement: Configuration errors
 A configuration error SHALL be reported as the file's path, a colon, the line, a colon and a message. The line SHALL be the line of a syntax error, the line where a runtime error was raised, or the line of the call or assignment that received the invalid value. A plugin error SHALL be reported the same way, preceded by the plugin's name, a colon and a space. Each process SHALL record every configuration error and plugin error of its own Lua in its log. The client SHALL also report the errors of the server's Lua that the server sends it, as the server-runtime capability defines, preceded by `server: `, and the plugin requirement errors of the plugin-bridge capability. The client SHALL keep its error list: every error it has reported since the list was last emptied, oldest first. A load with none of its own SHALL empty the list, and so SHALL clearing the errors. `gband.errors()` SHALL return a new list of the error list's texts, oldest first. The client SHALL show the latest error until the list is emptied. While the status line is drawn, the client SHALL show the status line's error item, as the status-line capability defines, and the error's text only through the error list. While no status line is drawn, the client SHALL show it as a banner on the bottom row of the ribbon area, over the ribbon and cut to the ribbon area's width. Neither SHALL change the size the client reports.

@@ -274,6 +274,7 @@ The server SHALL own the session's layout, as the layout capability defines it, 
 | move window | move the named window, or its floating box, down or up, as the layout capability defines |
 | toggle floating | float the named tiled window, or tile the named floating window after the tiled window the action names, as the floating-windows capability defines |
 | set position | place the named floating window at the column and row the action names, as the floating-windows capability defines |
+| move to place | move the named tiled window to the place beside or inside the reference window's column that the action names, as the layout capability's "Move a window to a place" defines |
 | cycle width | cycle the width of the named window's column or floating box |
 | toggle full width | toggle full width of the named window's column or floating box |
 | grow width | grow the width of the named window's column or floating box |
@@ -334,6 +335,10 @@ After placing an opened window whose action asks for focus, the server SHALL sen
 #### Scenario: Set position on a tiled window
 - **WHEN** a client asks to set the position of tiled window 1
 - **THEN** the layout is unchanged
+
+#### Scenario: Move to place reaches every client
+- **WHEN** two clients view a band holding columns A, B and C, and the first sends move to place naming A's window, B's window as the reference, and right of its column
+- **THEN** both clients receive a layout holding B, A and C, in that order
 
 ### Requirement: Close a window
 When a client asks to close a drawn window, the window SHALL leave the layout at once. When a client asks to close any other window, the server SHALL send SIGHUP to that window's program. If the program is still running 2 seconds later, the server SHALL send SIGKILL to the window's foreground process group and to its program. The window SHALL leave the layout when its program exits, as "Session ends with its last window" defines.
@@ -583,3 +588,18 @@ A drawn window's screen SHALL be resized as "Window resizes" defines for a PTY, 
 #### Scenario: Resized like a PTY
 - **WHEN** a shown drawn window's column grows from width 1/2 to 3/5 in an 80×24 area
 - **THEN** after the session settles, every client receives a snapshot of the window at 46 columns by 22 rows
+
+### Requirement: Mouse input to the window
+The server SHALL write each mouse message to the PTY of the window it names, as the bytes the input-encoding capability's "Mouse reports" defines, using the mouse tracking mode and encoding of that window's screen on the server at the moment it writes. When that mode does not report the event, the server SHALL write nothing. A mouse message naming a window that is not in the layout, or naming a drawn window, SHALL be dropped. Mouse messages SHALL reach a window's PTY in the order the server receives them, among the keys and pastes sent to it. A mouse message SHALL NOT emit the server-runtime capability's `WindowInput`.
+
+#### Scenario: Press to a mouse program
+- **WHEN** a window's program enabled modes 1000 and 1006 and a client sends a left press at content column 4 and row 2 naming it
+- **THEN** the server writes `\x1b[<0;5;3M` to that window's PTY
+
+#### Scenario: Program without mouse reporting
+- **WHEN** a window's program enabled no mouse mode and a client sends a wheel step naming it
+- **THEN** the server writes nothing to that window's PTY
+
+#### Scenario: Mouse to a drawn window
+- **WHEN** a client sends a left press naming a drawn window
+- **THEN** the message is dropped
