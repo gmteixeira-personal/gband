@@ -10,7 +10,7 @@ use gband_core::layout::{
 };
 use gband_core::view::{CenterFocusedColumn, Scene, View, ViewAction};
 use gband_emulator::{Emulator, Grid};
-use gband_lua::windows::{FloatFrame, Run};
+use gband_lua::plugin_windows::{FloatingFrame, Run};
 use gband_lua::{Color, Style};
 use insta::assert_snapshot;
 use ratatui::Terminal;
@@ -23,7 +23,7 @@ struct Fixture {
     view: View,
     grids: HashMap<PaneId, Grid>,
     banner: Option<String>,
-    floats: Vec<FloatFrame>,
+    floats: Vec<FloatingFrame>,
     float_focused: bool,
 }
 
@@ -366,10 +366,10 @@ fn configuration_error_banner_covers_the_bottom_row() {
     assert_snapshot!(fixture.render(Size::new(40, 6)));
 }
 
-fn float(row: u16, col: u16, width: u16, height: u16, lines: &[&str]) -> FloatFrame {
+fn float(row: u16, col: u16, width: u16, height: u16, lines: &[&str]) -> FloatingFrame {
     let base = Style::default();
     let inner = usize::from(width.saturating_sub(2));
-    FloatFrame {
+    FloatingFrame {
         row,
         col,
         width,

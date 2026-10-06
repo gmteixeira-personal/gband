@@ -21,10 +21,10 @@ use crate::events::{self, Event};
 use crate::guard::{self, Failure};
 use crate::keys::key_name;
 use crate::owner::{self, Owners};
+use crate::plugin_windows::{self, Frame};
 use crate::server::{self, Caller, Host};
 use crate::ui::{self, StatusLine, ViewState};
 use crate::version::{Requirement, Version};
-use crate::windows::{self, Frame};
 use crate::{
     Config, Locations, PluginManifest, Side, actions, bridge, bundled, clock, commands, control,
     keymap, options, sides, user_dir, value,
@@ -89,7 +89,7 @@ pub(crate) fn install(
             control::install(lua, &gband)?;
             bridge::install(lua, &gband)?;
             let host = ui::install(lua, &gband)?;
-            windows::install(lua, &host)?;
+            plugin_windows::install(lua, &host)?;
             Some(host)
         }
         Side::Server => {
@@ -561,38 +561,42 @@ impl Runtime {
         self.within_callback(|lua| ui::fire_timers(lua, now).map(|()| false))
     }
 
-    pub fn window_key(&self, window: u32, key: Key) -> Outcome {
+    pub fn plugin_window_key(&self, plugin_window: u32, key: Key) -> Outcome {
         self.within_callback(|lua| {
-            windows::call::<()>(lua, "key", (window, key_name(key))).map(|()| false)
+            plugin_windows::call::<()>(lua, "key", (plugin_window, key_name(key))).map(|()| false)
         })
     }
 
-    pub fn window_opened(&self, window: u32, pane: Option<PaneId>) -> Outcome {
+    pub fn plugin_window_opened(&self, plugin_window: u32, pane: Option<PaneId>) -> Outcome {
         self.within_callback(|lua| {
-            windows::call::<()>(lua, "opened", (window, pane.map(|pane| pane.0))).map(|()| false)
+            plugin_windows::call::<()>(lua, "opened", (plugin_window, pane.map(|pane| pane.0)))
+                .map(|()| false)
         })
     }
 
-    pub fn pane_resized(&self, window: u32, size: Size) -> Outcome {
+    pub fn pane_resized(&self, plugin_window: u32, size: Size) -> Outcome {
         self.within_callback(|lua| {
-            windows::call::<()>(lua, "pane_resized", (window, size.cols, size.rows)).map(|()| false)
+            plugin_windows::call::<()>(lua, "pane_resized", (plugin_window, size.cols, size.rows))
+                .map(|()| false)
         })
     }
 
-    pub fn pane_closed(&self, window: u32) -> Outcome {
-        self.within_callback(|lua| windows::call::<()>(lua, "pane_closed", window).map(|()| false))
+    pub fn pane_closed(&self, plugin_window: u32) -> Outcome {
+        self.within_callback(|lua| {
+            plugin_windows::call::<()>(lua, "pane_closed", plugin_window).map(|()| false)
+        })
     }
 
-    pub fn release_windows(&self) -> Outcome {
-        self.within_callback(|lua| windows::call::<()>(lua, "release", ()).map(|()| false))
+    pub fn release_plugin_windows(&self) -> Outcome {
+        self.within_callback(|lua| plugin_windows::call::<()>(lua, "release", ()).map(|()| false))
     }
 
     pub fn take_frames(&self) -> Vec<(u32, Option<Frame>)> {
-        windows::take(&self.lua)
+        plugin_windows::take(&self.lua)
     }
 
-    pub fn set_window_counter(&self, counter: Arc<AtomicU32>) {
-        windows::set_counter(&self.lua, counter);
+    pub fn set_plugin_window_counter(&self, counter: Arc<AtomicU32>) {
+        plugin_windows::set_counter(&self.lua, counter);
     }
 
     pub fn handles(&self, event: &str) -> bool {
@@ -668,7 +672,7 @@ impl Runtime {
             .expect("the queue is installed with the runtime")
             .0 = Some(Vec::new());
         let result = run(lua).and_then(|disabled| match side(lua) {
-            Side::Client => windows::flush(lua).map(|()| disabled),
+            Side::Client => plugin_windows::flush(lua).map(|()| disabled),
             Side::Server | Side::Test => Ok(disabled),
         });
         let dispatched = lua

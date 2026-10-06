@@ -7,7 +7,7 @@ use gband_core::layout::{BandId, PaneId, Proportion};
 use gband_core::view::ViewAction;
 use mlua::{Function, IntoLuaMulti, Lua, MultiValue, RegistryKey, Table, Value};
 
-use crate::api::{self, Dispatch, WindowRequest};
+use crate::api::{self, Dispatch, PluginWindowRequest};
 use crate::control;
 use crate::keys::{key_name, parse_key};
 use crate::ui::{self, Style, strip};
@@ -19,7 +19,7 @@ pub struct Run {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct FloatFrame {
+pub struct FloatingFrame {
     pub row: u16,
     pub col: u16,
     pub width: u16,
@@ -35,7 +35,7 @@ pub struct FloatFrame {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct PaneFrame {
+pub struct TiledFrame {
     pub cols: u16,
     pub rows: u16,
     pub base: Style,
@@ -44,8 +44,8 @@ pub struct PaneFrame {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Frame {
-    Float(FloatFrame),
-    Pane(PaneFrame),
+    Floating(FloatingFrame),
+    Tiled(TiledFrame),
 }
 
 struct Counter(Arc<AtomicU32>);
@@ -146,23 +146,23 @@ fn open_target(lua: &Lua, (band, after): (Value, Value)) -> mlua::Result<MultiVa
 }
 
 fn request(lua: &Lua, entry: Table) -> mlua::Result<()> {
-    let window: u32 = entry.get("window")?;
+    let plugin_window: u32 = entry.get("window")?;
     let request = match entry.get::<String>("op")?.as_str() {
         "open" => {
             let band: Option<u32> = entry.get("band")?;
             let after: Option<u32> = entry.get("after")?;
             let num: Option<u32> = entry.get("num")?;
             let den: Option<u32> = entry.get("den")?;
-            WindowRequest::Open {
-                window,
+            PluginWindowRequest::Open {
+                plugin_window,
                 target: band.map(|band| (BandId(band), after.map(PaneId))),
                 width: num.zip(den).map(|(num, den)| Proportion::new(num, den)),
                 focus: entry.get("focus")?,
             }
         }
-        _ => WindowRequest::Close { window },
+        _ => PluginWindowRequest::Close { plugin_window },
     };
-    api::queue(lua, Dispatch::Window(request), "gband.win")
+    api::queue(lua, Dispatch::PluginWindow(request), "gband.win")
 }
 
 fn read_runs(lines: &Table) -> mlua::Result<Vec<Vec<Run>>> {
@@ -187,7 +187,7 @@ fn read_frame(frame: &Table) -> mlua::Result<Frame> {
     let base = ui::style(&frame.get("base")?)?;
     let lines = read_runs(&frame.get("lines")?)?;
     Ok(match frame.get::<String>("kind")?.as_str() {
-        "float" => Frame::Float(FloatFrame {
+        "float" => Frame::Floating(FloatingFrame {
             row: frame.get("row")?,
             col: frame.get("col")?,
             width: frame.get("width")?,
@@ -203,7 +203,7 @@ fn read_frame(frame: &Table) -> mlua::Result<Frame> {
             z: frame.get("z")?,
             focused: frame.get("focused")?,
         }),
-        _ => Frame::Pane(PaneFrame {
+        _ => Frame::Tiled(TiledFrame {
             cols: frame.get("cols")?,
             rows: frame.get("rows")?,
             base,
@@ -235,7 +235,7 @@ pub(crate) fn call<R: mlua::FromLuaMulti + Default>(
     }
 }
 
-pub(crate) fn pane_window(lua: &Lua, pane: PaneId) -> mlua::Result<Option<u32>> {
+pub(crate) fn plugin_window_of(lua: &Lua, pane: PaneId) -> mlua::Result<Option<u32>> {
     call(lua, "pane_window", pane.0)
 }
 

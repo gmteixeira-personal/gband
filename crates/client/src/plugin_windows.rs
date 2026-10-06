@@ -5,12 +5,12 @@ use std::sync::atomic::AtomicU32;
 
 use gband_core::geometry::Size;
 use gband_core::layout::{BandId, PaneContent, PaneId, Proportion, SessionAction};
-use gband_lua::windows::{FloatFrame, Frame, PaneFrame, Run};
+use gband_lua::plugin_windows::{FloatingFrame, Frame, Run, TiledFrame};
 use gband_lua::{Color, Style};
 use gband_protocol::ClientMessage;
 
 pub struct OpenRequest {
-    pub window: u32,
+    pub plugin_window: u32,
     pub band: BandId,
     pub after: Option<PaneId>,
     pub width: Option<Proportion>,
@@ -19,25 +19,25 @@ pub struct OpenRequest {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Opened {
-    Window(u32),
+    PluginWindow(u32),
     Close(Option<PaneId>),
 }
 
-pub struct Windows {
+pub struct PluginWindows {
     counter: Arc<AtomicU32>,
-    floats: BTreeMap<u32, FloatFrame>,
+    floats: BTreeMap<u32, FloatingFrame>,
     pending: BTreeMap<u32, bool>,
     panes: BTreeMap<PaneId, u32>,
     sizes: HashMap<PaneId, Size>,
 }
 
-impl Default for Windows {
+impl Default for PluginWindows {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl Windows {
+impl PluginWindows {
     pub fn new() -> Self {
         Self {
             counter: Arc::new(AtomicU32::new(1)),
@@ -59,25 +59,25 @@ impl Windows {
             .map(|(&id, _)| id)
     }
 
-    pub fn floats(&self) -> Vec<&FloatFrame> {
-        let mut floats: Vec<&FloatFrame> = self.floats.values().collect();
+    pub fn floats(&self) -> Vec<&FloatingFrame> {
+        let mut floats: Vec<&FloatingFrame> = self.floats.values().collect();
         floats.sort_by_key(|frame| frame.z);
         floats
     }
 
-    pub fn window_of(&self, pane: PaneId) -> Option<u32> {
+    pub fn plugin_window_of(&self, pane: PaneId) -> Option<u32> {
         self.panes.get(&pane).copied()
     }
 
     pub fn panes(&self) -> Vec<(PaneId, u32)> {
         self.panes
             .iter()
-            .map(|(&pane, &window)| (pane, window))
+            .map(|(&pane, &plugin_window)| (pane, plugin_window))
             .collect()
     }
 
     pub fn open(&mut self, request: OpenRequest) -> ClientMessage {
-        self.pending.insert(request.window, false);
+        self.pending.insert(request.plugin_window, false);
         ClientMessage::Action(SessionAction::OpenPane {
             band: request.band,
             after: request.after,
@@ -85,20 +85,20 @@ impl Windows {
             floating: false,
             focus: request.focus,
             content: PaneContent::Plugin {
-                request: request.window,
+                request: request.plugin_window,
             },
         })
     }
 
-    pub fn close(&mut self, window: u32) -> Option<ClientMessage> {
-        if let Some(orphaned) = self.pending.get_mut(&window) {
+    pub fn close(&mut self, plugin_window: u32) -> Option<ClientMessage> {
+        if let Some(orphaned) = self.pending.get_mut(&plugin_window) {
             *orphaned = true;
             return None;
         }
         let pane = self
             .panes
             .iter()
-            .find(|&(_, &candidate)| candidate == window)
+            .find(|&(_, &candidate)| candidate == plugin_window)
             .map(|(&pane, _)| pane)?;
         self.forget(pane);
         Some(ClientMessage::Action(SessionAction::ClosePane(pane)))
@@ -110,7 +110,7 @@ impl Windows {
                 if let Some(pane) = pane {
                     self.panes.insert(pane, request);
                 }
-                Opened::Window(request)
+                Opened::PluginWindow(request)
             }
             _ => Opened::Close(pane),
         }
@@ -139,19 +139,19 @@ impl Windows {
 
     pub fn present(&mut self, frames: Vec<(u32, Option<Frame>)>) -> Vec<ClientMessage> {
         let mut contents = Vec::new();
-        for (window, frame) in frames {
+        for (plugin_window, frame) in frames {
             match frame {
                 None => {
-                    self.floats.remove(&window);
+                    self.floats.remove(&plugin_window);
                 }
-                Some(Frame::Float(frame)) => {
-                    self.floats.insert(window, frame);
+                Some(Frame::Floating(frame)) => {
+                    self.floats.insert(plugin_window, frame);
                 }
-                Some(Frame::Pane(frame)) => {
+                Some(Frame::Tiled(frame)) => {
                     let pane = self
                         .panes
                         .iter()
-                        .find(|&(_, &candidate)| candidate == window)
+                        .find(|&(_, &candidate)| candidate == plugin_window)
                         .map(|(&pane, _)| pane);
                     if let Some(pane) = pane {
                         contents.push(ClientMessage::Content {
@@ -192,7 +192,7 @@ fn sgr(style: &Style) -> String {
     format!("\x1b[{}m", codes.join(";"))
 }
 
-pub fn encode(frame: &PaneFrame) -> Vec<u8> {
+pub fn encode(frame: &TiledFrame) -> Vec<u8> {
     let mut output = String::from("\x1b[0m\x1b[2J\x1b[?25l");
     let blank = |output: &mut String, cells: usize| {
         output.push_str(&sgr(&frame.base));
@@ -244,7 +244,7 @@ mod tests {
             reverse: true,
             ..base
         };
-        let frame = PaneFrame {
+        let frame = TiledFrame {
             cols: 10,
             rows: 3,
             base,
@@ -273,27 +273,30 @@ mod tests {
 
     #[test]
     fn pending_requests_and_orphans() {
-        let mut windows = Windows::new();
-        let open = |window| OpenRequest {
-            window,
+        let mut plugin_windows = PluginWindows::new();
+        let open = |plugin_window| OpenRequest {
+            plugin_window,
             band: BandId(1),
             after: None,
             width: None,
             focus: true,
         };
-        windows.open(open(1));
-        windows.open(open(2));
-        assert_eq!(windows.close(2), None);
-        assert_eq!(windows.opened(1, Some(PaneId(5))), Opened::Window(1));
+        plugin_windows.open(open(1));
+        plugin_windows.open(open(2));
+        assert_eq!(plugin_windows.close(2), None);
         assert_eq!(
-            windows.opened(2, Some(PaneId(6))),
+            plugin_windows.opened(1, Some(PaneId(5))),
+            Opened::PluginWindow(1)
+        );
+        assert_eq!(
+            plugin_windows.opened(2, Some(PaneId(6))),
             Opened::Close(Some(PaneId(6)))
         );
-        assert_eq!(windows.window_of(PaneId(5)), Some(1));
+        assert_eq!(plugin_windows.plugin_window_of(PaneId(5)), Some(1));
         assert_eq!(
-            windows.close(1),
+            plugin_windows.close(1),
             Some(ClientMessage::Action(SessionAction::ClosePane(PaneId(5))))
         );
-        assert_eq!(windows.window_of(PaneId(5)), None);
+        assert_eq!(plugin_windows.plugin_window_of(PaneId(5)), None);
     }
 }

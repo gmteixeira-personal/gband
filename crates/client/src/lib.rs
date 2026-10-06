@@ -5,10 +5,10 @@ pub mod color;
 mod connect;
 pub mod input;
 pub mod placement;
+pub mod plugin_windows;
 pub mod render;
 mod requests;
 mod transport;
-pub mod windows;
 
 use std::collections::{BTreeMap, HashMap};
 use std::io::{Write, stdout};
@@ -30,8 +30,8 @@ use gband_core::view::{CenterFocusedColumn, Scene, View, ViewAction};
 use gband_emulator::{Emulator, Grid};
 use gband_lua::{
     BandState, Binding, ColumnState, Config, ConfigError, Dispatch, Event, Options, Outcome as Ran,
-    PaneInput, PaneStates, PluginManifest, Requirement as Needed, Runtime, StatusLine, Version,
-    ViewState, WindowRequest,
+    PaneInput, PaneStates, PluginManifest, PluginWindowRequest, Requirement as Needed, Runtime,
+    StatusLine, Version, ViewState,
 };
 use gband_protocol::{ClientMessage, ExecutableId, Requirement, ServerMessage, SessionName, Value};
 use ratatui::layout::Rect;
@@ -48,10 +48,10 @@ use crate::color::ColorSupport;
 pub use crate::connect::{Connection, connect, connect_reporting};
 use crate::input::key_from_event;
 use crate::placement::Placement;
+use crate::plugin_windows::{OpenRequest, Opened, PluginWindows};
 use crate::render::{Ribbon, StatusArea, draw_frame};
 pub use crate::requests::{kill_session, list_sessions};
 pub use crate::transport::{Link, Transport, UnixTransport};
-use crate::windows::{OpenRequest, Opened, Windows};
 
 pub struct ClientConfig {
     pub session: SessionName,
@@ -158,7 +158,7 @@ pub struct Display {
     banner: Option<String>,
     colors: ColorSupport,
     line: Option<StatusLine>,
-    windows: Windows,
+    plugin_windows: PluginWindows,
     states: Arc<PaneStates>,
     ready: bool,
 }
@@ -182,7 +182,7 @@ impl Display {
             banner: None,
             colors: ColorSupport::default(),
             line: None,
-            windows: Windows::new(),
+            plugin_windows: PluginWindows::new(),
             states: Arc::new(PaneStates::new()),
             ready: false,
         }
@@ -209,14 +209,15 @@ impl Display {
         previous
     }
 
-    pub fn windows(&self) -> &Windows {
-        &self.windows
+    pub fn plugin_windows(&self) -> &PluginWindows {
+        &self.plugin_windows
     }
 
-    pub fn focused_window(&self) -> Option<u32> {
-        self.windows
-            .focused_float()
-            .or_else(|| self.focused().and_then(|pane| self.windows.window_of(pane)))
+    pub fn focused_plugin_window(&self) -> Option<u32> {
+        self.plugin_windows.focused_float().or_else(|| {
+            self.focused()
+                .and_then(|pane| self.plugin_windows.plugin_window_of(pane))
+        })
     }
 
     pub fn grid_size(&self, pane: PaneId) -> Option<Size> {
@@ -454,8 +455,8 @@ impl Display {
             grids: &self.grids,
             drawn,
             region: self.ribbon,
-            floats: self.windows.floats(),
-            float_focused: self.windows.focused_float().is_some(),
+            floats: self.plugin_windows.floats(),
+            float_focused: self.plugin_windows.focused_float().is_some(),
             colors: self.colors,
             banner: self.banner.as_deref(),
             status: self.status.map(|area| StatusArea {
@@ -607,7 +608,9 @@ fn unmet(plugins: &[PluginManifest], required: &Requirement) -> Option<ConfigErr
 
 impl Controls {
     pub fn new(config: Config, display: &mut Display) -> Self {
-        config.runtime.set_window_counter(display.windows.counter());
+        config
+            .runtime
+            .set_plugin_window_counter(display.plugin_windows.counter());
         display.configure(&config.options);
         display.set_banner(config.errors.last().map(ToString::to_string));
         Self {
@@ -771,12 +774,12 @@ impl Controls {
 
     pub fn press(&mut self, display: &mut Display, key: Key) -> Vec<Step> {
         self.react(display, Vec::new(), |controls, display, steps| {
-            let released = controls.runtime.release_windows();
+            let released = controls.runtime.release_plugin_windows();
             controls.apply(display, released, steps);
             match controls.leader.handle(&controls.keymap, key) {
-                Command::Send(key) => match display.focused_window() {
-                    Some(window) => {
-                        let outcome = controls.runtime.window_key(window, key);
+                Command::Send(key) => match display.focused_plugin_window() {
+                    Some(plugin_window) => {
+                        let outcome = controls.runtime.plugin_window_key(plugin_window, key);
                         controls.apply(display, outcome, steps);
                     }
                     None => steps.push(dispatch(
@@ -810,7 +813,7 @@ impl Controls {
     }
 
     pub fn paste(&mut self, display: &mut Display, text: String) -> Vec<Step> {
-        if display.focused_window().is_some() {
+        if display.focused_plugin_window().is_some() {
             return Vec::new();
         }
         display
@@ -827,7 +830,7 @@ impl Controls {
         pane: Option<PaneId>,
         steps: &mut Vec<Step>,
     ) {
-        match display.windows.opened(request, pane) {
+        match display.plugin_windows.opened(request, pane) {
             Opened::Close(pane) => {
                 if let Some(pane) = pane {
                     steps.push(Step::Send(ClientMessage::Action(SessionAction::ClosePane(
@@ -835,26 +838,26 @@ impl Controls {
                     ))));
                 }
             }
-            Opened::Window(window) => {
-                let outcome = self.runtime.window_opened(window, pane);
+            Opened::PluginWindow(plugin_window) => {
+                let outcome = self.runtime.plugin_window_opened(plugin_window, pane);
                 self.apply(display, outcome, steps);
             }
         }
     }
 
     fn track_panes(&mut self, display: &mut Display, steps: &mut Vec<Step>) {
-        for (pane, window) in display.windows.panes() {
+        for (pane, plugin_window) in display.plugin_windows.panes() {
             if !display.layout.contains(pane) {
-                display.windows.forget(pane);
-                let outcome = self.runtime.pane_closed(window);
+                display.plugin_windows.forget(pane);
+                let outcome = self.runtime.pane_closed(plugin_window);
                 self.apply(display, outcome, steps);
                 continue;
             }
             let Some(size) = display.grid_size(pane) else {
                 continue;
             };
-            if display.windows.resized(pane, size) {
-                let outcome = self.runtime.pane_resized(window, size);
+            if display.plugin_windows.resized(pane, size) {
+                let outcome = self.runtime.pane_resized(plugin_window, size);
                 self.apply(display, outcome, steps);
             }
         }
@@ -873,7 +876,7 @@ impl Controls {
                 }
                 let previous = self.leader.active().to_owned();
                 let closed: Vec<Step> = display
-                    .windows
+                    .plugin_windows
                     .close_all()
                     .into_iter()
                     .map(Step::Send)
@@ -953,7 +956,13 @@ impl Controls {
             display.set_status_line(line);
         }
         let frames = self.runtime.take_frames();
-        steps.extend(display.windows.present(frames).into_iter().map(Step::Send));
+        steps.extend(
+            display
+                .plugin_windows
+                .present(frames)
+                .into_iter()
+                .map(Step::Send),
+        );
         steps
     }
 
@@ -999,7 +1008,7 @@ impl Controls {
                     PaneInput::Key(key) => ClientMessage::Key { pane, key },
                     PaneInput::Paste(text) => ClientMessage::Paste { pane, text },
                 })),
-                Dispatch::Window(request) => steps.push(window_step(display, request)),
+                Dispatch::PluginWindow(request) => steps.push(plugin_window_step(display, request)),
                 Dispatch::Write(bytes) => steps.push(Step::Write(bytes)),
                 Dispatch::Call { call, name, args } => {
                     steps.push(Step::Send(ClientMessage::Command { call, name, args }));
@@ -1025,10 +1034,10 @@ fn resize_step(size: Size) -> Step {
     })
 }
 
-fn window_step(display: &mut Display, request: WindowRequest) -> Step {
+fn plugin_window_step(display: &mut Display, request: PluginWindowRequest) -> Step {
     match request {
-        WindowRequest::Open {
-            window,
+        PluginWindowRequest::Open {
+            plugin_window,
             target,
             width,
             focus,
@@ -1040,17 +1049,17 @@ fn window_step(display: &mut Display, request: WindowRequest) -> Step {
             let Some((band, after)) = target else {
                 return Step::Nothing;
             };
-            Step::Send(display.windows.open(OpenRequest {
-                window,
+            Step::Send(display.plugin_windows.open(OpenRequest {
+                plugin_window,
                 band,
                 after,
                 width,
                 focus,
             }))
         }
-        WindowRequest::Close { window } => display
-            .windows
-            .close(window)
+        PluginWindowRequest::Close { plugin_window } => display
+            .plugin_windows
+            .close(plugin_window)
             .map_or(Step::Nothing, Step::Send),
     }
 }

@@ -11,9 +11,9 @@ use crate::api::{self, Dispatch, PaneInput};
 use crate::error::ConfigError;
 use crate::keys::parse_key;
 use crate::options::{self, Width};
+use crate::plugin_windows;
 use crate::runtime::is_loading;
 use crate::ui::{self, is_control};
-use crate::windows;
 
 pub(crate) fn install(lua: &Lua, gband: &Table) -> mlua::Result<()> {
     gband.set("layout", lua.create_function(layout)?)?;
@@ -310,7 +310,7 @@ fn layout(lua: &Lua, (): ()) -> mlua::Result<Table> {
                         item.set("weight", f64::from(weight.num()) / f64::from(weight.den()))?
                     }
                 }
-                item.set("window", windows::pane_window(lua, pane)?)?;
+                item.set("window", plugin_windows::plugin_window_of(lua, pane)?)?;
                 panes.push(item)?;
             }
             described.set("panes", panes)?;
@@ -327,7 +327,10 @@ fn layout(lua: &Lua, (): ()) -> mlua::Result<Table> {
             item.set("rows", record.rows)?;
             item.set("col", placed.x)?;
             item.set("row", placed.y)?;
-            item.set("window", windows::pane_window(lua, record.pane)?)?;
+            item.set(
+                "window",
+                plugin_windows::plugin_window_of(lua, record.pane)?,
+            )?;
             floating.push(item)?;
         }
         entry.set("floating", floating)?;
@@ -347,7 +350,7 @@ fn view(lua: &Lua, (): ()) -> mlua::Result<Table> {
         .pane
         .is_some_and(|pane| state.layout.floating(PaneId(pane)).is_some());
     table.set("floating", floating)?;
-    table.set("window", windows::focused(lua)?)?;
+    table.set("window", plugin_windows::focused(lua)?)?;
     table.set("table", state.table)?;
     table.set("cols", state.ribbon.cols)?;
     table.set("rows", state.ribbon.rows)?;

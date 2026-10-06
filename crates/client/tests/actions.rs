@@ -494,13 +494,13 @@ fn focus_and_view_by_number_change_the_view() {
 }
 
 #[test]
-fn pane_window_sends_open_pane_with_plugin_content() {
+fn tiled_plugin_window_sends_open_pane_with_plugin_content() {
     let (_scratch, mut display, mut controls, panes) = bound(
         "pane-window",
         "win = gband.win.open({ kind = 'pane', after = 2, focus = false })",
     );
     let steps = controls.press(&mut display, key("alt+x"));
-    let window: u32 = controls.runtime().lua().globals().get("win").unwrap();
+    let plugin_window: u32 = controls.runtime().lua().globals().get("win").unwrap();
     assert_eq!(
         steps,
         [Step::Send(ClientMessage::Action(SessionAction::OpenPane {
@@ -509,7 +509,9 @@ fn pane_window_sends_open_pane_with_plugin_content() {
             width: None,
             floating: false,
             focus: false,
-            content: PaneContent::Plugin { request: window },
+            content: PaneContent::Plugin {
+                request: plugin_window
+            },
         }))]
     );
 }

@@ -5,7 +5,7 @@
 
 ## 2. Free the plugin window names
 
-- [ ] 2.1 In `crates/client` and `crates/lua`, rename the plugin window types and functions to their `PluginWindow` form, such as `Window` to `PluginWindow` and `WindowRequest` to `PluginWindowRequest`, and `git mv` `crates/client/src/windows.rs`, `crates/lua/src/windows.rs`, `crates/client/tests/windows.rs`, `crates/lua/tests/windows.rs` and `tests/windows.rs` to `plugin_windows.rs`. Change no Lua-visible name in this step. Verify that `cargo test --workspace --locked` passes
+- [x] 2.1 In `crates/client` and `crates/lua`, rename the plugin window types and functions to their `PluginWindow` form, such as `Window` to `PluginWindow` and `WindowRequest` to `PluginWindowRequest`, and `git mv` `crates/client/src/windows.rs`, `crates/lua/src/windows.rs`, `crates/client/tests/windows.rs`, `crates/lua/tests/windows.rs` and `tests/windows.rs` to `plugin_windows.rs`. Change no Lua-visible name in this step. Verify that `cargo test --workspace --locked` passes
 - [ ] 2.2 Rename the Lua-visible plugin window names: `gband.view().window` and the layout's `window` field to `plugin_window`, the kinds `"float"` and `"pane"` to `"floating"` and `"tiled"`, and the highlight groups `Window`, `WindowBorder`, `WindowTitle` and `WindowCursorLine` to `PluginWindow`, `PluginWindowBorder`, `PluginWindowTitle` and `PluginWindowCursorLine`, in the code, the bundled runtime, the colorschemes and the tests. Verify that `cargo test -p gband-lua -p gband-client --locked` passes
 
 ## 3. Rename the domain term

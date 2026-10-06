@@ -31,15 +31,15 @@ pub enum PaneInput {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum WindowRequest {
+pub enum PluginWindowRequest {
     Open {
-        window: u32,
+        plugin_window: u32,
         target: Option<(BandId, Option<PaneId>)>,
         width: Option<Proportion>,
         focus: bool,
     },
     Close {
-        window: u32,
+        plugin_window: u32,
     },
 }
 
@@ -53,7 +53,7 @@ pub enum Dispatch {
         pane: PaneId,
         input: PaneInput,
     },
-    Window(WindowRequest),
+    PluginWindow(PluginWindowRequest),
     Write(Vec<u8>),
     Call {
         call: u64,

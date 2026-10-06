@@ -396,7 +396,7 @@ pub(crate) fn set_state(lua: &Lua, state: ViewState) -> mlua::Result<()> {
     };
     let (changed, resized) = changed;
     if resized {
-        crate::windows::ribbon_resized(lua)?;
+        crate::plugin_windows::ribbon_resized(lua)?;
     }
     if !changed {
         return Ok(());

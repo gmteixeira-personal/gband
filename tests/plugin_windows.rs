@@ -38,7 +38,7 @@ fn has_tile_line(screen: &Grid, text: &str) -> bool {
 }
 
 #[test]
-fn pane_window_is_seen_by_two_clients() {
+fn tiled_plugin_window_is_seen_by_two_clients() {
     let env = env("windows-two-clients");
     let mut first = attached(&env);
     let second = attached(&env);
@@ -56,7 +56,7 @@ fn pane_window_is_seen_by_two_clients() {
 }
 
 #[test]
-fn pane_window_closes_with_the_prefix_and_q() {
+fn tiled_plugin_window_closes_with_the_prefix_and_q() {
     let env = env("windows-close");
     let mut client = attached(&env);
     client.send(b"\x1bp");

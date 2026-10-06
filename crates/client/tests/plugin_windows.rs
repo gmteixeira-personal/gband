@@ -171,7 +171,7 @@ const FLOAT: &str = "gband.bind('alt+o', function() win = gband.win.open({ keys 
 fn typing_into_a_focused_float_sends_nothing() {
     let mut client = Client::new("typing", FLOAT);
     client.press("alt+o");
-    assert!(client.display.focused_window().is_some());
+    assert!(client.display.focused_plugin_window().is_some());
     for key in ["l", "s", "enter"] {
         no_input(&client.press(key));
     }
@@ -200,7 +200,7 @@ fn paste_into_a_focused_float_is_discarded() {
 }
 
 #[test]
-fn unbound_key_goes_to_the_focused_window() {
+fn unbound_key_goes_to_the_focused_plugin_window() {
     let mut client = Client::new("window-key", FLOAT);
     client.press("alt+o");
     no_input(&client.press("j"));
@@ -208,7 +208,7 @@ fn unbound_key_goes_to_the_focused_window() {
 }
 
 #[test]
-fn root_binding_runs_before_the_window() {
+fn root_binding_runs_before_the_plugin_window() {
     let mut client = Client::new(
         "root-first",
         &format!("gband.bind('alt+h', function() root_alt = true end)\n{FLOAT}"),
@@ -241,9 +241,9 @@ fn moving_focus_leaves_the_float() {
     client.press("ctrl+space");
     client.press("l");
     assert_eq!(client.display.focused(), Some(client.panes[1]));
-    assert_eq!(client.display.windows().floats().len(), 1);
-    assert_eq!(client.display.windows().focused_float(), None);
-    assert_eq!(client.display.focused_window(), None);
+    assert_eq!(client.display.plugin_windows().floats().len(), 1);
+    assert_eq!(client.display.plugin_windows().focused_float(), None);
+    assert_eq!(client.display.focused_plugin_window(), None);
     let steps = client.press("x");
     assert_eq!(
         sent(&steps),
@@ -259,17 +259,17 @@ fn escape_closes_a_float() {
     let mut client = Client::new("escape", FLOAT);
     client.press("alt+o");
     no_input(&client.press("escape"));
-    assert!(client.display.windows().floats().is_empty());
-    assert_eq!(client.display.focused_window(), None);
+    assert!(client.display.plugin_windows().floats().is_empty());
+    assert_eq!(client.display.focused_plugin_window(), None);
 }
 
 const PANE: &str = "gband.bind('alt+p', function() win = gband.win.open({ kind = 'pane', lines = { 'hello' }, column_width = 1/4, keys = { j = function() pressed = true end }, on_close = function(id) closed = id end }) end)\n";
 
 #[test]
-fn pane_window_opens_and_sends_its_contents() {
+fn tiled_plugin_window_opens_and_sends_its_contents() {
     let mut client = Client::new("pane-window", PANE);
     let steps = client.press("alt+p");
-    let window: u32 = client.global("win");
+    let plugin_window: u32 = client.global("win");
     assert_eq!(
         sent(&steps),
         [&ClientMessage::Action(SessionAction::OpenPane {
@@ -278,10 +278,12 @@ fn pane_window_opens_and_sends_its_contents() {
             width: Some(Proportion::new(1, 4)),
             floating: false,
             focus: true,
-            content: PaneContent::Plugin { request: window },
+            content: PaneContent::Plugin {
+                request: plugin_window
+            },
         })]
     );
-    let (pane, steps) = client.open_plugin_pane(window);
+    let (pane, steps) = client.open_plugin_pane(plugin_window);
     let [
         ClientMessage::Content {
             pane: target,
@@ -297,17 +299,17 @@ fn pane_window_opens_and_sends_its_contents() {
     assert_eq!(grid.contents().lines().next().unwrap().trim_end(), "hello");
     assert_eq!(grid.cursor(), None);
     assert_eq!(client.display.focused(), Some(pane));
-    assert_eq!(client.display.focused_window(), Some(window));
+    assert_eq!(client.display.focused_plugin_window(), Some(plugin_window));
     no_input(&client.press("j"));
     assert!(client.global::<bool>("pressed"));
 }
 
 #[test]
-fn resized_pane_window_is_drawn_again() {
+fn resized_tiled_plugin_window_is_drawn_again() {
     let mut client = Client::new("pane-resized", PANE);
     client.press("alt+p");
-    let window: u32 = client.global("win");
-    let (pane, _) = client.open_plugin_pane(window);
+    let plugin_window: u32 = client.global("win");
+    let (pane, _) = client.open_plugin_pane(plugin_window);
     let steps = client.receive(vec![ServerMessage::Snapshot {
         pane,
         cols: 30,
@@ -331,11 +333,11 @@ fn resized_pane_window_is_drawn_again() {
 }
 
 #[test]
-fn pane_window_closed_by_the_user() {
+fn tiled_plugin_window_closed_by_the_user() {
     let mut client = Client::new("pane-closed", PANE);
     client.press("alt+p");
-    let window: u32 = client.global("win");
-    let (pane, _) = client.open_plugin_pane(window);
+    let plugin_window: u32 = client.global("win");
+    let (pane, _) = client.open_plugin_pane(plugin_window);
     client.press("ctrl+space");
     assert_eq!(
         client.press("q"),
@@ -346,36 +348,36 @@ fn pane_window_closed_by_the_user() {
     client.layout.remove(pane);
     let message = client.layout_message();
     client.receive(vec![message]);
-    assert_eq!(client.global::<u32>("closed"), window);
-    assert_eq!(client.display.windows().window_of(pane), None);
+    assert_eq!(client.global::<u32>("closed"), plugin_window);
+    assert_eq!(client.display.plugin_windows().plugin_window_of(pane), None);
 }
 
 #[test]
-fn closing_a_pane_window_closes_its_pane() {
+fn closing_a_tiled_plugin_window_closes_its_pane() {
     let mut client = Client::new(
         "pane-close",
         &format!("{PANE}gband.bind('alt+c', function() gband.win.close(win) end)\n"),
     );
     client.press("alt+p");
-    let window: u32 = client.global("win");
-    let (pane, _) = client.open_plugin_pane(window);
+    let plugin_window: u32 = client.global("win");
+    let (pane, _) = client.open_plugin_pane(plugin_window);
     assert_eq!(
         sent(&client.press("alt+c")),
         [&ClientMessage::Action(SessionAction::ClosePane(pane))]
     );
-    assert_eq!(client.global::<u32>("closed"), window);
+    assert_eq!(client.global::<u32>("closed"), plugin_window);
 }
 
 #[test]
-fn window_closed_before_the_pane_is_known() {
+fn plugin_window_closed_before_the_pane_is_known() {
     let mut client = Client::new(
         "pane-early-close",
         &format!("{PANE}gband.bind('alt+c', function() gband.win.close(win) end)\n"),
     );
     client.press("alt+p");
-    let window: u32 = client.global("win");
+    let plugin_window: u32 = client.global("win");
     assert!(sent(&client.press("alt+c")).is_empty());
-    let (pane, steps) = client.open_plugin_pane(window);
+    let (pane, steps) = client.open_plugin_pane(plugin_window);
     assert_eq!(
         sent(&steps),
         [&ClientMessage::Action(SessionAction::ClosePane(pane))]
@@ -383,32 +385,32 @@ fn window_closed_before_the_pane_is_known() {
 }
 
 #[test]
-fn opened_with_no_pane_closes_the_window() {
+fn opened_with_no_pane_closes_the_plugin_window() {
     let mut client = Client::new("pane-none", PANE);
     client.press("alt+p");
-    let window: u32 = client.global("win");
+    let plugin_window: u32 = client.global("win");
     let steps = client.receive(vec![ServerMessage::Opened {
-        request: window,
+        request: plugin_window,
         pane: None,
     }]);
     assert!(sent(&steps).is_empty());
-    assert_eq!(client.global::<u32>("closed"), window);
+    assert_eq!(client.global::<u32>("closed"), plugin_window);
 }
 
 #[test]
-fn reload_closes_every_window() {
+fn reload_closes_every_plugin_window() {
     let mut client = Client::new("reload", &format!("{FLOAT}{PANE}"));
     client.press("alt+o");
     client.press("alt+p");
-    let window: u32 = client.global("win");
-    let (pane, _) = client.open_plugin_pane(window);
+    let plugin_window: u32 = client.global("win");
+    let (pane, _) = client.open_plugin_pane(plugin_window);
     let config = client.scratch.load(&format!("{FLOAT}{PANE}"));
     let steps = client.controls.reload(&mut client.display, Ok(config));
     assert!(
         sent(&steps).contains(&&ClientMessage::Action(SessionAction::ClosePane(pane))),
         "{steps:?}"
     );
-    assert!(client.display.windows().floats().is_empty());
+    assert!(client.display.plugin_windows().floats().is_empty());
     assert!(client.global::<Option<u32>>("closed").is_none());
     let listed: Vec<u32> = client
         .controls
@@ -419,17 +421,17 @@ fn reload_closes_every_window() {
         .unwrap();
     assert!(listed.is_empty());
     client.press("alt+o");
-    assert!(client.global::<u32>("win") > window);
+    assert!(client.global::<u32>("win") > plugin_window);
 }
 
 #[test]
 fn orphaned_opened_reply_is_answered_with_close_pane() {
     let mut client = Client::new("orphan", PANE);
     client.press("alt+p");
-    let window: u32 = client.global("win");
+    let plugin_window: u32 = client.global("win");
     let config = client.scratch.load(PANE);
     client.controls.reload(&mut client.display, Ok(config));
-    let (pane, steps) = client.open_plugin_pane(window);
+    let (pane, steps) = client.open_plugin_pane(plugin_window);
     assert_eq!(
         sent(&steps),
         [&ClientMessage::Action(SessionAction::ClosePane(pane))]
@@ -442,21 +444,21 @@ const RUNNER: &str = "gband.bind('alt+o', function() win = gband.win.open({ keys
 fn action_from_the_floats_own_key_keeps_it_focused() {
     let mut client = Client::new("own-key", RUNNER);
     client.press("alt+o");
-    let window: u32 = client.global("win");
+    let plugin_window: u32 = client.global("win");
     no_input(&client.press("enter"));
     assert_eq!(client.display.focused(), Some(client.panes[1]));
-    assert_eq!(client.display.focused_window(), Some(window));
+    assert_eq!(client.display.focused_plugin_window(), Some(plugin_window));
     client.press("ctrl+space");
     client.press("h");
     assert_eq!(client.display.focused(), Some(client.panes[0]));
-    assert_eq!(client.display.windows().focused_float(), None);
+    assert_eq!(client.display.plugin_windows().focused_float(), None);
 }
 
 #[test]
 fn focus_from_the_server_after_the_floats_own_key_keeps_it_focused() {
     let mut client = Client::new("own-key-server", RUNNER);
     client.press("alt+o");
-    let window: u32 = client.global("win");
+    let plugin_window: u32 = client.global("win");
     let steps = client.press("o");
     assert_eq!(
         sent(&steps),
@@ -478,8 +480,8 @@ fn focus_from_the_server_after_the_floats_own_key_keeps_it_focused() {
     let layout = client.layout_message();
     client.receive(vec![layout, ServerMessage::Focus(opened)]);
     assert_eq!(client.display.focused(), Some(opened));
-    assert_eq!(client.display.focused_window(), Some(window));
+    assert_eq!(client.display.focused_plugin_window(), Some(plugin_window));
     no_input(&client.press("down"));
     client.receive(vec![ServerMessage::Focus(client.panes[1])]);
-    assert_eq!(client.display.windows().focused_float(), None);
+    assert_eq!(client.display.plugin_windows().focused_float(), None);
 }
