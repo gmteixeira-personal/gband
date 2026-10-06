@@ -246,8 +246,7 @@ async fn attach(
                 sync(&mut link.writer, &session, &mut sent, settling).await?;
             }
             Some(reply) = replies.recv() => {
-                sync(&mut link.writer, &session, &mut sent, settling).await?;
-                deliver(&mut link.writer, &replied(reply), settling).await?;
+                deliver_reply(&mut link.writer, reply, &session, &mut sent, settling).await?;
             }
             Some(message) = deliveries.recv() => {
                 sync(&mut link.writer, &session, &mut sent, settling).await?;
@@ -264,8 +263,10 @@ async fn attach(
                     session.command(Command::Barrier(reached));
                 }
                 Barrier::Flush(reached) => {
+                    changed.borrow_and_update();
+                    sync(&mut link.writer, &session, &mut sent, settling).await?;
                     while let Ok(reply) = replies.try_recv() {
-                        deliver(&mut link.writer, &replied(reply), settling).await?;
+                        deliver_reply(&mut link.writer, reply, &session, &mut sent, settling).await?;
                     }
                     while let Ok(message) = deliveries.try_recv() {
                         deliver(&mut link.writer, &message, settling).await?;
@@ -361,6 +362,26 @@ fn replied(reply: Reply) -> ServerMessage {
         Reply::Opened { request, window } => ServerMessage::Opened { request, window },
         Reply::Result { call, result } => ServerMessage::Result { call, result },
     }
+}
+
+async fn deliver_reply(
+    writer: &mut MessageWriter<impl AsyncWrite + Unpin>,
+    reply: Reply,
+    session: &SessionHandle,
+    sent: &mut Sent,
+    settling: &Settling,
+) -> Result<()> {
+    sync(writer, session, sent, settling).await?;
+    if let Reply::Focus(window) = reply
+        && !sent
+            .state
+            .as_ref()
+            .is_some_and(|state| state.layout.contains(window))
+    {
+        tracing::debug!(window = %window, "focus dropped for a window no longer in the layout");
+        return Ok(());
+    }
+    deliver(writer, &replied(reply), settling).await
 }
 
 async fn deliver(

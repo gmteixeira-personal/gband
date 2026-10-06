@@ -1,0 +1,119 @@
+## MODIFIED Requirements
+
+### Requirement: Session actions
+The server SHALL own the session's layout, as the layout capability defines it, and change it only through session actions. It SHALL apply the session actions of every client, and those the server's Lua calls as the server-runtime capability defines, in the order it receives them, and send the resulting layout to every attached client. An action that names a window or a band no longer in the layout SHALL be ignored. The session actions SHALL be:
+
+| action | effect |
+|---|---|
+| open window | start a window program, as "Window program" defines, or open a drawn window, as "Drawn windows" defines, and place the window as the layout capability's "Open a window" defines, with the column width the action names, tiled or floating as the action names |
+| close window | close the named window, as "Close a window" defines |
+| consume or expel | as the layout capability defines, left or right |
+| move column | move the named window's column, or its floating box, left or right, as the layout capability defines |
+| move window | move the named window, or its floating box, down or up, as the layout capability defines |
+| toggle floating | float the named tiled window, or tile the named floating window after the tiled window the action names, as the floating-windows capability defines |
+| set position | place the named floating window at the column and row the action names, as the floating-windows capability defines |
+| move to place | move the named tiled window to the place beside or inside the reference window's column that the action names, as the layout capability's "Move a window to a place" defines |
+| cycle width | cycle the width of the named window's column or floating box |
+| toggle full width | toggle full width of the named window's column or floating box |
+| grow width | grow the width of the named window's column or floating box |
+| shrink width | shrink the width of the named window's column or floating box |
+| grow height | grow the height of the named window |
+| shrink height | shrink the height of the named window |
+| reset height | reset the height of the named window |
+| set width | set the width of the named window's column or floating box to the width the action names |
+| set height | set the height of the named window to the rows or the weight the action names |
+
+Set position naming a tiled window SHALL leave the layout unchanged.
+
+After placing an opened window whose action asks for focus, the server SHALL send the client that asked for it, after the layout that holds the window, a message telling it to focus that window. The server SHALL send that message only while the latest layout it has sent that client holds the window. When the window has left the layout before the message is sent, as when its program exits at once, the server SHALL send no focus message for it, so a client is never told to focus a window that the last layout it received does not hold. A window opened by the server's Lua SHALL NOT change any client's focus. When the program of a new window cannot be started, the server SHALL record the reason in its log and leave the layout unchanged.
+
+#### Scenario: Open a window
+- **WHEN** two clients are attached and the first asks to open a window next to the window it focuses
+- **THEN** both clients receive a layout holding both windows
+- **AND** only the first client is told to focus the new window
+
+#### Scenario: Concurrent actions
+- **WHEN** two clients each ask to open a window at the same moment
+- **THEN** the layout holds three windows, and every client receives the same layout
+
+#### Scenario: Action on a closed window
+- **WHEN** a client asks to cycle the width of a window that has already left the layout
+- **THEN** the layout is unchanged
+
+#### Scenario: Grow a window's height
+- **WHEN** the screen area is 80×24 and a client asks to grow the height of the top window of a column holding two windows with automatic heights of weight 1
+- **THEN** every attached client receives a layout in which the top window has a fixed height of 14 rows and the bottom window an automatic height of weight 1
+
+#### Scenario: Open without focus
+- **WHEN** a client asks to open a window and the action does not ask for focus
+- **THEN** every client receives a layout holding the new window
+- **AND** no client is told to focus it
+
+#### Scenario: Open with a width
+- **WHEN** a client asks to open a window with the column width 1/4
+- **THEN** every client receives a layout whose new column has width 1/4
+
+#### Scenario: Set a column's width
+- **WHEN** a client asks to set the width of window 1's column to 2/5
+- **THEN** every attached client receives a layout in which window 1's column has width 2/5 and full width off
+
+#### Scenario: Action from the server's Lua
+- **WHEN** a server handler of `WindowOpened` calls `gband.action.grow_column_width` for the new window
+- **THEN** every attached client receives a layout in which that window's column is wider than the default width
+
+#### Scenario: Float a window for every client
+- **WHEN** two clients are attached and the first asks to toggle floating on tiled window 2
+- **THEN** both clients receive a layout in which window 2 is in its band's floating list
+
+#### Scenario: Open a floating window with focus
+- **WHEN** a client asks to open a floating window that asks for focus
+- **THEN** every client receives a layout whose band's floating list ends with the new window
+- **AND** only that client is told to focus it
+
+#### Scenario: Set position on a tiled window
+- **WHEN** a client asks to set the position of tiled window 1
+- **THEN** the layout is unchanged
+
+#### Scenario: Move to place reaches every client
+- **WHEN** two clients view a band holding columns A, B and C, and the first sends move to place naming A's window, B's window as the reference, and right of its column
+- **THEN** both clients receive a layout holding B, A and C, in that order
+
+#### Scenario: Window closed before its focus
+- **WHEN** a client asks to open a window running `printf` with focus, and the program exits before the server sends the focus message
+- **THEN** every focus message the client receives names a window that the last layout it received holds
+- **AND** the client receives no focus message naming the closed window after a layout that does not hold it
+
+### Requirement: Window program
+On creating a session, the server SHALL open that session's first window. Every window other than a drawn window SHALL run, in its own new PTY, the program its open window action names, or the user's shell when the action names none and for the first window. The user's shell SHALL be `$SHELL` when it is set, otherwise the user's login shell. A program named as a command line SHALL run as the user's shell with the arguments `-c` and that command line. A program named as an argument list SHALL run as that list. The program SHALL start in its session's working directory. Its environment SHALL be the server's without `GBAND_TEST_SOCKET` or `GBAND_PANE`, with `TERM=xterm-256color`, `COLORTERM=truecolor`, `GBAND` set to the socket path, `GBAND_SESSION` set to the session's name and `GBAND_WINDOW` set to the window's identifier in decimal. The PTY's initial size SHALL be the terminal size the layout gives the window for its session's current screen area.
+
+#### Scenario: Environment of the window
+- **WHEN** a client attaches and the user runs `echo $TERM $COLORTERM $GBAND` in the window
+- **THEN** the window prints `xterm-256color truecolor` followed by the socket path
+
+#### Scenario: Session named in the window
+- **WHEN** a client attaches with `-s work` and the user runs `echo $GBAND_SESSION` in the window
+- **THEN** the window prints `work`
+
+#### Scenario: Windows are told apart
+- **WHEN** a session holds two windows and the user runs `echo $GBAND_WINDOW` in each
+- **THEN** the two windows print different identifiers
+
+#### Scenario: Size before any client
+- **WHEN** the server starts and no client has attached
+- **THEN** the first window's PTY is 38 columns by 22 rows
+
+#### Scenario: Command line program
+- **WHEN** a client asks to open a window naming the command line `echo $GBAND_WINDOW; sleep 5`
+- **THEN** the new window prints its identifier, as the user's shell expands it
+
+#### Scenario: Argument list program
+- **WHEN** a client asks to open a window naming the argument list `awk`, `BEGIN { printf "%s-%s", ARGV[1], ARGV[2]; getline line < "-" }`, `a`, `b`
+- **THEN** the new window prints `a-b` without a shell expanding it, and stays open while its program waits for input
+
+#### Scenario: Program that cannot start
+- **WHEN** a client asks to open a window naming the argument list `/nonexistent`
+- **THEN** the server records the reason in its log and the layout is unchanged
+
+#### Scenario: Test channel kept out of windows
+- **WHEN** a server runs with `GBAND_TEST_SOCKET` set and the user runs `echo "[$GBAND_TEST_SOCKET]"` in a window
+- **THEN** the window prints `[]`
