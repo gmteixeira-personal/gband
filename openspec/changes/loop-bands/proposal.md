@@ -48,20 +48,23 @@ None.
 - rename-panes-to-windows
 
 ### Expected Files
-- crates/core/src/view.rs
-- crates/core/src/geometry.rs
-- crates/core/tests/view.rs
-- crates/core/tests/geometry.rs
-- crates/client/src/lib.rs
+- README.md
 - crates/client/src/animation.rs
+- crates/client/src/lib.rs
 - crates/client/src/render.rs
 - crates/client/tests/actions.rs
 - crates/client/tests/animation.rs
 - crates/client/tests/render.rs
-- crates/client/tests/snapshots/
-- crates/lua/src/options.rs
+- crates/client/tests/snapshots/render__first_column_drawn_after_the_last.snap
+- crates/client/tests/snapshots/render__floating_window_stays_in_place_across_the_seam.snap
+- crates/core/src/geometry.rs
+- crates/core/src/view.rs
+- crates/core/tests/geometry.rs
+- crates/core/tests/view.rs
 - crates/lua/src/defaults.lua
+- crates/lua/src/options.rs
 - crates/lua/tests/options.rs
-- README.md
 - docs/plugins.md
 - openspec/changes/loop-bands/
+- tests/lua/loop_bands_spec.lua
+- tests/lua_specs.rs
