@@ -57,7 +57,9 @@ None.
 - crates/lua/src/runtime/gband/statusline/hints.lua
 - crates/lua/tests/config.rs
 - crates/lua/tests/key_hints.rs
+- crates/lua/tests/plugins.rs
 - crates/client/src/bindings.rs
+- crates/client/src/lib.rs
 - crates/client/tests/actions.rs
 - tests/attach.rs
 - README.md
