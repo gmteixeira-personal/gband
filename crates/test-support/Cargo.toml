@@ -11,6 +11,7 @@ gband-protocol.workspace = true
 gband-emulator.workspace = true
 gband-server.workspace = true
 gband-client.workspace = true
+gband-scratch.workspace = true
 anyhow.workspace = true
 ratatui.workspace = true
 serde.workspace = true

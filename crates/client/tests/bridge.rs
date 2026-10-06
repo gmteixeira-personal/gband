@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use gband_client::animation::Animations;
 use gband_client::{Controls, Display, Step};
@@ -9,15 +9,14 @@ use gband_lua::keys::parse_key;
 use gband_lua::{Config, LoadOptions, Locations, Side};
 use gband_protocol::{ClientMessage, Key, Requirement, ServerMessage, Value};
 
-struct Scratch(PathBuf);
+struct Scratch(gband_scratch::Scratch);
 
 impl Scratch {
     fn new(name: &str) -> Self {
-        let path =
-            std::env::temp_dir().join(format!("gband-client-bridge-{name}-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&path);
-        fs::create_dir_all(&path).unwrap();
-        Self(path)
+        Self(gband_scratch::Scratch::new(
+            "client",
+            &format!("bridge-{name}"),
+        ))
     }
 
     fn locations(&self) -> Locations {
@@ -40,12 +39,6 @@ impl Scratch {
             source,
         );
         gband_lua::load(&self.locations(), Side::Client, &LoadOptions::default()).unwrap()
-    }
-}
-
-impl Drop for Scratch {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
     }
 }
 

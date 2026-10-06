@@ -107,6 +107,8 @@ mod tests {
     use std::collections::HashMap;
     use std::os::unix::fs::PermissionsExt;
 
+    use gband_scratch::Scratch;
+
     use super::*;
 
     fn command() -> clap::Command {
@@ -130,16 +132,6 @@ mod tests {
             .map(|(name, value)| (name.to_string(), OsString::from(value)))
             .collect();
         install_path(shell, |name| vars.get(name).cloned())
-    }
-
-    fn scratch(name: &str) -> PathBuf {
-        let path =
-            std::env::temp_dir().join(format!("gband-completions-{}-{name}", std::process::id()));
-        if path.exists() {
-            fs::set_permissions(&path, fs::Permissions::from_mode(0o700)).unwrap();
-            fs::remove_dir_all(&path).unwrap();
-        }
-        path
     }
 
     #[test]
@@ -249,23 +241,20 @@ mod tests {
 
     #[test]
     fn install_creates_nested_directories() {
-        let root = scratch("nested");
+        let root = Scratch::new("completions", "nested");
         let target = root.join("a/b/gband.fish");
         install(Shell::Fish, &mut command(), &target).unwrap();
         assert_eq!(fs::read(&target).unwrap(), script(Shell::Fish));
-        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
     fn install_replaces_an_existing_file() {
-        let root = scratch("replace");
-        fs::create_dir_all(&root).unwrap();
+        let root = Scratch::new("completions", "replace");
         let target = root.join("gband");
         fs::write(&target, "other text").unwrap();
         install(Shell::Bash, &mut command(), &target).unwrap();
         assert_eq!(fs::read(&target).unwrap(), script(Shell::Bash));
         assert_eq!(fs::read_dir(&root).unwrap().count(), 1);
-        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
@@ -273,8 +262,7 @@ mod tests {
         if rustix::process::geteuid().is_root() {
             return;
         }
-        let root = scratch("read-only");
-        fs::create_dir_all(&root).unwrap();
+        let root = Scratch::new("completions", "read-only");
         fs::set_permissions(&root, fs::Permissions::from_mode(0o500)).unwrap();
         let target = root.join("gband.fish");
         let message = format!(
@@ -283,7 +271,5 @@ mod tests {
         );
         assert!(message.contains(target.to_str().unwrap()), "{message}");
         assert_eq!(fs::read_dir(&root).unwrap().count(), 0);
-        fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).unwrap();
-        fs::remove_dir_all(root).unwrap();
     }
 }

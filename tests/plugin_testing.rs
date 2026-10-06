@@ -9,11 +9,12 @@ use std::time::{Duration, Instant};
 
 use common::*;
 use gband_harness::channel::Listener;
+use gband_scratch::Scratch;
 use rustix::process::{Pid, Signal};
 
 struct Project {
-    root: PathBuf,
     dir: PathBuf,
+    root: Scratch,
 }
 
 impl Project {
@@ -22,13 +23,10 @@ impl Project {
     }
 
     fn named(name: &str, directory: &str) -> Self {
-        let root = scratch_root("gband-pt", name);
-        if root.exists() {
-            fs::remove_dir_all(&root).unwrap();
-        }
+        let root = Scratch::new("pt", name);
         let dir = root.join(directory);
         fs::create_dir_all(&dir).unwrap();
-        Self { root, dir }
+        Self { dir, root }
     }
 
     fn file(&self, relative: &str, contents: &str) -> PathBuf {
@@ -75,12 +73,6 @@ impl Project {
             .write_all(input.as_bytes())
             .unwrap();
         child.wait_with_output().unwrap()
-    }
-}
-
-impl Drop for Project {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.root);
     }
 }
 
@@ -410,6 +402,7 @@ fn processes_of(root_prefix: &str) -> Vec<i32> {
 }
 
 #[test]
+#[allow(clippy::disallowed_methods)]
 fn nothing_left_behind() {
     let project = Project::new("left-behind");
     project.file(
@@ -1050,6 +1043,7 @@ fn read_until(reader: &mut BufReader<std::process::ChildStdout>, needle: &str) {
 }
 
 #[test]
+#[allow(clippy::disallowed_methods)]
 fn runner_killed() {
     let project = Project::new("killed");
     project.file(

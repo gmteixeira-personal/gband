@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::fs;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -11,12 +12,15 @@ const BEYOND_SETTLE: Duration = Duration::from_millis(300);
 
 struct Winches {
     dir: PathBuf,
+    scratch: Cell<Option<Scratch>>,
 }
 
 impl Winches {
     fn new(name: &str) -> Self {
+        let scratch = runtime_dir(name);
         Self {
-            dir: runtime_dir(name),
+            dir: scratch.to_path_buf(),
+            scratch: Cell::new(Some(scratch)),
         }
     }
 
@@ -26,7 +30,8 @@ impl Winches {
             "trap 'echo W >> {dir}/winch-$GBAND_WINDOW' WINCH; echo ready; \
              while [ ! -e {dir}/exit-$GBAND_WINDOW ]; do read -t 1; done"
         );
-        TestServer::start_in(self.dir.clone(), &["/bin/bash", "-c", &script]).await
+        let scratch = self.scratch.take().expect("one server per test");
+        TestServer::start_in(scratch, &["/bin/bash", "-c", &script]).await
     }
 
     fn count(&self, window: WindowId) -> usize {

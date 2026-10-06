@@ -928,6 +928,7 @@ dependencies = [
  "gband-harness",
  "gband-lua",
  "gband-protocol",
+ "gband-scratch",
  "gband-server",
  "gband-test-support",
  "portable-pty",
@@ -949,6 +950,7 @@ dependencies = [
  "gband-emulator",
  "gband-lua",
  "gband-protocol",
+ "gband-scratch",
  "gband-server",
  "gband-test-support",
  "insta",
@@ -992,6 +994,7 @@ dependencies = [
  "gband-emulator",
  "gband-lua",
  "gband-protocol",
+ "gband-scratch",
  "mlua",
  "portable-pty",
  "rustix",
@@ -1004,6 +1007,7 @@ version = "0.1.0"
 dependencies = [
  "gband-core",
  "gband-protocol",
+ "gband-scratch",
  "mlua",
  "notify",
  "serde",
@@ -1026,6 +1030,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "gband-scratch"
+version = "0.1.0"
+dependencies = [
+ "rustix",
+]
+
+[[package]]
 name = "gband-server"
 version = "0.1.0"
 dependencies = [
@@ -1034,6 +1045,7 @@ dependencies = [
  "gband-emulator",
  "gband-lua",
  "gband-protocol",
+ "gband-scratch",
  "gband-test-support",
  "portable-pty",
  "rustix",
@@ -1052,6 +1064,7 @@ dependencies = [
  "gband-core",
  "gband-emulator",
  "gband-protocol",
+ "gband-scratch",
  "gband-server",
  "ratatui",
  "serde",

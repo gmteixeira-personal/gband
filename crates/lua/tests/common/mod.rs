@@ -11,18 +11,14 @@ use gband_lua::{
 };
 use mlua::FromLua;
 
-pub struct Scratch(pub PathBuf);
+pub struct Scratch(pub gband_scratch::Scratch);
 
 impl Scratch {
     pub fn new(name: &str) -> Self {
-        let path = std::env::temp_dir().join(format!(
-            "gband-lua-{}-{name}-{}",
-            env!("CARGO_CRATE_NAME"),
-            std::process::id()
-        ));
-        let _ = fs::remove_dir_all(&path);
-        fs::create_dir_all(&path).unwrap();
-        Self(path)
+        Self(gband_scratch::Scratch::new(
+            "lua",
+            &format!("{}-{name}", env!("CARGO_CRATE_NAME")),
+        ))
     }
 
     pub fn dir(&self) -> PathBuf {
@@ -87,12 +83,6 @@ impl Scratch {
 
     pub fn loaded_server(&self) -> Config {
         self.load_server().unwrap_or_else(|error| panic!("{error}"))
-    }
-}
-
-impl Drop for Scratch {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
     }
 }
 

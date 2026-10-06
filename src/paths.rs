@@ -104,16 +104,9 @@ pub fn prepare(directory: &Path) -> Result<()> {
 mod tests {
     use std::os::unix::fs::PermissionsExt;
 
-    use super::*;
+    use gband_scratch::Scratch;
 
-    fn scratch(name: &str) -> PathBuf {
-        let path = std::env::temp_dir().join(format!("gband-paths-{}-{name}", std::process::id()));
-        if path.exists() {
-            fs::set_permissions(&path, fs::Permissions::from_mode(0o700)).unwrap();
-            fs::remove_dir_all(&path).unwrap();
-        }
-        path
-    }
+    use super::*;
 
     #[test]
     fn absolute_xdg_runtime_dir_is_used() {
@@ -207,21 +200,19 @@ mod tests {
 
     #[test]
     fn missing_directory_is_created_private() {
-        let directory = scratch("missing").join("gband");
+        let scratch = Scratch::new("paths", "missing");
+        let directory = scratch.join("gband");
         prepare(&directory).unwrap();
         let mode = fs::metadata(&directory).unwrap().mode() & 0o777;
         assert_eq!(mode, 0o700);
-        fs::remove_dir_all(directory.parent().unwrap()).unwrap();
     }
 
     #[test]
     fn directory_open_to_others_is_refused() {
-        let directory = scratch("open");
-        fs::create_dir_all(&directory).unwrap();
+        let directory = Scratch::new("paths", "open");
         fs::set_permissions(&directory, fs::Permissions::from_mode(0o777)).unwrap();
         let message = format!("{:#}", prepare(&directory).unwrap_err());
         assert!(message.contains(directory.to_str().unwrap()), "{message}");
         assert!(message.contains("0777"), "{message}");
-        fs::remove_dir_all(&directory).unwrap();
     }
 }

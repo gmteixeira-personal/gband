@@ -68,7 +68,8 @@ async fn server_that_exits_at_once_fails_fast() {
 async fn mismatched_server_is_kept_when_replacing_is_off() {
     let runtime_dir = runtime_dir("client-stale");
     let config = server_config(&runtime_dir);
-    let server = TestServer::start_with(runtime_dir.clone(), config).await;
+    let server = TestServer::start_with(runtime_dir, config).await;
+    let runtime_dir = server.runtime_dir.to_path_buf();
 
     let mut connection = connect(
         &client_config(SessionName::default(), false),

@@ -1,8 +1,27 @@
-use gband_harness::{Attached, TestEnv};
+use std::ops::Deref;
 
-fn env(name: &str) -> TestEnv {
-    let root = std::env::temp_dir().join(format!("gband-harness-{}-{name}", std::process::id()));
-    TestEnv::new(root, "/bin/sh")
+use gband_harness::{Attached, TestEnv};
+use gband_scratch::Scratch;
+
+struct Env {
+    env: TestEnv,
+    _scratch: Scratch,
+}
+
+impl Deref for Env {
+    type Target = TestEnv;
+
+    fn deref(&self) -> &TestEnv {
+        &self.env
+    }
+}
+
+fn env(name: &str) -> Env {
+    let scratch = Scratch::new("harness", name);
+    Env {
+        env: TestEnv::new(scratch.to_path_buf(), "/bin/sh"),
+        _scratch: scratch,
+    }
 }
 
 #[test]

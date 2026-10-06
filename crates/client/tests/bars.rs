@@ -1,5 +1,4 @@
 use std::fs;
-use std::path::PathBuf;
 use std::time::Instant;
 
 use gband_client::animation::Animations;
@@ -13,15 +12,14 @@ use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::layout::Rect;
 
-struct Scratch(PathBuf);
+struct Scratch(gband_scratch::Scratch);
 
 impl Scratch {
     fn new(name: &str) -> Self {
-        let path =
-            std::env::temp_dir().join(format!("gband-client-bars-{name}-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&path);
-        fs::create_dir_all(&path).unwrap();
-        Self(path)
+        Self(gband_scratch::Scratch::new(
+            "client",
+            &format!("bars-{name}"),
+        ))
     }
 
     fn load(&self, source: &str) -> Config {
@@ -36,12 +34,6 @@ impl Scratch {
             gband_lua::load(&locations, gband_lua::Side::Client, &LoadOptions::default()).unwrap();
         assert!(config.errors.is_empty(), "{:?}", config.errors);
         config
-    }
-}
-
-impl Drop for Scratch {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
     }
 }
 

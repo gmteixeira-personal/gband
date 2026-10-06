@@ -1,8 +1,6 @@
 use std::collections::{BTreeMap, HashMap};
 use std::ffi::OsString;
 use std::fmt;
-use std::fs;
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -16,6 +14,7 @@ use gband_protocol::{
     ClientMessage, ExecutableId, Hello, HelloReply, IoError, MessageReader, MessageWriter,
     PROTOCOL_VERSION, ServerMessage, SessionName, SessionSummary, Value, socket_path,
 };
+pub use gband_scratch::Scratch;
 use gband_server::{INITIAL_AREA, ServerConfig};
 use ratatui::buffer::Cell;
 use serde::Serialize;
@@ -32,26 +31,13 @@ pub const IDENTITY: ExecutableId = ExecutableId {
     inode: 4242,
 };
 
-const FNV_OFFSET: u32 = 0x811c_9dc5;
-const FNV_PRIME: u32 = 0x0100_0193;
 const RELAY_BUFFER_LEN: usize = 64 * 1024;
 
 pub type Reader = MessageReader<Box<dyn AsyncRead + Send + Unpin>>;
 pub type Writer = MessageWriter<Box<dyn AsyncWrite + Send + Unpin>>;
 
-pub fn runtime_dir(name: &str) -> PathBuf {
-    let worktree = env!("CARGO_MANIFEST_DIR")
-        .bytes()
-        .fold(FNV_OFFSET, |hash, byte| {
-            (hash ^ u32::from(byte)).wrapping_mul(FNV_PRIME)
-        });
-    let path = std::env::temp_dir()
-        .join(format!("gband-srv-{worktree:08x}"))
-        .join(name);
-    let _ = fs::remove_dir_all(&path);
-    fs::create_dir_all(&path).unwrap();
-    fs::set_permissions(&path, fs::Permissions::from_mode(0o700)).unwrap();
-    path
+pub fn runtime_dir(name: &str) -> Scratch {
+    Scratch::new("srv", name)
 }
 
 pub fn session(name: &str) -> SessionName {
@@ -80,9 +66,9 @@ pub fn cell(grid: &Grid, row: u16, col: u16) -> Option<Cell> {
 }
 
 pub struct TestServer {
-    pub runtime_dir: PathBuf,
     socket: PathBuf,
     pub handle: JoinHandle<Result<()>>,
+    pub runtime_dir: Scratch,
 }
 
 impl TestServer {
@@ -91,18 +77,18 @@ impl TestServer {
         Self::start_in(runtime_dir, program).await
     }
 
-    pub async fn start_in(runtime_dir: PathBuf, program: &[&str]) -> Self {
+    pub async fn start_in(runtime_dir: Scratch, program: &[&str]) -> Self {
         let config = config(&runtime_dir, program);
         Self::start_with(runtime_dir, config).await
     }
 
-    pub async fn start_with(runtime_dir: PathBuf, config: ServerConfig) -> Self {
+    pub async fn start_with(runtime_dir: Scratch, config: ServerConfig) -> Self {
         let socket = config.socket.clone();
         Self::start_running(runtime_dir, socket, gband_server::run(config)).await
     }
 
     pub async fn start_running(
-        runtime_dir: PathBuf,
+        runtime_dir: Scratch,
         socket: PathBuf,
         server: impl Future<Output = Result<()>> + Send + 'static,
     ) -> Self {
@@ -118,9 +104,9 @@ impl TestServer {
             sleep(Duration::from_millis(10)).await;
         }
         Self {
-            runtime_dir,
             socket,
             handle,
+            runtime_dir,
         }
     }
 

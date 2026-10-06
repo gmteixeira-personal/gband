@@ -16,6 +16,7 @@ gband-emulator = { path = "crates/emulator" }
 gband-test-support = { path = "crates/test-support" }
 gband-harness = { path = "crates/harness" }
 gband-lua = { path = "crates/lua" }
+gband-scratch = { path = "crates/scratch" }
 anyhow = "1.0.104"
 clap = { version = "4.6.7", features = ["derive"] }
 clap_complete = "4.6.11"
@@ -65,6 +66,7 @@ anyhow.workspace = true
 
 [dev-dependencies]
 gband-emulator.workspace = true
+gband-scratch.workspace = true
 gband-test-support.workspace = true
 portable-pty.workspace = true
 ratatui.workspace = true
