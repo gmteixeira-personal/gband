@@ -49,6 +49,6 @@ A session action dispatched with a target, as the lua-control capability defines
 - **WHEN** floating window 3 is focused, no floating plugin window is focused, and close window is dispatched with no target
 - **THEN** the result is close window naming window 3
 
-#### Scenario: Target names a window behind a floating plugin windowing plugin window
+#### Scenario: Target names a window behind a floating plugin window
 - **WHEN** a floating plugin window is focused and close window is dispatched with the target window 3
 - **THEN** the client sends close window naming window 3 and the floating plugin window stays open
