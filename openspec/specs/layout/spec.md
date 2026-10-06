@@ -51,7 +51,9 @@ A column's width SHALL be a proportion of the screen area's width, and a column 
 
 Cycling a column's width SHALL turn full width off and set the width to the smallest preset larger than the current width, or to the smallest preset when no preset is larger. A column with full width on SHALL count as width 1 while cycling. Toggling full width SHALL flip the flag and keep the proportion.
 
-Growing or shrinking a column's width SHALL turn full width off and add or subtract 1/10 to the current width, keeping the result between 0 and 10000. A width above 1 SHALL make the column wider than the screen area. A column with full width on SHALL count as width 1 while growing or shrinking. A width SHALL always be held in lowest terms. When the result equals the current width and full width was already off, nothing SHALL change.
+A request to grow or shrink a column's width or a window's height SHALL name a step, as the actions capability defines. In the scenarios of this capability, a grow or shrink that names no step names the step 1/10.
+
+Growing or shrinking a column's width SHALL turn full width off and add or subtract the step to the current width, keeping the result between 0 and 10000. A width above 1 SHALL make the column wider than the screen area. A column with full width on SHALL count as width 1 while growing or shrinking. A width SHALL always be held in lowest terms. When the result equals the current width and full width was already off, nothing SHALL change.
 
 Setting a column's width SHALL turn full width off and set the width to the given width, a number greater than 0 and at most 10000 held in lowest terms. When the given width equals the current width and full width was already off, nothing SHALL change.
 
@@ -111,6 +113,7 @@ Setting a column's width SHALL turn full width off and set the width to the give
 - **WHEN** a column of width 1/3 has full width on and is shrunk
 - **THEN** its full width is off and its width is 9/10
 
+
 #### Scenario: Set a width
 - **WHEN** a column of width 1/2 has full width on and its width is set to 0.35
 - **THEN** its full width is off and its width is 7/20
@@ -122,6 +125,10 @@ Setting a column's width SHALL turn full width off and set the width to the give
 #### Scenario: Width named on open
 - **WHEN** the default column width is 1/2 and a window opens with the width 1/4
 - **THEN** its column has width 1/4 and full width off
+
+#### Scenario: Grow by another step
+- **WHEN** a column of width 1/2 is grown with the step 1/4
+- **THEN** its width is 3/4
 
 ### Requirement: Open a window
 Opening a window SHALL name a band and, optionally, a window in that band, a column width, and whether the window floats.
@@ -263,11 +270,11 @@ A window SHALL keep its identifier from the moment it opens until it closes. Con
 ### Requirement: Window heights
 Each window in a column SHALL have either an automatic height with a weight, a positive fraction held in lowest terms, or a fixed height in rows. At most one window in a column SHALL have a fixed height. A window SHALL take an automatic height of weight 1 when it opens. When a window leaves a column and one window remains with an automatic height, that window's weight SHALL become 1. Otherwise the windows that remain SHALL keep their heights.
 
-Growing or shrinking a window's height SHALL give it a fixed height. When the window has an automatic height, every window in its column SHALL first take an automatic height whose weight is its current tile height divided by the column's median tile height, so the other windows keep their apparent sizes relative to one another. The median SHALL be the tile height at index n/2, rounded down and counted from 0, of the column's n tile heights sorted in ascending order. The new fixed height SHALL be the window's current tile height plus, when growing, or less, when shrinking, one step: the area's height divided by 10, rounded to the nearest whole number with halves rounded up, and at least 1. The result SHALL be no less than 3 rows. It SHALL be no more than the area's height less 3 rows for each other window in the column, or no more than the area's height when the window is alone. When the window already had a fixed height and the result equals it, nothing SHALL change.
+Growing or shrinking a window's height SHALL give it a fixed height. When the window has an automatic height, every window in its column SHALL first take an automatic height whose weight is its current tile height divided by the column's median tile height, so the other windows keep their apparent sizes relative to one another. The median SHALL be the tile height at index n/2, rounded down and counted from 0, of the column's n tile heights sorted in ascending order. The new fixed height SHALL be the window's current tile height plus, when growing, or less, when shrinking, one step in rows: the area's height multiplied by the step, rounded to the nearest whole number with halves rounded up, and at least 1. The result SHALL be no less than 3 rows. It SHALL be no more than the area's height less 3 rows for each other window in the column, or no more than the area's height when the window is alone. When the window already had a fixed height and the result equals it, nothing SHALL change.
 
 Resetting a window's height SHALL give it an automatic height of weight 1. The other windows of its column SHALL keep their heights. When the window already had an automatic height of weight 1, nothing SHALL change.
 
-Growing and shrinking SHALL measure tile heights, and the step, for the session's current screen area.
+Growing and shrinking SHALL measure tile heights, and the step in rows, for the session's current screen area.
 
 #### Scenario: Each step adds the same rows
 - **WHEN** the area is 80×24, a column holds P1 above P2, both with automatic heights of weight 1, and P1's height is grown three times
@@ -307,6 +314,10 @@ Growing and shrinking SHALL measure tile heights, and the step, for the session'
 #### Scenario: Last window in a column takes weight 1
 - **WHEN** a column holds P1 with an automatic height of weight 10/7 and P2 with a fixed height, P2 closes, and then P3 is consumed into P1's column on an 80×24 area
 - **THEN** P1 and P3 both have automatic heights of weight 1, and both tiles are 12 rows high
+
+#### Scenario: Height step from the request
+- **WHEN** the area is 80×24, a column holds P1 above P2, both with automatic heights of weight 1, and P1's height is grown with the step 1/4
+- **THEN** P1 has a fixed height of 18 rows and P2's tile is 6 rows high
 
 ### Requirement: Set a window's height
 Setting a window's height SHALL name either a number of rows or a weight.

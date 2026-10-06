@@ -71,11 +71,14 @@ A built-in session action value SHALL accept one optional table, its target. A t
 
 For `toggle_window_floating`, the target SHALL hold `window`, and optionally `after`, a tiled window of the same band. Tiling a floating window SHALL then place it after `after`. Without `after`, it SHALL be placed after the tiled window this client focused most recently in that band, when it is still tiled there, and as the band's first column otherwise. `after` on a window that is tiled SHALL be ignored.
 
+The target of `grow_column_width`, `shrink_column_width`, `grow_window_height` and `shrink_window_height` MAY also hold `step`: a number greater than 0 and at most 10000 for the two width actions, and greater than 0 and at most 1 for the two height actions, read as the configuration capability reads a step. The action SHALL then use that step, as the actions capability defines. A target of these actions that holds `step` and no `window` SHALL name the window the view resolves.
+
 `send_prefix` SHALL accept a target holding `window`, and send the prefix key to that window.
 
 A target passed to a view action or to `detach` SHALL be an error. Each of these SHALL also be an error at the line of the call:
 - A target that is not a table.
 - A field the action does not take.
+- A `step` out of its range.
 - A window or band number not in the client's layout.
 - An `after` window not in `band`, or a floating `after` window for `open_window` or `gband.spawn`, or, for `toggle_window_floating`, an `after` that is not a tiled window of `window`'s band.
 
@@ -120,6 +123,14 @@ Calling an action value with no target SHALL resolve it against the view, as the
 #### Scenario: Move a named window
 - **WHEN** band 1 holds columns with windows 1 and 2, window 2 is focused, and a binding function calls `gband.action.move_column_right({ window = 1 })`
 - **THEN** band 1 holds the columns of window 2 and window 1, in that order, and window 2 stays focused
+
+#### Scenario: Grow by a given step
+- **WHEN** window 1 is focused alone in a column of width 1/2 and a binding function calls `gband.action.grow_column_width({ step = 1/4 })`
+- **THEN** window 1's column has width 3/4
+
+#### Scenario: Step out of range
+- **WHEN** line 4 of a binding function's file calls `gband.action.grow_window_height({ step = 2 })`
+- **THEN** the call raises an error at line 4 naming `step`, and nothing is sent
 
 ### Requirement: Focus and view by number
 `gband.window.focus(window)` SHALL dispatch a view action that focuses the named window, as the layout-view capability defines. `gband.band.view(band)` SHALL dispatch a view action that views the named band, as the layout-view capability defines. A number that names no window or band in the client's layout SHALL be an error at the line of the call.

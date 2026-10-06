@@ -39,6 +39,8 @@ Close window resolved against the view SHALL close the focused floating plugin w
 
 A session action dispatched with a target, as the lua-control capability defines, SHALL NOT be resolved against the view: it SHALL name the window, band or window to open after that its target names, whichever window or plugin window is focused.
 
+Grow and shrink of a column's width SHALL be sent naming a step: the target's `step` when the action was dispatched with one, and the client's `width_step` option otherwise. Grow and shrink of a window's height SHALL be sent naming a step the same way, from `height_step`. A session action from the server's Lua SHALL name the target's `step`, or 1/10 when its target names none.
+
 #### Scenario: Resolve to the focused window
 - **WHEN** a view focuses window 3 and resolves cycle width
 - **THEN** the result is cycle width naming window 3
@@ -82,6 +84,14 @@ A session action dispatched with a target, as the lua-control capability defines
 #### Scenario: Target names a window behind a floating plugin window
 - **WHEN** a floating plugin window is focused and close window is dispatched with the target window 3
 - **THEN** the client sends close window naming window 3 and the floating plugin window stays open
+
+#### Scenario: Step from the client's option
+- **WHEN** `user/init.lua` sets `width_step` to `1/20` and a view focusing window 3 resolves grow width
+- **THEN** the result is grow width naming window 3 and the step 1/20
+
+#### Scenario: Step from a target
+- **WHEN** a binding function calls `gband.action.shrink_window_height({ window = 2, step = 1/4 })`
+- **THEN** the result is shrink height naming window 2 and the step 1/4
 
 ### Requirement: Lua names of actions
 Every built-in action SHALL have one Lua name, under which `gband.action` holds it, and one description, the text of its action column:

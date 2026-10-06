@@ -56,8 +56,8 @@ Toggling floating on a tiled window SHALL remove it from its column, as closing 
 
 When the window has been floating before, it SHALL take the box record it had when it was last tiled. Otherwise it SHALL take a new box, whose record SHALL be:
 - `width` and full width: the configuration's `default_column_width`, and full width off.
-- `rows`: the screen area's height less twice the height step "Size a floating window" defines, and at least 3, so that the box is two steps shorter than the area.
-- `col` and `row`: the box centred in the current screen area, each half the room left beside the box, rounded down, so that one height step stays free above the box and one below.
+- `rows`: the screen area's height less twice its tenth, and at least 3, so that the box is two tenths shorter than the area. The tenth SHALL be the area's height divided by 10, rounded to the nearest whole number with halves rounded up, and at least 1, whatever step a grow or shrink request names.
+- `col` and `row`: the box centred in the current screen area, each half the room left beside the box, rounded down, so that one tenth stays free above the box and one below.
 
 #### Scenario: First float opens a new box
 - **WHEN** the screen area is 80×24, the default column width is 1/2, window P2 is alone in a column, and P2 is floated
@@ -93,10 +93,10 @@ Toggling floating on a floating window SHALL remove it from the floating list an
 - **THEN** the band holds the column with P3, then A
 
 ### Requirement: Size a floating window
-The width actions SHALL change a floating window's box width and full-width flag exactly as the layout capability's "Column widths" changes a column's: cycling through the presets, toggling full width, growing or shrinking by 1/10, and setting a width.
+The width actions SHALL change a floating window's box width and full-width flag exactly as the layout capability's "Column widths" changes a column's: cycling through the presets, toggling full width, growing or shrinking by the step the request names, and setting a width.
 
-The height actions SHALL change a floating window's `rows`. Let `h` be its box height as placed in the session's current screen area, and the step the area's height divided by 10, rounded to the nearest whole number with halves rounded up, and at least 1:
-- Growing SHALL set `rows` to `h` plus the step, and shrinking to `h` less the step.
+The height actions SHALL change a floating window's `rows`. Let `h` be its box height as placed in the session's current screen area, and the step in rows the area's height multiplied by the step the request names, rounded to the nearest whole number with halves rounded up, and at least 1:
+- Growing SHALL set `rows` to `h` plus the step in rows, and shrinking to `h` less the step in rows.
 - Resetting SHALL set `rows` to the height of a new box, as "Float a window" defines.
 - Setting a number of rows SHALL set `rows` to that number.
 - Setting a weight SHALL leave the window unchanged.
@@ -108,7 +108,7 @@ The new `rows` SHALL be kept between 3 and the area's height. When the result eq
 - **THEN** its width is 2/3
 
 #### Scenario: Grow a floating height
-- **WHEN** the area is 80×24 and a floating window has `rows` 12 and is grown
+- **WHEN** the area is 80×24 and a floating window has `rows` 12 and is grown with the step 1/10
 - **THEN** its `rows` is 14
 
 #### Scenario: Height limit
@@ -122,6 +122,10 @@ The new `rows` SHALL be kept between 3 and the area's height. When the result eq
 #### Scenario: Consume or expel a floating window
 - **WHEN** a floating window is consumed or expelled to the left
 - **THEN** the layout is unchanged
+
+#### Scenario: Grow a floating width by another step
+- **WHEN** a floating window has width 1/2 and is grown with the step 1/5
+- **THEN** its width is 7/10
 
 ### Requirement: Move a floating window
 Moving a floating window left, right, up or down SHALL move its box one step in that direction. Let `x` and `y` be the box's left column and top row as placed in the session's current screen area. A horizontal step SHALL be the area's width divided by 10, and a vertical step its height divided by 10, each rounded to the nearest whole number with halves rounded up, and at least 1. The new `col` SHALL be `x` plus or less the horizontal step, kept between 0 and the area's width less the box's width. The new `row` SHALL be found the same way. The other coordinate SHALL be set to its placed value. When the result equals the current record, nothing SHALL change.

@@ -11,7 +11,7 @@ gband SHALL bundle the plugin module `gband.statusline.hints`, whose plugin is n
 
 | field | value |
 |---|---|
-| `align` | `"left"` |
+| `align` | `"top"` |
 | `priority` | `0` |
 | `order` | `30` |
 | `hl` | `"KeyHintLabel"` |
@@ -22,7 +22,7 @@ gband SHALL bundle the plugin module `gband.statusline.hints`, whose plugin is n
 
 #### Scenario: Component entry
 - **WHEN** `user/init.lua` calls `gband.plugin("gband.statusline.hints")` and reads `gband.ui.statusline.list()`
-- **THEN** it holds an entry with `id` `hints`, `align` `left`, `priority` 0, `order` 30, `hl` `KeyHintLabel` and `plugin` `hints`
+- **THEN** it holds an entry with `id` `hints`, `align` `top`, `priority` 0, `order` 30, `hl` `KeyHintLabel` and `plugin` `hints`
 
 #### Scenario: Invalid option
 - **WHEN** `user/init.lua` calls `gband.plugin("gband.statusline.hints", { labels = 3 })`
@@ -31,20 +31,19 @@ gband SHALL bundle the plugin module `gband.statusline.hints`, whose plugin is n
 ### Requirement: Hints of the active table
 The segment SHALL show one hint for each binding of the active key table, in the order `gband.keymap.list` returns them. While `root` is active, the hints SHALL start with one hint for the prefix key, labelled with `gband.keymap.label("prefix")`, shown only when the `prefix` table holds a binding, followed by the bindings of `root`. While `root` is active and the `root` option is false, the segment SHALL be hidden. A binding left out by "Hint labels" SHALL take no hint. When no hint is left, the segment SHALL be hidden.
 
-Each hint SHALL be the key, as "Key form" shows it, in the group `KeyHintKey`, one space, and the label in the group `KeyHintLabel`. Hints SHALL be separated by two spaces in `KeyHintLabel`.
+Each hint SHALL be the key, as "Key form" shows it, in the group `KeyHintKey`, one space, and the label in the group `KeyHintLabel`. Hints SHALL be laid out in lines, as "Fit to the available width" defines.
 
 #### Scenario: Root with the defaults
 - **WHEN** the default configuration is in use and `root` is active
-- **THEN** the left region shows `band 1`, the separator, then `C-space navigation`
+- **THEN** row 0 of the status line shows `band 1` and row 1 shows `C-space navigation`
 
 #### Scenario: Prefix table that is not a mode
 - **WHEN** `user/init.lua` binds `prefix h` to `gband.action.focus_column_left`, declares no mode, sets up the hints segment, and `root` is active
 - **THEN** the segment shows `C-space prefix`
 
 #### Scenario: Prefix table with the defaults
-- **WHEN** the default configuration is in use, the client's terminal is 520 columns wide, and the user presses Ctrl+Space
-- **THEN** the segment starts with `h left  l right  j down  k up  u band down  i band up  c center  n open a window  q close`
-- **AND** ends with `D detach  esc interactive mode  enter interactive mode  left left  right right  down down  up up  C-space send the prefix key`
+- **WHEN** the default configuration is in use, the client's terminal is 80×40, and the user presses Ctrl+Space
+- **THEN** the segment's first lines are `h left  l right`, `j down  k up`, `u band down` and `i band up  c center`
 
 #### Scenario: Hints stay in navigation mode
 - **WHEN** navigation mode's hints are shown and the user presses `h`
@@ -154,7 +153,7 @@ A binding to a function SHALL be labelled by its `desc`, and SHALL be left out w
 - **THEN** no hint shows `detach`
 
 #### Scenario: Registered action
-- **WHEN** the plugin `hello` registers `greet` with description `say hi` and binds `alt+g` in `root` to it
+- **WHEN** the plugin `hello` registers `greet` with description `say hi` and binds `alt+g` in `root` to it, and the segment is wide enough for every hint
 - **THEN** the root hints show `C-space prefix  A-g say hi`
 
 #### Scenario: Registered action without a description
@@ -170,18 +169,22 @@ A binding to a function SHALL be labelled by its `desc`, and SHALL be left out w
 - **THEN** the hints include `v float`, `V layer`, `C-h move left` and `C-left move left`
 
 ### Requirement: Fit to the available width
-The segment SHALL show the longest leading run of its hints that fits in its context's `width`. When hints are left out, the run SHALL be followed by a space and `…` in `KeyHintLabel`, and the run with them SHALL fit in `width`. When no hint fits, the segment SHALL be hidden. Widths SHALL be display widths, as `gband.ui.width` measures them.
+The segment SHALL lay its hints out in lines no wider than its context's `width`, in no more lines than its context's `height`. Hints SHALL be placed in order, separated on a line by two spaces in `KeyHintLabel`. A hint that does not fit after the hints already on a line SHALL start the next line. Layout SHALL stop at the first hint that does not fit on an empty line, or that would need a line beyond `height`. When hints are left out, the last line SHALL end with a space and `…` in `KeyHintLabel`, and SHALL still fit in `width`, leaving out further hints from its end when needed. When no hint fits, the segment SHALL be hidden. Widths SHALL be display widths, as `gband.ui.width` measures them.
 
 #### Scenario: Some hints left out
-- **WHEN** the prefix table's default hints are shown and the segment's context has `width` 20
-- **THEN** the segment shows `h left  l right …`
+- **WHEN** the prefix table's default hints are shown and the segment's context has `width` 20 and `height` 2
+- **THEN** the segment shows the lines `h left  l right` and `j down  k up …`
 
 #### Scenario: All hints fit
-- **WHEN** the active table `move` has the hints `h west  l east` and the segment's context has `width` 14
-- **THEN** the segment shows `h west  l east`
+- **WHEN** the active table `move` has the hints `h west` and `l east` and the segment's context has `width` 14 and `height` 1
+- **THEN** the segment shows the line `h west  l east`
 
 #### Scenario: Nothing fits
 - **WHEN** the segment's context has `width` 3 and the first hint is `C-space prefix`
+- **THEN** the segment is hidden
+
+#### Scenario: No rows left
+- **WHEN** the segment's context has `height` 0
 - **THEN** the segment is hidden
 
 ### Requirement: Hint groups
@@ -200,4 +203,4 @@ The default configuration SHALL set up `gband.statusline.hints` with `gband.plug
 
 #### Scenario: Hints in the default line
 - **WHEN** no `user/init.lua` exists and a client attaches with an 80×24 terminal
-- **THEN** row 23 shows `band 1`, the separator, then `C-space navigation`, and the position ending at column 79
+- **THEN** row 0 shows `band 1`, row 1 shows `C-space navigation`, and row 23 shows the position, each from column 0

@@ -33,7 +33,7 @@ A function that takes a plugin window SHALL take its number. A number that names
 | `on_resize` | both | function | none |
 | `row`, `col` | floating | an integer of at least 0, or `"center"` | `"center"` |
 | `width`, `height` | floating | an integer of at least 1 | half the ribbon area's width or height, rounded down, and at least 1 |
-| `border` | floating | boolean | `true` |
+| `border` | floating | a boolean, or a border table as the borders capability defines it | `true` |
 | `title` | floating | string | none |
 | `band`, `after` | tiled | band and window numbers, as the `open_window` target takes them | with neither given, the viewed band and the focused window, as open window resolves against the view |
 | `column_width` | tiled | a width, as `gband.window.set_width` takes it | the `default_column_width` option |
@@ -51,6 +51,10 @@ A field for the other kind SHALL be an error. A key name in `keys` SHALL be vali
 #### Scenario: Invalid key name
 - **WHEN** a binding function opens a plugin window with `keys = { ["ctrl+shift+1"] = fn }`
 - **THEN** the call raises an error naming `ctrl+shift+1`
+
+#### Scenario: Invalid border table
+- **WHEN** a binding function calls `gband.win.open({ border = { sides = { "middle" } } })`
+- **THEN** the call raises an error naming `middle`
 
 ### Requirement: Plugin window contents
 A plugin window's lines SHALL be a list, in which each line is a string or a list of spans. A span SHALL be a string or a table `{ text = <string>, hl = <group name> }`. A string line SHALL be one span. A span without `hl`, or a string span, SHALL use the group `PluginWindow`. Control characters, as the status-line capability defines them, SHALL be removed from every span's text. `gband.win.set_lines(win, lines)` SHALL replace the plugin window's lines.
@@ -172,7 +176,7 @@ A floating plugin window SHALL be drawn only by the client that opened it, and S
 - A `"center"` row or column SHALL be half the room left beside the box, rounded down.
 - A row or column given as a number SHALL be cut so that the box ends inside the ribbon area.
 
-A floating plugin window with `border` on SHALL draw a one-cell border around its content area in `PluginWindowBorder`'s resolved style. It SHALL draw its title, with control characters removed, on the top border from the box's second column, cut to the box's width less 2, in `PluginWindowTitle`'s resolved style applied over `PluginWindowBorder`'s.
+A floating plugin window whose `border` is `true` or a border table has its border on. It SHALL draw a one-cell border around its content area, with the sides and characters the borders capability gives its `border`, in `PluginWindowBorder`'s resolved style. The title SHALL be drawn whether or not the top side is drawn. It SHALL draw its title, with control characters removed, on the top border from the box's second column, cut to the box's width less 2, in `PluginWindowTitle`'s resolved style applied over `PluginWindowBorder`'s.
 
 `gband.win.set_config(win, config)` SHALL change the floating plugin window's `row`, `col`, `width`, `height`, `border` and `title` that `config` names, and keep the others. Calling it on a tiled plugin window SHALL be an error.
 
@@ -194,6 +198,10 @@ Floating plugin windows SHALL be drawn after the tiles and before a configuratio
 #### Scenario: Other clients do not see it
 - **WHEN** two clients view the same band and the first opens a floating plugin window
 - **THEN** the second client's screen is unchanged
+
+#### Scenario: Title over an undrawn top side
+- **WHEN** a binding function opens a floating plugin window of width 20 with `title = "list"` and `border = { sides = { "left", "right" } }`
+- **THEN** the box's top row shows `│` in its first and last columns, `list` from its second column, and blank cells between
 
 ### Requirement: Tiled plugin windows
 Opening a plugin window of kind `"tiled"` SHALL dispatch open window naming plugin content, the band and the window to follow, the column width, and whether to focus the new window, as the session-server capability defines. The plugin window's `window` SHALL be nil until the server tells the client which window it opened. When the server reports that it opened none, the plugin window SHALL close.
