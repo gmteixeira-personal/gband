@@ -75,3 +75,25 @@ pub fn session_of(pid: i32) -> i32 {
         .collect();
     fields[3].parse().unwrap()
 }
+
+pub fn sidebar_cell(screen: &Grid, row: usize) -> String {
+    screen
+        .contents()
+        .lines()
+        .nth(row)
+        .unwrap_or_default()
+        .chars()
+        .next()
+        .filter(|cell| *cell != ' ')
+        .map(String::from)
+        .unwrap_or_default()
+}
+
+pub fn sidebar_mode(screen: &Grid) -> String {
+    sidebar_cell(screen, 0)
+}
+
+pub fn sidebar_error(screen: &Grid) -> bool {
+    let rows = usize::from(screen.size().rows);
+    rows > 0 && sidebar_cell(screen, rows - 1) == "!"
+}

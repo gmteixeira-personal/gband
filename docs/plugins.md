@@ -2,10 +2,10 @@
 
 A gband plugin is a directory of Lua files.
 gband finds it on the runtimepath, reads its manifest, runs the file of its side, and lets your configuration set it up.
-Plugins can add actions, commands, options, key bindings, event handlers, status line components, side bars, plugin windows, highlight groups and colorschemes in the client, and event handlers, shared window state, events and commands in the server.
+Plugins can add actions, commands, options, key bindings, event handlers, side bars, plugin windows, highlight groups and colorschemes in the client, and event handlers, shared window state, events and commands in the server.
 
 The [sample plugin](../examples/plugins/hello) uses most of what the client API offers.
-The [status line sample](../examples/plugins/window) adds a component, a highlight group and a colorscheme.
+The [window sample](../examples/plugins/window) adds a side bar, a highlight group and a colorscheme.
 The [agent status sample](../examples/plugins/agent-status) has both sides: its server half watches windows, and its client half notifies, counts and jumps.
 [Testing a plugin](testing.md) describes `gband test`, which runs a plugin against a real client and server and checks what it draws.
 
@@ -18,7 +18,7 @@ Each process runs its own Lua state, loaded from the files of the machine it run
 The rule for where code goes:
 
 - What must keep working while no client is attached, or must be shared by every attached client, runs in the **server**: watching window output, tracking which window waits for input, counting, queueing a notification for later.
-- What concerns one user's screen, keyboard or machine runs in the **client**: key bindings, the status line, plugin windows, colors, desktop notifications, the clipboard, opening a URL.
+- What concerns one user's screen, keyboard or machine runs in the **client**: key bindings, side bars, plugin windows, colors, desktop notifications, the clipboard, opening a URL.
 
 The sides talk through plain data only: the server emits events and publishes window state, and a client calls server commands and gets their results.
 No code ever crosses the connection, as "Trust" below describes.
@@ -58,9 +58,9 @@ A directory that holds `server.lua` or `client.lua` but no `plugin.lua` is a plu
 No file under a `plugin/` directory is ever run: plugins written for the earlier `plugin/*.lua` layout move that code to `client.lua`.
 
 `require("a.b")` looks in each runtimepath entry in order, for `lua/a/b.lua` and then `lua/a/b/init.lua`.
-In the client, when no entry holds the module, it looks among the modules bundled with gband, such as `gband.statusline.band`, and only then in Lua's own search path.
-The first file found wins, so a module in `user/lua/` overrides a plugin's module of the same name, and `user/lua/gband/statusline/band.lua` overrides the bundled one.
-Errors in a bundled module name its path under `gband/`, such as `gband/statusline/band.lua:12:`.
+In the client, when no entry holds the module, it looks among the modules bundled with gband, such as `gband.sidebar`, and only then in Lua's own search path.
+The first file found wins, so a module in `user/lua/` overrides a plugin's module of the same name, and `user/lua/gband/sidebar.lua` overrides the bundled one.
+Errors in a bundled module name its path under `gband/`, such as `gband/sidebar.lua:12:`.
 The key style presets are bundled modules too, so `user/lua/gband/keystyle/direct.lua` replaces the direct key style wherever `gband.keystyle.use("direct")` runs.
 
 ## The manifest
@@ -91,7 +91,7 @@ Each load runs in a new Lua state.
 In a client:
 
 1. gband sets `gband.side` to `"client"` and `gband.api_version` to `1`.
-2. gband installs the client's `gband` API, including the status line and its built-in highlight groups, and loads the `default` colorscheme.
+2. gband installs the client's `gband` API, including its built-in highlight groups, and loads the `default` colorscheme.
 3. gband runs the init file: `user/init.lua` when it exists, the default client configuration otherwise.
 4. gband runs every manifest, in runtimepath order.
 5. For each plugin whose manifest is valid, in runtimepath order, gband runs its `client.lua`.
@@ -181,19 +181,19 @@ Names registered by code that belongs to no plugin are used as given.
 
 gband runs every manifest, every side file, every `setup` and every callback protected.
 An error there is a plugin error: gband records it in the process's log as `<plugin>: <file>:<line>: <message>`, and the client adds it to its error list.
-While the status line is drawn, its first row shows `error`.
-While it is not, the latest error shows on the bottom row of the ribbon.
+While the sidebar is shown, its last row shows `!`, as "The sidebar" describes.
+While it is not, the latest error shows as a banner on the bottom row of the ribbon.
 
 `gband.errors()` returns a new list of the client's errors since the list was last emptied, oldest first.
 A load with none of the client's own errors empties it, and so does `gband.clear_errors()`.
 
 `gband.clear_errors()` is callable wherever an action value is, such as a binding function, a command or an event handler; calling it while the configuration loads is an error.
-`gband.errors()` returns an empty list right after it, in the same callback, and once the callback returns the error item or the banner goes until the client reports another error.
+`gband.errors()` returns an empty list right after it, in the same callback, and once the callback returns the sidebar's `!` or the banner goes until the client reports another error.
 An error raised in that callback, before or after the call, is listed after the clear.
 Clearing changes nothing else:
 
 - it does not reload the configuration;
-- a status line component or a callback that an error disabled stays disabled, and a failed plugin stays failed, until the next load;
+- a callback that an error disabled stays disabled, and a failed plugin stays failed, until the next load;
 - the logs keep every error;
 - only this client's list is emptied: other clients keep theirs, and the server still sends its latest error to each client that attaches.
 
@@ -231,7 +231,7 @@ Errors in the init file's own code still fail the load, and the process keeps th
 ### The instruction limit
 
 Each run of Lua code that gband starts stops with an error after 100,000,000 Lua VM instructions.
-A run is the init file, one manifest, one side file, one `setup`, one call of a callback, one colorscheme file, or one call of a status line component's `render`.
+A run is the init file, one manifest, one side file, one `setup`, one call of a callback, or one colorscheme file.
 A plugin stopped this way is marked failed, also when the run is a callback after loading.
 A `pcall` inside the plugin does not catch the stop for long: once the limit is reached, every instruction raises it again until the run ends.
 
@@ -433,7 +433,7 @@ gband.keymap.set("prefix", "m", function() gband.keymap.enter("move") end, { des
 They cannot be the `prefix` option or a key of a plugin window's `keys`, and the wheel has no name: every wheel step goes to the window under the pointer.
 A press matches the active table: in `root`, a bound mouse name replaces the interactive defaults, which focus, forward to a program, select or paste.
 In a mode or a key sequence it behaves as a key does.
-Hints and the key list leave mouse bindings out.
+The key list leaves mouse bindings out.
 
 A function bound to a mouse name runs with one argument, the `MousePressed` payload.
 The drag actions `drag_window`, `drag_resize_window` and `drag_band` start a gesture when a mouse press runs them, from its binding or a function it calls, and do nothing at any other time.
@@ -604,6 +604,10 @@ A line is a string or a list of spans; a span is a string or `{ text = ..., hl =
 Spans without `hl` use `PluginWindow`, and a span's style is its group's resolved style over `PluginWindow`'s.
 Control characters are removed, and a line longer than the plugin window is cut.
 
+`gband.ui.width(text)` returns the cells `text` takes: two for a wide character, zero for a zero-width one, and one for any other.
+`gband.ui.truncate(text, width)` returns `text` when it fits in `width` cells, and otherwise the longest prefix that fits in `width - 1` cells followed by `…`, or the empty string when `width` is 0.
+Both remove control characters first, so they measure text as plugin windows and bars draw it.
+
 - `gband.win.set_lines(win, lines)` replaces the lines.
 - `gband.win.scroll(win, count)` moves the first shown line, and `gband.win.set_cursor(win, line)` the cursor line. With `cursorline`, the plugin window scrolls just enough to keep the cursor line shown and draws it in `PluginWindowCursorLine`.
 - `gband.win.focus(win)` focuses a floating plugin window, or the window of a tiled plugin window.
@@ -653,7 +657,7 @@ gband.keymap.set("prefix", "K", function()
   local lines = {}
   for _, binding in ipairs(gband.keymap.list("prefix")) do
     lines[#lines + 1] = {
-      { text = ("%-10s"):format(binding.key), hl = "KeyHintKey" },
+      { text = ("%-10s"):format(binding.key), hl = "KeyListKey" },
       binding.desc or binding.action or "function",
     }
   end
@@ -709,230 +713,92 @@ gband.bar.add({
 })
 ```
 
-## Status line: `gband.ui.statusline`
-
-The status line is a bar that the bundled plugin `gband.statusline`, plugin `statusline`, adds with the id `statusline` and the group `StatusLine` when it is set up.
-It is as tall as the terminal, and as wide as the widest line that the error item and the components other than fill components show, kept between `min_width` and `max_width`.
-Its `setup` options:
-
-| option | value | default |
-|---|---|---|
-| `side` | `"left"` or `"right"` | `"left"` |
-| `min_width` | an integer of at least 1 | `20` |
-| `max_width` | an integer of at least `min_width` | `40` |
-| `order` | a number, its order among the bars of its side | `0` |
-
-Without `gband.plugin("gband.statusline")` there is no status line and no component renders, while `gband.ui.statusline` stays usable.
-The `statusline_*` options of earlier versions are gone; setting one reports an error naming it, and the file loads anyway.
-
-The status line is only a container.
-Everything on it is a component, and the segments gband bundles are plugins written with the same API as yours.
-
-### Components
-
-`gband.ui.statusline.add(spec)` adds a component and returns its full id:
-
-| field | value | default |
-|---|---|---|
-| `id` | a non-empty string | the plugin's name |
-| `render` | a function | required |
-| `align` | `"top"`, `"center"` or `"bottom"` | `"top"` |
-| `priority` | a number; the lowest is dropped first when the rows run out | `0` |
-| `order` | a number; components in a region are placed in ascending order | `0` |
-| `hl` | a highlight group name | `"StatusLineSegment"` |
-| `redraw_on` | a list of built-in event names and `"User"` | empty |
-| `redraw_interval` | an integer number of milliseconds, at least 100 | none |
-| `fill` | a boolean; a fill component does not widen the status line, and renders again when the room left to it changes | `false` |
-
-Component ids are namespaced like action names.
-In the plugin `window`, `id = "count"` gives `window.count`, and a plugin adding one component can omit `id` to get `window`.
-Code that belongs to no plugin must give `id`.
-An invalid field, an unknown event name or an id already taken is an error at the line of the call.
-
-`gband.ui.statusline.remove(id)` removes a component and returns `true`, or returns `false` when no component has that id.
-`gband.ui.statusline.list()` returns `{ id, align, priority, order, hl, fill, plugin, enabled }` for each component, in byte order of ids.
-The tables are copies.
-
-All three can be called while the configuration loads and in any callback.
-
-### Render output and context
-
-`render(ctx)` returns:
-
-- nil, an empty string, or only empty spans, to hide the component; it then takes no row
-- a line: a string, drawn in the component's `hl` group, or a list of strings and spans `{ text = "...", hl = "Group" }`; a span without `hl` uses the component's group
-- `{ lines = { ... } }`, a list of lines, one row each
-
-gband removes control characters from the text, so a component cannot write escape sequences.
-
-`ctx` is a new table for each call:
-
-| field | value |
-|---|---|
-| `id` | the component's full id |
-| `side` | `"client"` |
-| `total_width` | the status line's `max_width` |
-| `total_height` | the status line's height, the terminal's height |
-| `width` | for a fill component, the status line's width as the other components set it; for any other, `total_width` |
-| `height` | for a fill component, the rows the other components and the gaps between regions leave, at least 0; for any other, `total_height` |
-| `table` | the active key table |
-| `band` | `{ number, index, count }`: the viewed band's number, its position from the top counting from 1, and the number of bands |
-| `column` | `{ index, count }`: the focused column's position counting from 1, and the band's column count; nil when the band is empty or a floating window is focused |
-| `window` | the focused window's number, or nil |
-| `windows` | every window of the layout, bands from the top, columns from the left and windows from the top, then within each band its floating windows, each `{ window, band, state }`, `state` a copy of its window state |
-
-`gband.ui.width(text)` returns the cells `text` takes: two for a wide character, zero for a zero-width one.
-`gband.ui.truncate(text, width)` returns `text` when it fits in `width` cells, and otherwise the longest prefix that fits in `width - 1` cells followed by `…`.
-Both remove control characters first.
-
-### When components render
-
-gband calls an enabled component's `render` only while the status line is set up, and only:
-
-- once when the client attaches, and once after each successful reload
-- once when the component is added after loading
-- once each time an event its `redraw_on` names is emitted, after that event's handlers
-- once each `redraw_interval` milliseconds
-- once when the terminal's height changes
-- once on each `HighlightChanged` and `ColorschemeChanged`
-- for a fill component, once more after any of these, when the `width` or `height` left to it differs from those of its latest call
-
-When one trigger renders several components, the others render first and the fill components after them, in descending `priority`, then in the order they were added.
-gband then lays the status line out, and renders once more each enabled fill component whose `width` or `height` has changed, in the same order.
-Those renders trigger no further render.
-A component that fits its output to `ctx.width` and `ctx.height`, like the hints segment, sets `fill = true` so they are never stale.
-
-Frames, animations included, draw the latest output and never call `render`.
-Keep `render` cheap anyway: it runs in the client's event loop.
-
-### Layout
-
-Components sit in the top, center or bottom region, by `order` and then in the order they were added, one row per line, and regions are at least one row apart.
-The top region starts at the first row, the bottom region ends at the last, and the center region is centered, moved as little as keeps it clear of the other two.
-Each line starts at the status line's first column, and a line wider than the status line is cut with `…`.
-
-When the rows run out, gband drops the component with the lowest `priority`, the one added last on a tie, until the regions fit or one component is left.
-That last one shows only the lines that fit.
-Dropping only hides a component for that layout; it stays enabled.
-
-### Errors
-
-Each `render` call runs protected, as a callback of the component's plugin, with its own instruction budget.
-A loop in one component stops only that call: the other components and the code that triggered the render go on.
-When `render` raises an error, returns something else than the forms above, or hits the instruction limit, gband reports a plugin error and disables the component until the next load.
-Hitting the limit also marks the plugin failed, which hides all its components.
-
-While the client reports an error, the server's included, the status line's error item shows `error` in `StatusLineError` as the first row of the top region.
-It is dropped last, and stays until the configuration next loads without errors or `gband.clear_errors()` empties the error list.
-A component an error disabled stays hidden after a clear, until the next load.
-`gband.errors()` and the `errors.open` action give the errors' text.
-
-### Bundled segments
-
-gband bundles five segment plugins:
-
-| module | plugin | shows | redraws on | align | priority | order | group |
-|---|---|---|---|---|---|---|---|
-| `gband.statusline.band` | `band` | `band ` and the viewed band's index | `BandChanged`, `LayoutChanged` | top | 20 | 10 | `StatusLineSegment` |
-| `gband.statusline.mode` | `mode` | the active key table's label, as `gband.keymap.label` gives it; hidden in `root` | `KeyTableChanged` | top | 30 | 20 | `StatusLineAccent` |
-| `gband.statusline.hints` | `hints` | the keys of the active key table and what each does, below | `KeyTableChanged`, and as a fill component | top | 0 | 30 | `KeyHintLabel` |
-| `gband.statusline.position` | `position` | the focused column and the column count, such as `3/7`; hidden in an empty band and while a floating window is focused | `FocusChanged`, `BandChanged`, `LayoutChanged` | bottom | 10 | 10 | `StatusLineMuted` |
-| `gband.statusline.clock` | `clock` | the local time, `os.date(opts.format)`, `"%H:%M"` by default | every `opts.interval` milliseconds, 1000 by default | bottom | 5 | 20 | `StatusLineMuted` |
-
-Each takes the options `align`, `priority` and `order`, and each but `hints` takes `hl`.
-An option of the wrong type makes `setup` fail.
-The default configuration sets up the status line and then `band`, `mode`, `hints` and `position`, in that order.
-A `user/init.lua` replaces the default configuration, so it gets them only with the same calls:
-
-```lua
-gband.plugin("gband.statusline")
-gband.plugin("gband.statusline.band")
-gband.plugin("gband.statusline.mode", { align = "bottom", order = 1 })
-gband.plugin("gband.statusline.hints")
-gband.plugin("gband.statusline.position")
-gband.plugin("gband.statusline.clock", { format = "%H:%M:%S" })
-```
-
-Without the segments the status line is drawn empty, and without `gband.statusline` the ribbon takes the whole terminal.
-
-### The hints segment
-
-`hints` shows one hint per binding of the active key table, in the order `gband.keymap.list` gives them: the key in `KeyHintKey`, a space, and a label in `KeyHintLabel`, with two spaces between hints.
-In `root` it starts with the prefix key labelled with `gband.keymap.label("prefix")`, when the `prefix` table holds a binding, so the default line shows `C-space navigation`, and navigation mode's hints after Ctrl+Space.
-A `prefix` table that is not a mode shows `C-space prefix`.
-
-Keys are shown short: `C-`, `A-` and `S-` for Ctrl, Alt and Shift, in that order, named keys in lowercase, `escape` as `esc`, and `shift` with a lowercase letter as the uppercase letter.
-`ctrl+space` shows as `C-space`, `shift+d` as `D` and `Alt+PageUp` as `A-pageup`.
-The key `prefix` in another table shows as the key the `prefix` option names.
-
-A hint's label is the first of these that applies:
-
-1. the `labels` option's string for the binding's action; an action that `labels` maps to `false` takes no hint
-2. the binding's own `desc`, when it is not empty and differs from its action's description
-3. a built-in action's short label, below
-4. a registered action's description, when it is not empty
-5. the action's full name, such as `hello.greet`
-
-A binding to a function shows its `desc`, and takes no hint without one.
-
-| action | short label | action | short label |
-|---|---|---|---|
-| `focus_column_left` | `left` | `move_window_down` | `move down` |
-| `focus_column_right` | `right` | `move_window_up` | `move up` |
-| `focus_window_down` | `down` | `toggle_window_floating` | `float` |
-| `focus_window_up` | `up` | `switch_focus_floating_tiled` | `layer` |
-| `focus_band_down` | `band down` | `cycle_column_width` | `width` |
-| `focus_band_up` | `band up` | `toggle_full_width` | `full` |
-| `center_column` | `center` | `grow_column_width` | `wider` |
-| `open_window` | `new` | `shrink_column_width` | `narrower` |
-| `close_window` | `close` | `grow_window_height` | `taller` |
-| `consume_or_expel_left` | `stack left` | `shrink_window_height` | `shorter` |
-| `consume_or_expel_right` | `stack right` | `reset_window_height` | `reset height` |
-| `move_column_left` | `move left` | `detach` | `detach` |
-| `move_column_right` | `move right` | `send_prefix` | `send prefix` |
-
-
-The segment fits itself to its `ctx.width` and `ctx.height`: it places the hints in order, starting a new line when the next hint does not fit after the ones already on the line, and stops at the first hint that fits on no line, or would need a line beyond `ctx.height`.
-When hints are left out, the last line ends with ` …`, leaving out more hints from its end when needed, and the segment hides itself when not even the first fits.
-It is a fill component, so that room follows the other segments of the same render.
-
-Its options, besides `align`, `priority` and `order`:
-
-| option | value | default |
-|---|---|---|
-| `labels` | a table from action names to a label string, or `false` to leave the action out | `{}` |
-| `root` | `false` hides the segment while `root` is active | `true` |
-
-```lua
-gband.plugin("gband.statusline.hints", { labels = { close_window = "kill", detach = false } })
-```
-
-Its groups are `KeyHintKey`, linked to `StatusLineAccent` by default, and `KeyHintLabel`, linked to `StatusLineSegment`.
-A colorscheme or `gband.hl.set` can style them like any group.
-
-### A component
+A plugin module adds its bar in `setup` and draws into it from its handlers.
+The [window sample](../examples/plugins/window) shows the focused window in a bar 12 columns wide on the right, whose id is the plugin's name, `window`:
 
 ```lua
 local M = { name = "window", api = 1 }
 
-function M.setup()
-  gband.hl.default("WindowSegment", { link = "StatusLineAccent" })
-  gband.ui.statusline.add({
-    align = "bottom",
-    hl = "WindowSegment",
-    redraw_on = { "FocusChanged" },
-    render = function(ctx)
-      return ctx.window and ("window " .. ctx.window)
+function M.setup(opts)
+  gband.hl.default("WindowSegment", { link = "SidebarMode" })
+
+  local bar
+  local function draw(window)
+    if window == nil then
+      gband.bar.set_lines(bar, {})
+      return
+    end
+    gband.bar.set_lines(bar, { { { text = "window " .. window, hl = "WindowSegment" } } })
+  end
+
+  bar = gband.bar.add({
+    side = "right",
+    size = 12,
+    order = opts.order or 0,
+    on_resize = function()
+      draw(gband.view().window)
     end,
   })
+  gband.on("Attached", function()
+    draw(gband.view().window)
+  end)
+  gband.on("FocusChanged", function(ev)
+    draw(ev.window)
+  end)
 end
 
 return M
 ```
 
+## The sidebar: `gband.sidebar`
+
+gband bundles the sidebar, module `gband.sidebar`, plugin `sidebar`.
+Its `setup` adds one bar with `gband.bar.add`, 1 column wide, in the group `Bar`, so the bar's id is `sidebar`.
+The default configuration sets up `gband.errors` and then `gband.sidebar`, so on an 80×24 terminal the sidebar is column 0 and the ribbon spans columns 1 to 79.
+A `user/init.lua` replaces the default configuration, so it gets the sidebar only by setting it up, here on the right:
+
+```lua
+gband.plugin("gband.sidebar", { side = "right" })
+```
+
+| option | value | default |
+|---|---|---|
+| `side` | `"left"` or `"right"` | `"left"` |
+| `order` | a number, its order among the bars of its side | `0` |
+
+Any other option, or a wrong type or value, makes `setup` raise an error naming the option, and adds no bar.
+The width is not an option: a plugin that wants more columns adds a bar of its own.
+
+On a bar of height `h`, counting rows from 0:
+
+| row | shows | group |
+|---|---|---|
+| 0 | the mode letter | `SidebarMode` |
+| 1 | nothing | `Bar` |
+| 2 to `h - 2` | one band label each, in layout order | `SidebarBandActive` for the viewed band, `SidebarBand` for the others |
+| `h - 1` | `!` while the client reports an error, otherwise nothing | `SidebarError` |
+
+The mode letter is `I` while the active key table is `root`.
+For any other table it is the first character of `gband.keymap.label(table)`, uppercased when it is an ASCII lowercase letter: navigation mode shows `N`, the direct key style's `prefix` shows `P`, and a mode labelled `resize` shows `R`.
+
+A band's label is its position in the layout, counted from 1, not its number: `1` to `9`, then `a` to `z` for positions 10 to 35.
+The empty last band has a label too, so a new session shows `1` and `2`.
+A band past the 35th, or whose row would be the last row or below, is not drawn.
+A bar of 3 rows or fewer shows the mode letter and the marker and no band, and a bar of 1 row shows the marker while an error is reported and the mode letter otherwise.
+The viewed band differs from the others by its group alone, so a screenshot without styles reads the same whichever band is viewed.
+
+The error marker shows no text; `gband.errors()` and the `errors.open` action give the errors' text.
+The client draws no banner while the marker is drawn, and draws the banner on the ribbon's bottom row when an error is reported and no marker is drawn: without the sidebar, or while it is not shown.
+
+The sidebar redraws in the frame that follows a change of the viewed band, the bands, the active key table or the error list, and when one of its groups changes.
+
+A press of the left button on a band's label views that band, as `gband.band.view` does, whatever key table is active.
+The sidebar does this from its own `MousePressed` handler, since a press on a bar cell reaches handlers with the target `outside`.
+Any other press on the sidebar does nothing.
+
 ## The key list: `gband.keylist`
 
-gband bundles one more client plugin beside the status line segments: the key list, module `gband.keylist`, plugin `keylist`.
+gband also bundles the key list, module `gband.keylist`, plugin `keylist`.
 Its `setup` takes no options, and registers the action `keylist.open`, described as `list the keys`.
 Both key style presets set it up before their key bindings and bind Ctrl+Space then `?` to it:
 
@@ -943,7 +809,7 @@ gband.keymap.set("prefix", "?", gband.action["keylist.open"], { desc = "list the
 
 `keylist.open` opens a focused floating plugin window titled with `gband.keymap.label("prefix")` and ` keys`, `navigation keys` with the modal key style and `prefix keys` with the direct one, centred in the ribbon, with its cursor line on the first line.
 It enters `root` as it opens, and as it focuses an open list, so the keys that follow reach the list and not navigation mode.
-It holds one line per binding of the `prefix` table, in the order `gband.keymap.list("prefix")` gives them when it opens: the key in the hints segment's short form, such as `C-space` for the prefix key, padded to two cells more than the widest key, then the binding's description, its action's description when it has none, its action's name when that is empty too, or `function`.
+It holds one line per binding of the `prefix` table, in the order `gband.keymap.list("prefix")` gives them when it opens: the key in its short form, as "Key form" describes, such as `C-space` for the prefix key, padded to two cells more than the widest key, then the binding's description, its action's description when it has none, its action's name when that is empty too, or `function`.
 The plugin window is as wide as its longest line plus its border and as high as its lines plus its border, at most 15 rows, and the ribbon caps both.
 Dispatching `keylist.open` while the list is open focuses it and opens no second one.
 
@@ -961,7 +827,20 @@ A key no line shows keeps its floating plugin window default, so a `prefix` tabl
 `q` runs its line when the `prefix` table binds it, so the default `close_window` closes the list; without a `q` binding, `q` closes the list as it closes any floating plugin window.
 Escape and Ctrl+Space then `q` close the list too.
 
-The key list draws keys in `KeyListKey` and the description it cannot run in `KeyListMuted`; it defines them as defaults when its module is first required, and gives `StatusLineAccent` and `StatusLineMuted` their usual defaults so the links resolve without a status line.
+The key list draws keys in `KeyListKey` and the description it cannot run in `KeyListMuted`; it defines them as defaults when its module is first required, `KeyListKey` as `{ bold = true }` and `KeyListMuted` as `{ dim = true }`.
+
+### Key form
+
+The key list shows keys short: `C-`, `A-` and `S-` for Ctrl, Alt and Shift, in that order, named keys in lowercase, `escape` as `esc`, a one-character key as written, and `shift` with a lowercase letter as the uppercase letter.
+`ctrl+space` shows as `C-space`, `shift+d` as `D`, `Alt+PageUp` as `A-pageup` and `alt++` as `A-+`.
+In the list, the key `prefix` shows as the key the `prefix` option names.
+
+The bundled module `gband.keyform` gives the same form, so a plugin window can show keys as the key list does:
+
+```lua
+local keyform = require("gband.keyform")
+keyform("ctrl+space") -- "C-space"
+```
 
 ## The Lua prompt: `gband.prompt`
 
@@ -1024,7 +903,7 @@ It returns nil when `gband.config_dir` is nil, and when the file is missing, doe
 The file is never run as configuration, a plugin file or a module.
 
 `choose` is callable wherever an action value is, and calling it while the configuration loads is an error.
-The chooser is a floating plugin window with a border, titled `key style  enter choose  esc later`, with one line per style, such as `modal   C-space enters a mode, keys repeat until Escape`, showing the prefix key in the hints segment's short form.
+The chooser is a floating plugin window with a border, titled `key style  enter choose  esc later`, with one line per style, such as `modal   C-space enters a mode, keys repeat until Escape`, showing the prefix key in the key list's short form.
 Its cursor line starts on the saved style, or on `modal`.
 It is as wide as its longest line plus its border, at most as wide as the ribbon, and centred in it.
 `j`, `k` and the arrow keys move the cursor line, and Escape and `q` close it and save nothing.
@@ -1067,21 +946,18 @@ A cycle that appears later, when another setting changes, is cut where resolutio
 `gband.hl.get(name)` returns a copy of the group's definition, or nil.
 `gband.hl.get(name, { resolve = true })` returns the resolved style, without `link`, or an empty table.
 
-After loading, each `gband.hl.set` or `gband.hl.default` that changes a group emits `HighlightChanged` with `group`, and every status line component renders again.
+After loading, each `gband.hl.set` or `gband.hl.default` that changes a group emits `HighlightChanged` with `group`.
 
-The status line defines these groups, as defaults:
+The sidebar defines these groups, as defaults, when its module is first required:
 
 | group | default | use |
 |---|---|---|
-| `StatusLine` | `{ reverse = true }` | every status line cell |
-| `StatusLineSegment` | `{}` | components' default group |
-| `StatusLineSeparator` | `{ dim = true }` | free for components to use |
-| `StatusLineMuted` | `{ dim = true }` | secondary text |
-| `StatusLineAccent` | `{ bold = true }` | emphasised text |
-| `StatusLineError` | `{ fg = "red", bold = true }` | the error item |
+| `SidebarMode` | `{ bold = true }` | the mode letter |
+| `SidebarBand` | `{ dim = true }` | the labels of the bands not viewed |
+| `SidebarBandActive` | `{ bold = true }` | the viewed band's label |
+| `SidebarError` | `{ fg = 1, bold = true }` | the error marker |
 
-The hints segment adds `KeyHintKey`, `{ link = "StatusLineAccent" }`, and `KeyHintLabel`, `{ link = "StatusLineSegment" }`, when its module is first required.
-The key list adds `KeyListKey`, `{ link = "StatusLineAccent" }`, and `KeyListMuted`, `{ link = "StatusLineMuted" }`, the same way.
+The key list adds `KeyListKey`, `{ bold = true }`, and `KeyListMuted`, `{ dim = true }`, the same way.
 The Lua prompt adds `PromptCursor`, `{ reverse = true }`, which draws its cursor cell.
 
 The plugin window API defines these groups, as defaults:
@@ -1099,7 +975,7 @@ The client draws window borders with its own options, `tile_border_sides` and `t
 A list of sides holds `"top"`, `"right"`, `"bottom"` and `"left"`, and a character set is `"plain"`, `"rounded"`, `"double"`, `"thick"`, or eight one-cell strings in the order top-left, top, top-right, right, bottom-right, bottom, bottom-left, left.
 A corner where only one of its sides is drawn takes that side's character, and the cells of a side not drawn stay blank, so borders never change a window's size.
 
-A span's style is its group's resolved style over `StatusLine`'s, field by field.
+In a bar, a span's style is its group's resolved style over the bar's `hl` group's, field by field.
 
 ### Colors in the terminal
 
@@ -1115,7 +991,18 @@ A colorscheme is a Lua file that sets groups with `gband.hl.set`.
 `gband.colorscheme(name)` runs `colors/<name>.lua` from the first runtimepath entry that holds one, or the colorscheme of that name bundled with gband.
 Names start with an ASCII letter or digit and hold letters, digits, `_` and `-`.
 
-gband bundles `default`, which sets every built-in status line group and `Bar`, and loads it before the init file.
+gband bundles `default`, which sets the sidebar's groups and the key list's groups, and loads it before the init file.
+It leaves `Bar` unset, so bars, the sidebar included, draw on the terminal's default background until a colorscheme sets `Bar`:
+
+| group | style |
+|---|---|
+| `SidebarMode` | `{ fg = "#7aa2f7", bold = true }` |
+| `SidebarBand` | `{ fg = "#565f89" }` |
+| `SidebarBandActive` | `{ fg = "#c0caf5", bold = true }` |
+| `SidebarError` | `{ fg = "#f7768e", bold = true }` |
+| `KeyListKey` | `{ fg = "#7aa2f7", bold = true }` |
+| `KeyListMuted` | `{ fg = "#9aa5ce" }` |
+
 `gband.colorscheme()` returns the active colorscheme's name.
 
 Switching first removes every group's explicit setting, keeping the defaults, then runs the file.
@@ -1131,8 +1018,8 @@ After loading, a successful switch emits `ColorschemeChanged` with `name` and `p
 
 ```lua
 -- colors/dusk.lua
-gband.hl.set("StatusLine", { fg = "#e0def4", bg = "#232136" })
-gband.hl.set("StatusLineAccent", { fg = "#c4a7e7", bold = true })
+gband.hl.set("Bar", { fg = "#e0def4", bg = "#232136" })
+gband.hl.set("SidebarMode", { fg = "#c4a7e7", bold = true })
 gband.hl.set("WindowSegment", { fg = "#f6c177", bold = true })
 ```
 
@@ -1313,20 +1200,31 @@ Changing the returned table changes nothing else.
 Each change after attaching emits `WindowStateChanged` with `window`, `key`, `value`, the new value or nil when removed, and `previous`.
 The states a client receives as it attaches emit nothing: they are already there in its `Attached` handlers.
 
-The status line's render context lists every window with its state in `ctx.windows`, so a component can count across windows:
+A plugin that counts across windows keeps its own count from these events, and can show it in a bar of its own:
 
 ```lua
-gband.ui.statusline.add({
-  id = "waiting",
-  redraw_on = { "WindowStateChanged" },
-  render = function(ctx)
-    local waiting = 0
-    for _, entry in ipairs(ctx.windows) do
-      if entry.state.agent == "waiting" then waiting = waiting + 1 end
-    end
-    return waiting > 0 and ("waiting " .. waiting) or nil
-  end,
-})
+local waiting = {}
+local bar = gband.bar.add({ id = "waiting", side = "right", size = 3 })
+
+local function draw()
+  local count = 0
+  for _ in pairs(waiting) do
+    count = count + 1
+  end
+  gband.bar.set_lines(bar, { count > 0 and tostring(count) or "" })
+end
+
+gband.on("WindowStateChanged", function(ev)
+  if ev.key == "agent" then
+    waiting[ev.window] = ev.value == "waiting" or nil
+    draw()
+  end
+end)
+
+gband.on("WindowClosed", function(ev)
+  waiting[ev.window] = nil
+  draw()
+end)
 ```
 
 ### Calling server commands: `gband.rpc`

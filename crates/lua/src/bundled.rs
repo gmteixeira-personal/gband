@@ -1,16 +1,12 @@
 use mlua::{Function, IntoLuaMulti, Lua, MultiValue, Table};
 
-pub(crate) const API: [(&str, &str); 6] = [
+pub(crate) const API: [(&str, &str); 5] = [
     ("hl.lua", include_str!("runtime/gband/hl.lua")),
     (
         "colorscheme.lua",
         include_str!("runtime/gband/colorscheme.lua"),
     ),
     ("bar.lua", include_str!("runtime/gband/bar.lua")),
-    (
-        "statusline.lua",
-        include_str!("runtime/gband/statusline.lua"),
-    ),
     ("win.lua", include_str!("runtime/gband/win.lua")),
     ("keystyle.lua", include_str!("runtime/gband/keystyle.lua")),
 ];
@@ -20,33 +16,14 @@ pub(crate) const KEY_STYLES: [(&str, &str); 2] = [
     ("direct", include_str!("runtime/gband/keystyle/direct.lua")),
 ];
 
-const MODULES: [(&str, &str); 11] = [
+const MODULES: [(&str, &str); 7] = [
     ("errors.lua", include_str!("runtime/gband/errors.lua")),
     ("prompt.lua", include_str!("runtime/gband/prompt.lua")),
     ("keyform.lua", include_str!("runtime/gband/keyform.lua")),
     ("keylist.lua", include_str!("runtime/gband/keylist.lua")),
     ("keystyle/modal.lua", KEY_STYLES[0].1),
     ("keystyle/direct.lua", KEY_STYLES[1].1),
-    (
-        "statusline/band.lua",
-        include_str!("runtime/gband/statusline/band.lua"),
-    ),
-    (
-        "statusline/mode.lua",
-        include_str!("runtime/gband/statusline/mode.lua"),
-    ),
-    (
-        "statusline/hints.lua",
-        include_str!("runtime/gband/statusline/hints.lua"),
-    ),
-    (
-        "statusline/position.lua",
-        include_str!("runtime/gband/statusline/position.lua"),
-    ),
-    (
-        "statusline/clock.lua",
-        include_str!("runtime/gband/statusline/clock.lua"),
-    ),
+    ("sidebar.lua", include_str!("runtime/gband/sidebar.lua")),
 ];
 
 const COLORS: [(&str, &str); 1] = [(

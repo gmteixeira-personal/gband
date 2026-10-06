@@ -7,7 +7,7 @@ const PREFIX: &[u8] = b"\x00";
 
 fn env(name: &str) -> TestEnv {
     let env = TestEnv::new(name);
-    env.write_config(&DEFAULTS.replace("gband.plugin(\"gband.statusline\")", ""));
+    env.write_config(&DEFAULTS.replace("gband.plugin(\"gband.sidebar\")", ""));
     env
 }
 

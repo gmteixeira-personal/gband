@@ -30,8 +30,8 @@ fn root() -> &'static Path {
 }
 
 #[test]
-fn bundled_status_line_segments() {
-    gband_test(root(), &["tests/lua/statusline_spec.lua"]);
+fn bundled_sidebar() {
+    gband_test(root(), &["tests/lua/sidebar_spec.lua"]);
 }
 
 #[test]

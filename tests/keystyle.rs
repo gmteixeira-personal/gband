@@ -19,13 +19,8 @@ fn row(screen: &Grid, index: usize) -> String {
         .to_owned()
 }
 
-fn bar(screen: &Grid, index: usize) -> String {
-    row(screen, index)
-        .chars()
-        .take(20)
-        .collect::<String>()
-        .trim_end()
-        .to_owned()
+fn sidebar(screen: &Grid, index: usize) -> String {
+    row(screen, index).chars().take(1).collect()
 }
 
 fn chooser_open(screen: &Grid) -> bool {
@@ -33,8 +28,8 @@ fn chooser_open(screen: &Grid) -> bool {
     contents.contains(MODAL_LINE) && contents.contains(DIRECT_LINE)
 }
 
-fn hints(screen: &Grid, text: &str) -> bool {
-    (0..3).any(|index| bar(screen, index) == text)
+fn mode(screen: &Grid, letter: &str) -> bool {
+    sidebar(screen, 0) == letter
 }
 
 fn focused_shows(screen: &Grid, label: &str) -> bool {
@@ -62,7 +57,7 @@ fn saved(env: &TestEnv) -> Option<String> {
 fn offered(env: &TestEnv) -> Attached {
     let client = Attached::start(env, 80, 24);
     client.wait_for("the key style chooser", |screen| {
-        chooser_open(screen) && bar(screen, 1) == "C-space navigation"
+        chooser_open(screen) && mode(screen, "I")
     });
     client
 }
@@ -84,9 +79,6 @@ fn pick_direct(client: &mut Attached, env: &TestEnv) {
         "the direct style saved",
     );
     wait_until(|| reloads(env) > before, "the configuration to reload");
-    client.wait_for("the direct style's hints", |screen| {
-        hints(screen, "C-space prefix")
-    });
 }
 
 fn escape(client: &mut Attached) {
@@ -156,7 +148,7 @@ fn no_offer_with_a_saved_style() {
     let env = TestEnv::new("keystyle-saved");
     let client = Attached::start(&env, 80, 24);
     client.wait_for_prompt();
-    client.wait_for("the hints", |screen| hints(screen, "C-space navigation"));
+    client.wait_for("the sidebar", |screen| mode(screen, "I"));
     thread::sleep(Duration::from_millis(300));
     assert!(!chooser_open(&client.screen()), "{}", client.contents());
 }
@@ -175,8 +167,7 @@ fn no_offer_with_an_own_configuration() {
 fn chosen_from_the_lua_prompt_leaves_the_user_file() {
     let env = TestEnv::without_key_style("keystyle-prompt");
     let source = "gband.keystyle.use()\n\
-                  gband.plugin('gband.statusline')\n\
-                  gband.plugin('gband.statusline.hints')\n\
+                  gband.plugin('gband.sidebar')\n\
                   gband.bind('alt+h', gband.action.focus_column_left)\n";
     env.write_config(source);
     let mut client = Attached::start(&env, 80, 24);
@@ -223,13 +214,13 @@ fn cannot_save() {
     client.send(b"j");
     thread::sleep(Duration::from_millis(100));
     client.send(b"\r");
-    client.wait_for("the error item", |screen| {
-        !chooser_open(screen) && row(screen, 0).starts_with("error ")
+    client.wait_for("the error marker", |screen| {
+        !chooser_open(screen) && sidebar(screen, 23) == "!"
     });
     fs::set_permissions(&user, fs::Permissions::from_mode(0o755)).unwrap();
     let log = env.log_text("client");
     assert!(log.contains("user/keystyle.lua"), "{log}");
     assert_eq!(saved(&env), None);
     client.send(b"\x00");
-    client.wait_for("navigation mode", |screen| hints(screen, "navigation"));
+    client.wait_for("navigation mode", |screen| mode(screen, "N"));
 }

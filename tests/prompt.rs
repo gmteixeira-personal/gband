@@ -12,38 +12,16 @@ fn attached(env: &TestEnv) -> Attached {
     client
 }
 
-fn row(screen: &Grid, index: usize) -> String {
-    screen
-        .contents()
-        .lines()
-        .nth(index)
-        .unwrap_or_default()
-        .to_owned()
-}
-
-fn bar(screen: &Grid, index: usize) -> String {
-    row(screen, index)
-        .chars()
-        .take(20)
-        .collect::<String>()
-        .trim_end()
-        .to_owned()
-}
-
-fn mode(screen: &Grid, label: &str) -> bool {
-    (0..3).any(|index| bar(screen, index) == label)
-}
-
 fn navigation(screen: &Grid) -> bool {
-    mode(screen, "navigation")
+    sidebar_mode(screen) == "N"
 }
 
 fn interactive(screen: &Grid) -> bool {
-    mode(screen, "C-space navigation")
+    sidebar_mode(screen) == "I"
 }
 
 fn shows_error(screen: &Grid) -> bool {
-    row(screen, 0).starts_with("error ")
+    sidebar_error(screen)
 }
 
 fn prompt_shows(screen: &Grid, text: &str) -> bool {
@@ -118,7 +96,7 @@ fn endless_loop() {
     let env = TestEnv::new("prompt-endless");
     let mut client = attached(&env);
     run_line(&mut client, "while true do end");
-    client.wait_for("the error item", |screen| {
+    client.wait_for("the error marker", |screen| {
         shows_error(screen) && !prompt_shows(screen, "while")
     });
     assert!(

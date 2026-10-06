@@ -60,7 +60,7 @@ fn valid_spec() {
 fn named_color() {
     let (_scratch, config) = loaded(
         "named",
-        "gband.plugin('gband.statusline')\ngband.hl.set('Warn', { fg = 'bright_red' })\ngband.hl.set('StatusLine', { fg = 'bright_red' })",
+        "gband.plugin('gband.sidebar')\ngband.hl.set('Warn', { fg = 'bright_red' })\ngband.hl.set('Bar', { fg = 'bright_red' })",
     );
     assert_eq!(get(&config, "Warn"), ["fg=bright_red"]);
     let bar = presented(&config, drawn(40));
@@ -292,20 +292,14 @@ const RECORD: &str =
 #[test]
 fn change_in_a_callback() {
     let (_scratch, config) = loaded("change", RECORD);
-    clean(&run_job(
-        &config,
-        "gband.hl.set('StatusLineAccent', { fg = 3 })",
-    ));
-    assert_eq!(global::<Vec<String>>(&config, "log"), ["StatusLineAccent"]);
-    clean(&run_job(
-        &config,
-        "gband.hl.set('StatusLineAccent', { fg = 3 })",
-    ));
-    assert_eq!(global::<Vec<String>>(&config, "log"), ["StatusLineAccent"]);
+    clean(&run_job(&config, "gband.hl.set('SidebarMode', { fg = 3 })"));
+    assert_eq!(global::<Vec<String>>(&config, "log"), ["SidebarMode"]);
+    clean(&run_job(&config, "gband.hl.set('SidebarMode', { fg = 3 })"));
+    assert_eq!(global::<Vec<String>>(&config, "log"), ["SidebarMode"]);
     clean(&run_job(&config, "gband.hl.default('Other', { fg = 3 })"));
     assert_eq!(
         global::<Vec<String>>(&config, "log"),
-        ["StatusLineAccent", "Other"]
+        ["SidebarMode", "Other"]
     );
 }
 

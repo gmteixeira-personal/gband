@@ -292,7 +292,7 @@ fn case_environment() {
         "lua/window/init.lua",
         "local M = { name = 'window' }\n\
          function M.setup()\n\
-           gband.ui.statusline.add({ align = 'bottom', render = function() return 'WINDOW-SEGMENT' end })\n\
+           gband.bar.add({ side = 'right', size = 14, lines = { 'WINDOW-SEGMENT' } })\n\
          end\n\
          return M\n",
     );
@@ -303,26 +303,23 @@ fn case_environment() {
 t.case("configuration of the case", function(g)
   g.start({
     size = "40x6",
-    config = [[
-      gband.plugin("gband.statusline", { side = "right" })
-      gband.plugin("gband.statusline.band")
-    ]],
+    config = [[gband.plugin("gband.sidebar", { side = "right" })]],
   })
-  t.match(g.screen().row(0), "┐band 1 *$")
+  t.match(g.screen().row(0), "┐ *I$")
+  t.eq(g.screen().cell(0, 39).char, "I")
   t.eq(g.screen().cols, 40)
   t.eq(g.screen().rows, 6)
 end)
 
 t.case("plugin under test is installed", function(g)
-  g.start({ config = [[gband.plugin("gband.statusline")
-gband.plugin("window")]] })
+  g.start({ config = [[gband.plugin("window")]] })
   t.match(g.screen().text(), "WINDOW%-SEGMENT")
 end)
 
 t.case("files and env", function(g)
   g.start({
     files = { ["user/lua/extra.lua"] = "return 'from files'" },
-    config = [[gband.plugin("gband.statusline.band")]],
+    config = [[gband.plugin("gband.sidebar")]],
     env = { CASE_VALUE = "set by env", LANG = false },
   })
   t.eq(g.client("return require('extra')"), "from files")
@@ -335,7 +332,7 @@ t.case("call order", function(g)
     g.keys("enter")
   end)
   t.eq(ok, false)
-  t.match(err, "environment_spec.lua:35: call g.start before g.keys")
+  t.match(err, "environment_spec.lua:32: call g.start before g.keys")
   g.start()
   ok, err = pcall(g.start)
   t.match(err, "already called")
@@ -605,10 +602,10 @@ fn observing_a_case() {
         "tests/observing_spec.lua",
         r##"local t = require("gband.test")
 
-t.case("status line colour", function(g)
+t.case("sidebar colour", function(g)
   g.start()
-  t.eq(g.screen().cell(0, 0).fg, "#c0caf5")
-  t.eq(g.screen().cell(0, 0).char, "b")
+  t.eq(g.screen().cell(0, 0).fg, "#7aa2f7")
+  t.eq(g.screen().cell(0, 0).char, "I")
   t.eq(g.screen().cursor.visible, true)
 end)
 
@@ -688,7 +685,7 @@ fn screenshot_references() {
         "tests/window_spec.lua",
         "local t = require('gband.test')\n\
          t.case('Shows the focused window', function(g)\n\
-           g.start({ size = '30x5', config = [[gband.plugin('gband.statusline') gband.plugin('gband.statusline.band')]] })\n\
+           g.start({ size = '30x5', config = [[gband.bar.add({ id = 'label', side = 'left', size = 6, lines = { 'band 1' } })]] })\n\
            g.expect_screenshot('two windows')\n\
          end)\n",
     );
@@ -723,8 +720,7 @@ fn failure_shows_the_diff_and_the_logs() {
         "local t = require('gband.test')\n\
          t.case('drawn', function(g)\n\
            g.start({ size = '30x5', config = [[\n\
-             gband.plugin('gband.statusline')\n\
-             gband.plugin('gband.statusline.band')\n\
+             gband.bar.add({ id = 'label', side = 'left', size = 6, lines = { 'band 1' } })\n\
              print('drawn')\n\
            ]] })\n\
            g.expect_screenshot()\n\
@@ -793,7 +789,7 @@ t.case("act in the server", function(g)
 end)
 
 t.case("errors are answered", function(g)
-  g.start({ config = [[gband.plugin("gband.statusline.band")]] })
+  g.start({ config = [[gband.plugin("gband.sidebar")]] })
   local ok, err = pcall(g.client, "error('boom')")
   t.eq(ok, false)
   t.match(err, "boom")
@@ -838,7 +834,7 @@ fn reloading() {
     );
     project.file(
         "fixtures/drawer/client.lua",
-        "gband.ui.statusline.add({ id = 'drawer', render = function() return 'old' end })",
+        "gband.bar.add({ side = 'left', size = 3, lines = { 'old' } })",
     );
     project.file(
         "tests/reloading_spec.lua",
@@ -846,12 +842,11 @@ fn reloading() {
 
 t.case("reload after editing a plugin", function(g)
   g.start({
-    files = { ["user/lua/segment.lua"] = "return { setup = function() gband.ui.statusline.add({ id = 'seg', render = function() return 'first' end }) end }" },
-    config = [[gband.plugin("gband.statusline")
-gband.plugin("segment")]],
+    files = { ["user/lua/segment.lua"] = "return { setup = function() gband.bar.add({ id = 'seg', side = 'left', size = 6, lines = { 'first' } }) end }" },
+    config = [[gband.plugin("segment")]],
   })
   t.match(g.screen().text(), "first")
-  g.write("user/lua/segment.lua", "return { setup = function() gband.ui.statusline.add({ id = 'seg', render = function() return 'second' end }) end }")
+  g.write("user/lua/segment.lua", "return { setup = function() gband.bar.add({ id = 'seg', side = 'left', size = 6, lines = { 'second' } }) end }")
   t.eq(g.reload(), nil)
   g.settle()
   t.match(g.screen().text(), "second")
@@ -861,7 +856,7 @@ t.case("plugin file changed", function(g)
   g.start({ plugins = { "../fixtures/drawer" } })
   t.match(g.screen().text(), "old")
   local file = assert(io.open("fixtures/drawer/client.lua", "w"))
-  file:write("gband.ui.statusline.add({ id = 'drawer', render = function() return 'new' end })")
+  file:write("gband.bar.add({ side = 'left', size = 3, lines = { 'new' } })")
   file:close()
   t.eq(g.reload(), nil)
   g.settle()
@@ -869,20 +864,23 @@ t.case("plugin file changed", function(g)
 end)
 
 t.case("broken file", function(g)
-  g.start({ config = [[gband.plugin("gband.statusline")
-gband.plugin("gband.statusline.band")]] })
+  g.start({ config = [[gband.plugin("gband.sidebar")]] })
   g.write("user/init.lua", "error('bad')")
   t.match(g.reload(), "bad")
   g.settle()
-  t.match(g.screen().text(), "band 1")
+  t.eq(g.screen().cell(0, 0).char, "I")
 end)
 
 t.case("clock segment frozen and moved", function(g)
-  g.start({ config = [[gband.plugin("gband.statusline")
-gband.plugin("gband.statusline.clock")]] })
+  g.start({ config = [[
+gband.bar.add({ id = "clock", side = "left", size = 5, lines = { os.date("%H:%M") } })
+gband.bind("alt+t", function() gband.bar.set_lines("clock", { os.date("%H:%M") }) end)
+]] })
   t.match(g.screen().text(), "12:00")
   g.set_time("2025-01-01 12:05:00")
-  g.wait_text("12:05", { timeout = 3 })
+  g.keys("alt+t")
+  g.settle()
+  t.match(g.screen().text(), "12:05")
 end)
 "##,
     );
@@ -913,19 +911,13 @@ t.case("server handler effect is drawn", function(g)
       end)
     ]],
     config = [[
-      gband.plugin("gband.statusline")
       gband.keymap.set("prefix", "enter", gband.action.open_window)
-      gband.ui.statusline.add({
-        id = "agent",
-        redraw_on = { "WindowStateChanged" },
-        render = function(ctx)
-          local found = {}
-          for _, entry in ipairs(ctx.windows) do
-            found[#found + 1] = entry.state.agent
-          end
-          return table.concat(found, " ")
-        end,
-      })
+      gband.bar.add({ id = "agent", side = "left", size = 10 })
+      gband.on("WindowStateChanged", function(ev)
+        if ev.key == "agent" then
+          gband.bar.set_lines("agent", { tostring(ev.value) })
+        end
+      end)
     ]],
   })
   g.keys("ctrl+space enter")

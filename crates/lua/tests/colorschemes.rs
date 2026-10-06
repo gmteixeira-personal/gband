@@ -3,7 +3,7 @@ mod common;
 use common::*;
 use gband_lua::Config;
 
-const DUSK: &str = "gband.hl.set('StatusLine', { fg = '#112233' })\nran = (ran or '') .. 'dusk'\n";
+const DUSK: &str = "gband.hl.set('SidebarMode', { fg = '#112233' })\nran = (ran or '') .. 'dusk'\n";
 
 fn resolved_fg(config: &Config, name: &str) -> Option<String> {
     eval(
@@ -23,7 +23,7 @@ fn user_colorscheme() {
     assert!(global::<bool>(&config, "ok"));
     assert_eq!(global::<String>(&config, "ran"), "dusk");
     assert_eq!(
-        resolved_fg(&config, "StatusLine").as_deref(),
+        resolved_fg(&config, "SidebarMode").as_deref(),
         Some("#112233")
     );
 }
@@ -59,8 +59,8 @@ fn bundled_fallback() {
         "default"
     );
     assert_eq!(
-        resolved_fg(&config, "StatusLine").as_deref(),
-        Some("#c0caf5")
+        resolved_fg(&config, "SidebarMode").as_deref(),
+        Some("#7aa2f7")
     );
 }
 
@@ -69,22 +69,34 @@ fn bundled_default_sets_every_built_in_group() {
     let scratch = Scratch::new("bundled-groups");
     let config = scratch.loaded();
     for group in [
-        "StatusLine",
-        "StatusLineSegment",
-        "StatusLineSeparator",
-        "StatusLineMuted",
-        "StatusLineAccent",
-        "StatusLineError",
-        "Bar",
+        "SidebarMode",
+        "SidebarBand",
+        "SidebarBandActive",
+        "SidebarError",
+        "KeyListKey",
+        "KeyListMuted",
     ] {
         let set: bool = eval(&config, &format!("return gband.hl.get('{group}') ~= nil"));
         assert!(set, "{group}");
     }
     let hex: bool = eval(
         &config,
-        "local fg = gband.hl.get('StatusLine').fg return type(fg) == 'string' and fg:sub(1, 1) == '#'",
+        "local fg = gband.hl.get('SidebarMode').fg return type(fg) == 'string' and fg:sub(1, 1) == '#'",
     );
     assert!(hex);
+}
+
+#[test]
+fn bars_on_the_terminals_background() {
+    let scratch = Scratch::new("bar-unset");
+    let config = scratch.loaded();
+    let empty: bool = eval(&config, "return next(gband.hl.get('Bar') or {}) == nil");
+    assert!(empty);
+    let fields: i64 = eval(
+        &config,
+        "local n = 0 for _ in pairs(gband.hl.get('Bar', { resolve = true })) do n = n + 1 end return n",
+    );
+    assert_eq!(fields, 0);
 }
 
 #[test]
@@ -99,7 +111,7 @@ fn shadowing_the_bundled_colorscheme() {
 #[test]
 fn explicit_settings_replaced() {
     let scratch = Scratch::new("replaced");
-    scratch.user_file("colors/dusk.lua", "gband.hl.set('StatusLine', { fg = 1 })");
+    scratch.user_file("colors/dusk.lua", "gband.hl.set('SidebarMode', { fg = 1 })");
     scratch.write("gband.hl.set('Title', { fg = 1 })\ngband.colorscheme('dusk')");
     let config = scratch.loaded();
     let title: Option<mlua::Table> = eval(&config, "return gband.hl.get('Title')");
@@ -114,15 +126,15 @@ fn explicit_settings_replaced() {
 fn user_settings_after_the_colorscheme() {
     let scratch = Scratch::new("after");
     scratch.user_file("colors/dusk.lua", DUSK);
-    scratch.write("gband.colorscheme('dusk')\ngband.hl.set('StatusLineAccent', { fg = 2 })");
+    scratch.write("gband.colorscheme('dusk')\ngband.hl.set('SidebarBandActive', { fg = 2 })");
     let config = scratch.loaded();
     assert_eq!(
-        resolved_fg(&config, "StatusLineAccent").as_deref(),
+        resolved_fg(&config, "SidebarBandActive").as_deref(),
         Some("2")
     );
     let bold: Option<bool> = eval(
         &config,
-        "return gband.hl.get('StatusLineAccent', { resolve = true }).bold",
+        "return gband.hl.get('SidebarBandActive', { resolve = true }).bold",
     );
     assert_eq!(bold, None);
 }
@@ -171,7 +183,7 @@ fn failing_colorscheme() {
     let scratch = Scratch::new("failing");
     let broken = scratch.user_file(
         "colors/broken.lua",
-        "\n\ngband.hl.set('StatusLine', { fg = 1 })\nerror('boom')",
+        "\n\ngband.hl.set('SidebarMode', { fg = 1 })\nerror('boom')",
     );
     scratch.write(
         "ok = gband.colorscheme('broken')\ngband.bind('alt+h', gband.action.focus_column_left)",
@@ -180,8 +192,8 @@ fn failing_colorscheme() {
     assert!(!global::<bool>(&config, "ok"));
     assert!(config.keymap["root"].len() == 1);
     assert_eq!(
-        resolved_fg(&config, "StatusLine").as_deref(),
-        Some("#c0caf5")
+        resolved_fg(&config, "SidebarMode").as_deref(),
+        Some("#7aa2f7")
     );
     assert_eq!(
         eval::<String>(&config, "return gband.colorscheme()"),
@@ -269,7 +281,7 @@ fn failed_switch_emits_nothing() {
     let scratch = Scratch::new("failed-switch");
     scratch.user_file(
         "colors/broken.lua",
-        "gband.hl.set('StatusLine', { fg = 1 })\nerror('boom')",
+        "gband.hl.set('SidebarMode', { fg = 1 })\nerror('boom')",
     );
     scratch.write(&format!(
         "{JOB}log = {{}}\ngband.on('ColorschemeChanged', function(e) log[#log + 1] = e.name end)\ngband.on('HighlightChanged', function(e) log[#log + 1] = e.group end)"

@@ -21,7 +21,7 @@ const WHEEL_DOWN: u16 = 65;
 
 fn env(name: &str) -> TestEnv {
     let env = TestEnv::new(name);
-    env.write_config(&DEFAULTS.replace("gband.plugin(\"gband.statusline\")", ""));
+    env.write_config(&DEFAULTS.replace("gband.plugin(\"gband.sidebar\")", ""));
     env
 }
 
@@ -312,7 +312,7 @@ fn buffer_survives_a_reload() {
     let env = env("mouse-buffer-reload");
     let mut client = attached(&env);
     copy_ls(&mut client);
-    env.write_config(&DEFAULTS.replace("gband.plugin(\"gband.statusline\")", "\n"));
+    env.write_config(&DEFAULTS.replace("gband.plugin(\"gband.sidebar\")", "\n"));
     wait_until(
         || env.log_text("client").contains("configuration reloaded"),
         "the reload",

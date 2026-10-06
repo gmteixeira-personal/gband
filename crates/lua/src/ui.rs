@@ -23,17 +23,10 @@ pub struct BandState {
     pub count: u32,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct ColumnState {
-    pub index: u32,
-    pub count: u32,
-}
-
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ViewState {
     pub table: String,
     pub band: BandState,
-    pub column: Option<ColumnState>,
     pub window: Option<u32>,
     pub width: u16,
     pub height: u16,
@@ -195,7 +188,6 @@ fn host(lua: &Lua) -> mlua::Result<Table> {
         lua.create_sequence_from(events::NAMES.iter().copied())?,
     )?;
     host.set("state", lua.create_function(state)?)?;
-    host.set("windows", lua.create_function(windows)?)?;
     host.set("timer", lua.create_function(timer)?)?;
     host.set(
         "cancel",
@@ -338,12 +330,6 @@ fn state(lua: &Lua, (): ()) -> mlua::Result<Table> {
     band.set("index", state.band.index)?;
     band.set("count", state.band.count)?;
     table.set("band", band)?;
-    if let Some(column) = state.column {
-        let entry = lua.create_table()?;
-        entry.set("index", column.index)?;
-        entry.set("count", column.count)?;
-        table.set("column", entry)?;
-    }
     table.set("window", state.window)?;
     table.set("width", state.width)?;
     table.set("height", state.height)?;
@@ -355,23 +341,12 @@ fn state(lua: &Lua, (): ()) -> mlua::Result<Table> {
     Ok(table)
 }
 
-fn windows(lua: &Lua, (): ()) -> mlua::Result<Table> {
-    let state = current_state(lua);
-    let list = lua.create_table()?;
-    for band in state.layout.bands() {
-        for window in band.windows() {
-            let entry = lua.create_table()?;
-            entry.set("window", window.0)?;
-            entry.set("band", band.id.0)?;
-            let copy = lua.create_table()?;
-            for (key, value) in state.states.get(&window).into_iter().flatten() {
-                copy.set(key.as_str(), crate::value::into_lua(lua, value)?)?;
-            }
-            entry.set("state", copy)?;
-            list.push(entry)?;
-        }
-    }
-    Ok(list)
+fn drawn_differs(old: &ViewState, new: &ViewState) -> bool {
+    old.table != new.table
+        || old.band.index != new.band.index
+        || old.band.count != new.band.count
+        || old.error != new.error
+        || old.errors != new.errors
 }
 
 pub(crate) fn set_state(lua: &Lua, state: ViewState) -> mlua::Result<()> {
@@ -379,7 +354,7 @@ pub(crate) fn set_state(lua: &Lua, state: ViewState) -> mlua::Result<()> {
         let mut stored = lua
             .app_data_mut::<State>()
             .expect("the state is installed with the runtime");
-        let changed = std::mem::take(&mut stored.cleared) || stored.view.error != state.error;
+        let changed = std::mem::take(&mut stored.cleared) || drawn_differs(&stored.view, &state);
         let resized = stored.view.ribbon != state.ribbon;
         stored.view = state;
         (changed, resized)

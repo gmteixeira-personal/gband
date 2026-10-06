@@ -164,7 +164,6 @@ pub fn sized(width: u16, height: u16) -> ViewState {
             index: 1,
             count: 1,
         },
-        column: None,
         window: None,
         width,
         height,
@@ -188,16 +187,16 @@ pub fn shown_rows(bar: &Bar) -> Vec<(usize, String)> {
         .collect()
 }
 
-pub fn status_bar(config: &Config) -> Option<Bar> {
+pub fn sidebar(config: &Config) -> Option<Bar> {
     config
         .runtime
         .take_bars()?
         .into_iter()
-        .find(|bar| bar.id == "statusline")
+        .find(|bar| bar.id == "sidebar")
 }
 
 pub fn presented(config: &Config, state: ViewState) -> Bar {
     clean(&config.runtime.set_state(state));
-    clean(&config.runtime.refresh_statusline());
-    status_bar(config).expect("the status line is presented")
+    clean(&config.runtime.refresh_plugins());
+    sidebar(config).expect("the sidebar is presented")
 }

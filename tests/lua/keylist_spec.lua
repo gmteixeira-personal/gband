@@ -161,6 +161,18 @@ t.case("default list", function(g)
   g.expect_screenshot("last page")
 end)
 
+t.case("prefix key in the key list", function(g)
+  g.start({ config = [[
+    gband.opt.prefix = "ctrl+b"
+    gband.keystyle.use()
+  ]] })
+  prompts(g, 1)
+  g.keys("ctrl+b ? end")
+  g.settle()
+  local _, line = row_of(g, "send the prefix key")
+  t.match(line, "│C%-b +send the prefix key")
+end)
+
 t.case("title of a prefix table that is not a mode", function(g)
   g.start({ config = MINIMAL })
   open(g)
@@ -194,10 +206,10 @@ t.case("only the key list's own line is muted", function(g)
   t.eq(muted, { ["list the keys"] = true })
 end)
 
-t.case("muted without a status line", function(g)
+t.case("muted without colorscheme settings", function(g)
   g.start({ config = MINIMAL .. [[
-    gband.hl.set("StatusLineMuted", nil)
-    gband.hl.set("StatusLineAccent", nil)
+    gband.hl.set("KeyListMuted", nil)
+    gband.hl.set("KeyListKey", nil)
   ]] })
   open(g)
   local own, own_text = row_of(g, "list the keys")

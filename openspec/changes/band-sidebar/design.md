@@ -18,7 +18,7 @@ This change lands after sidebars-borders-steps, clear-errors, lua-prompt, key-st
 
 **Non-Goals:**
 - A migration path for configurations that use the status line.
-- Mouse interaction with the sidebar.
+- Mouse interaction with the sidebar beyond viewing a band.
 - A component API for the sidebar. A plugin that wants its own content adds its own bar.
 
 ## Decisions
@@ -51,12 +51,19 @@ The active table `root` shows `I`. Any other table shows the first character of 
 ### Reading state through the pushed view state
 The sidebar redraws in the same `on_state` hook the status line used. The client already pushes the band index and count, the active table and the errors before each frame, so the sidebar is current in the frame that shows the change. It needs no new Lua event and works while `gband.layout()` would still be an error. The hook runs only when the pushed state differs, which covers every trigger: `BandChanged`, `LayoutChanged` changing the band count, `KeyTableChanged`, a reported error and a clear.
 
-The view state is trimmed to what the sidebar reads: band index, band count, active table and errors. The `column`, `window` and `windows` fields, and the band `number`, existed for status line components and are dropped.
+The view state drops the `column` field and the `windows` list, which only status line components read. It keeps the band `number` and the focused `window`, because `gband.win` and the control API read them too, and the band index, band count, active table and errors, which the sidebar reads.
 
 The alternative was public events, with a new `ErrorsChanged`. That adds an API that only the sidebar would use, and leaves the first frame blank until `Attached`.
 
 ### Error marker and the banner
 The sidebar reports `host.error_item(shown)`, as `statusline.lua` did, where `shown` is true while its marker is drawn. The client keeps its rule: it draws the banner when an error is reported and no error item is drawn. The banner therefore still appears without a sidebar, with a sidebar too short for its marker, and with a hidden sidebar. The marker shows no text, so the error list stays the way to read the message.
+
+### Clicking a band
+The sidebar registers a `MousePressed` handler. A press of the left button on its own column, on a row that shows a band label, views the band at that position with `gband.band.view`, the band's id read from `gband.layout()`. Every other press on the sidebar does nothing. The column comes from `gband.bar.info("sidebar")`, so a sidebar on the right works the same.
+
+The client already reports a press on a bar cell as a mouse event with the target `outside`, and takes no default action for it, so a handler sees every such press and nothing else competes for it. The client learns nothing new.
+
+The alternative was an `on_click` field in `gband.bar.add`, so every bar could take clicks. Nothing but the sidebar needs one yet, and the event already carries the cell.
 
 ### Setup options
 `side` and `order` are passed to the bar. Any other option, or a wrong type or value, raises an error from `setup`. Width is not an option: the sidebar is one column by design, and a plugin that wants more adds its own bar.
@@ -71,7 +78,10 @@ The plugin sets these as defaults, in the defaults layer:
 | `SidebarBandActive` | `{ bold = true }` | `{ fg = "#c0caf5", bold = true }` |
 | `SidebarError` | `{ fg = 1, bold = true }` | `{ fg = "#f7768e", bold = true }` |
 
-The bar keeps the default `hl`, `Bar`, which the `default` colorscheme already sets.
+### Background
+The bar keeps the default `hl`, `Bar`, and the `default` colorscheme no longer sets `Bar`. `Bar` therefore resolves to its default, `{}`, and the sidebar's cells take the terminal's default foreground and background, like the ribbon's empty cells. A terminal with a translucent background shows through the sidebar as it does through the rest of the screen. A colorscheme that wants a coloured sidebar sets `Bar`.
+
+The alternative was a separate `Sidebar` base group, so plugin bars could keep a coloured `Bar`. Nothing in the default configuration draws a plugin bar, so one group for every bar is enough until a theme needs both.
 
 The key list loses the status line groups it linked to. `keylist.lua` sets `KeyListKey` to `{ bold = true }` and `KeyListMuted` to `{ dim = true }` as defaults. The `default` colorscheme sets them to `{ fg = "#7aa2f7", bold = true }` and `{ fg = "#9aa5ce" }`, the colours they had through `StatusLineAccent` and `StatusLineMuted`.
 
@@ -84,10 +94,12 @@ The removal covers code, specs and docs:
 - "Display width helpers" moves to plugin-windows. The control character rule, which plugin-windows cited from status-line, is written there in full.
 - "Key form" moves to key-list, which uses it. `gband.keyform` stays bundled. Its scenarios move from hints to key list lines.
 - "Hint labels" and its short label table are removed. The key list shows binding descriptions, and nothing else uses the short labels.
+- The removed options `statusline_position`, `statusline_height` and `statusline_separator` lose their migration message, which told the user to set up `gband.statusline`. `options.rs` drops their list, and setting one is the error of an unknown option, which names it. The scenarios that tested those names are removed from the specs, because "Unknown option" covers the behaviour.
+- OpenSpec does not let a MODIFIED block drop or rename a scenario the main spec holds. The requirements whose scenarios name the status line are therefore removed and added back under new names: client-attach's "Send input", "Ribbon area" and "Present the ribbon" become "Input to the server", "Ribbon area beside the bars" and "Ribbon presentation"; configuration's "Options" and "Configuration errors" become "Options and their values" and "Reporting configuration errors"; key-list's "Key list floating plugin window" becomes "Key list window"; key-style's "Choose a key style" becomes "Key style chooser"; and plugin-testing's "Observing a case" becomes "Case observation". "Binding functions" and "Key list plugin" are modified only to cite the new names. settings-themes, window-names and alt-mouse, which wait on this change, are updated here to target the new names.
 
 ### Examples
 - `window` adds a right bar 12 columns wide that shows `window <n>` for the focused window. It redraws on `FocusChanged` with `gband.bar.set_lines`, and keeps the `WindowSegment` group, now linked to `SidebarMode`.
-- `agent-status` adds a right bar 3 columns wide that shows the number of waiting agents, or nothing. Lua has no call that reads a window's state, so the plugin keeps the set of waiting windows itself. It updates the set from each `WindowStateChanged` with `key` `agent`, drops a window on `WindowClosed`, and redraws after each change.
+- `agent-status` adds a right bar 3 columns wide that shows the number of waiting agents, or nothing. The plugin keeps the set of waiting windows itself. It updates the set from each `WindowStateChanged` with `key` `agent`, drops a window on `WindowClosed`, and redraws after each change. Attaching and reloading emit no `WindowStateChanged`, so on `Attached` and in the bar's `on_resize` it refills the set from `gband.layout()` and `gband.window_state(window)`, and a reattach or a reload still counts the windows already waiting.
 - `hello` needs only its screenshot updated.
 
 ## Risks / Trade-offs

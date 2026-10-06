@@ -173,7 +173,7 @@ fn copied_defaults_load_unchanged() {
     assert_eq!(bound_keys(&config), bound_keys(&defaults));
     assert_eq!(config.modes, defaults.modes);
     assert!(config.errors.is_empty(), "{:?}", config.errors);
-    assert_eq!(component_ids(&config), component_ids(&defaults));
+    assert_eq!(bar_ids(&config), bar_ids(&defaults));
 }
 
 #[test]
@@ -356,10 +356,7 @@ fn defaults_reproduce_the_built_in_behaviour() {
         clean(&outcome);
         assert_eq!(outcome.dispatched, dispatched, "{keys:?}");
     }
-    assert_eq!(
-        component_ids(&config),
-        ["band", "hints", "mode", "position"]
-    );
+    assert_eq!(bar_ids(&config), ["sidebar"]);
     let plugins: Vec<String> = eval(
         &config,
         "local open = {} for _, a in ipairs(gband.action.list()) do if a.name:find('%.') then open[#open + 1] = a.name end end return open",
@@ -373,7 +370,7 @@ fn defaults_reproduce_the_built_in_behaviour() {
         &config,
         "local out = {} for _, b in ipairs(gband.bar.list()) do out[#out + 1] = b.id .. ' ' .. b.side .. ' ' .. b.width end return out",
     );
-    assert_eq!(bars, ["statusline left 20"]);
+    assert_eq!(bars, ["sidebar left 1"]);
 }
 
 #[test]
@@ -453,10 +450,10 @@ end }",
     assert!(pressed.dispatched.is_empty());
 }
 
-fn component_ids(config: &Config) -> Vec<String> {
+fn bar_ids(config: &Config) -> Vec<String> {
     eval(
         config,
-        "local ids = {} for _, c in ipairs(gband.ui.statusline.list()) do ids[#ids + 1] = c.id end return ids",
+        "local ids = {} for _, b in ipairs(gband.bar.list()) do ids[#ids + 1] = b.id end return ids",
     )
 }
 
@@ -508,7 +505,7 @@ fn direct_style_from_the_saved_choice() {
         binding(&config, ("prefix", Chord::Prefix)),
         Some(Binding::Action(Action::Client(ClientAction::SendPrefix)))
     );
-    assert_eq!(component_ids(&config).len(), 4);
+    assert_eq!(bar_ids(&config), ["sidebar"]);
 }
 
 #[test]

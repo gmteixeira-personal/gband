@@ -59,7 +59,7 @@ Run `gband` again to attach to it.
 Keys typed in gband go to the focused window: this is interactive mode.
 The prefix key, Ctrl+Space, gives the keys below their gband meaning, in one of two key styles:
 
-- **modal**: Ctrl+Space enters navigation mode, and the status line shows `navigation`.
+- **modal**: Ctrl+Space enters navigation mode, and the sidebar shows `N`.
   Each key below acts and navigation mode stays active, so `l` `l` `l` moves three columns and `=` `=` widens the column twice.
   A key with no binding does nothing.
   Escape or Enter returns to interactive mode, and so do `n`, `?`, `:` and Ctrl+Space once they have acted.
@@ -149,7 +149,7 @@ gband creates the directory when it starts, with two folders in it:
 
 The configuration has two files, one per process:
 
-- `user/init.lua` configures each client: the prefix key, key bindings, the status line, colors and notifications.
+- `user/init.lua` configures each client: the prefix key, key bindings, the sidebar, colors and notifications.
 - `user/server.lua` configures the server: the column widths, and the server halves of plugins.
 
 The server reads its file from the machine it runs on, and each client reads its own.
@@ -170,7 +170,7 @@ To edit the bindings themselves, copy a style's bindings from `defaults/keystyle
 
 Without `user/init.lua`, the defaults apply.
 Saving `user/init.lua`, or any other `.lua` file under `user/`, reloads the configuration while gband runs, and deleting `user/init.lua` returns to the defaults.
-An error in the file shows `error` at the top of the status line, and gband keeps the last configuration that loaded.
+An error in the file shows a red `!` at the bottom of the sidebar, and gband keeps the last configuration that loaded.
 Ctrl+Space then the key you bind to `errors.open` lists the errors with their files and line numbers; see [Errors](#errors).
 
 ```lua
@@ -364,7 +364,7 @@ Enter closes the prompt and runs the line, and Escape closes it and runs nothing
 
 The line runs as a binding function of `user/init.lua` would, so it can call `gband.action.*`, `gband.win.*`, `gband.keymap.enter` and the rest of the API a binding function can, such as `gband.action.focus_column_left()`.
 It runs with an instruction budget of its own: an endless loop stops only the line, and the prompt keeps working.
-A syntax error, a runtime error or a stop by the instruction limit is reported like any configuration error, as `prompt:1: <message>`, so the status line shows `error`.
+A syntax error, a runtime error or a stop by the instruction limit is reported like any configuration error, as `prompt:1: <message>`, so the sidebar shows `!`.
 Return values are dropped; `gband.notify(tostring(value))` shows one.
 
 The prompt is a plugin bundled with gband, set up by both key styles.
@@ -377,52 +377,51 @@ gband.keymap.set("prefix", ":", gband.action["prompt.open"], { desc = "run Lua" 
 
 `gband.hl.set("PromptCursor", { ... })` styles the cursor, which is reversed by default.
 
-### Status line
+### Sidebar
 
-The status line is a side bar at the left of the terminal, 20 columns wide by default and as tall as the terminal.
+The sidebar is a bar one column wide at the left of the terminal, as tall as the terminal.
 The windows keep the size they would have without it: they are drawn in the columns it leaves, and the view scrolls inside them, so a 1/2 column of an 80-column terminal is still 40 columns wide beside the bar.
-By default it shows the viewed band at the top, such as `band 1`, the label of the active mode below it after the prefix key, such as `navigation`, hints for the keys of that mode, and the focused column at the bottom, such as `2/3`.
-The hints show `C-space navigation`, or `C-space prefix` with the direct key style, until the prefix key is pressed, then each key of navigation mode with a short label, such as `h left  l right`, wrapped onto as many rows as fit and ended with `…` when some are left out.
-While a configuration or plugin error is reported, the first row shows `error` in red.
 
-The status line is a plugin bundled with gband, `gband.statusline`, and each segment is another.
-The default configuration sets them up.
-A `user/init.lua` replaces the defaults, so it sets them up itself with the same calls; a copy of `defaults/init.lua` already holds them:
+| row | shows |
+|---|---|
+| first | the mode: `I` in interactive mode, `N` in navigation mode, or the first letter of another mode's label, uppercased |
+| second | nothing |
+| from the third | one label per band, from the top band down, the empty last band included: `1` to `9`, then `a` to `z` |
+| last | a red `!` while a configuration or plugin error is reported |
+
+A new session shows `I`, then `1` and `2`.
+The viewed band's label is bright and bold, and the others are dim.
+A label is the band's position, so the labels stay `1`, `2`, `3` after a band is removed.
+Bands that do not fit above the last row, and bands past the 35th, are not shown.
+With the direct key style, the sidebar shows `P` after the prefix key until the key sequence ends.
+Clicking a band's label with the left button views that band, in any mode.
+
+The sidebar is a plugin bundled with gband, `gband.sidebar`, which the default configuration sets up after `gband.errors`.
+A `user/init.lua` replaces the defaults, so it sets it up itself with the same call; a copy of `defaults/init.lua` already holds it:
 
 ```lua
-gband.plugin("gband.statusline")
-gband.plugin("gband.statusline.band")
-gband.plugin("gband.statusline.mode")
-gband.plugin("gband.statusline.hints")
-gband.plugin("gband.statusline.position")
+gband.plugin("gband.sidebar")
 ```
 
-Leaving out `gband.plugin("gband.statusline")` removes the status line, and the windows take the whole terminal.
-Its options place and size it:
+Leaving it out removes the sidebar, and the windows take the whole terminal.
+Its options place it:
 
 ```lua
-gband.plugin("gband.statusline", {
+gband.plugin("gband.sidebar", {
   side = "right",   -- "left" by default
-  min_width = 16,   -- 20 by default
-  max_width = 30,   -- 40 by default
   order = 0,        -- the order among bars on the same side
 })
 ```
 
-The status line widens with its widest segment, between `min_width` and `max_width`, and is not drawn when the terminal is too narrow for it.
-The `statusline_*` options of earlier versions are gone: a file that still sets one gets an error naming the option and loads anyway.
-Turning the status line off becomes leaving the plugin out, and placing it on a row becomes choosing a `side`.
-
-Each segment takes the options `align`, `"top"`, `"center"` or `"bottom"`, `priority` and `order`, all but `hints` also take `hl`, and `gband.plugin("gband.statusline.clock")` adds a clock.
-`hints` also takes `labels`, which renames or hides an action's hint, and `root = false`, which hides it until the prefix key.
-`gband.colorscheme(name)` loads a colorscheme, and `gband.hl.set` styles any part of the line.
-[docs/plugins.md](docs/plugins.md) describes the segments, highlight groups, colorschemes, writing your own segment and adding bars of your own with `gband.bar`.
+It is always one column wide.
+`gband.colorscheme(name)` loads a colorscheme, and `gband.hl.set` styles the sidebar's groups, `SidebarMode`, `SidebarBand`, `SidebarBandActive` and `SidebarError`.
+[docs/plugins.md](docs/plugins.md) describes the sidebar, highlight groups, colorschemes and adding bars of your own with `gband.bar`.
 
 ### Errors
 
 The client keeps every configuration and plugin error since the last load without one, oldest first, and `gband.errors()` returns them.
-`gband.clear_errors()`, called from a binding function or another callback, empties the list and dismisses the error item or the banner until the next error.
-It does not reload the configuration, so a status line component or a plugin that an error disabled stays disabled until the next load.
+`gband.clear_errors()`, called from a binding function or another callback, empties the list and dismisses the sidebar's `!` or the banner until the next error.
+It does not reload the configuration, so a callback or a plugin that an error disabled stays disabled until the next load.
 The logs keep every error, and other clients keep theirs: a server error still shows in each client that attaches.
 
 The bundled `gband.errors` plugin, set up by the default configuration, registers the action and command `errors.open`, which list them in a floating window; `q` or Escape closes it.
@@ -438,16 +437,16 @@ gband.bind("prefix E", function() gband.cmd.run("errors.open", { kind = "tiled" 
 ```
 
 `gband.plugin("gband.errors", { kind = "tiled" })` makes `errors.open` open a tiled window.
-Without a status line, the latest error shows on the bottom row of the windows instead.
+Without a sidebar, the latest error shows on the bottom row of the windows instead.
 
 ### Plugins
 
 gband loads plugins from `$XDG_DATA_HOME/gband/plugins/`, or `~/.local/share/gband/plugins/`.
 A plugin has a manifest, `plugin.lua`, and a `client.lua` that each client runs, a `server.lua` that the server runs, or both.
-In the client, a plugin can add actions, commands, options, key bindings, event handlers, status line segments, plugin windows, notifications and colorschemes.
+In the client, a plugin can add actions, commands, options, key bindings, event handlers, side bars, plugin windows, notifications and colorschemes.
 In the server, it can watch window output and input, keep state per window, emit events to clients, queue them while no client is attached, and answer commands clients call.
 [docs/plugins.md](docs/plugins.md) explains how to write one.
-[examples/plugins/hello](examples/plugins/hello) is a sample to start from, [examples/plugins/window](examples/plugins/window) adds a status line segment and a colorscheme, and [examples/plugins/agent-status](examples/plugins/agent-status) notifies you when a coding agent in a window waits for an answer.
+[examples/plugins/hello](examples/plugins/hello) is a sample to start from, [examples/plugins/window](examples/plugins/window) adds a side bar and a colorscheme, and [examples/plugins/agent-status](examples/plugins/agent-status) notifies you when a coding agent in a window waits for an answer.
 `gband test` runs a plugin's Lua tests against a real client and server in a terminal of their own, and compares what they draw with committed screenshots; [docs/testing.md](docs/testing.md) explains how to write them.
 
 ## Installing

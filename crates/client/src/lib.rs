@@ -30,9 +30,9 @@ use gband_core::layout::{
 use gband_core::view::{CenterFocusedColumn, Layer, Scene, View, ViewAction};
 use gband_emulator::{Emulator, Grid};
 use gband_lua::{
-    BandState, Bar, Binding, Border, ColumnState, Config, ConfigError, Dispatch, Event, Options,
-    Outcome as Ran, PluginManifest, PluginWindowRequest, Requirement as Needed, Runtime, Slot,
-    Version, ViewState, WindowInput, WindowStates,
+    BandState, Bar, Binding, Border, Config, ConfigError, Dispatch, Event, Options, Outcome as Ran,
+    PluginManifest, PluginWindowRequest, Requirement as Needed, Runtime, Slot, Version, ViewState,
+    WindowInput, WindowStates,
 };
 use gband_protocol::{ClientMessage, ExecutableId, Requirement, ServerMessage, SessionName, Value};
 use ratatui::layout::Rect;
@@ -581,14 +581,6 @@ impl Display {
         };
         let index = viewed.and_then(|id| bands.iter().position(|band| band.id == id));
         let count = |n: usize| u32::try_from(n).unwrap_or(u32::MAX);
-        let column = index.and_then(|index| {
-            let band = &bands[index];
-            let (column, _) = band.locate(self.focused()?)?;
-            Some(ColumnState {
-                index: count(column + 1),
-                count: count(band.columns.len()),
-            })
-        });
         ViewState {
             table: table.to_owned(),
             band: BandState {
@@ -596,7 +588,6 @@ impl Display {
                 index: index.map_or(0, |index| count(index + 1)),
                 count: count(bands.len()),
             },
-            column,
             window: self.focused().map(|window| window.0),
             width: self.terminal.cols,
             height: self.terminal.rows,
@@ -1327,7 +1318,7 @@ impl Controls {
 
     fn refresh_now(&mut self, display: &mut Display, steps: &mut Vec<Step>) {
         self.push_state(display, steps);
-        let outcome = self.runtime.refresh_statusline();
+        let outcome = self.runtime.refresh_plugins();
         self.apply(display, outcome, steps);
     }
 

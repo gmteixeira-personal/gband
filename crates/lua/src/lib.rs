@@ -48,7 +48,7 @@ pub use crate::events::{Event, Pointer, PointerTarget};
 pub use crate::options::{NotifyStyle, OptValue, Options};
 pub use crate::runtime::{API_VERSION, Outcome, Runtime};
 pub use crate::sides::install_test;
-pub use crate::ui::{BandState, Color, ColumnState, Style, ViewState, WindowStates};
+pub use crate::ui::{BandState, Color, Style, ViewState, WindowStates};
 pub use crate::version::{Requirement, Version};
 pub use crate::watch::{Watcher, watch};
 

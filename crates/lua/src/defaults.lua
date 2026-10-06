@@ -12,11 +12,7 @@ gband.opt.height_step = 1/10
 gband.keystyle.use()
 
 gband.plugin("gband.errors")
-gband.plugin("gband.statusline")
-gband.plugin("gband.statusline.band")
-gband.plugin("gband.statusline.mode")
-gband.plugin("gband.statusline.hints")
-gband.plugin("gband.statusline.position")
+gband.plugin("gband.sidebar")
 
 gband.on("Attached", function()
   if gband.config_dir and not gband.keystyle.saved() then

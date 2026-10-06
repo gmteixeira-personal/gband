@@ -64,9 +64,9 @@ There `gband.side` is `"test"`, `gband.api_version` is `1`, and every other fiel
 ```lua
 local t = require("gband.test")
 
-t.case("the segment shows the focused window", function(g)
-  g.start({ config = [[gband.plugin("gband.statusline") gband.plugin("window")]] })
-  t.match(g.screen().row(23), "^window 1 ")
+t.case("the bar shows the focused window", function(g)
+  g.start({ config = [[gband.plugin("window")]] })
+  t.match(g.screen().row(0), "window 1$")
 end)
 ```
 
@@ -107,7 +107,7 @@ Call it once, before any other function of the handle.
 | `env` | environment variables to set, or to remove with `false` | none |
 | `time` | the frozen instant: Unix seconds, `"YYYY-MM-DD HH:MM:SS"` in UTC, or `false` for the real time | `"2025-01-01 12:00:00"` |
 
-A `config` replaces the default configuration, as `user/init.lua` does, so give the status line, its segments and the bindings the case needs.
+A `config` replaces the default configuration, as `user/init.lua` does, so set up the sidebar, the plugins and the bindings the case needs.
 
 The key style is saved before `files` are written, so a case with the default configuration starts with no key style chooser open, and a `files` entry for `user/keystyle.lua` replaces it.
 Start with `keystyle = false` to see the chooser that a first start offers.
@@ -195,27 +195,25 @@ The handle also returns what the client wrote to its terminal since `g.start`, a
 `g.screenshot(opts)` returns the screen as text:
 
 ```
-size 60x4 cursor 1:23 shown
-0|band 1              ┌────────────────────────────┐┌─────────
-1|                    │$                           ││$
-2|                    │                            ││
-3|window 1            └────────────────────────────┘└─────────
+size 60x4 cursor 1:4 shown
+0|I┌────────────────────────────┐┌────────────────window 1
+1| │$                           ││$
+2|1│                            ││
+3| └────────────────────────────┘└────────────────
 --
-0:0-19 fg=#c0caf5 bg=#24283b
-0:20-49 bold
-0:50-59 dim
-1:0-19 fg=#c0caf5 bg=#24283b
-1:20 bold
-1:49 bold
-1:50 dim
-2:0-19 fg=#c0caf5 bg=#24283b
-2:20 bold
-2:49 bold
-2:50 dim
-3:0-7 fg=#7aa2f7 bg=#24283b bold
-3:8-19 fg=#c0caf5 bg=#24283b
-3:20-49 bold
-3:50-59 dim
+0:0 fg=#7aa2f7 bold
+0:1-30 bold
+0:31-47 dim
+0:48-55 fg=#7aa2f7 bold
+1:1 bold
+1:30 bold
+1:31 dim
+2:0 fg=#c0caf5 bold
+2:1 bold
+2:30 bold
+2:31 dim
+3:1-30 bold
+3:31-47 dim
 ```
 
 - The header gives the size, the cursor's row and column, and `shown` or `hidden`.
@@ -240,16 +238,18 @@ In a test file read from standard input, `g.expect_screenshot` prints the screen
 
 ## Frozen time
 
-Each case freezes the time the client's and the server's Lua read at `2025-01-01 12:00:00` UTC, so a clock segment draws `12:00` on every run.
+Each case freezes the time the client's and the server's Lua read at `2025-01-01 12:00:00` UTC, so a bar showing `os.date("%H:%M")` draws `12:00` on every run.
 `os.time()` without a table returns the instant, and `os.date(format)` without a time formats it; calls with an explicit time behave as Lua defines.
-The instant does not advance by itself, and timers still fire on the real clock, so a component's `redraw_interval` keeps working.
+The instant does not advance by itself, and timers still fire on the real clock.
 `TZ=UTC` makes `os.date` the same on every machine.
 
 ```lua
-g.start({ config = [[gband.plugin("gband.statusline") gband.plugin("gband.statusline.clock")]] })
-t.match(g.screen().row(23), "^12:00 ")
+g.start({ config = [[gband.bar.add({ id = "clock", side = "right", size = 5, lines = { os.date("%H:%M") } })]] })
+t.match(g.screen().row(0), "12:00$")
 g.set_time("2025-01-01 12:05:00")
-g.wait_text("12:05")
+g.client([[gband.bar.set_lines("clock", { os.date("%H:%M") })]])
+g.settle()
+t.match(g.screen().row(0), "12:05$")
 ```
 
 Give `time = false` to `g.start` for the real time.
@@ -276,7 +276,7 @@ g.run("echo hi")
 g.wait_text("hi")
 ```
 
-Use settle for gband's own work, such as keys, bindings, handlers, the status line, and wait for what programs in windows print.
+Use settle for gband's own work, such as keys, bindings, handlers and bars, and wait for what programs in windows print.
 Never sleep.
 
 A few things to know when comparing screenshots with window contents:
@@ -299,7 +299,7 @@ No Lua crosses the connection between a client and a server, and a server never 
 
 ## A worked example
 
-The [window sample](../examples/plugins/window) shows the focused window in the status line.
+The [window sample](../examples/plugins/window) shows the focused window in a bar 12 columns wide on the right, beside the sidebar on the left.
 The first case of its `tests/window_spec.lua` opens a second window, moves back to the first, and keeps the screen as a reference, the screenshot shown under "Screenshots":
 
 ```lua
@@ -308,8 +308,7 @@ local t = require("gband.test")
 local CONFIG = [[
   gband.keymap.set("prefix", "enter", gband.action.open_window)
   gband.keymap.set("prefix", "h", gband.action.focus_column_left)
-  gband.plugin("gband.statusline")
-  gband.plugin("gband.statusline.band")
+  gband.plugin("gband.sidebar")
   gband.plugin("window")
 ]]
 
@@ -322,19 +321,19 @@ end
 
 t.case("shows the focused window", function(g)
   g.start({ size = "60x4", config = CONFIG })
-  t.match(g.screen().row(3), "^window 1 ")
+  t.match(g.screen().row(0), "window 1%s*$")
   g.keys("ctrl+space enter")
   g.settle()
-  t.match(g.screen().row(3), "^window 2 ")
+  t.match(g.screen().row(0), "window 2%s*$")
   g.keys("ctrl+space h")
   g.settle()
-  t.match(g.screen().row(3), "^window 1 ")
+  t.match(g.screen().row(0), "window 1%s*$")
   prompts(g, 2)
   g.expect_screenshot("two windows")
 end)
 ```
 
-`g.settle()` is enough for the status line, which gband draws, and `prompts` waits for the shells, which print in their own time.
+`g.settle()` is enough for the bar, which gband draws, and `prompts` waits for the shells, which print in their own time.
 
 Start with a chunk on standard input and look at what gband draws:
 
@@ -343,11 +342,11 @@ cd examples/plugins/window
 gband test - --show <<'EOF'
 local t = require("gband.test")
 t.case("look", function(g)
-  g.start({ size = "60x4", config = [[gband.plugin("gband.statusline") gband.plugin("gband.statusline.band") gband.plugin("window")]] })
+  g.start({ size = "60x4", config = [[gband.plugin("gband.sidebar") gband.plugin("window")]] })
   g.expect_screenshot()
 end)
 EOF
 ```
 
 Then move the case into `tests/window_spec.lua`, run `gband test --update` to write its reference, check the reference with `git diff`, and commit it.
-From then on `gband test` fails with a diff whenever the segment draws differently.
+From then on `gband test` fails with a diff whenever the bar draws differently.

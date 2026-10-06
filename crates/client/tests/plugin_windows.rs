@@ -33,7 +33,7 @@ impl Scratch {
             &path,
             format!(
                 "{}\n{source}",
-                DEFAULTS.replace("gband.plugin(\"gband.statusline\")", "")
+                DEFAULTS.replace("gband.plugin(\"gband.sidebar\")", "")
             ),
         )
         .unwrap();

@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Colorscheme files
-A colorscheme named `name` SHALL be the file `colors/<name>.lua` in the first runtimepath entry that holds one. When no entry holds one, it SHALL be the colorscheme of that name bundled with gband, if any. A colorscheme name SHALL begin with an ASCII letter or digit and hold only ASCII letters, digits, `_` and `-`. gband SHALL bundle one colorscheme, `default`, which sets `Bar`, every group the sidebar capability defines, and the key list groups `KeyListKey` and `KeyListMuted`.
+A colorscheme named `name` SHALL be the file `colors/<name>.lua` in the first runtimepath entry that holds one. When no entry holds one, it SHALL be the colorscheme of that name bundled with gband, if any. A colorscheme name SHALL begin with an ASCII letter or digit and hold only ASCII letters, digits, `_` and `-`. gband SHALL bundle one colorscheme, `default`, which sets every group the sidebar capability defines and the key list groups `KeyListKey` and `KeyListMuted`, and does not set `Bar`.
 
 A colorscheme file SHALL be Lua that runs with the whole `gband` API available. It sets groups with `gband.hl.set`. Code it runs SHALL belong to no plugin.
 
@@ -24,6 +24,10 @@ A colorscheme file SHALL be Lua that runs with the whole `gband` API available. 
 #### Scenario: Default sets the sidebar groups
 - **WHEN** no file calls `gband.colorscheme` and a binding function calls `gband.hl.get` for `SidebarMode`, `SidebarBand`, `SidebarBandActive` and `SidebarError`
 - **THEN** each call returns the setting the `default` colorscheme gives the group
+
+#### Scenario: Bars on the terminal's background
+- **WHEN** no file calls `gband.colorscheme` or sets `Bar`
+- **THEN** `gband.hl.get("Bar")` holds no field and `Bar` resolves to no field
 
 ### Requirement: Switch colorscheme
 `gband.colorscheme(name)` SHALL load the colorscheme `name`. It SHALL first remove every group's explicit setting, keeping the default settings, and then run the file. `gband.colorscheme()`, with no argument, SHALL return the name of the active colorscheme. When loading starts, the bundled `default` colorscheme SHALL be loaded and active, before the init file runs. `gband.colorscheme` SHALL be callable while the configuration loads and in any callback.

@@ -23,9 +23,7 @@ A key's short form SHALL be the form a key list line shows its binding's key in,
 - **WHEN** the `prefix` option is `"ctrl+b"`, the default bindings are in use, and the key list opens
 - **THEN** the line for the binding `prefix` shows `C-b`
 
-## MODIFIED Requirements
-
-### Requirement: Key list floating plugin window
+### Requirement: Key list window
 Opening the key list SHALL open a floating plugin window, as the plugin-windows capability defines, that belongs to the plugin `keylist` and takes focus. It SHALL also make `root` the active table, as `gband.keymap.enter("root")` does, so the keys that follow reach the floating plugin window rather than a mode. The floating plugin window SHALL have a border, the title `gband.keymap.label("prefix")` followed by ` keys`, and its cursor line on, starting on the first line, and SHALL be centered in the ribbon area.
 
 The floating plugin window SHALL hold one line for each binding that `gband.keymap.list("prefix")` returns when it opens, in that order. A line SHALL show the binding's key in the form "Key form" defines, so the binding `prefix` shows as the prefix key, such as `C-space`. The key SHALL be in the group `KeyListKey` and padded with spaces to two cells more than the widest key of the list. The key SHALL be followed by the binding's description. A binding with no description SHALL show its action's description, as `gband.action.list()` gives it, or the action's name when that is empty too, and a function binding with no description SHALL show `function`. The description SHALL be in the group `PluginWindow` when Enter can run the binding, as "Running any binding" defines, and in `KeyListMuted` otherwise.
@@ -53,7 +51,7 @@ The plugin SHALL define the groups `KeyListKey`, with the style `{ bold = true }
 - **WHEN** the default configuration is in use and the key list opens
 - **THEN** the line for `?` is the only line whose description is in `KeyListMuted`
 
-#### Scenario: Muted without a status line
+#### Scenario: Muted without colorscheme settings
 - **WHEN** `user/init.lua` sets up `gband.keylist`, nothing sets `KeyListMuted` or `KeyListKey`, and the key list opens
 - **THEN** the muted lines are drawn dim and the runnable lines are not
 
@@ -61,3 +59,26 @@ The plugin SHALL define the groups `KeyListKey`, with the style `{ bold = true }
 - **WHEN** the key list is open on its first line and the user presses Down, Down, then Up
 - **THEN** the cursor line is on the second line
 
+## MODIFIED Requirements
+
+### Requirement: Key list plugin
+gband SHALL bundle the client plugin module `gband.keylist`, whose plugin name is `keylist`. Its `setup` SHALL take no options, and an options table holding any field SHALL make it raise an error naming the field. `setup` SHALL register the action `keylist.open` with the description `list the keys`. Dispatching `keylist.open` SHALL open the key list, as "Key list window" defines. Dispatching it while the key list is already open SHALL focus that key list, as `gband.win.focus` does, and SHALL open no second one. It SHALL then make `root` the active table, as opening does.
+
+#### Scenario: Action registered
+- **WHEN** a configuration calls `gband.plugin("gband.keylist")` and reads `gband.action.list()`
+- **THEN** it holds an entry named `keylist.open` with the description `list the keys`
+
+#### Scenario: Unknown option
+- **WHEN** a configuration calls `gband.plugin("gband.keylist", { table = "root" })`
+- **THEN** the plugin `keylist` reports an error naming `table`
+
+#### Scenario: Open again while open
+- **WHEN** the default configuration is in use, the key list is open, the user presses Ctrl+Space then `l`, which focuses another column and leaves the key list unfocused, and then presses `?` while navigation mode is still active
+- **THEN** exactly one key list is drawn and it has focus
+- **AND** `root` is the active table, so a further `q` closes it
+
+## REMOVED Requirements
+
+### Requirement: Key list floating plugin window
+**Reason**: Renamed to "Key list window" so that its scenarios can drop the status line names; the requirement is otherwise as this change modifies it.
+**Migration**: See "Key list window".

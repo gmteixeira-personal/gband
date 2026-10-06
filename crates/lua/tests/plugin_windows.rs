@@ -1180,3 +1180,19 @@ fn set_box_moves_and_resizes_in_one_step() {
     clean(&client.config.runtime.set_plugin_window_box(win, beyond));
     assert_eq!(info(), "50,5,30,12,1");
 }
+
+#[test]
+fn display_width() {
+    let scratch = Scratch::new("display-width");
+    scratch.write("cells = gband.ui.width('a日b')");
+    let config = scratch.loaded();
+    assert_eq!(global::<i64>(&config, "cells"), 4);
+}
+
+#[test]
+fn truncate_at_a_wide_character() {
+    let scratch = Scratch::new("truncate-wide");
+    scratch.write("cut = gband.ui.truncate('日本語', 4)");
+    let config = scratch.loaded();
+    assert_eq!(global::<String>(&config, "cut"), "日…");
+}

@@ -1,9 +1,7 @@
 local key_form = require("gband.keyform")
 
-gband.hl.default("StatusLineAccent", { bold = true })
-gband.hl.default("StatusLineMuted", { dim = true })
-gband.hl.default("KeyListKey", { link = "StatusLineAccent" })
-gband.hl.default("KeyListMuted", { link = "StatusLineMuted" })
+gband.hl.default("KeyListKey", { bold = true })
+gband.hl.default("KeyListMuted", { dim = true })
 
 local OWN = "keylist.open"
 local MAX_HEIGHT = 15

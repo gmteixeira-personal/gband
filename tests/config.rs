@@ -45,7 +45,7 @@ fn two_windows_first_focused(env: &TestEnv) -> Attached {
     client.shell_pid(env);
     client.send(b"\x00h\r");
     client.wait_for("the first tile focused", |screen| {
-        focused_left(screen) == Some(20)
+        focused_left(screen) == Some(1)
     });
     client
 }
@@ -196,7 +196,7 @@ fn another_prefix_key_in_a_copy_of_the_defaults() {
     wait_for_reload(&env, "client", seen);
     client.send(b"\x02q\r");
     client.wait_for("one tile", |screen| {
-        tops(screen) == [(20, true)] && first_row(screen).chars().skip(60).all(|c| c == ' ')
+        tops(screen) == [(1, true)] && first_row(screen).chars().skip(41).all(|c| c == ' ')
     });
     client.wait_for_prompt();
     echo_keys(&mut client);
@@ -311,7 +311,7 @@ fn spawn_a_command_line() {
 }
 
 #[test]
-fn syntax_error_is_shown_as_the_error_item() {
+fn syntax_error_is_shown_as_the_error_marker() {
     let env = TestEnv::new("config-syntax");
     let home = env.root.join("home");
     let path = home
@@ -326,9 +326,7 @@ fn syntax_error_is_shown_as_the_error_item() {
         command.env("HOME", &home);
     });
     let expected = format!("{}:12:", path.display());
-    client.wait_for("the error item", |screen| {
-        first_row(screen).starts_with("error ")
-    });
+    client.wait_for("the error marker", sidebar_error);
     error_logged(&env, &expected);
 }
 
@@ -337,9 +335,7 @@ fn broken_file_at_start_keeps_the_defaults() {
     let env = TestEnv::new("config-broken-start");
     env.write_config("gband.set { prefix = 'ctrl+b' }\nerror('broken')\n");
     let mut client = Attached::start(&env, 80, 24);
-    client.wait_for("the error item", |screen| {
-        first_row(screen).starts_with("error ")
-    });
+    client.wait_for("the error marker", sidebar_error);
     error_logged(&env, "init.lua:2: broken");
     client.wait_for_text("$");
     client.send(b"\x02\r");
@@ -363,14 +359,12 @@ fn broken_edit_keeps_the_running_configuration() {
     env.write_config(&with_defaults(
         "gband.bind('alt+j', gband.action.focus_column_left)\nlocal = 1",
     ));
-    client.wait_for("the error item", |screen| {
-        first_row(screen).starts_with("error ")
-    });
+    client.wait_for("the error marker", sidebar_error);
     error_logged(&env, "init.lua:2:");
     assert_eq!(reloads(&env, "client"), seen);
     client.send(b"\x1bh");
     client.wait_for("the first tile focused", |screen| {
-        focused_top(screen) == Some(20)
+        focused_top(screen) == Some(1)
     });
     echo_keys(&mut client);
     client.send(b"\x1bj\r");
@@ -432,7 +426,7 @@ fn plugin_sets_a_width_option() {
     client.send(b"\x00n");
     client.wait_for("a second column of width 1/3", |screen| {
         let tiles = tiles(screen);
-        tiles.len() == 2 && tiles[1].focused && tiles[0].left == 20 && tiles[1].left == 46
+        tiles.len() == 2 && tiles[1].focused && tiles[0].left == 1 && tiles[1].left == 27
     });
     assert!(!env.log_text("server").contains("configuration error"));
 }
@@ -452,7 +446,7 @@ fn default_configuration_with_a_plugin() {
     client.wait_for_prompt();
     client.send(b"\x1bg");
     client.wait_for("the first tile focused", |screen| {
-        focused_left(screen) == Some(20)
+        focused_left(screen) == Some(1)
     });
 }
 
@@ -466,9 +460,7 @@ fn infinite_loop_in_setup() {
     );
     env.write_config("gband.plugin('spin')\n");
     let mut client = Attached::start(&env, 120, 24);
-    client.wait_for("the error item", |screen| {
-        first_row(screen).starts_with("error ")
-    });
+    client.wait_for("the error marker", sidebar_error);
     error_logged(&env, "spin: ");
     client.wait_for_text("$");
     client.send(b"\x00n");
@@ -506,7 +498,7 @@ fn width_set_for_the_server() {
     let env = TestEnv::new("config-server-width");
     env.write_server_config("gband.opt.default_column_width = 1/3");
     let mut client = Attached::start(&env, 80, 24);
-    assert_eq!(open_second_window(&mut client, &env), (46, 26));
+    assert_eq!(open_second_window(&mut client, &env), (27, 26));
 }
 
 #[test]
@@ -528,9 +520,7 @@ fn broken_server_file_at_start() {
     env.write_server_config("gband.opt.default_column_width = 1/3\nerror('broken')\n");
     let mut client = Attached::start(&env, 120, 24);
     let expected = format!("server: {}:2: broken", env.server_lua().display());
-    client.wait_for("the error item", |screen| {
-        first_row(screen).starts_with("error ")
-    });
+    client.wait_for("the error marker", sidebar_error);
     error_logged(&env, &expected);
     client.wait_for_text("$");
     client.send(b"\x00n");
@@ -545,9 +535,7 @@ fn server_error_in_the_client() {
     env.write_server_config("gband.set {}\nlocal = 1\n");
     let client = Attached::start(&env, 120, 24);
     let expected = format!("server: {}:2:", env.server_lua().display());
-    client.wait_for("the error item", |screen| {
-        first_row(screen).starts_with("error ")
-    });
+    client.wait_for("the error marker", sidebar_error);
     error_logged(&env, &expected);
     wait_until(
         || {
@@ -563,9 +551,7 @@ fn client_file_not_evaluated() {
     let env = TestEnv::new("config-client-not-in-server");
     env.write_config("error('client only')\n");
     let client = Attached::start(&env, 120, 24);
-    client.wait_for("the error item", |screen| {
-        first_row(screen).starts_with("error ")
-    });
+    client.wait_for("the error marker", sidebar_error);
     error_logged(&env, "init.lua:1: client only");
     wait_until(
         || env.log_text("server").contains("listening"),
@@ -584,6 +570,6 @@ fn new_default_width() {
     env.write_server_config("gband.opt.default_column_width = 1/3");
     wait_for_reload(&env, "server", seen);
     let (left, width) = open_second_window(&mut client, &env);
-    assert_eq!(left + width, 80);
+    assert_eq!(left, 41);
     assert!((26..=27).contains(&width), "{width}");
 }

@@ -12,26 +12,12 @@ fn attached(env: &TestEnv) -> Attached {
     client
 }
 
-fn bar(screen: &Grid, row: usize) -> String {
-    let line = screen
-        .contents()
-        .lines()
-        .nth(row)
-        .unwrap_or_default()
-        .to_owned();
-    line.chars()
-        .take(20)
-        .collect::<String>()
-        .trim_end()
-        .to_owned()
-}
-
 fn navigation(screen: &Grid) -> bool {
-    bar(screen, 1) == "navigation"
+    sidebar_mode(screen) == "N"
 }
 
 fn interactive(screen: &Grid) -> bool {
-    bar(screen, 1) == "C-space navigation"
+    sidebar_mode(screen) == "I"
 }
 
 fn labelled(client: &mut Attached, label: &str) {
@@ -102,7 +88,7 @@ fn repeated_resize_then_escape() {
     client.send(b"\x00==");
     client.wait_for("a tile 56 columns wide", |screen| {
         let tiles = tiles(screen);
-        tiles.len() == 1 && tiles[0].left == 20 && tiles[0].right == 75
+        tiles.len() == 1 && tiles[0].left == 1 && tiles[0].right == 56
     });
     client.send(b"\x1b");
     client.wait_for("interactive mode", interactive);
