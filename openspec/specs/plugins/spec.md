@@ -57,7 +57,7 @@ After the init file returns, loading SHALL source, for each plugin in runtimepat
 - **THEN** the client's list after loading is `init`, `alpha`, `beta`, where `init` is appended by `user/init.lua`
 
 #### Scenario: One file per side
-- **WHEN** a plugin holds a valid manifest, a `server.lua` that appends `s` to a pane's state key `log`, and a `client.lua` that raises an error
+- **WHEN** a plugin holds a valid manifest, a `server.lua` that appends `s` to a window's state key `log`, and a `client.lua` that raises an error
 - **THEN** the server sources only `server.lua` and reports no error
 - **AND** the client sources only `client.lua` and reports its error
 
@@ -157,8 +157,8 @@ A plugin error while a callback runs after loading SHALL be reported, and SHALL 
 - **THEN** the second handler runs, the error is reported, and the first handler runs again on the next focus change
 
 #### Scenario: Error in a server handler
-- **WHEN** a plugin's `server.lua` handler of `PaneOpened` raises an error, and another plugin's handler of `PaneOpened` sets a pane state key
-- **THEN** the key is set, and the server keeps running its panes
+- **WHEN** a plugin's `server.lua` handler of `WindowOpened` raises an error, and another plugin's handler of `WindowOpened` sets a window state key
+- **THEN** the key is set, and the server keeps running its windows
 
 ### Requirement: Instruction limit
 A run of Lua code started by the runtime, whether the init file, a plugin file, a plugin's setup or one call of a callback, SHALL be stopped with an error once it has executed 100,000,000 Lua VM instructions. A stopped plugin file, setup or callback SHALL be a plugin error that marks its plugin failed, as "Plugin errors" defines, also when the callback runs after loading. A stopped init file SHALL fail the load. A stopped callback that belongs to no plugin SHALL be reported as an error raised in it.
@@ -204,7 +204,7 @@ A runtimepath entry other than the `user` directory SHALL be a plugin when it ho
 - **THEN** a plugin error at that line is reported and no binding is made
 
 ### Requirement: Side guard
-Each process's `gband` table SHALL hold only the API of its side. Reading a field of `gband`, or of `gband.action`, that only another side provides SHALL raise an error naming the field and the side that provides it, at the line of the read. The fields only the client provides SHALL be `bind`, `unbind`, `spawn`, `keymap`, `ui`, `hl`, `colorscheme`, `layout`, `view`, `pane`, `band`, `win`, `rpc`, `notify`, `bell`, `clipboard`, `open`, and the view and client actions in `gband.action`. The fields only the server provides SHALL be `sessions` and `session`. Every other field the plugins, configuration, lua-events and lua-commands capabilities define SHALL exist on the client and the server, with each side's own behaviour where the server-runtime capability defines one. The test side's `gband` SHALL hold only `side` and `api_version`; reading any field that the client or the server provides there SHALL raise an error naming the field and the sides that provide it.
+Each process's `gband` table SHALL hold only the API of its side. Reading a field of `gband`, or of `gband.action`, that only another side provides SHALL raise an error naming the field and the side that provides it, at the line of the read. The fields only the client provides SHALL be `bind`, `unbind`, `spawn`, `keymap`, `ui`, `hl`, `colorscheme`, `layout`, `view`, `window`, `band`, `win`, `rpc`, `notify`, `bell`, `clipboard`, `open`, and the view and client actions in `gband.action`. The fields only the server provides SHALL be `sessions` and `session`. Every other field the plugins, configuration, lua-events and lua-commands capabilities define SHALL exist on the client and the server, with each side's own behaviour where the server-runtime capability defines one. The test side's `gband` SHALL hold only `side` and `api_version`; reading any field that the client or the server provides there SHALL raise an error naming the field and the sides that provide it.
 
 #### Scenario: Client API in the server
 - **WHEN** line 3 of a plugin's `server.lua` reads `gband.keymap`

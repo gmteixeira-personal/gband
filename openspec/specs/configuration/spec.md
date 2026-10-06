@@ -54,15 +54,15 @@ The client configuration file SHALL be `user/init.lua` in the configuration dire
 #### Scenario: User file replaces the defaults
 - **WHEN** `user/init.lua` holds only `gband.bind("alt+h", gband.action.focus_column_left)` and a client attaches
 - **THEN** Alt+H focuses the column to the left
-- **AND** Ctrl+Space then `q` reaches the focused pane as `\x00` and then `q`
+- **AND** Ctrl+Space then `q` reaches the focused window as `\x00` and then `q`
 
 #### Scenario: Plugin files see the init file's options
 - **WHEN** `user/init.lua` sets `gband.opt.prefix` to `"ctrl+b"` and a plugin's `client.lua` reads `gband.opt.prefix`
 - **THEN** `client.lua` reads `"ctrl+b"`
 
 #### Scenario: Plugin sets a width option
-- **WHEN** a plugin's `server.lua` sets `gband.opt.default_column_width` to `1/3`, and a client starts a server and opens a pane
-- **THEN** the new pane's column has width 1/3
+- **WHEN** a plugin's `server.lua` sets `gband.opt.default_column_width` to `1/3`, and a client starts a server and opens a window
+- **THEN** the new window's column has width 1/3
 
 ### Requirement: Defaults use the public API
 The default configuration SHALL use only the `gband` API that the configuration file can use. It SHALL make every key binding with `gband.keymap.set`, giving each the description of the action it binds, as the actions capability lists them. Evaluated alone, it SHALL produce the declared defaults of the options and the default key bindings of the client-attach capability, and SHALL set up, with `gband.plugin` and no options, the bundled segment plugins `gband.statusline.band`, `gband.statusline.mode`, `gband.statusline.hints` and `gband.statusline.position`, in that order. The default key bindings and the setup of the segment plugins SHALL exist only in the default configuration.
@@ -112,9 +112,9 @@ Reading `gband.opt.<name>` SHALL return the option's current value: a key name f
 Options SHALL be set and declared only while the configuration loads. Setting or declaring an option later SHALL be an error. Each process SHALL use the options as they stand when loading finishes, whichever of `gband.set` and `gband.opt` set them.
 
 #### Scenario: Default prefix
-- **WHEN** `user/init.lua` binds `prefix q` to `gband.action.close_pane` and does not set `prefix`, and two panes are open
-- **THEN** Ctrl+Space then `q` closes the focused pane
-- **AND** Ctrl+A reaches the focused pane as `\x01`
+- **WHEN** `user/init.lua` binds `prefix q` to `gband.action.close_window` and does not set `prefix`, and two windows are open
+- **THEN** Ctrl+Space then `q` closes the focused window
+- **AND** Ctrl+A reaches the focused window as `\x01`
 
 #### Scenario: Partial update
 - **WHEN** `user/server.lua` calls `gband.set { default_column_width = 1/3 }`
@@ -228,7 +228,7 @@ A key list of more than two keys, two keys whose first is not `prefix`, an inval
 
 #### Scenario: Override a default
 - **WHEN** `user/init.lua` is a copy of `defaults/init.lua` that then binds `prefix q` to `gband.action.detach`
-- **THEN** Ctrl+Space then `q` detaches, and no binding closes the pane
+- **THEN** Ctrl+Space then `q` detaches, and no binding closes the window
 
 #### Scenario: Unbind a default
 - **WHEN** `user/init.lua` is a copy of `defaults/init.lua` that then calls `gband.unbind("prefix q")`
@@ -237,7 +237,7 @@ A key list of more than two keys, two keys whose first is not `prefix`, an inval
 #### Scenario: Prefix changed after binding
 - **WHEN** `user/init.lua` binds `prefix h` to `gband.action.focus_column_left` and later sets `prefix` to `"ctrl+b"`
 - **THEN** Ctrl+B then `h` focuses the column to the left
-- **AND** Ctrl+Space reaches the focused pane as `\x00`
+- **AND** Ctrl+Space reaches the focused window as `\x00`
 
 #### Scenario: Direct binding of the prefix key
 - **WHEN** line 4 of `user/init.lua` binds `ctrl+space` while the prefix is `ctrl+space`
@@ -283,19 +283,19 @@ A key list of more than two keys, two keys whose first is not `prefix`, an inval
 - **THEN** loading fails with an error at `user/init.lua` line 3 naming `detach`
 
 ### Requirement: Spawn a program
-`gband.spawn` SHALL take a table whose optional `cmd` field is a string or a list of strings, and whose optional `band` and `after` fields name a band and a pane as the `open_pane` target does in the lua-control capability. Called inside a binding function, it SHALL dispatch open pane naming the program to run: a string as a command line the user's shell runs, a list as the program and its arguments, and no `cmd` as the user's shell. With neither `band` nor `after`, open pane SHALL be resolved as the actions capability defines. With either, it SHALL name the band and the pane to open after as that target does. A `cmd` of any other type, an empty list, a `band` or `after` that the target would refuse, or any other field SHALL be an error.
+`gband.spawn` SHALL take a table whose optional `cmd` field is a string or a list of strings, and whose optional `band` and `after` fields name a band and a window as the `open_window` target does in the lua-control capability. Called inside a binding function, it SHALL dispatch open window naming the program to run: a string as a command line the user's shell runs, a list as the program and its arguments, and no `cmd` as the user's shell. With neither `band` nor `after`, open window SHALL be resolved as the actions capability defines. With either, it SHALL name the band and the window to open after as that target does. A `cmd` of any other type, an empty list, a `band` or `after` that the target would refuse, or any other field SHALL be an error.
 
 #### Scenario: Spawn a command line
 - **WHEN** `init.lua` binds `alt+n` to `function() gband.spawn({ cmd = "fish" }) end` and the user presses Alt+N
-- **THEN** a new pane opens right of the focused pane's column, running `fish`, and is focused
+- **THEN** a new window opens right of the focused window's column, running `fish`, and is focused
 
 #### Scenario: Spawn an argument list
 - **WHEN** a binding function calls `gband.spawn({ cmd = { "htop", "-d", "10" } })`
-- **THEN** a new pane runs `htop` with the arguments `-d` and `10`
+- **THEN** a new window runs `htop` with the arguments `-d` and `10`
 
 #### Scenario: Spawn after a named window
-- **WHEN** band 1 holds columns with panes 1 and 2, pane 2 is focused, and a binding function calls `gband.spawn({ cmd = "fish", after = 1 })`
-- **THEN** band 1 holds pane 1's column, a new column running `fish`, and pane 2's column, in that order
+- **WHEN** band 1 holds columns with windows 1 and 2, window 2 is focused, and a binding function calls `gband.spawn({ cmd = "fish", after = 1 })`
+- **THEN** band 1 holds window 1's column, a new column running `fish`, and window 2's column, in that order
 
 #### Scenario: Unknown field
 - **WHEN** a binding function calls `gband.spawn({ cmd = "fish", width = 1/2 })`
@@ -305,7 +305,7 @@ A key list of more than two keys, two keys whose first is not `prefix`, an inval
 A callback SHALL be a binding function, the function of a registered action, the function of a command, or an event handler. A callback SHALL run in the client, never in the server. A binding function SHALL run with no arguments when its keys are pressed. Calling an action value, `gband.spawn` or `gband.keymap.enter` outside a callback SHALL be a configuration error. Wherever this capability allows a call inside a binding function, the call SHALL be allowed inside any callback. An error raised while a callback runs SHALL be reported as "Configuration errors" defines, and the actions the callback dispatched before the error SHALL stand.
 
 #### Scenario: Action during evaluation
-- **WHEN** line 7 of `init.lua` calls `gband.action.close_pane()` at the top level
+- **WHEN** line 7 of `init.lua` calls `gband.action.close_window()` at the top level
 - **THEN** loading fails with an error at `init.lua` line 7
 
 #### Scenario: Error in a binding function
@@ -315,7 +315,7 @@ A callback SHALL be a binding function, the function of a registered action, the
 
 #### Scenario: Spawn from an event handler
 - **WHEN** a `User` handler calls `gband.spawn({ cmd = "fish" })` and a binding function emits that event
-- **THEN** a new pane running `fish` opens
+- **THEN** a new window running `fish` opens
 
 ### Requirement: Configuration errors
 A configuration error SHALL be reported as the file's path, a colon, the line, a colon and a message. The line SHALL be the line of a syntax error, the line where a runtime error was raised, or the line of the call or assignment that received the invalid value. A plugin error SHALL be reported the same way, preceded by the plugin's name, a colon and a space. Each process SHALL record every configuration error and plugin error of its own Lua in its log. The client SHALL also report the errors of the server's Lua that the server sends it, as the server-runtime capability defines, preceded by `server: `, and the plugin requirement errors of the plugin-bridge capability. The client SHALL show the latest of all these until its configuration next loads with none of its own, or a newer one replaces it. While the status line is drawn, the client SHALL show it in the status line's error item, as the status-line capability defines. While no status line is drawn, the client SHALL show it as a banner on the bottom row of the ribbon area, over the ribbon and cut to the terminal's width. Neither SHALL change the size the client reports.
@@ -356,7 +356,7 @@ Loading SHALL apply all of a configuration or none of it. An error raised by the
 #### Scenario: Broken edit keeps the running configuration
 - **WHEN** `user/init.lua` binds `alt+h` and has loaded, and the user saves a version that binds `alt+j` and has a syntax error
 - **THEN** Alt+H still focuses the column to the left
-- **AND** Alt+J reaches the focused pane
+- **AND** Alt+J reaches the focused window
 
 #### Scenario: Plugin error keeps the rest
 - **WHEN** `user/init.lua` binds `alt+h` and calls `gband.plugin("broken")`, whose `setup` raises an error
@@ -380,11 +380,11 @@ Each process SHALL watch the `user` directory and every directory beneath it. Wi
 #### Scenario: New default width
 - **WHEN** a session holds a column of width 1/2 and the user sets `default_column_width` to `1/3` in `user/server.lua`
 - **THEN** that column keeps width 1/2
-- **AND** a pane opened after the reload has a column of width 1/3
+- **AND** a window opened after the reload has a column of width 1/3
 
 #### Scenario: File removed
 - **WHEN** `user/init.lua` bound `alt+h` and the user deletes it
-- **THEN** the default configuration applies and Alt+H reaches the focused pane
+- **THEN** the default configuration applies and Alt+H reaches the focused window
 
 #### Scenario: Defaults file edited while running
 - **WHEN** a client is attached and the user saves a change to `defaults/init.lua`

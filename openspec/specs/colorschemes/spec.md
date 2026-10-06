@@ -44,12 +44,12 @@ After the configuration has loaded, each call that loads a colorscheme SHALL emi
 - **THEN** `StatusLineAccent` resolves to `{ fg = 2 }`
 
 #### Scenario: Plugin default kept
-- **WHEN** the plugin `pane` declares the default `PaneSegment` `{ fg = 4 }` and a callback calls `gband.colorscheme("dusk")`, whose file does not mention `PaneSegment`
-- **THEN** `PaneSegment` resolves to `{ fg = 4 }`
+- **WHEN** the plugin `window` declares the default `WindowSegment` `{ fg = 4 }` and a callback calls `gband.colorscheme("dusk")`, whose file does not mention `WindowSegment`
+- **THEN** `WindowSegment` resolves to `{ fg = 4 }`
 
 #### Scenario: Colorscheme overrides a plugin default
-- **WHEN** the plugin `pane` declares the default `PaneSegment` `{ fg = 4 }` after `user/init.lua` called `gband.colorscheme("dusk")`, whose file sets `PaneSegment` to `{ fg = "#00ff00" }`
-- **THEN** `PaneSegment` resolves to `{ fg = "#00ff00" }`
+- **WHEN** the plugin `window` declares the default `WindowSegment` `{ fg = 4 }` after `user/init.lua` called `gband.colorscheme("dusk")`, whose file sets `WindowSegment` to `{ fg = "#00ff00" }`
+- **THEN** `WindowSegment` resolves to `{ fg = "#00ff00" }`
 
 #### Scenario: Default at start
 - **WHEN** no file calls `gband.colorscheme`

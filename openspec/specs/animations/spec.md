@@ -7,11 +7,11 @@ Defines how the client moves its drawing from one state of the layout and view t
 ## Requirements
 
 ### Requirement: Animated presentation
-The client SHALL separate what it draws from what the layout and its view decide. The layout, the tile geometry, the focused pane, the viewed band and each camera SHALL change at once, as the layout, layout-view and client-attach capabilities define. Only the drawn camera, the drawn band and each tile's drawn position and size SHALL move toward those targets over time. Key input, pastes and session actions SHALL go to the newly focused pane from the moment focus changes, whether or not an animation is running. When no animation is running, the drawn state SHALL equal the target state.
+The client SHALL separate what it draws from what the layout and its view decide. The layout, the tile geometry, the focused window, the viewed band and each camera SHALL change at once, as the layout, layout-view and client-attach capabilities define. Only the drawn camera, the drawn band and each tile's drawn position and size SHALL move toward those targets over time. Key input, pastes and session actions SHALL go to the newly focused window from the moment focus changes, whether or not an animation is running. When no animation is running, the drawn state SHALL equal the target state.
 
 #### Scenario: Typing during a scroll
 - **WHEN** the client focuses the column to the right, the camera starts to scroll, and the user types `echo right` and Enter before the scroll ends
-- **THEN** `right` appears in the newly focused pane only
+- **THEN** `right` appears in the newly focused window only
 
 #### Scenario: At rest
 - **WHEN** no layout or view change has happened for 400 ms
@@ -61,19 +61,19 @@ When the viewed band changes to another band that is still in the layout, the cl
 - **THEN** the slide continues downward without a jump and ends showing B3
 
 #### Scenario: Old band removed
-- **WHEN** the client switches from B1 to B2 and the last pane of B1 exits before the slide ends
+- **WHEN** the client switches from B1 to B2 and the last window of B1 exits before the slide ends
 - **THEN** the client shows B2 at rest from the next frame
 
 ### Requirement: Tile movement
-When the layout changes, each pane of the viewed band that it held both before and after the change SHALL have its drawn strip position and its drawn row animated from where it was drawn to its new tile position. A pane new to the band SHALL be drawn at its tile position from the first frame. A pane that left the band SHALL no longer be drawn. Where tiles overlap while they move, the focused tile SHALL be drawn over the others, and the others SHALL be drawn in layout order. Panes of bands that are not drawn SHALL NOT animate.
+When the layout changes, each window of the viewed band that it held both before and after the change SHALL have its drawn strip position and its drawn row animated from where it was drawn to its new tile position. A window new to the band SHALL be drawn at its tile position from the first frame. A window that left the band SHALL no longer be drawn. Where tiles overlap while they move, the focused tile SHALL be drawn over the others, and the others SHALL be drawn in layout order. Windows of bands that are not drawn SHALL NOT animate.
 
 #### Scenario: Open a window between two columns
-- **WHEN** the viewed band holds columns A and B of width 1/3 on a 90×30 area, A is focused, and a pane opens right of A
+- **WHEN** the viewed band holds columns A and B of width 1/3 on a 90×30 area, A is focused, and a window opens right of A
 - **THEN** B's tile is drawn starting at strip position 30 in the first frame
 - **AND** it slides right until it starts at strip position 75, after the new 45-cell column
 
 #### Scenario: Close a column
-- **WHEN** the viewed band holds columns A, B and C, and B's only pane exits
+- **WHEN** the viewed band holds columns A, B and C, and B's only window exits
 - **THEN** C's tile slides left from B's end to where B started
 
 #### Scenario: Expel to the right
@@ -81,7 +81,7 @@ When the layout changes, each pane of the viewed band that it held both before a
 - **THEN** P2's tile moves from the lower half of the old column toward the top of the new column to its right
 
 ### Requirement: Resize morph
-When a pane's tile width or height changes, the client SHALL animate the tile's drawn width and height from its drawn size to its new size. The tile's border SHALL be drawn at the drawn size. The pane's grid SHALL be drawn from the inside of the tile's top-left corner and cut at the drawn border. Cells inside the border that the grid does not cover SHALL be blank. The morph SHALL NOT change when or how the server resizes the pane.
+When a window's tile width or height changes, the client SHALL animate the tile's drawn width and height from its drawn size to its new size. The tile's border SHALL be drawn at the drawn size. The window's grid SHALL be drawn from the inside of the tile's top-left corner and cut at the drawn border. Cells inside the border that the grid does not cover SHALL be blank. The morph SHALL NOT change when or how the server resizes the window.
 
 #### Scenario: Cycle a width
 - **WHEN** the focused column is 40 cells wide on an 80×24 area and its width is cycled to 2/3
@@ -89,7 +89,7 @@ When a pane's tile width or height changes, the client SHALL animate the tile's 
 - **AND** later frames draw it wider, with the right border moving, until it is 53 cells wide
 
 #### Scenario: Shrinking cuts the grid
-- **WHEN** a tile shrinks from 53 to 26 cells wide while the pane's grid is still 51 columns wide
+- **WHEN** a tile shrinks from 53 to 26 cells wide while the window's grid is still 51 columns wide
 - **THEN** each frame shows only the grid's columns that fit inside the drawn border
 
 ### Requirement: Cases that snap
@@ -116,7 +116,7 @@ While the drawn camera, the drawn vertical position, or the focused tile's drawn
 #### Scenario: Cursor returns after a scroll
 - **WHEN** focus moves to a column that needs the camera to scroll
 - **THEN** the cursor is hidden while the camera moves
-- **AND** it sits at the focused pane's cursor once the camera reaches its target
+- **AND** it sits at the focused window's cursor once the camera reaches its target
 
 ### Requirement: Turning animations off
 The client SHALL read the environment variable `GBAND_ANIMATIONS` when it starts. When the value is `off`, every change SHALL snap as if every case snapped, and the client SHALL draw exactly as the client-attach capability defines without animations. When the variable is unset or `on`, animations SHALL be on. Any other value SHALL be logged as a warning in the client's log, and animations SHALL be on.
@@ -130,14 +130,14 @@ The client SHALL read the environment variable `GBAND_ANIMATIONS` when it starts
 - **THEN** the client's log holds a warning naming the value
 - **AND** animations are on
 
-### Requirement: Floating panes at rest
-The client SHALL draw every floating pane at its box, as the client-attach capability places it, in every frame, without animating its position or size. A pane that moves from a column to the floating layer SHALL be drawn at its box from the first frame. A pane that moves from the floating layer to a column SHALL be drawn at its tile position from the first frame, as a pane new to the band is. The tiles of the other panes SHALL move as "Tile movement" defines.
+### Requirement: Floating windows at rest
+The client SHALL draw every floating window at its box, as the client-attach capability places it, in every frame, without animating its position or size. A window that moves from a column to the floating layer SHALL be drawn at its box from the first frame. A window that moves from the floating layer to a column SHALL be drawn at its tile position from the first frame, as a window new to the band is. The tiles of the other windows SHALL move as "Tile movement" defines.
 
 #### Scenario: Float a window between two columns
-- **WHEN** the viewed band holds columns A, B and C, and B's only pane is floated
-- **THEN** the first frame draws that pane at its box
+- **WHEN** the viewed band holds columns A, B and C, and B's only window is floated
+- **THEN** the first frame draws that window at its box
 - **AND** C's tile slides left from B's end to where B started
 
 #### Scenario: Move a floating window
-- **WHEN** a floating pane is moved right by one step
+- **WHEN** a floating window is moved right by one step
 - **THEN** the next frame draws its box at the new column

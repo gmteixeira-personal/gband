@@ -10,31 +10,31 @@ Every change to the layout SHALL produce the events that describe it, in the ord
 
 | event | content |
 |---|---|
-| pane opened | the pane, and the band it was placed in |
-| pane closed | the pane, and the band it left |
-| pane moved | the pane, and the band, column and row it now occupies |
+| window opened | the window, and the band it was placed in |
+| window closed | the window, and the band it left |
+| window moved | the window, and the band, column and row it now occupies |
 | column moved | the band, the column's old position, and its new position |
 | column width changed | the band, the column, its new width and its full-width flag |
-| pane heights changed | the band, the column, and the height of each of its panes, top to bottom: automatic with its weight, or fixed with its rows |
-| pane floated | the pane, the band, and its box record: column, row, width, full-width flag and rows |
-| pane tiled | the pane, the band, the column it now occupies, and that column's width and full-width flag |
-| floating box changed | the pane, the band, and its new box record |
+| window heights changed | the band, the column, and the height of each of its windows, top to bottom: automatic with its weight, or fixed with its rows |
+| window floated | the window, the band, and its box record: column, row, width, full-width flag and rows |
+| window tiled | the window, the band, the column it now occupies, and that column's width and full-width flag |
+| floating box changed | the window, the band, and its new box record |
 | band added | the band and its position |
 | band removed | the band |
 
-A pane opened or moved into a column SHALL take an automatic height of weight 1 there, and the last pane left in a column with an automatic height SHALL take weight 1, as the layout capability defines, without a pane heights changed event. A pane that floats or opens floating SHALL produce no pane heights changed event for the column it left. Moving a pane within its column SHALL produce one pane moved event for each of the two panes that swapped, in order from the pane named by the action, and no pane heights changed event. A pane that opens floating SHALL produce pane opened and then pane floated.
+A window opened or moved into a column SHALL take an automatic height of weight 1 there, and the last window left in a column with an automatic height SHALL take weight 1, as the layout capability defines, without a window heights changed event. A window that floats or opens floating SHALL produce no window heights changed event for the column it left. Moving a window within its column SHALL produce one window moved event for each of the two windows that swapped, in order from the window named by the action, and no window heights changed event. A window that opens floating SHALL produce window opened and then window floated.
 
 #### Scenario: Open in the empty band
-- **WHEN** a pane opens in the last, empty band
-- **THEN** the events are pane opened for that band, then band added for the new empty band below it
+- **WHEN** a window opens in the last, empty band
+- **THEN** the events are window opened for that band, then band added for the new empty band below it
 
 #### Scenario: Last window of a middle band closes
-- **WHEN** the only pane of a band that is not the last one closes
-- **THEN** the events are pane closed, then band removed
+- **WHEN** the only window of a band that is not the last one closes
+- **THEN** the events are window closed, then band removed
 
 #### Scenario: Consume into a neighbour
-- **WHEN** a pane alone in its column is consumed into the column on its left
-- **THEN** the events are one pane moved for that pane, naming the left column and its new row
+- **WHEN** a window alone in its column is consumed into the column on its left
+- **THEN** the events are one window moved for that window, naming the left column and its new row
 
 #### Scenario: Consume at the edge
 - **WHEN** a consume or expel leaves the layout unchanged
@@ -42,7 +42,7 @@ A pane opened or moved into a column SHALL take an automatic height of weight 1 
 
 #### Scenario: Grow a window's height
 - **WHEN** the screen area is 80×24, the second column of a band holds P1 above P2, both with automatic heights of weight 1, and P1's height is grown
-- **THEN** the events are one pane heights changed naming that band, column 1, P1 fixed at 14 rows and P2 automatic with weight 1
+- **THEN** the events are one window heights changed naming that band, column 1, P1 fixed at 14 rows and P2 automatic with weight 1
 
 #### Scenario: Grow a column's width
 - **WHEN** a column of width 1/2 is grown
@@ -54,34 +54,34 @@ A pane opened or moved into a column SHALL take an automatic height of weight 1 
 
 #### Scenario: Swap two windows
 - **WHEN** a column at position 2 holds P1 above P2, and P1 is moved down
-- **THEN** the events are pane moved for P1 naming column 2 and row 1, then pane moved for P2 naming column 2 and row 0
+- **THEN** the events are window moved for P1 naming column 2 and row 1, then window moved for P2 naming column 2 and row 0
 
 #### Scenario: Float a window
 - **WHEN** the screen area is 80×24, the default column width is 1/2, and P2, alone in a column, is floated
-- **THEN** the events are one pane floated naming P2, its band, column 20, row 2, width 1/2, full width off and 20 rows
+- **THEN** the events are one window floated naming P2, its band, column 20, row 2, width 1/2, full width off and 20 rows
 
 #### Scenario: Move a floating window
-- **WHEN** the area is 80×24 and a floating pane whose box starts at column 20 is moved right
+- **WHEN** the area is 80×24 and a floating window whose box starts at column 20 is moved right
 - **THEN** the events are one floating box changed naming its new column 28
 
 #### Scenario: Tile a window
-- **WHEN** a floating pane of width 1/3 is tiled as the band's second column
-- **THEN** the events are one pane tiled naming column 1, width 1/3 and full width off
+- **WHEN** a floating window of width 1/3 is tiled as the band's second column
+- **THEN** the events are one window tiled naming column 1, width 1/3 and full width off
 
 #### Scenario: Open floating in the empty band
-- **WHEN** a floating pane opens in the last, empty band
-- **THEN** the events are pane opened, pane floated, then band added
+- **WHEN** a floating window opens in the last, empty band
+- **THEN** the events are window opened, window floated, then band added
 
 ### Requirement: Session event bus
-The server SHALL publish every layout event, every pane exit with its exit status, and every client attaching and detaching, as session events. It SHALL publish them on one bus, in the order the session applied the changes. Every subscriber SHALL receive the events in that order. A subscriber that falls behind SHALL be told how many events it missed, and SHALL NOT slow the session or other subscribers. The server SHALL record every session event in its log at debug level.
+The server SHALL publish every layout event, every window exit with its exit status, and every client attaching and detaching, as session events. It SHALL publish them on one bus, in the order the session applied the changes. Every subscriber SHALL receive the events in that order. A subscriber that falls behind SHALL be told how many events it missed, and SHALL NOT slow the session or other subscribers. The server SHALL record every session event in its log at debug level.
 
 #### Scenario: Window opened through the bus
-- **WHEN** a subscriber is on the bus and a client opens a pane
-- **THEN** the subscriber receives pane opened for the new pane before any later event
+- **WHEN** a subscriber is on the bus and a client opens a window
+- **THEN** the subscriber receives window opened for the new window before any later event
 
 #### Scenario: Exit then close
-- **WHEN** a pane's program exits
-- **THEN** the subscriber receives the pane exit with its status, then pane closed
+- **WHEN** a window's program exits
+- **THEN** the subscriber receives the window exit with its status, then window closed
 
 #### Scenario: Attach and detach
 - **WHEN** a client attaches and then detaches

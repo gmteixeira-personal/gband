@@ -20,8 +20,8 @@ The client SHALL run the handlers of an event in the order they were registered,
 - **THEN** the handler runs once
 
 #### Scenario: Payload copies are separate
-- **WHEN** two handlers of `FocusChanged` run and the first sets `pane` in its payload to nil
-- **THEN** the second handler's payload still names the focused pane
+- **WHEN** two handlers of `FocusChanged` run and the first sets `window` in its payload to nil
+- **THEN** the second handler's payload still names the focused window
 
 #### Scenario: Unknown event
 - **WHEN** line 2 of `user/init.lua` calls `gband.on("FocusChange", fn)`
@@ -32,8 +32,8 @@ The client SHALL run the handlers of an event in the order they were registered,
 - **THEN** the handler runs once, for `agent.done`
 
 #### Scenario: Server event name in the client
-- **WHEN** line 4 of `user/init.lua` calls `gband.on("PaneOutput", fn)`
-- **THEN** loading fails with an error at `user/init.lua` line 4 naming `PaneOutput`
+- **WHEN** line 4 of `user/init.lua` calls `gband.on("WindowOutput", fn)`
+- **THEN** loading fails with an error at `user/init.lua` line 4 naming `WindowOutput`
 
 ### Requirement: Handler groups
 `gband.augroup(name, opts)` SHALL return the integer id of the group `name`, the same id each time within one load. When `opts.clear` is `true` or absent, it SHALL first remove every handler in the group. When `opts.clear` is `false`, it SHALL keep them.
@@ -63,59 +63,59 @@ The client SHALL emit these events, and no other built-in events:
 | event | payload | emitted when |
 |---|---|---|
 | `Attached` | `session`: the session's name | once, after the client attaches and before it handles its first key |
-| `FocusChanged` | `pane`, `previous`: pane numbers, nil when no pane | the focused pane differs from before a server message, a dispatched action or a resize was handled |
+| `FocusChanged` | `window`, `previous`: window numbers, nil when no window | the focused window differs from before a server message, a dispatched action or a resize was handled |
 | `BandChanged` | `band`, `previous`: band numbers | the viewed band differs from before a server message, a dispatched action or a resize was handled |
-| `PaneOpened` | `pane`, `band` | a layout holds a pane the client's previous layout did not |
-| `PaneClosed` | `pane`, `band`: the band the pane was in | the client's previous layout held a pane a new layout does not |
-| `LayoutChanged` | empty | a layout the client receives differs from the client's previous layout in its bands, columns, panes, widths or floating panes and their boxes |
+| `WindowOpened` | `window`, `band` | a layout holds a window the client's previous layout did not |
+| `WindowClosed` | `window`, `band`: the band the window was in | the client's previous layout held a window a new layout does not |
+| `LayoutChanged` | empty | a layout the client receives differs from the client's previous layout in its bands, columns, windows, widths or floating windows and their boxes |
 | `TerminalResized` | `cols`, `rows` | the client's terminal changes size |
 | `ConfigReloaded` | empty | a reload succeeded and the new configuration is in use, to the handlers of the new configuration |
 | `KeyTableChanged` | `table`, `previous`: key table names | the active key table changes, as the client-attach capability defines |
 | `HighlightChanged` | `group`: the group's name | a group's settings change after the configuration has loaded, as the highlights capability defines |
 | `ColorschemeChanged` | `name`, `previous`: colorscheme names | a colorscheme loads after the configuration has loaded, as the colorschemes capability defines |
 | `ServerEvent` | `name`, `data`, `queued`, `time` | the server sends an event, as the plugin-bridge capability defines |
-| `PaneStateChanged` | `pane`, `key`, `value`, `previous` | the server changes a pane's state, as the plugin-bridge capability defines |
+| `WindowStateChanged` | `window`, `key`, `value`, `previous` | the server changes a window's state, as the plugin-bridge capability defines |
 
-The first layout after attaching SHALL emit no `PaneOpened` and no `LayoutChanged`, and establishing the client's first view SHALL emit neither `FocusChanged` nor `BandChanged`. A layout that opens or closes a pane SHALL emit `LayoutChanged` after its `PaneOpened` and `PaneClosed` events.
+The first layout after attaching SHALL emit no `WindowOpened` and no `LayoutChanged`, and establishing the client's first view SHALL emit neither `FocusChanged` nor `BandChanged`. A layout that opens or closes a window SHALL emit `LayoutChanged` after its `WindowOpened` and `WindowClosed` events.
 
 #### Scenario: Focus change
-- **WHEN** panes 1 and 2 are open with pane 2 focused and the user focuses the column to the left
-- **THEN** `FocusChanged` runs with `pane` 1 and `previous` 2
+- **WHEN** windows 1 and 2 are open with window 2 focused and the user focuses the column to the left
+- **THEN** `FocusChanged` runs with `window` 1 and `previous` 2
 
 #### Scenario: Band change
 - **WHEN** the user views the band below the first band
 - **THEN** `BandChanged` runs with the second band's number as `band` and the first's as `previous`
 
 #### Scenario: Window opened and closed
-- **WHEN** the user opens a pane and then closes it
-- **THEN** `PaneOpened` runs once naming the new pane and its band, then `PaneClosed` runs once naming it
+- **WHEN** the user opens a window and then closes it
+- **THEN** `WindowOpened` runs once naming the new window and its band, then `WindowClosed` runs once naming it
 
 #### Scenario: Layout change without a window change
-- **WHEN** two panes sit in two columns and the user consumes the focused pane into the column to its left
-- **THEN** `LayoutChanged` runs once, and neither `PaneOpened` nor `PaneClosed` runs
+- **WHEN** two windows sit in two columns and the user consumes the focused window into the column to its left
+- **THEN** `LayoutChanged` runs once, and neither `WindowOpened` nor `WindowClosed` runs
 
 #### Scenario: Nothing at attach
-- **WHEN** a client attaches to a session holding three panes, one of which has a non-empty state
-- **THEN** `Attached` runs once and no `PaneOpened`, `LayoutChanged`, `FocusChanged`, `BandChanged` or `PaneStateChanged` runs
+- **WHEN** a client attaches to a session holding three windows, one of which has a non-empty state
+- **THEN** `Attached` runs once and no `WindowOpened`, `LayoutChanged`, `FocusChanged`, `BandChanged` or `WindowStateChanged` runs
 
 #### Scenario: Reload
 - **WHEN** `user/init.lua` registers a `ConfigReloaded` handler and the user saves it unchanged
 - **THEN** the handler registered by the reloaded file runs once
 
 #### Scenario: State change
-- **WHEN** the server sets pane 1's `agent` to `"waiting"`
-- **THEN** `PaneStateChanged` runs once with `pane` 1, `key` `"agent"`, `value` `"waiting"` and `previous` nil
+- **WHEN** the server sets window 1's `agent` to `"waiting"`
+- **THEN** `WindowStateChanged` runs once with `window` 1, `key` `"agent"`, `value` `"waiting"` and `previous` nil
 
 #### Scenario: Floating box moved
-- **WHEN** a floating pane's box moves one step right and the client receives the new layout
+- **WHEN** a floating window's box moves one step right and the client receives the new layout
 - **THEN** `LayoutChanged` runs once
 
 ### Requirement: Actions from handlers
 A handler MAY call action values, `gband.spawn` and `gband.keymap.enter` as a binding function does. The actions it dispatches SHALL run after it returns, in the order dispatched. Events that those actions cause SHALL be emitted in turn. An event emitted while ten events are already being delivered, each caused by the one before, SHALL NOT be delivered, and the process SHALL record a warning in its log.
 
 #### Scenario: Handler dispatches an action
-- **WHEN** a `PaneOpened` handler calls `gband.action.focus_column_left()` and the user opens a pane right of the only pane
-- **THEN** the first pane is focused
+- **WHEN** a `WindowOpened` handler calls `gband.action.focus_column_left()` and the user opens a window right of the only window
+- **THEN** the first window is focused
 
 #### Scenario: Event loop is cut
 - **WHEN** a `FocusChanged` handler always calls `gband.action.focus_column_left()` if the right column is focused and `gband.action.focus_column_right()` otherwise, and the user changes focus once

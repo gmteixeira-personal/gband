@@ -17,7 +17,7 @@ The `gband` binary SHALL accept the subcommands `server`, `attach`, `list-sessio
 
 #### Scenario: Server runs until its program exits
 - **WHEN** the user runs `gband server` with the default shell
-- **THEN** the process keeps running until every pane's shell in every session has exited
+- **THEN** the process keeps running until every window's shell in every session has exited
 
 #### Scenario: Run attach
 - **WHEN** the user runs `gband attach` and then detaches
@@ -124,11 +124,11 @@ Giving both options, a name that breaks the rule, or an empty path SHALL be an i
 - **THEN** the client connects to `/home/u/repo/target/gband.sock`
 
 #### Scenario: Default server
-- **WHEN** the user runs `gband attach` outside a gband pane with `XDG_RUNTIME_DIR=/run/user/1000`
+- **WHEN** the user runs `gband attach` outside a gband window with `XDG_RUNTIME_DIR=/run/user/1000`
 - **THEN** the client connects to `/run/user/1000/gband/default.sock`
 
 #### Scenario: Inside a window
-- **WHEN** the user runs `gband kill-server` without an option in a pane of the server named `feature`
+- **WHEN** the user runs `gband kill-server` without an option in a window of the server named `feature`
 - **THEN** it stops the server named `feature`
 
 #### Scenario: Both options

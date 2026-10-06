@@ -55,12 +55,12 @@ A component added by code that belongs to a plugin SHALL belong to that plugin, 
 `gband.ui.statusline.remove(id)` SHALL remove the component whose full id is `id` and return `true`, or return `false` when no component has that id. `gband.ui.statusline.list()` SHALL return one table per component, in ascending byte order of full ids, each holding `id`, `align`, `priority`, `order`, `hl`, `fill`, `plugin` (the owner's name, or nil) and `enabled`. Changing a returned table SHALL NOT change the component. All three functions SHALL be callable while the configuration loads and in any callback.
 
 #### Scenario: Plugin component without an id
-- **WHEN** the plugin `pane` calls `gband.ui.statusline.add({ render = fn })`
-- **THEN** the call returns `"pane"`
+- **WHEN** the plugin `window` calls `gband.ui.statusline.add({ render = fn })`
+- **THEN** the call returns `"window"`
 
 #### Scenario: Plugin component with an id
-- **WHEN** the plugin `pane` calls `gband.ui.statusline.add({ id = "count", render = fn })`
-- **THEN** the call returns `"pane.count"`
+- **WHEN** the plugin `window` calls `gband.ui.statusline.add({ id = "count", render = fn })`
+- **THEN** the call returns `"window.count"`
 
 #### Scenario: User component
 - **WHEN** `user/init.lua` calls `gband.ui.statusline.add({ id = "host", render = fn })`
@@ -108,26 +108,26 @@ The context SHALL be a new table for each call, holding:
 | `width` | `total_width` less the cells that the other shown components take, by their latest output, with the separators and region gaps "Layout" puts between components; at least 0 |
 | `table` | the name of the active key table |
 | `band` | `{ number, index, count }`: the viewed band's number, its position from the top, counting from 1, and the number of bands |
-| `column` | `{ index, count }`: the focused pane's column position in the viewed band, counting from 1, and the number of columns in that band; nil when the viewed band is empty or a floating pane is focused |
-| `pane` | the focused pane's number, or nil when no pane is focused |
-| `panes` | a list of every pane in the client's layout, bands from the top, and within each band its columns from the left and their panes from the top, then the band's floating panes in its floating list order, each `{ pane, band, state }`: its number, its band's number, and a copy of its state as the plugin-bridge capability defines |
+| `column` | `{ index, count }`: the focused window's column position in the viewed band, counting from 1, and the number of columns in that band; nil when the viewed band is empty or a floating window is focused |
+| `window` | the focused window's number, or nil when no window is focused |
+| `windows` | a list of every window in the client's layout, bands from the top, and within each band its columns from the left and their windows from the top, then the band's floating windows in its floating list order, each `{ window, band, state }`: its number, its band's number, and a copy of its state as the plugin-bridge capability defines |
 
 #### Scenario: Context values
-- **WHEN** the client's terminal is 100 columns wide, the viewed band is the second of three bands and holds five columns, the third column holds focused pane 7, the `prefix` table is active, and a component renders
-- **THEN** its context has `total_width` 100, `table` `"prefix"`, `band.index` 2, `band.count` 3, `column.index` 3, `column.count` 5 and `pane` 7
+- **WHEN** the client's terminal is 100 columns wide, the viewed band is the second of three bands and holds five columns, the third column holds focused window 7, the `prefix` table is active, and a component renders
+- **THEN** its context has `total_width` 100, `table` `"prefix"`, `band.index` 2, `band.count` 3, `column.index` 3, `column.count` 5 and `window` 7
 
 #### Scenario: Available width
 - **WHEN** the terminal is 80 columns wide, the separator is three cells wide, the left region shows one other component 10 cells wide, and a component in the same region renders
 - **THEN** its context's `width` is 67
 
 #### Scenario: Waiting agents counted
-- **WHEN** panes 1, 2 and 3 are open, the server has set `agent` to `"waiting"` in the states of panes 1 and 3, and a component with `redraw_on = { "PaneStateChanged" }` counts the entries of `ctx.panes` whose `state.agent` is `"waiting"`
+- **WHEN** windows 1, 2 and 3 are open, the server has set `agent` to `"waiting"` in the states of windows 1 and 3, and a component with `redraw_on = { "WindowStateChanged" }` counts the entries of `ctx.windows` whose `state.agent` is `"waiting"`
 - **THEN** it counts 2
 
 #### Scenario: Floating focus has no column
-- **WHEN** the client focuses a floating pane of a band that also holds columns, and a component renders
+- **WHEN** the client focuses a floating window of a band that also holds columns, and a component renders
 - **THEN** `ctx.column` is nil
-- **AND** `ctx.panes` lists the floating pane after the panes of that band's columns
+- **AND** `ctx.windows` lists the floating window after the windows of that band's columns
 
 ### Requirement: Render triggers
 While the status line is drawn, the client SHALL call an enabled component's `render`:
@@ -206,9 +206,9 @@ The left region SHALL start at the line's first column, and the right region SHA
 Each call of a component's `render` SHALL run protected, as a callback that belongs to the component's plugin, with its own instruction budget of the size the plugins capability defines. A run that exceeds the budget SHALL stop only that call. The code that triggered the render and the other components SHALL continue. When a call raises an error, returns a value "Render output" does not allow, or is stopped by the instruction limit, the component SHALL be disabled and hidden until the configuration next loads, and the error SHALL be reported as a plugin error, as the configuration capability defines. A call stopped by the instruction limit SHALL also mark the component's plugin failed, as the plugins capability defines. Components of a failed plugin SHALL NOT render and SHALL be hidden.
 
 #### Scenario: Failing component
-- **WHEN** the plugin `pane`'s component raises `boom` on line 9 of its file, and another component returns `ok`
+- **WHEN** the plugin `window`'s component raises `boom` on line 9 of its file, and another component returns `ok`
 - **THEN** the client keeps running and `ok` is drawn
-- **AND** the error item shows `pane: <path>:9: boom`
+- **AND** the error item shows `window: <path>:9: boom`
 - **AND** `gband.ui.statusline.list()` gives the component `enabled` false
 
 #### Scenario: Looping render
@@ -267,7 +267,7 @@ gband SHALL bundle these plugin modules, each set up with `gband.plugin` and eac
 |---|---|---|---|---|---|---|---|
 | `gband.statusline.band` | `band` | `band ` and the viewed band's index | `BandChanged`, `LayoutChanged` | left | 20 | 10 | `StatusLineSegment` |
 | `gband.statusline.mode` | `mode` | the active key table's name; hidden while `root` is active | `KeyTableChanged` | left | 30 | 20 | `StatusLineAccent` |
-| `gband.statusline.position` | `position` | the focused column's index, `/`, and the band's column count; hidden while the viewed band is empty or a floating pane is focused | `FocusChanged`, `BandChanged`, `LayoutChanged` | right | 10 | 10 | `StatusLineMuted` |
+| `gband.statusline.position` | `position` | the focused column's index, `/`, and the band's column count; hidden while the viewed band is empty or a floating window is focused | `FocusChanged`, `BandChanged`, `LayoutChanged` | right | 10 | 10 | `StatusLineMuted` |
 | `gband.statusline.clock` | `clock` | the local time, formatted by `os.date` with `opts.format`, `"%H:%M"` by default | every `opts.interval` milliseconds, 1000 by default | right | 5 | 20 | `StatusLineMuted` |
 
 Each SHALL take the options `align`, `priority`, `order` and `hl`, which replace the defaults in the table. An option of the wrong type or value SHALL make its `setup` raise an error. The default configuration SHALL set up `band`, `mode` and `position`, and SHALL NOT set up `clock`.
@@ -285,5 +285,5 @@ Each SHALL take the options `align`, `priority`, `order` and `hl`, which replace
 - **THEN** the status line is drawn in `StatusLine` with no text
 
 #### Scenario: Position hidden on floating focus
-- **WHEN** the default configuration is in use and the client focuses a floating pane
+- **WHEN** the default configuration is in use and the client focuses a floating window
 - **THEN** the status line shows no position segment

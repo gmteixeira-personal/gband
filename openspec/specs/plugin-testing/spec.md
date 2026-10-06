@@ -38,8 +38,8 @@ The exit status SHALL be 0 when every case that ran passed, 1 when a case failed
 - **AND** the process exits with status 2
 
 #### Scenario: User's server untouched
-- **WHEN** the user's default server runs one session and the user runs `gband test` on a plugin whose cases open panes
-- **THEN** the user's server still holds one session with its panes unchanged
+- **WHEN** the user's default server runs one session and the user runs `gband test` on a plugin whose cases open windows
+- **THEN** the user's server still holds one session with its windows unchanged
 
 ### Requirement: Test files and cases
 Each test file SHALL run in a new Lua state of the test side, as the plugins capability defines. `require("gband.test")` SHALL return the test module, and `require` SHALL also find modules in the test file's own directory. `t.case(name, fn)` or `t.case(name, opts, fn)` SHALL register a case: `name`, a non-empty string unique in its file, and `fn`, a function. A duplicate or invalid case SHALL be an error at the line of the call.
@@ -96,7 +96,7 @@ Two values SHALL be equal when they are equal as Lua values, or when both are ta
 | `env` | a table of environment variables to set, or to remove with `false` | none |
 | `time` | the instant the test-channel capability freezes, as Unix seconds or `"YYYY-MM-DD HH:MM:SS"` in UTC, or `false` for the real time | `"2025-01-01 12:00:00"` |
 
-Each case SHALL run in a new directory tree of its own under the system's temporary directory, holding the configuration, data, state and runtime directories of the case and a working directory. The plugin under test, every `--plugin` path and every path in `plugins` SHALL be linked into the case's plugins directory under its last path component. The directory first in `PATH` SHALL hold the programs `xdg-open` and `open`, which record their argument for `g.opened()` and open nothing. The case's gband SHALL run with an environment holding `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME` and `XDG_RUNTIME_DIR` set to the tree, `SHELL=/bin/sh`, `PS1` set to `$ `, `TERM=xterm-256color`, `COLORTERM=truecolor`, `TZ=UTC`, `GBAND_ANIMATIONS=off`, `INPUTRC=/dev/null`, `PATH` with a directory of the tree first, and `GBAND_TEST_SOCKET` set as the test-channel capability defines, and without `GBAND`, `GBAND_SESSION`, `GBAND_PANE` and `GBAND_LOG`, then changed by `env`. `g.start` SHALL run `gband attach` from the executable running the test, in the working directory of the tree, in a new PTY of the size given, and SHALL return once the client has drawn its first frame with the configuration loaded.
+Each case SHALL run in a new directory tree of its own under the system's temporary directory, holding the configuration, data, state and runtime directories of the case and a working directory. The plugin under test, every `--plugin` path and every path in `plugins` SHALL be linked into the case's plugins directory under its last path component. The directory first in `PATH` SHALL hold the programs `xdg-open` and `open`, which record their argument for `g.opened()` and open nothing. The case's gband SHALL run with an environment holding `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME` and `XDG_RUNTIME_DIR` set to the tree, `SHELL=/bin/sh`, `PS1` set to `$ `, `TERM=xterm-256color`, `COLORTERM=truecolor`, `TZ=UTC`, `GBAND_ANIMATIONS=off`, `INPUTRC=/dev/null`, `PATH` with a directory of the tree first, and `GBAND_TEST_SOCKET` set as the test-channel capability defines, and without `GBAND`, `GBAND_SESSION`, `GBAND_WINDOW` and `GBAND_LOG`, then changed by `env`. `g.start` SHALL run `gband attach` from the executable running the test, in the working directory of the tree, in a new PTY of the size given, and SHALL return once the client has drawn its first frame with the configuration loaded.
 
 When the case ends, whether it passed or not, the runner SHALL stop the case's client and server and every process they started, and remove the tree.
 
@@ -106,15 +106,15 @@ When the case ends, whether it passed or not, the runner SHALL stop the case's c
 - **AND** the user's own `~/.config/gband/user/init.lua` is not read
 
 #### Scenario: Plugin under test is installed
-- **WHEN** `gband test` runs in the plugin directory `pane` and a case starts with `config = [[gband.plugin("pane")]]`
+- **WHEN** `gband test` runs in the plugin directory `window` and a case starts with `config = [[gband.plugin("window")]]`
 - **THEN** the plugin's segment is drawn, read from the working directory's files
 
 #### Scenario: Nothing left behind
-- **WHEN** a case opens three panes and then fails
+- **WHEN** a case opens three windows and then fails
 - **THEN** after the run, none of the case's processes is running and its directory tree does not exist
 
 #### Scenario: Run from inside a window
-- **WHEN** the user runs `gband test` from a pane of their own gband server
+- **WHEN** the user runs `gband test` from a window of their own gband server
 - **THEN** each case's client starts its own server in the case's tree instead of refusing to nest
 
 ### Requirement: Driving a case
@@ -143,7 +143,7 @@ The handle SHALL provide:
 
 #### Scenario: Wait for program output
 - **WHEN** a case calls `g.run("echo hi")` and then `g.wait_text("hi")`
-- **THEN** the wait returns once the pane shows `hi`
+- **THEN** the wait returns once the window shows `hi`
 
 #### Scenario: Reload after editing a plugin
 - **WHEN** a case writes a plugin file through `g.write` that changes its segment's text and calls `g.reload()`
@@ -210,7 +210,7 @@ The first line SHALL be `size <cols>x<rows> cursor <row>:<col>` followed by `sho
 - **THEN** the screenshot holds the header and the rows, and no `--` line
 
 #### Scenario: Run of one colour
-- **WHEN** row 5 shows `pane 1` in columns 25 to 30 with the foreground `#7aa2f7` and the background `#1a1b26`, between cells of another style
+- **WHEN** row 5 shows `window 1` in columns 25 to 30 with the foreground `#7aa2f7` and the background `#1a1b26`, between cells of another style
 - **THEN** the screenshot holds the line `5:25-30 fg=#7aa2f7 bg=#1a1b26`
 
 ### Requirement: Screenshot references
@@ -228,8 +228,8 @@ Without `--update`, a reference that matches SHALL pass. A missing reference, or
 - **THEN** the case passes, the reference holds the screenshot, and no `.new` file remains
 
 #### Scenario: Named screenshot
-- **WHEN** the case `Shows the focused pane` in `tests/pane_spec.lua` calls `g.expect_screenshot("two panes")`
-- **THEN** its reference is `tests/screenshots/pane_spec/shows-the-focused-pane--two-panes.txt`
+- **WHEN** the case `Shows the focused window` in `tests/window_spec.lua` calls `g.expect_screenshot("two windows")`
+- **THEN** its reference is `tests/screenshots/window_spec/shows-the-focused-window--two-windows.txt`
 
 ### Requirement: Report
 `gband test` SHALL write its report to standard output, and SHALL write nothing to standard error except the one line of an invalid invocation. `print` in a test file SHALL write to standard output when called. The report SHALL hold one line per case that ran, naming the file, the case, whether it passed and how long it took, and a last line counting the cases passed and failed. For each failed case and each failed file, it SHALL hold the error message with its file and line, a diff from the reference to the screenshot when a screenshot differed, the screenshot when the reference was missing, and the lines the case's client and server logs hold from `print` and from plugin and configuration errors. With `--show`, it SHALL hold every screenshot the run took, under the name of its case and its own name.

@@ -29,7 +29,7 @@ A process connected to a test channel SHALL end when the channel closes: the cli
 
 #### Scenario: Runner killed
 - **WHEN** the runner holding a channel is killed while its client and server run
-- **THEN** the client and the server exit, and the server's pane programs receive SIGHUP
+- **THEN** the client and the server exit, and the server's window programs receive SIGHUP
 
 ### Requirement: Evaluate a chunk
 The runner SHALL be able to send a process a chunk, a string of Lua source, with a list of plain data arguments as the plugin-bridge capability defines. The process SHALL run the chunk in its current Lua state with the arguments as `...`, as a callback that belongs to no plugin, between its other work and never while another callback runs, in the order the runner sent the chunks. A chunk SHALL be able to do anything a callback of its side can, and the actions it dispatches SHALL take effect after it returns, as for any callback. The instruction limit SHALL apply to it as to a callback.
@@ -41,8 +41,8 @@ When the chunk returns, the process SHALL answer with its return values, each of
 - **THEN** the answer is `"client"` and `2`
 
 #### Scenario: Act in the server
-- **WHEN** the runner sends the server a chunk that sets pane 1's state key `agent` to `"waiting"` in the session `default`
-- **THEN** the client's `gband.pane_state(1).agent` reads `"waiting"` after a settle
+- **WHEN** the runner sends the server a chunk that sets window 1's state key `agent` to `"waiting"` in the session `default`
+- **THEN** the client's `gband.window_state(1).agent` reads `"waiting"` after a settle
 
 #### Scenario: Error answered
 - **WHEN** the runner sends the client `error("boom")`
@@ -61,14 +61,14 @@ The runner SHALL be able to ask the client and the server to settle. A settle SH
 3. the client has handled every message the server sent it before that point, delivered the resulting events to its Lua handlers, finished any running animation, and drawn a frame showing the result,
 4. the runner's emulator has read every byte the client wrote to its terminal before that frame ended.
 
-The client and the server SHALL repeat these steps for the effects of the effects until one round changes nothing, up to ten rounds. A settle SHALL NOT wait for output that programs in panes write in response. A settle that does not complete within 10 seconds SHALL fail with a message naming the step that did not finish.
+The client and the server SHALL repeat these steps for the effects of the effects until one round changes nothing, up to ten rounds. A settle SHALL NOT wait for output that programs in windows write in response. A settle that does not complete within 10 seconds SHALL fail with a message naming the step that did not finish.
 
 #### Scenario: Key effect is drawn
-- **WHEN** the runner writes the key that opens a pane and then settles
+- **WHEN** the runner writes the key that opens a window and then settles
 - **THEN** the runner's screen shows two tiles as soon as the settle completes
 
 #### Scenario: Server handler effect is drawn
-- **WHEN** a server handler of `PaneOpened` sets a pane state key that a client status line segment draws, and the runner opens a pane and settles
+- **WHEN** a server handler of `WindowOpened` sets a window state key that a client status line segment draws, and the runner opens a window and settles
 - **THEN** the segment's new text is on the runner's screen as soon as the settle completes
 
 ### Requirement: Reload request

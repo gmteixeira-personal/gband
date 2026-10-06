@@ -10,7 +10,7 @@ A client SHALL reach a server through a transport. A transport opens a connectio
 
 #### Scenario: Separate reader and writer
 - **WHEN** a test transport hands the client a reader and a writer that are two different in-memory pipes, each copied to and from the server's socket
-- **THEN** the client completes the handshake and shows the pane's snapshot
+- **THEN** the client completes the handshake and shows the window's snapshot
 
 ### Requirement: Unix socket transport
 The client SHALL provide a Unix socket transport, and `gband attach` SHALL use it. Opening it SHALL connect to the socket the session-server capability locates, and start a server when none is running, as the client-attach capability defines. Replacing a server from another build SHALL also go through this transport.
@@ -23,6 +23,6 @@ The client SHALL provide a Unix socket transport, and `gband attach` SHALL use i
 A transport that only copies bytes between the client and the server's Unix socket SHALL NOT change the session's behaviour. This is the shape a later SSH proxy will have.
 
 #### Scenario: Attach through a relay
-- **WHEN** a client attaches through a relay that copies bytes in both directions, runs `printf 'relayed\n'` in the pane and detaches
-- **THEN** the client shows `relayed` in the pane
+- **WHEN** a client attaches through a relay that copies bytes in both directions, runs `printf 'relayed\n'` in the window and detaches
+- **THEN** the client shows `relayed` in the window
 - **AND** the session keeps running after the detach

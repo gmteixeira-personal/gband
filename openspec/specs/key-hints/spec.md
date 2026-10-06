@@ -100,27 +100,27 @@ A binding to a function SHALL be labelled by its `desc`, and SHALL be left out w
 |---|---|
 | `focus_column_left` | `left` |
 | `focus_column_right` | `right` |
-| `focus_pane_down` | `down` |
-| `focus_pane_up` | `up` |
+| `focus_window_down` | `down` |
+| `focus_window_up` | `up` |
 | `focus_band_down` | `band down` |
 | `focus_band_up` | `band up` |
-| `open_pane` | `new` |
-| `close_pane` | `close` |
+| `open_window` | `new` |
+| `close_window` | `close` |
 | `consume_or_expel_left` | `stack left` |
 | `consume_or_expel_right` | `stack right` |
 | `move_column_left` | `move left` |
 | `move_column_right` | `move right` |
-| `move_pane_down` | `move down` |
-| `move_pane_up` | `move up` |
-| `toggle_pane_floating` | `float` |
+| `move_window_down` | `move down` |
+| `move_window_up` | `move up` |
+| `toggle_window_floating` | `float` |
 | `switch_focus_floating_tiled` | `layer` |
 | `cycle_column_width` | `width` |
 | `toggle_full_width` | `full` |
 | `grow_column_width` | `wider` |
 | `shrink_column_width` | `narrower` |
-| `grow_pane_height` | `taller` |
-| `shrink_pane_height` | `shorter` |
-| `reset_pane_height` | `reset height` |
+| `grow_window_height` | `taller` |
+| `shrink_window_height` | `shorter` |
+| `reset_window_height` | `reset height` |
 | `detach` | `detach` |
 | `send_prefix` | `send prefix` |
 
@@ -133,7 +133,7 @@ A binding to a function SHALL be labelled by its `desc`, and SHALL be left out w
 - **THEN** its hint shows `g go west`
 
 #### Scenario: Label option
-- **WHEN** the hints segment is set up with `{ labels = { close_pane = "kill" } }` and the default bindings are in use
+- **WHEN** the hints segment is set up with `{ labels = { close_window = "kill" } }` and the default bindings are in use
 - **THEN** the hint for `q` shows `q kill`
 
 #### Scenario: Label option hides an action
