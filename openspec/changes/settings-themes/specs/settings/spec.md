@@ -29,7 +29,7 @@ It SHALL raise no error and report none. It SHALL be callable while the configur
 
 #### Scenario: Broken file is not a configuration error
 - **WHEN** `user/theme.lua` holds `error("boom")` and a client attaches
-- **THEN** loading succeeds with no error and `gband.colorscheme()` returns `gruvbox`
+- **THEN** loading succeeds with no error and `gband.colorscheme()` returns `default`
 
 ### Requirement: Saved sidebar
 The saved sidebar setting SHALL live in the file `user/sidebar.lua` of the configuration directory. Saving it SHALL write `return true` or `return false`, followed by a newline, to that file, creating or replacing it in one step.
@@ -55,7 +55,7 @@ The default configuration SHALL set up the sidebar plugin when `gband.settings.s
 
 #### Scenario: Bundled themes only
 - **WHEN** no runtimepath entry holds a `colors` directory and a callback calls `gband.settings.themes()`
-- **THEN** it returns the 14 bundled theme names, starting with `terminal` and ending with `vesper`
+- **THEN** it returns the 15 bundled theme names, starting with `default`, then `terminal`, and ending with `vesper`
 
 #### Scenario: User colorschemes after the bundled themes
 - **WHEN** `user/colors/zen.lua`, `user/colors/dusk.lua` and `user/colors/nord.lua` exist
@@ -76,8 +76,8 @@ The settings window SHALL have a border, the title `settings`, and its cursor li
 The cursor line SHALL start on the first line, except as "Reopen after a save" defines. The window's width SHALL be the smaller of 31 and the ribbon area's width. Its height SHALL be the smaller of 5 and the ribbon area's height. It SHALL be centered in the ribbon area, rounding the left and top offsets down. A line wider than the content area SHALL be cut at the content area's edge, as the plugin-windows capability defines.
 
 #### Scenario: Window opens
-- **WHEN** no setting is saved, the active colorscheme is `gruvbox`, and a binding function calls `gband.settings.open()`
-- **THEN** a focused floating plugin window titled `settings` shows `theme    gruvbox`, `sidebar  on` and `keys     modal`, with the cursor line on the first line
+- **WHEN** no setting is saved, the active colorscheme is `default`, and a binding function calls `gband.settings.open()`
+- **THEN** a focused floating plugin window titled `settings` shows `theme    default`, `sidebar  on` and `keys     modal`, with the cursor line on the first line
 
 #### Scenario: Window beside the default sidebar
 - **WHEN** the default configuration is in use on an 80×24 terminal and the settings window opens
@@ -132,7 +132,7 @@ When `gband.config_dir` is nil, or a file cannot be written, the key SHALL save 
 - **THEN** `gband.colorscheme()` returns `one-dark` and `user/theme.lua` holds `return "one-dark"`
 
 #### Scenario: Theme wraps
-- **WHEN** the active colorscheme is `terminal`, the settings window is open on its first line, and the user presses `h`
+- **WHEN** the active colorscheme is `default`, the settings window is open on its first line, and the user presses `h`
 - **THEN** the last name `gband.settings.themes()` returns is the active colorscheme and is saved
 
 #### Scenario: Dismiss
@@ -157,7 +157,7 @@ Enter SHALL save the theme of the cursor line, as "Saved theme" defines, and clo
 
 #### Scenario: List size beside the default sidebar
 - **WHEN** the default configuration is in use on an 80×24 terminal, no user colorscheme exists, and the theme list opens
-- **THEN** the theme list is 22 columns wide and 16 rows high, and spans columns 28 to 49 and rows 4 to 19 of the 79-column ribbon area
+- **THEN** the theme list is 22 columns wide and 17 rows high, and spans columns 28 to 49 and rows 3 to 19 of the 79-column ribbon area
 
 #### Scenario: Preview while moving
 - **WHEN** the theme list is open on `gruvbox` and the user presses `j`
@@ -196,7 +196,7 @@ The default configuration SHALL register a handler of `Attached`, as the lua-eve
 #### Scenario: First start
 - **WHEN** no `user/init.lua`, `user/theme.lua`, `user/sidebar.lua` or `user/keystyle.lua` exists and a client attaches
 - **THEN** the settings window is open and focused, with the cursor line on its first line
-- **AND** `gband.colorscheme()` returns `gruvbox` and the modal style is in use
+- **AND** `gband.colorscheme()` returns `default` and the modal style is in use
 
 #### Scenario: A setting already saved
 - **WHEN** only `user/theme.lua` exists, holding `return "nord"`, no `user/init.lua` exists, and a client attaches

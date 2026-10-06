@@ -136,7 +136,7 @@ The handle SHALL provide:
 
 | function | effect |
 |---|---|
-| `g.keys(keys)` | writes each key of `keys`, key names as the configuration capability defines separated by spaces, to the client's terminal as an xterm terminal sends it |
+| `g.keys(keys)` | writes each key of `keys`, key names as the configuration capability defines separated by spaces, to the client's terminal as an xterm terminal sends it; after a key whose bytes end in ESC, it waits until the client has read that key, as the test-channel capability's "Input read" defines, before writing the next |
 | `g.type(text)` | writes `text` to the client's terminal as typed characters |
 | `g.paste(text)` | writes `text` as a bracketed paste when the client enabled bracketed paste, and as typed characters otherwise |
 | `g.run(line)` | types `line` followed by Enter |
@@ -176,6 +176,10 @@ The handle SHALL provide:
 #### Scenario: Invalid mouse kind
 - **WHEN** a case calls `g.mouse("hover", "left", 0, 0)`
 - **THEN** the call raises an error at its line naming `hover`
+
+#### Scenario: Escape then another key
+- **WHEN** a case calls `g.keys("escape up")`
+- **THEN** the client reads Escape and then Up, not Alt+Up
 
 ### Requirement: Screenshots
 `g.screenshot(opts)` SHALL return the screen as text, in this form:

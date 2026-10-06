@@ -24,7 +24,7 @@ When the case ends, whether it passed or not, the runner SHALL stop the case's c
 - **THEN** the case's sidebar is drawn on the terminal's last column
 - **AND** the user's own `~/.config/gband/user/init.lua` is not read
 
-#### Scenario: Default configuration without the settings window
+#### Scenario: Default configuration without the chooser
 - **WHEN** a case starts with no `config`, no `keystyle` and no `theme`
 - **THEN** no floating plugin window is open
 - **AND** `g.client("return gband.keystyle.saved()")` returns `modal`
