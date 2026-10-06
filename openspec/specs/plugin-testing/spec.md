@@ -113,7 +113,7 @@ When the case ends, whether it passed or not, the runner SHALL stop the case's c
 - **WHEN** a case opens three panes and then fails
 - **THEN** after the run, none of the case's processes is running and its directory tree does not exist
 
-#### Scenario: Run from inside a pane
+#### Scenario: Run from inside a window
 - **WHEN** the user runs `gband test` from a pane of their own gband server
 - **THEN** each case's client starts its own server in the case's tree instead of refusing to nest
 
@@ -137,7 +137,7 @@ The handle SHALL provide:
 
 `g.wait` and `g.wait_text` SHALL give up after `opts.timeout` seconds, 5 unless given, and fail the case with an error that holds the latest screenshot. An invalid argument SHALL be an error at the line of the call.
 
-#### Scenario: Open a pane by key
+#### Scenario: Open a window by key
 - **WHEN** a case with the default configuration calls `g.keys("ctrl+space enter")` and then `g.settle()`
 - **THEN** `g.client("return #gband.layout().bands[1].columns")` returns 2
 

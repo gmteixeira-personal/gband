@@ -67,7 +67,7 @@ When the viewed band changes to another band that is still in the layout, the cl
 ### Requirement: Tile movement
 When the layout changes, each pane of the viewed band that it held both before and after the change SHALL have its drawn strip position and its drawn row animated from where it was drawn to its new tile position. A pane new to the band SHALL be drawn at its tile position from the first frame. A pane that left the band SHALL no longer be drawn. Where tiles overlap while they move, the focused tile SHALL be drawn over the others, and the others SHALL be drawn in layout order. Panes of bands that are not drawn SHALL NOT animate.
 
-#### Scenario: Open a pane between two columns
+#### Scenario: Open a window between two columns
 - **WHEN** the viewed band holds columns A and B of width 1/3 on a 90×30 area, A is focused, and a pane opens right of A
 - **THEN** B's tile is drawn starting at strip position 30 in the first frame
 - **AND** it slides right until it starts at strip position 75, after the new 45-cell column
@@ -133,11 +133,11 @@ The client SHALL read the environment variable `GBAND_ANIMATIONS` when it starts
 ### Requirement: Floating panes at rest
 The client SHALL draw every floating pane at its box, as the client-attach capability places it, in every frame, without animating its position or size. A pane that moves from a column to the floating layer SHALL be drawn at its box from the first frame. A pane that moves from the floating layer to a column SHALL be drawn at its tile position from the first frame, as a pane new to the band is. The tiles of the other panes SHALL move as "Tile movement" defines.
 
-#### Scenario: Float a pane between two columns
+#### Scenario: Float a window between two columns
 - **WHEN** the viewed band holds columns A, B and C, and B's only pane is floated
 - **THEN** the first frame draws that pane at its box
 - **AND** C's tile slides left from B's end to where B started
 
-#### Scenario: Move a floating pane
+#### Scenario: Move a floating window
 - **WHEN** a floating pane is moved right by one step
 - **THEN** the next frame draws its box at the new column

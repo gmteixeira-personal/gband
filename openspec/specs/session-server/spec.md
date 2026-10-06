@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Defines the gband session server: the process that owns the pane's program, PTY and authoritative screen, keeps them alive while no client is attached, and keeps every attached client's copy of the screen in step with its own.
+Defines the gband session server: the process that owns the window's program, PTY and authoritative screen, keeps them alive while no client is attached, and keeps every attached client's copy of the screen in step with its own.
 
 ## Requirements
 
@@ -70,15 +70,15 @@ At most one server SHALL serve a socket path. Servers selected with different op
 ### Requirement: Pane program
 On creating a session, the server SHALL open that session's first pane. Every pane other than a plugin pane SHALL run, in its own new PTY, the program its open pane action names, or the user's shell when the action names none and for the first pane. The user's shell SHALL be `$SHELL` when it is set, otherwise the user's login shell. A program named as a command line SHALL run as the user's shell with the arguments `-c` and that command line. A program named as an argument list SHALL run as that list. The program SHALL start in its session's working directory. Its environment SHALL be the server's without `GBAND_TEST_SOCKET`, with `TERM=xterm-256color`, `COLORTERM=truecolor`, `GBAND` set to the socket path, `GBAND_SESSION` set to the session's name and `GBAND_PANE` set to the pane's identifier in decimal. The PTY's initial size SHALL be the terminal size the layout gives the pane for its session's current screen area.
 
-#### Scenario: Environment of the pane
+#### Scenario: Environment of the window
 - **WHEN** a client attaches and the user runs `echo $TERM $COLORTERM $GBAND` in the pane
 - **THEN** the pane prints `xterm-256color truecolor` followed by the socket path
 
-#### Scenario: Session named in the pane
+#### Scenario: Session named in the window
 - **WHEN** a client attaches with `-s work` and the user runs `echo $GBAND_SESSION` in the pane
 - **THEN** the pane prints `work`
 
-#### Scenario: Panes are told apart
+#### Scenario: Windows are told apart
 - **WHEN** a session holds two panes and the user runs `echo $GBAND_PANE` in each
 - **THEN** the two panes print different identifiers
 
@@ -98,7 +98,7 @@ On creating a session, the server SHALL open that session's first pane. Every pa
 - **WHEN** a client asks to open a pane naming the argument list `/nonexistent`
 - **THEN** the server records the reason in its log and the layout is unchanged
 
-#### Scenario: Test channel kept out of panes
+#### Scenario: Test channel kept out of windows
 - **WHEN** a server runs with `GBAND_TEST_SOCKET` set and the user runs `echo "[$GBAND_TEST_SOCKET]"` in a pane
 - **THEN** the pane prints `[]`
 
@@ -122,7 +122,7 @@ The panes' programs SHALL keep running when a client detaches, disconnects or is
 - **THEN** every pane's shell keeps running with the same process id
 - **AND** a program one of them was running, such as `sleep 100`, keeps running
 
-#### Scenario: Owner of a stacked plugin pane detaches
+#### Scenario: Owner of a stacked drawn window detaches
 - **WHEN** a column holds a shell pane above a plugin pane, and the client that owns the plugin pane detaches
 - **THEN** the shell keeps running with the same process id
 - **AND** once the session settles, the shell's pane is resized to the whole column
@@ -135,7 +135,7 @@ When a client completes the handshake, the server SHALL send it the layout with 
 - **THEN** the new client shows the `ls` output and the prompt exactly as the old client showed them
 - **AND** the cursor is at the same row and column of that pane
 
-#### Scenario: Reattach restores every pane
+#### Scenario: Reattach restores every window
 - **WHEN** a session holds two panes, the user runs `echo one` in the first and `echo two` in the second, kills the client and attaches again
 - **THEN** the new client receives a layout holding both panes and a snapshot of each
 - **AND** the snapshots show `one` and `two` respectively
@@ -155,7 +155,7 @@ After the snapshots, the server SHALL send each attached client the layout whene
 - **WHEN** a client stops reading its socket while two panes each print 10 000 lines, then resumes reading
 - **THEN** the client's screen of each pane matches the server's once the output has stopped
 
-#### Scenario: New pane arrives with a snapshot
+#### Scenario: New window arrives with a snapshot
 - **WHEN** a client is attached and another client opens a pane
 - **THEN** the first client receives a layout holding the new pane, followed by a snapshot of it
 
@@ -166,7 +166,7 @@ Every key and paste a client sends SHALL name a pane. The server SHALL write eac
 - **WHEN** a client sends the Up key to a pane whose program has application cursor keys enabled
 - **THEN** the server writes `\x1bOA` to that pane's PTY
 
-#### Scenario: Key reaches only its pane
+#### Scenario: Key reaches only its window
 - **WHEN** a session holds two panes and a client sends `x` naming the second
 - **THEN** only the second pane's program receives `x`
 
@@ -174,7 +174,7 @@ Every key and paste a client sends SHALL name a pane. The server SHALL write eac
 - **WHEN** two clients are attached and each sends a key to the same pane
 - **THEN** both keys reach that pane's program
 
-#### Scenario: Key to a plugin pane
+#### Scenario: Key to a drawn window
 - **WHEN** a client sends `x` naming a plugin pane
 - **THEN** the key is dropped and the plugin pane's screen is unchanged
 
@@ -253,12 +253,12 @@ Each session SHALL have its own screen area. A session's screen area SHALL be th
 - **WHEN** a client with a 120×40 terminal is attached to `default` and a client with a 100×30 terminal attaches to `work`
 - **THEN** the screen area of `default` stays 120×40
 
-#### Scenario: Opening a pane keeps other sizes
+#### Scenario: Opening a window keeps other sizes
 - **WHEN** the screen area is 80×24, one pane runs in a column of width 1/2, and a client opens a new pane
 - **THEN** the first pane's PTY stays 38 columns by 22 rows
 - **AND** its program receives no SIGWINCH
 
-#### Scenario: Width change resizes the pane
+#### Scenario: Width change resizes the window
 - **WHEN** the screen area is 90×30 and a client cycles the width of a shown pane's column from 1/2 to 2/3
 - **THEN** that pane's PTY becomes 58 columns by 28 rows
 
@@ -288,7 +288,7 @@ Set position naming a tiled pane SHALL leave the layout unchanged.
 
 After placing an opened pane whose action asks for focus, the server SHALL send the client that asked for it, after the layout that holds the pane, a message telling it to focus that pane. A pane opened by the server's Lua SHALL NOT change any client's focus. When the program of a new pane cannot be started, the server SHALL record the reason in its log and leave the layout unchanged.
 
-#### Scenario: Open a pane
+#### Scenario: Open a window
 - **WHEN** two clients are attached and the first asks to open a pane next to the pane it focuses
 - **THEN** both clients receive a layout holding both panes
 - **AND** only the first client is told to focus the new pane
@@ -297,11 +297,11 @@ After placing an opened pane whose action asks for focus, the server SHALL send 
 - **WHEN** two clients each ask to open a pane at the same moment
 - **THEN** the layout holds three panes, and every client receives the same layout
 
-#### Scenario: Action on a closed pane
+#### Scenario: Action on a closed window
 - **WHEN** a client asks to cycle the width of a pane that has already left the layout
 - **THEN** the layout is unchanged
 
-#### Scenario: Grow a pane's height
+#### Scenario: Grow a window's height
 - **WHEN** the screen area is 80×24 and a client asks to grow the height of the top pane of a column holding two panes with automatic heights of weight 1
 - **THEN** every attached client receives a layout in which the top pane has a fixed height of 14 rows and the bottom pane an automatic height of weight 1
 
@@ -322,16 +322,16 @@ After placing an opened pane whose action asks for focus, the server SHALL send 
 - **WHEN** a server handler of `PaneOpened` calls `gband.action.grow_column_width` for the new pane
 - **THEN** every attached client receives a layout in which that pane's column is wider than the default width
 
-#### Scenario: Float a pane for every client
+#### Scenario: Float a window for every client
 - **WHEN** two clients are attached and the first asks to toggle floating on tiled pane 2
 - **THEN** both clients receive a layout in which pane 2 is in its band's floating list
 
-#### Scenario: Open a floating pane with focus
+#### Scenario: Open a floating window with focus
 - **WHEN** a client asks to open a floating pane that asks for focus
 - **THEN** every client receives a layout whose band's floating list ends with the new pane
 - **AND** only that client is told to focus it
 
-#### Scenario: Set position on a tiled pane
+#### Scenario: Set position on a tiled window
 - **WHEN** a client asks to set the position of tiled pane 1
 - **THEN** the layout is unchanged
 
@@ -347,7 +347,7 @@ When a client asks to close a plugin pane, the pane SHALL leave the layout at on
 - **WHEN** a pane runs `trap '' HUP; sleep 100` and a client asks to close it
 - **THEN** the program is killed within 3 seconds and the pane leaves the layout
 
-#### Scenario: Close a plugin pane
+#### Scenario: Close a drawn window
 - **WHEN** a client asks to close a plugin pane
 - **THEN** every client receives a layout without that pane, with no delay
 
@@ -375,7 +375,7 @@ When a pane's program exits, the pane SHALL leave its session's layout once its 
 - **WHEN** `gband server` runs with `SHELL=/bin/true` and no client attaches
 - **THEN** the server exits with status 0 without waiting for a client
 
-#### Scenario: Only a plugin pane remains
+#### Scenario: Only a drawn window remains
 - **WHEN** a client is attached to the server's only session, which holds one shell pane and one plugin pane, and the user runs `exit` in the shell
 - **THEN** the plugin pane leaves the layout, the client is told the session ended, and the server exits with status 0
 
@@ -526,12 +526,12 @@ The server SHALL resize PTYs only when the session has settled: 100 ms have pass
 - **THEN** every attached client receives a layout after each action
 - **AND** the pane's program receives exactly one SIGWINCH, after the last action
 
-#### Scenario: Offscreen pane keeps its size
+#### Scenario: Offscreen window keeps its size
 - **WHEN** a client with an 80×24 terminal views a band holding columns A, B and C, all of width 1/2, shows A and B, and resizes its terminal to 100×30
 - **THEN** the PTYs of A and B become 48 columns by 28 rows
 - **AND** C's PTY stays 38 columns by 22 rows, and C's program receives no SIGWINCH
 
-#### Scenario: Offscreen pane resized when shown
+#### Scenario: Offscreen window resized when shown
 - **WHEN** C's PTY has kept 38 columns by 22 rows while offscreen in a 100×30 area, and the client focuses C so that it shows C
 - **THEN** C's PTY becomes 48 columns by 28 rows
 
@@ -539,12 +539,12 @@ The server SHALL resize PTYs only when the session has settled: 100 ms have pass
 - **WHEN** two clients are attached, the first shows only pane A, the second shows only pane C, and the screen area changes
 - **THEN** both A and C are resized
 
-#### Scenario: Pane leaves a stack while detached
+#### Scenario: Window leaves a stack while detached
 - **WHEN** no client is attached, a column holds P1 and P2, and P2's program exits
 - **THEN** P1's PTY keeps its size
 - **AND** when a client attaches and shows P1, P1's PTY becomes the size of its tile, which now spans the column's height
 
-#### Scenario: Floating pane takes its box size
+#### Scenario: Floating window takes its box size
 - **WHEN** the screen area is 80×24, a shown floating pane has width 1/3 and `rows` 12, and its height is grown
 - **THEN** once the session settles, its PTY becomes 24 columns by 12 rows
 
@@ -555,7 +555,7 @@ A content message from the owning client SHALL replace the plugin pane's screen.
 
 A plugin pane's screen SHALL be resized as "Pane resizes" defines for a PTY, keeping its cells where they fit, and no signal SHALL be sent. The server SHALL send each client a snapshot of the pane after each resize, as it does when a PTY's size changes. When the owning client detaches, disconnects or is killed, every plugin pane it owns SHALL leave the layout. A plugin pane SHALL count as a pane in the pane count that a sessions message reports.
 
-#### Scenario: Open a plugin pane
+#### Scenario: Open a drawn window
 - **WHEN** a client asks to open a pane naming plugin content and request number 7, after pane 1, with focus
 - **THEN** every client receives a layout holding a new pane right of pane 1's column, followed by a blank snapshot of it
 - **AND** the asking client then receives opened naming request 7 and the new pane, then a message to focus it

@@ -86,11 +86,11 @@ The first layout after attaching SHALL emit no `PaneOpened` and no `LayoutChange
 - **WHEN** the user views the band below the first band
 - **THEN** `BandChanged` runs with the second band's number as `band` and the first's as `previous`
 
-#### Scenario: Pane opened and closed
+#### Scenario: Window opened and closed
 - **WHEN** the user opens a pane and then closes it
 - **THEN** `PaneOpened` runs once naming the new pane and its band, then `PaneClosed` runs once naming it
 
-#### Scenario: Layout change without a pane change
+#### Scenario: Layout change without a window change
 - **WHEN** two panes sit in two columns and the user consumes the focused pane into the column to its left
 - **THEN** `LayoutChanged` runs once, and neither `PaneOpened` nor `PaneClosed` runs
 

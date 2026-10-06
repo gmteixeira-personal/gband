@@ -74,15 +74,15 @@ Window and band identifiers SHALL name windows and bands of the client's session
 - **WHEN** a client sends grow height naming window 2
 - **THEN** the server decodes the same action and window
 
-#### Scenario: Open pane with a program round trip
+#### Scenario: Open window with a program round trip
 - **WHEN** a client sends open window naming band 1, window 2 and the argument list `htop`, `-d`, `10`
 - **THEN** the server decodes the same band, window and argument list
 
-#### Scenario: Open pane without a program round trip
+#### Scenario: Open window without a program round trip
 - **WHEN** a client sends open window naming band 1 and no window or program
 - **THEN** the server decodes open window naming band 1 with no window and no program
 
-#### Scenario: Open plugin pane round trip
+#### Scenario: Open drawn window round trip
 - **WHEN** a client sends open window naming band 1, window 2, the width 1/4, no focus, and plugin content with request number 7
 - **THEN** the server decodes the same band, window, width, focus flag, content kind and request number
 
@@ -110,7 +110,7 @@ Window and band identifiers SHALL name windows and bands of the client's session
 - **WHEN** a client sends set position naming window 4, column 12 and row 3
 - **THEN** the server decodes set position naming window 4, column 12 and row 3
 
-#### Scenario: Open floating pane round trip
+#### Scenario: Open floating window round trip
 - **WHEN** a client sends open window naming band 1, no window, the width 1/3, floating, and no program
 - **THEN** the server decodes the same band, width and floating flag
 
@@ -180,7 +180,7 @@ A client SHALL keep one grid per window. It SHALL build a window's grid by repla
 - **WHEN** a result message for call 7 holding the error `unknown command absent` is framed and decoded
 - **THEN** the decoded message equals the original
 
-#### Scenario: Floating panes in the layout
+#### Scenario: Floating windows in the layout
 - **WHEN** band 1 holds a column with window 1 and floating windows 2 and 3, window 2 with column 5, row 3, width 1/3, full width off and 10 rows, and the server sends the layout
 - **THEN** the client decodes band 1 with that column and floating windows 2 and 3 in that order, window 2 with the same box record
 

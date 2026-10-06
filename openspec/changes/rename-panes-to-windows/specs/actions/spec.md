@@ -26,7 +26,7 @@ Open window SHALL be sent naming, as the window to open after, the tiled window 
 
 A session action dispatched with a target, as the lua-control capability defines, SHALL NOT be resolved against the view: it SHALL name the window, band or window to open after that its target names, whichever window is focused.
 
-#### Scenario: Resolve to the focused pane
+#### Scenario: Resolve to the focused window
 - **WHEN** a view focuses window 3 and resolves cycle width
 - **THEN** the result is cycle width naming window 3
 
@@ -34,15 +34,15 @@ A session action dispatched with a target, as the lua-control capability defines
 - **WHEN** a view on the empty band resolves close window
 - **THEN** there is nothing to send
 
-#### Scenario: Open pane on the empty band
+#### Scenario: Open window on the empty band
 - **WHEN** a view on the empty band resolves open window
 - **THEN** the result is open window naming that band and no window to open after
 
-#### Scenario: Open pane from the floating layer
+#### Scenario: Open window from the floating layer
 - **WHEN** a view last focused tiled window 1, now focuses floating window 3 in the same band, and resolves open window
 - **THEN** the result is open window naming that band and window 1 as the window to open after
 
-#### Scenario: Tile the focused floating pane
+#### Scenario: Tile the focused floating window
 - **WHEN** a view last focused tiled window 1, now focuses floating window 3, and resolves toggle floating
 - **THEN** the result is toggle floating naming window 3 and window 1 as the window to tile after
 

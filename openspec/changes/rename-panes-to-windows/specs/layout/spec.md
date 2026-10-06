@@ -23,7 +23,7 @@
 ### Requirement: Layout structure
 A session's layout SHALL be an ordered list of bands, stacked top to bottom. Each band SHALL hold an ordered list of columns, left to right, and an ordered list of floating windows, as the floating-windows capability defines. Each column SHALL hold an ordered list of one or more windows, top to bottom, and a width. Every window and every band SHALL have an identifier that is unique within the session and is never reused. A column SHALL never be empty: a column whose last window leaves it SHALL be removed.
 
-#### Scenario: Column removed with its last pane
+#### Scenario: Column removed with its last window
 - **WHEN** a band holds columns A, B and C, B holds one window, and that window closes
 - **THEN** the band holds columns A and C, in that order
 
@@ -31,7 +31,7 @@ A session's layout SHALL be an ordered list of bands, stacked top to bottom. Eac
 - **WHEN** window 2 closes and a new window opens
 - **THEN** the new window's identifier is not 2
 
-#### Scenario: Column removed when its last pane floats
+#### Scenario: Column removed when its last window floats
 - **WHEN** a band holds columns A, B and C, B holds one window, and that window is floated
 - **THEN** the band holds columns A and C, in that order, and one floating window
 
@@ -43,7 +43,7 @@ The layout SHALL always hold at least one band, and its last band SHALL always b
 - **THEN** the layout holds two bands
 - **AND** the first holds one column with that window, and the second is empty
 
-#### Scenario: Pane opened in the empty band
+#### Scenario: Window opened in the empty band
 - **WHEN** the layout holds bands B1, with windows, and B2, empty, and a window opens in B2
 - **THEN** the layout holds B1, B2 with the new window, and a new empty band B3
 
@@ -51,12 +51,12 @@ The layout SHALL always hold at least one band, and its last band SHALL always b
 - **WHEN** the layout holds B1, B2 and an empty B3, and the last window of B1 closes
 - **THEN** the layout holds B2 and B3, in that order
 
-#### Scenario: Floating pane keeps its band
+#### Scenario: Floating window keeps its band
 - **WHEN** the layout holds B1 with only floating window P3, B2 with windows, and an empty B3
 - **THEN** B1 is not removed
 - **AND** when P3 closes, the layout holds B2 and B3
 
-#### Scenario: Floating pane opened in the empty band
+#### Scenario: Floating window opened in the empty band
 - **WHEN** the layout holds B1, with windows, and B2, empty, and a floating window opens in B2
 - **THEN** the layout holds B1, B2 with the floating window, and a new empty band B3
 
@@ -154,27 +154,27 @@ When the window floats, it SHALL be appended to the band's floating list, and th
 - **WHEN** a window opens in an empty band with no window named
 - **THEN** that band holds one column with the new window
 
-#### Scenario: Open a floating pane
+#### Scenario: Open a floating window
 - **WHEN** the screen area is 80×24, the default column width is 1/2, and a floating window opens in a band holding columns A and B
 - **THEN** the band still holds A and B, and its floating list ends with the new window
 - **AND** the new window's box record has width 1/2, `rows` 20, `col` 20 and `row` 2
 
-#### Scenario: Open a floating pane with a width
+#### Scenario: Open a floating window with a width
 - **WHEN** the screen area is 80×24 and a floating window opens with the width 1/4
 - **THEN** the new window's box record has width 1/4, `rows` 20, `col` 30 and `row` 2
 
 ### Requirement: Close a window
 A window SHALL leave the layout when its program exits, whether the program exited by itself or because the window was closed. A drawn window, as the session-server capability defines it, SHALL leave the layout when it is closed. A tiled window's column and band SHALL then follow the column rule and the dynamic band rule. A floating window SHALL leave its band's floating list, and its band SHALL then follow the dynamic band rule.
 
-#### Scenario: Pane leaves a stack
+#### Scenario: Window leaves a stack
 - **WHEN** a column holds windows P1, P2 and P3, and P2's program exits
 - **THEN** the column holds P1 and P3, in that order, and keeps its width
 
-#### Scenario: Plugin pane closed
+#### Scenario: Drawn window closed
 - **WHEN** a band holds columns A, B and C, and B holds only a drawn window, which is closed
 - **THEN** the band holds A and C, in that order
 
-#### Scenario: Floating pane exits
+#### Scenario: Floating window exits
 - **WHEN** a band's floating list holds P3 and P4, and P3's program exits
 - **THEN** the band's floating list holds only P4
 
@@ -227,11 +227,11 @@ For a screen area of a given width and height, the layout SHALL give every windo
 - **WHEN** a column holds two windows with automatic heights of weight 1 and the area is 80×25
 - **THEN** the top tile is 13 rows high and the bottom tile is 12 rows high
 
-#### Scenario: Fixed pane above an automatic pane
+#### Scenario: Fixed window above an automatic window
 - **WHEN** a column holds P1 with a fixed height of 16 rows above P2 with an automatic height, and the area is 80×24
 - **THEN** P1's tile is 16 rows high and P2's tile is 8 rows high
 
-#### Scenario: Automatic panes share by weight
+#### Scenario: Automatic windows share by weight
 - **WHEN** the area is 80×24 and a column holds P1 with an automatic height of weight 10/7, P2 with an automatic height of weight 1, and P3 with a fixed height of 9 rows
 - **THEN** the tiles of P1, P2 and P3 are 9, 6 and 9 rows high
 
@@ -239,11 +239,11 @@ For a screen area of a given width and height, the layout SHALL give every windo
 - **WHEN** the area is 80×24 and a column holds P1 with a fixed height of 30 rows above two windows with automatic heights
 - **THEN** the tiles are 18, 3 and 3 rows high
 
-#### Scenario: Automatic pane raised to 3 rows
+#### Scenario: Automatic window raised to 3 rows
 - **WHEN** the area is 80×24 and a column holds P1 with an automatic height of weight 1/20 above P2 with an automatic height of weight 1
 - **THEN** P1's tile is 3 rows high and P2's tile is 21 rows high
 
-#### Scenario: Lone pane with a fixed height
+#### Scenario: Lone window with a fixed height
 - **WHEN** the area is 80×24 and a window alone in its column has a fixed height of 20 rows
 - **THEN** its tile is 20 rows high, and rows 20 to 23 of that column are covered by no tile
 
@@ -297,7 +297,7 @@ Growing and shrinking SHALL measure tile heights, and the step, for the session'
 - **WHEN** the area is 80×25, a column holds P1 above P2, both with automatic heights of weight 1, and P1's height is grown
 - **THEN** P1 has a fixed height of 16 rows and P2's tile is 9 rows high
 
-#### Scenario: Resizing another pane keeps the earlier one larger
+#### Scenario: Resizing another window keeps the earlier one larger
 - **WHEN** the area is 80×24, a column holds P1, P2 and P3, all with automatic heights of weight 1, P1's height is grown, and then P3's height is grown
 - **THEN** after the first grow the tiles are 10, 7 and 7 rows high
 - **AND** after the second grow P1 has an automatic height of weight 10/7, P2 an automatic height of weight 1, and P3 a fixed height of 9 rows
@@ -311,7 +311,7 @@ Growing and shrinking SHALL measure tile heights, and the step, for the session'
 - **WHEN** a window has a fixed height of 3 rows and is shrunk
 - **THEN** the layout is unchanged
 
-#### Scenario: Shrink a lone pane
+#### Scenario: Shrink a lone window
 - **WHEN** the area is 80×24 and a window alone in its column with an automatic height is shrunk
 - **THEN** it has a fixed height of 22 rows, and rows 22 and 23 of that column are covered by no tile
 
@@ -319,7 +319,7 @@ Growing and shrinking SHALL measure tile heights, and the step, for the session'
 - **WHEN** the area is 80×24, a column holds P1 with a fixed height of 16 rows above P2 with an automatic height of weight 1, and P1's height is reset
 - **THEN** both windows have automatic heights of weight 1, and both tiles are 12 rows high
 
-#### Scenario: Last pane in a column takes weight 1
+#### Scenario: Last window in a column takes weight 1
 - **WHEN** a column holds P1 with an automatic height of weight 10/7 and P2 with a fixed height, P2 closes, and then P3 is consumed into P1's column on an 80×24 area
 - **THEN** P1 and P3 both have automatic heights of weight 1, and both tiles are 12 rows high
 
@@ -345,7 +345,7 @@ Setting a height SHALL measure tile heights for the session's current screen are
 - **WHEN** P1's height is set to 1 row
 - **THEN** P1 has a fixed height of 3 rows
 
-#### Scenario: Fixed height moves to another pane
+#### Scenario: Fixed height moves to another window
 - **WHEN** the screen area is 80×24, a column holds P1 with a fixed height of 14 rows and P2 with an automatic height, and P2's height is set to 6 rows
 - **THEN** P1 has an automatic height and P2 a fixed height of 6 rows
 
@@ -367,7 +367,7 @@ Moving a tiled window's column left or right SHALL swap that column with the adj
 ### Requirement: Move a window within its column
 Moving a tiled window down or up SHALL swap it with the adjacent window in that direction in its column. Each window SHALL keep its own height, automatic with its weight or fixed with its rows, and the column SHALL keep its width. When no window exists in that direction, nothing SHALL change. Moving a floating window down or up SHALL move its box, as the floating-windows capability defines.
 
-#### Scenario: Move a pane down
+#### Scenario: Move a window down
 - **WHEN** a column holds P1 with a fixed height of 16 rows above P2 with an automatic height of weight 1, and P1 is moved down
 - **THEN** the column holds P2 with an automatic height of weight 1 above P1 with a fixed height of 16 rows
 
@@ -375,6 +375,6 @@ Moving a tiled window down or up SHALL swap it with the adjacent window in that 
 - **WHEN** a column holds P1 and P2, and P2 is moved down
 - **THEN** the layout is unchanged
 
-#### Scenario: Lone pane
+#### Scenario: Lone window
 - **WHEN** a window alone in its column is moved up
 - **THEN** the layout is unchanged

@@ -74,6 +74,7 @@ PLUGIN_WINDOW_NAMES = [
     (r"`WindowTitle`", "`PluginWindowTitle`"),
     (r"`Window`", "`PluginWindow`"),
     (r"`window`", "`plugin_window`"),
+    (r'"Window(CursorLine|Border|Title)?"', '"PluginWindow\\1"'),
 ]
 
 BARE_PLUGIN_WINDOW = [

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Defines the bytes gband writes to a pane's PTY for each key the user presses and each text the user pastes, given the input modes the program in that pane has set, so programs such as shells, nvim and Claude Code receive the input they expect.
+Defines the bytes gband writes to a window's PTY for each key the user presses and each text the user pastes, given the input modes the program in that window has set, so programs such as shells, nvim and Claude Code receive the input they expect.
 
 ## Requirements
 

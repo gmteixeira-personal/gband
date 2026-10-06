@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Defines `gband attach`: the client that connects the user's terminal to a session server, presents the pane full screen from its own copy of the server's screen, sends the user's input back, and leaves the session running when it goes.
+Defines `gband attach`: the client that connects the user's terminal to a session server, presents the window full screen from its own copy of the server's screen, sends the user's input back, and leaves the session running when it goes.
 
 ## Requirements
 
@@ -57,7 +57,7 @@ When nothing accepts connections on the socket path, `gband attach` SHALL start 
 ### Requirement: Refuse to nest
 `gband attach` SHALL refuse to run when the `GBAND` environment variable is set, is not empty, and holds the socket path the client resolved, because the client would then show the pane's own server inside one of its panes. It SHALL print one line to standard error saying so, and exit with status 1 without connecting. Attaching from a pane to a server on another socket path SHALL be allowed.
 
-#### Scenario: Attach inside a pane
+#### Scenario: Attach inside a window
 - **WHEN** the user runs `gband attach` without an option in a gband pane
 - **THEN** standard error says that the client is already inside a pane of that server
 - **AND** the process exits with status 1
@@ -66,7 +66,7 @@ When nothing accepts connections on the socket path, `gband attach` SHALL start 
 - **WHEN** the user runs `gband -S feature attach` in a pane of the server named `feature`
 - **THEN** the process exits with status 1 without connecting
 
-#### Scenario: Another server from a pane
+#### Scenario: Another server from a window
 - **WHEN** the user runs `gband -S feature attach` in a pane of the default server
 - **THEN** the client attaches to the server named `feature`
 
@@ -141,7 +141,7 @@ The client SHALL send each key press and repeat that the key bindings do not con
 - **WHEN** the user types `echo hi` and Enter
 - **THEN** the focused pane prints `hi`
 
-#### Scenario: Typing reaches only the focused pane
+#### Scenario: Typing reaches only the focused window
 - **WHEN** two panes are open with the second focused and the user types `echo hi` and Enter
 - **THEN** the second pane prints `hi`
 - **AND** the first pane's screen is unchanged
@@ -154,11 +154,11 @@ The client SHALL send each key press and repeat that the key bindings do not con
 - **WHEN** the client's terminal is 80×24, the status line takes one row, and the only pane runs `tput lines`
 - **THEN** the pane prints `21`
 
-#### Scenario: Typing into a focused float
+#### Scenario: Typing into a focused floating plugin window
 - **WHEN** a float is focused and the user types `ls`
 - **THEN** nothing is sent to the server
 
-#### Scenario: Paste into a focused float
+#### Scenario: Paste into a focused floating plugin window
 - **WHEN** a float is focused and the user pastes `hello`
 - **THEN** the paste is discarded and nothing is sent to the server
 
@@ -269,29 +269,29 @@ The terminal's cursor SHALL sit where the focused pane's cursor is. It SHALL be 
 - **THEN** the bottom row shows the error, cut at the terminal's width
 - **AND** the rows above it show the tile unchanged
 
-#### Scenario: Float over two tiles
+#### Scenario: Floating plugin window over two tiles
 - **WHEN** the client's 80×24 terminal sets the screen area, the status line is off, the viewed band holds two columns of width 1/2, and a float with a border spans columns 20 to 59 and rows 6 to 16
 - **THEN** those cells show the float, and the tiles show around it
 - **AND** the cursor is hidden while the float is focused
 
-#### Scenario: Error banner over a float
+#### Scenario: Error banner over a floating plugin window
 - **WHEN** the status line is off, a float covers the ribbon area's bottom row, and the client shows a configuration error
 - **THEN** the bottom row shows the error
 
 
-#### Scenario: Floating pane over two tiles
+#### Scenario: Floating window over two tiles
 - **WHEN** the client's 80×24 terminal sets the screen area, the status line is off, the viewed band holds two columns of width 1/2 and a floating pane whose box spans columns 20 to 59 and rows 6 to 17
 - **THEN** those cells show the floating pane with its border, and the tiles show around it
 
-#### Scenario: Floating pane ignores the camera
+#### Scenario: Floating window ignores the camera
 - **WHEN** the floating pane's box starts at column 20 and the camera scrolls from 0 to 40
 - **THEN** the box is still drawn from screen column 20
 
-#### Scenario: Float over a floating pane
+#### Scenario: Floating plugin window over a floating window
 - **WHEN** a float the client opened and a floating pane cover the same cell
 - **THEN** that cell shows the float
 
-#### Scenario: Cursor under a floating pane
+#### Scenario: Cursor under a floating window
 - **WHEN** a tiled pane is focused and its cursor sits in a cell that a floating pane covers
 - **THEN** the cursor is hidden
 
@@ -359,7 +359,7 @@ A binding to an action SHALL dispatch it. A binding to a Lua function SHALL run 
 - **WHEN** the user presses Ctrl+Space then `x`
 - **THEN** nothing is sent to the pane
 
-#### Scenario: Open a pane
+#### Scenario: Open a window
 - **WHEN** one pane is focused and the user presses Ctrl+Space then Enter
 - **THEN** a second tile with a shell prompt appears right of the first
 - **AND** the new pane is focused, so `echo $GBAND_PANE` runs in it
@@ -368,7 +368,7 @@ A binding to an action SHALL dispatch it. A binding to a Lua function SHALL run 
 - **WHEN** the user has opened a second pane and presses Ctrl+Space then `h`, then types `echo left` and Enter
 - **THEN** `left` appears in the first tile only
 
-#### Scenario: Close the focused pane
+#### Scenario: Close the focused window
 - **WHEN** two panes are open with the second focused and the user presses Ctrl+Space then `q`
 - **THEN** the second tile disappears and the first pane is focused
 
@@ -382,7 +382,7 @@ A binding to an action SHALL dispatch it. A binding to a Lua function SHALL run 
 - **THEN** the tile is 48 columns wide
 - **AND** the pane prints `46`
 
-#### Scenario: Grow the pane's height
+#### Scenario: Grow the window's height
 - **WHEN** the client's 80×25 terminal, whose status line takes one row, sets the screen area, a column holds two panes with automatic heights with the top one focused, and the user presses Ctrl+Space then `+`
 - **THEN** the top tile is 14 rows high and the bottom tile is 10 rows high
 
@@ -391,7 +391,7 @@ A binding to an action SHALL dispatch it. A binding to a Lua function SHALL run 
 - **THEN** the first pane is focused
 - **AND** neither pane receives the key
 
-#### Scenario: Unbound Alt key reaches the pane
+#### Scenario: Unbound Alt key reaches the window
 - **WHEN** `user/init.lua` binds `alt+h` and the user presses Alt+X
 - **THEN** the focused pane receives `\x1bx`
 
@@ -421,16 +421,16 @@ A binding to an action SHALL dispatch it. A binding to a Lua function SHALL run 
 - **WHEN** a binding in `prefix` calls `gband.keymap.current_table()`
 - **THEN** it returns `prefix`
 
-#### Scenario: Unbound key goes to the focused window
+#### Scenario: Unbound key goes to the focused plugin window
 - **WHEN** a float with `keys = { j = fn }` is focused and the user presses `j`
 - **THEN** `fn` runs and the focused pane receives nothing
 
-#### Scenario: Root binding before the window
+#### Scenario: Root binding before the plugin window
 - **WHEN** `user/init.lua` binds `alt+h` in `root` to `gband.action.focus_column_left`, a float binding `alt+h` in its `keys` is focused, and the user presses Alt+H
 - **THEN** the root binding runs and the float's function does not
 
 
-#### Scenario: Float the focused pane
+#### Scenario: Float the focused window
 - **WHEN** the client's 80×24 terminal sets the screen area, the status line is off, the only pane sits in a column of width 1/2, and the user presses Ctrl+Space then `v`
 - **THEN** the pane is drawn in a box spanning columns 20 to 59 and rows 2 to 21, and stays focused
 
@@ -444,11 +444,11 @@ A binding to an action SHALL dispatch it. A binding to a Lua function SHALL run 
 - **THEN** the band holds B and A, in that order, and B stays focused, and neither pane receives a key
 - **AND** pressing Ctrl+Space then Ctrl+Right restores A and B
 
-#### Scenario: Move a pane with Ctrl+J
+#### Scenario: Move a window with Ctrl+J
 - **WHEN** a column holds P1 above P2 with P1 focused, and the user presses Ctrl+Space then Ctrl+J
 - **THEN** the column holds P2 above P1, and P1 stays focused
 
-#### Scenario: Move a floating pane
+#### Scenario: Move a floating window
 - **WHEN** the client's 80×24 terminal sets the screen area, a floating pane is focused with its box starting at column 20, and the user presses Ctrl+Space then Ctrl+L
 - **THEN** the box is drawn from column 28
 
