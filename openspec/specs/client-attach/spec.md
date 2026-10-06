@@ -135,7 +135,7 @@ A release build, and a debug build that does not replace, SHALL attach to the se
 - **AND** it exits with status 1 without changing the terminal
 
 ### Requirement: Send input
-The client SHALL send each key press and repeat that the key bindings do not consume to the server as a key naming the focused window, each paste as a paste naming the focused window, except while a plugin window is focused, when the plugin-windows capability takes them, and each change of its reported size, as "Ribbon area" defines it, as a resize carrying the reported size. Keys and pastes SHALL be dropped while no window is focused. Keys the input-encoding capability cannot represent SHALL be dropped. On attach, the client SHALL report its reported size as its terminal size.
+The client SHALL send each key press and repeat that the key bindings do not consume to the server as a key naming the focused window, each paste as a paste naming the focused window, and each change of its reported size, as "Ribbon area" defines it, as a resize carrying the reported size. While a plugin window is focused, the plugin-windows capability SHALL take the keys and the pastes instead, whether or not a window is focused. Otherwise, keys and pastes SHALL be dropped while no window is focused. Keys the input-encoding capability cannot represent SHALL be dropped. On attach, the client SHALL report its reported size as its terminal size.
 
 #### Scenario: Typing runs a command
 - **WHEN** the user types `echo hi` and Enter
@@ -159,8 +159,16 @@ The client SHALL send each key press and repeat that the key bindings do not con
 - **THEN** nothing is sent to the server
 
 #### Scenario: Paste into a focused floating plugin window
-- **WHEN** a floating plugin window is focused and the user pastes `hello`
+- **WHEN** a floating plugin window without `on_input` is focused and the user pastes `hello`
 - **THEN** the paste is discarded and nothing is sent to the server
+
+#### Scenario: Paste into a plugin window that takes text
+- **WHEN** a floating plugin window whose `on_input` records its arguments is focused and the user pastes `hello`
+- **THEN** `on_input` runs with `hello` and nothing is sent to the server
+
+#### Scenario: Paste on a band with no window
+- **WHEN** the viewed band holds no window, a floating plugin window whose `on_input` records its arguments is focused, and the user pastes `hi`
+- **THEN** `on_input` runs with `hi`
 
 ### Requirement: Leaving the client
 Whenever the client exits after taking the terminal, it SHALL first leave the alternate screen, disable raw mode and bracketed paste, and show the cursor. It SHALL then print one line to standard output, followed by the note for a server from a different build when one applies, and exit as follows:
@@ -343,6 +351,7 @@ With no configuration file, the bindings SHALL be those the default configuratio
 | Ctrl+Down | `prefix ctrl+down` | move the focused window, or its floating box, down | session | |
 | Ctrl+Up | `prefix ctrl+up` | move the focused window, or its floating box, up | session | |
 | `?` | `prefix ?` | open the key list, as the key-list capability defines, which returns to interactive mode | client | |
+| `:` | `prefix :` | open the Lua prompt, as the lua-prompt capability defines, which returns to interactive mode | client | |
 | `D` | `prefix D` | detach | client | |
 | Escape | `prefix escape` | return to interactive mode | — | `interactive mode` |
 | Enter | `prefix enter` | return to interactive mode | — | `interactive mode` |
@@ -500,6 +509,15 @@ A binding to an action SHALL dispatch it. A binding to a Lua function SHALL run 
 - **WHEN** no `user/init.lua` exists and the user presses Ctrl+Space then `?`
 - **THEN** a floating plugin window titled `navigation keys` lists the prefix bindings and has focus
 - **AND** `root` is active, so a following Down moves the list's cursor line
+
+#### Scenario: Open the Lua prompt
+- **WHEN** no `user/init.lua` exists and the user presses Ctrl+Space then `:`
+- **THEN** a floating plugin window titled `lua` shows `:` and has focus
+- **AND** `root` is active, so a following `j` is typed into the prompt and does not focus the window below
+
+#### Scenario: Colon reaches the focused window
+- **WHEN** no `user/init.lua` exists, `root` is active, and the user types `:`
+- **THEN** the focused window receives `:` and no prompt opens
 
 #### Scenario: Float the focused window
 - **WHEN** the client's 80×24 terminal sets the screen area, the client has no bar, the only window sits in a column of width 1/2, and the user presses Ctrl+Space then `v`

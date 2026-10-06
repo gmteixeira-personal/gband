@@ -29,6 +29,7 @@ A function that takes a plugin window SHALL take its number. A number that names
 | `focus` | both | boolean | `true` |
 | `cursorline` | both | boolean | `false` |
 | `keys` | both | a table from key names to functions | empty |
+| `on_input` | both | function, as "Keys in a focused plugin window" defines | none |
 | `on_close` | both | function | none |
 | `on_resize` | both | function | none |
 | `row`, `col` | floating | an integer of at least 0, or `"center"` | `"center"` |
@@ -55,6 +56,10 @@ A field for the other kind SHALL be an error. A key name in `keys` SHALL be vali
 #### Scenario: Invalid border table
 - **WHEN** a binding function calls `gband.win.open({ border = { sides = { "middle" } } })`
 - **THEN** the call raises an error naming `middle`
+
+#### Scenario: Input handler of the wrong type
+- **WHEN** a binding function calls `gband.win.open({ on_input = "text" })`
+- **THEN** the call raises an error naming `on_input`
 
 ### Requirement: Plugin window contents
 A plugin window's lines SHALL be a list, in which each line is a string or a list of spans. A span SHALL be a string or a table `{ text = <string>, hl = <group name> }`. A string line SHALL be one span. A span without `hl`, or a string span, SHALL use the group `PluginWindow`. Control characters, as the status-line capability defines them, SHALL be removed from every span's text. `gband.win.set_lines(win, lines)` SHALL replace the plugin window's lines.
@@ -119,7 +124,14 @@ The client SHALL have at most one focused floating plugin window. The **focused 
 - **AND** when the user then presses Ctrl+Space then `h`, the first column is focused and no floating plugin window is focused
 
 ### Requirement: Keys in a focused plugin window
-While a plugin window is focused, every key that the key bindings would send to the focused window SHALL go to the plugin window instead, and SHALL NOT be sent to the server. Every paste SHALL be discarded. A key that matches an entry of the plugin window's `keys`, as a key matches a binding, SHALL run that entry's function with the plugin window's number, as a callback that belongs to the plugin window's plugin. A key that matches no entry SHALL take its default, when it has one:
+While a plugin window is focused, every key that the key bindings would send to the focused window SHALL go to the plugin window instead, and SHALL NOT be sent to the server. Every paste SHALL go to the plugin window too, and SHALL NOT be sent to the server.
+
+A key **types a character** when it is a character key pressed without Ctrl and without Alt. Its text SHALL be that character, as the terminal reports it, so Shift+A gives `A` and the space bar gives a space.
+
+A key SHALL be handled by the first of these that applies:
+1. A key that matches an entry of the plugin window's `keys`, as a key matches a binding, SHALL run that entry's function with the plugin window's number, as a callback that belongs to the plugin window's plugin.
+2. A key that types a character, when the plugin window has `on_input`, SHALL run `on_input` with the plugin window's number and the key's text, as a callback that belongs to the plugin window's plugin.
+3. A key that has a default in this table SHALL take it:
 
 | key | default |
 |---|---|
@@ -129,6 +141,8 @@ While a plugin window is focused, every key that the key bindings would send to 
 | `q`, Escape | close the plugin window when it is a floating plugin window |
 
 Any other key SHALL be discarded.
+
+A paste SHALL run `on_input` with the plugin window's number and the pasted text, unchanged, line breaks and other control characters included, as a callback that belongs to the plugin window's plugin. A paste into a plugin window without `on_input` SHALL be discarded.
 
 #### Scenario: Key entry runs
 - **WHEN** a focused floating plugin window has `keys = { enter = fn }` and `cursorline = true`, its cursor is on line 3, and the user presses Enter
@@ -151,7 +165,7 @@ Any other key SHALL be discarded.
 - **THEN** the first column is focused and `fn` does not run
 
 #### Scenario: q closes a floating plugin window
-- **WHEN** a focused floating plugin window binds no `q` and the user presses `q`
+- **WHEN** a focused floating plugin window binds no `q`, has no `on_input`, and the user presses `q`
 - **THEN** the floating plugin window closes, its `on_close` runs, and the focused window receives nothing
 
 #### Scenario: A keys entry for q wins
@@ -163,12 +177,38 @@ Any other key SHALL be discarded.
 - **THEN** the floating plugin window closes, window 1 stays open and focused, and the floating plugin window's `keys` functions do not run
 
 #### Scenario: q in a tiled plugin window
-- **WHEN** a tiled plugin window is focused, binds no `q`, and the user presses `q`
+- **WHEN** a tiled plugin window is focused, binds no `q`, has no `on_input`, and the user presses `q`
 - **THEN** the key is discarded and the tiled plugin window stays open
 
 #### Scenario: Unmatched key
-- **WHEN** a floating plugin window is focused and the user types `x`
+- **WHEN** a floating plugin window without `on_input` is focused and the user types `x`
 - **THEN** nothing reaches the focused window
+
+#### Scenario: Typed characters go to on_input
+- **WHEN** a focused floating plugin window without `cursorline` shows lines 1 to 10 of 25, its `on_input` records its arguments, and the user types `j`, `q`, Shift+A and a space
+- **THEN** `on_input` runs four times, with the plugin window's number and `j`, `q`, `A` and a space
+- **AND** the floating plugin window stays open and still shows lines 1 to 10
+
+#### Scenario: A keys entry wins over on_input
+- **WHEN** a focused floating plugin window has `keys = { j = fn }` and `on_input`, and the user types `j`
+- **THEN** `fn` runs and `on_input` does not
+
+#### Scenario: Keys without text keep their defaults
+- **WHEN** a focused floating plugin window without `cursorline` has `on_input`, shows lines 1 to 10 of 25, and the user presses Down, then Escape
+- **THEN** it shows lines 2 to 11, then closes, and `on_input` never runs
+
+#### Scenario: Ctrl and Alt keys are not text
+- **WHEN** a focused floating plugin window has `on_input` and the user presses Ctrl+X, then Alt+X
+- **THEN** `on_input` does not run and nothing reaches the focused window
+
+#### Scenario: Paste goes to on_input
+- **WHEN** a focused floating plugin window's `on_input` records its arguments and the user pastes `a\nb`
+- **THEN** `on_input` runs once, with the plugin window's number and `a\nb`
+- **AND** nothing is sent to the server
+
+#### Scenario: Paste without on_input
+- **WHEN** a focused floating plugin window has no `on_input` and the user pastes `hello`
+- **THEN** the paste is discarded and nothing is sent to the server
 
 ### Requirement: Floating plugin windows
 A floating plugin window SHALL be drawn only by the client that opened it, and SHALL NOT change the layout, the view, the camera or the shown windows. Its box SHALL be placed in the ribbon area each time it is drawn:
@@ -229,11 +269,16 @@ A tiled plugin window SHALL be resized, moved and focused through its window, li
 - **THEN** its drawn window leaves the layout and `on_close` runs with the plugin window's number
 
 ### Requirement: Plugin window callbacks
-A plugin window's `keys` functions, `on_close` and `on_resize` SHALL run as callbacks that belong to the plugin window's plugin. `on_close` SHALL run once, with the plugin window's number, when the plugin window closes, except when it closes because of a reload or because the client is ending. `on_resize` SHALL run with the plugin window's number and its content area's columns and rows each time that size changes. For a tiled plugin window, that SHALL include the first time its size becomes known.
+A plugin window's `keys` functions, `on_input`, `on_close` and `on_resize` SHALL run as callbacks that belong to the plugin window's plugin. `on_input` SHALL run with the plugin window's number and a text, as "Keys in a focused plugin window" defines. `on_close` SHALL run once, with the plugin window's number, when the plugin window closes, except when it closes because of a reload or because the client is ending. `on_resize` SHALL run with the plugin window's number and its content area's columns and rows each time that size changes. For a tiled plugin window, that SHALL include the first time its size becomes known.
 
 #### Scenario: Failing callback
 - **WHEN** a plugin window's `keys` entry for `x` raises an error and the user presses `x` with the plugin window focused
 - **THEN** the error is reported as a plugin error, and the plugin window stays open
+
+#### Scenario: Failing input handler
+- **WHEN** a plugin window's `on_input` raises an error and the user types `a` with the plugin window focused
+- **THEN** the error is reported as a plugin error, and the plugin window stays open
+- **AND** typing `b` runs `on_input` again
 
 ### Requirement: Closing plugin windows
 `gband.win.close(win)` SHALL close the plugin window. For a tiled plugin window, it SHALL also dispatch close window naming its drawn window, or close that window as soon as the server reports it when the window is not yet known. Closing a plugin window that is not open SHALL do nothing. Close window resolved against the view while a floating plugin window is focused SHALL close that floating plugin window the same way, as the actions capability defines. A plugin window SHALL also close when the plugin it belongs to is marked failed. A reload SHALL close every plugin window and every drawn window this client opened, before the new configuration's `ConfigReloaded` handlers run.
