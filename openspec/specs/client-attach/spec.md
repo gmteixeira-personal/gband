@@ -318,7 +318,9 @@ A binding run while `root` is active MAY also enter a table, which then becomes 
 
 `gband.keymap.current_table()` SHALL return the name of the active table, and `root` while the configuration loads. Each change of the active table SHALL emit `KeyTableChanged`, as the lua-events capability defines, naming the new and the previous table. A key after which the same mode stays active SHALL emit none.
 
-With no configuration file, the bindings SHALL be those the default configuration makes: Ctrl+Space as the prefix, no binding in `root`, `prefix` declared a mode with the label `navigation`, and these bindings in `prefix`, in this order. A binding SHALL keep navigation mode active unless its row says it returns to interactive mode. A binding whose row gives a description is a Lua function with that description, and every other binding is bound to the action its row names:
+With no configuration file, the bindings SHALL be those the default configuration makes. They SHALL follow the key style that the key-style capability's `gband.keystyle.use()` selects: the saved key style, or the modal key style when none is saved.
+
+With the modal key style, the bindings SHALL be: Ctrl+Space as the prefix, no binding in `root`, `prefix` declared a mode with the label `navigation`, and these bindings in `prefix`, in this order. A binding SHALL keep navigation mode active unless its row says it returns to interactive mode. A binding whose row gives a description is a Lua function with that description, and every other binding is bound to the action its row names:
 
 | key in navigation mode | Lua binding | action | kind | description of a function |
 |---|---|---|---|---|
@@ -362,7 +364,11 @@ With no configuration file, the bindings SHALL be those the default configuratio
 | Ctrl+Space | `prefix prefix` | send the prefix key to the focused window, then return to interactive mode | client | `send the prefix key` |
 | any other key | — | discard the key; navigation mode stays active | — | |
 
+With the direct key style, the bindings SHALL be: Ctrl+Space as the prefix, no binding in `root`, no mode, and in `prefix` every row of the table above except Escape and Enter, in the same order. `n` SHALL be bound to open window and Ctrl+Space to send the prefix key, each to the action itself, with that action's description. Every other row SHALL be bound as with the modal key style. Each key after the prefix key SHALL end the key sequence, as in any table that is not a mode, so `root` is active again after it. Any other key, Escape and Enter included, SHALL be discarded together with the prefix key.
+
 A binding to an action SHALL dispatch it. A binding to a Lua function SHALL run the function, as the configuration capability defines. A view action SHALL change this client's view as the layout-view capability defines, and SHALL send nothing to the server, except `center_column` on the floating layer, which sends the placing the layout-view capability defines. A session action SHALL be sent to the server as an action naming the focused window, resolved as the actions capability defines, except close window while a floating plugin window is focused, which closes that floating plugin window in the client. Open window SHALL name the viewed band and the tiled window this client focused most recently there, or no window when there is none. Any other session action, and sending the prefix key, SHALL do nothing when no window is focused, except close window while a floating plugin window is focused. A character key SHALL match a binding by its character, Ctrl and Alt, so a `D` matches whether or not the terminal reports Shift with it.
+
+Where a scenario of this requirement names no key style, the modal key style is saved.
 
 #### Scenario: Detach
 - **WHEN** the user presses Ctrl+Space then Shift+D
@@ -462,6 +468,21 @@ A binding to an action SHALL dispatch it. A binding to a Lua function SHALL run 
 - **WHEN** `user/init.lua` binds `prefix h` to `gband.action.focus_column_left` and declares no mode, and the user presses Ctrl+Space, `h`, then `h` with the second of two columns focused
 - **THEN** the first column is focused
 - **AND** the second `h` reaches the focused window
+
+#### Scenario: Direct key style
+- **WHEN** the direct key style is saved, no `user/init.lua` exists, the first of three columns is focused, and the user presses Ctrl+Space, `l`, then `l`
+- **THEN** the second column is focused
+- **AND** the focused window receives the second `l`
+
+#### Scenario: Open a window with the direct key style
+- **WHEN** the direct key style is saved, no `user/init.lua` exists, one window is focused, and the user presses Ctrl+Space then `n`
+- **THEN** a second tile with a shell prompt appears right of the first
+- **AND** the new window is focused and `root` is active
+
+#### Scenario: Enter after the prefix with the direct key style
+- **WHEN** the direct key style is saved, no `user/init.lua` exists, one window is open, and the user presses Ctrl+Space then Enter
+- **THEN** no window opens and the focused window receives nothing
+- **AND** `root` is the active table
 
 #### Scenario: Named key table
 - **WHEN** `user/init.lua` binds `h` and `l` in the table `move`, and binds `prefix m` to a function that calls `gband.keymap.enter("move")`, and the user presses Ctrl+Space, `m`, then `l`, with the first of two columns focused
