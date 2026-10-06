@@ -21,6 +21,7 @@ tracing.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+gband-scratch.workspace = true
 gband-server.workspace = true
 gband-test-support.workspace = true
 insta.workspace = true

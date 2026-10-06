@@ -13,3 +13,6 @@ mlua.workspace = true
 portable-pty.workspace = true
 rustix.workspace = true
 vt100.workspace = true
+
+[dev-dependencies]
+gband-scratch.workspace = true

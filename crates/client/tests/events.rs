@@ -13,15 +13,14 @@ use gband_lua::keys::parse_key;
 use gband_lua::{Config, ConfigError, DEFAULTS, LoadOptions, Locations};
 use gband_protocol::{ClientMessage, ServerMessage};
 
-struct Scratch(PathBuf);
+struct Scratch(gband_scratch::Scratch);
 
 impl Scratch {
     fn new(name: &str) -> Self {
-        let path =
-            std::env::temp_dir().join(format!("gband-client-events-{name}-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&path);
-        fs::create_dir_all(&path).unwrap();
-        Self(path)
+        Self(gband_scratch::Scratch::new(
+            "client",
+            &format!("events-{name}"),
+        ))
     }
 
     fn locations(&self) -> Locations {
@@ -54,12 +53,6 @@ impl Scratch {
 
     fn load(&self, source: &str) -> Result<Config, ConfigError> {
         self.load_with_budget(source, gband_lua::BUDGET)
-    }
-}
-
-impl Drop for Scratch {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
     }
 }
 

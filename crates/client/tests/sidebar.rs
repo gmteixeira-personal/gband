@@ -15,17 +15,14 @@ use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::layout::Rect;
 
-struct Scratch(PathBuf);
+struct Scratch(gband_scratch::Scratch);
 
 impl Scratch {
     fn new(name: &str) -> Self {
-        let path = std::env::temp_dir().join(format!(
-            "gband-client-sidebar-{name}-{}",
-            std::process::id()
-        ));
-        let _ = fs::remove_dir_all(&path);
-        fs::create_dir_all(&path).unwrap();
-        Self(path)
+        Self(gband_scratch::Scratch::new(
+            "client",
+            &format!("sidebar-{name}"),
+        ))
     }
 
     fn locations(&self) -> Locations {
@@ -62,12 +59,6 @@ impl Scratch {
             gband_lua::Side::Client,
             &LoadOptions::default(),
         )
-    }
-}
-
-impl Drop for Scratch {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
     }
 }
 

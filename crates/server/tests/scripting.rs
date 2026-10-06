@@ -60,7 +60,7 @@ fn load(locations: &Locations) -> (gband_lua::Config, Option<gband_lua::ConfigEr
     }
 }
 
-async fn start_in(runtime_dir: PathBuf, source: &str) -> Scripted {
+async fn start_in(runtime_dir: Scratch, source: &str) -> Scripted {
     let locations = locations(&runtime_dir);
     write(&server_file(&locations), source);
     let (loaded, error) = load(&locations);

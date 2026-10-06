@@ -1,0 +1,9 @@
+[package]
+name = "gband-scratch"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+rustix.workspace = true

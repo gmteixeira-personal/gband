@@ -345,6 +345,7 @@ pub fn diff(reference: &str, screenshot: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gband_scratch::Scratch;
 
     fn screen(cols: u16, rows: u16, output: &str) -> vt100::Parser {
         let mut parser = vt100::Parser::new(rows, cols, 0);
@@ -424,16 +425,9 @@ mod tests {
         );
     }
 
-    fn scratch(name: &str) -> PathBuf {
-        let root =
-            std::env::temp_dir().join(format!("gband-screenshot-{}-{name}", std::process::id()));
-        let _ = fs::remove_dir_all(&root);
-        root
-    }
-
     #[test]
     fn first_run_writes_the_pending_file() {
-        let root = scratch("first");
+        let root = Scratch::new("screenshot", "first");
         let reference = root.join("screenshots/a_spec/case.txt");
         let error = References::default()
             .compare(&reference, "shot\n", false)
@@ -445,12 +439,11 @@ mod tests {
             "shot\n"
         );
         assert!(!reference.exists());
-        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
     fn update_accepts_and_removes_the_pending_file() {
-        let root = scratch("update");
+        let root = Scratch::new("screenshot", "update");
         let reference = root.join("screenshots/a_spec/case.txt");
         let _ = References::default().compare(&reference, "shot\n", false);
         References::default()
@@ -461,12 +454,11 @@ mod tests {
         References::default()
             .compare(&reference, "shot\n", false)
             .unwrap();
-        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
     fn a_matching_run_removes_a_stale_pending_file() {
-        let root = scratch("stale");
+        let root = Scratch::new("screenshot", "stale");
         let reference = root.join("case.txt");
         write(&reference, "same\n").unwrap();
         write(&pending_path(&reference), "old\n").unwrap();
@@ -474,12 +466,11 @@ mod tests {
             .compare(&reference, "same\n", false)
             .unwrap();
         assert!(!pending_path(&reference).exists());
-        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
     fn duplicate_reference_is_an_error() {
-        let root = scratch("duplicate");
+        let root = Scratch::new("screenshot", "duplicate");
         let reference = root.join("case.txt");
         let mut references = References::default();
         references.compare(&reference, "a\n", true).unwrap();
@@ -487,7 +478,6 @@ mod tests {
             references.compare(&reference, "a\n", true),
             Err(Mismatch::Duplicate(reference.clone()))
         );
-        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

@@ -53,6 +53,7 @@ pub struct Case {
     bells: u64,
 }
 
+#[allow(clippy::disallowed_methods)]
 fn scratch() -> PathBuf {
     static NEXT: AtomicU64 = AtomicU64::new(1);
     let next = NEXT.fetch_add(1, Ordering::Relaxed);

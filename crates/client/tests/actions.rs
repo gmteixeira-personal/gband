@@ -1,5 +1,4 @@
 use std::fs;
-use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use gband_client::animation::Animations;
@@ -141,17 +140,14 @@ async fn shown_windows_follow_the_view_and_are_not_repeated() {
     assert_eq!(display.focused(), Some(d));
 }
 
-struct Scratch(PathBuf);
+struct Scratch(gband_scratch::Scratch);
 
 impl Scratch {
     fn new(name: &str) -> Self {
-        let path = std::env::temp_dir().join(format!(
-            "gband-client-actions-{name}-{}",
-            std::process::id()
-        ));
-        let _ = fs::remove_dir_all(&path);
-        fs::create_dir_all(&path).unwrap();
-        Self(path)
+        Self(gband_scratch::Scratch::new(
+            "client",
+            &format!("actions-{name}"),
+        ))
     }
 
     fn load(&self, source: &str) -> Result<Config, ConfigError> {
@@ -159,16 +155,10 @@ impl Scratch {
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(&path, source).unwrap();
         let locations = Locations {
-            config: self.0.clone(),
+            config: self.0.to_path_buf(),
             plugins: None,
         };
         gband_lua::load(&locations, gband_lua::Side::Client, &LoadOptions::default())
-    }
-}
-
-impl Drop for Scratch {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
     }
 }
 

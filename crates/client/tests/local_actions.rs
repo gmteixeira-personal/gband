@@ -13,21 +13,20 @@ use gband_core::layout::{Layout, LayoutOptions};
 use gband_lua::keys::parse_key;
 use gband_lua::{LoadOptions, Locations, Side};
 use gband_protocol::ServerMessage;
+use gband_scratch::Scratch;
 
 const CHILD: &str = "GBAND_LOCAL_ACTIONS_CHILD";
 const RECORD: &str = "GBAND_OPENED";
 
 struct Client {
-    root: PathBuf,
     display: Display,
     controls: Controls,
+    _root: Scratch,
 }
 
 impl Client {
     fn new(name: &str, source: &str) -> Self {
-        let root =
-            std::env::temp_dir().join(format!("gband-client-local-{name}-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&root);
+        let root = Scratch::new("client", &format!("local-{name}"));
         let config = root.join("config");
         let file = gband_lua::user_file(&config, Side::Client);
         fs::create_dir_all(file.parent().unwrap()).unwrap();
@@ -60,9 +59,9 @@ impl Client {
             ],
         );
         Self {
-            root,
             display,
             controls,
+            _root: root,
         }
     }
 
@@ -83,12 +82,6 @@ impl Client {
 
     fn global<T: mlua::FromLua>(&self, name: &str) -> T {
         self.controls.runtime().lua().globals().get(name).unwrap()
-    }
-}
-
-impl Drop for Client {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.root);
     }
 }
 
@@ -179,20 +172,18 @@ fn outside_a_callback() {
         "gband.clipboard('x')",
         "gband.open('x')",
     ] {
-        let root =
-            std::env::temp_dir().join(format!("gband-client-local-outside-{}", std::process::id()));
+        let root = Scratch::new("client", "local-outside");
         let file = gband_lua::user_file(&root, Side::Client);
         fs::create_dir_all(file.parent().unwrap()).unwrap();
         fs::write(&file, call).unwrap();
         let locations = Locations {
-            config: root.clone(),
+            config: root.to_path_buf(),
             plugins: None,
         };
         let error = gband_lua::load(&locations, Side::Client, &LoadOptions::default())
             .err()
             .unwrap_or_else(|| panic!("{call} loaded"));
         assert!(error.message.contains("callback"), "{call}: {error}");
-        let _ = fs::remove_dir_all(&root);
     }
 }
 
@@ -225,13 +216,6 @@ fn in_child(test: &str, path: &Path, record: &Path) -> bool {
     false
 }
 
-fn scratch(name: &str) -> PathBuf {
-    let path = std::env::temp_dir().join(format!("gband-client-opener-{name}"));
-    let _ = fs::remove_dir_all(&path);
-    fs::create_dir_all(&path).unwrap();
-    path
-}
-
 #[derive(Clone, Default)]
 struct Captured(Arc<Mutex<Vec<u8>>>);
 
@@ -254,10 +238,9 @@ const OPENER: &str = if cfg!(target_os = "macos") {
 
 #[test]
 fn open_a_url() {
-    let bin = scratch(&format!("bin-{}", std::process::id()));
+    let bin = Scratch::new("client", "opener-bin");
     let record = bin.join("record");
     if !in_child("open_a_url", &bin, &record) {
-        let _ = fs::remove_dir_all(&bin);
         return;
     }
     let record = PathBuf::from(std::env::var_os(RECORD).unwrap());
@@ -284,9 +267,8 @@ fn open_a_url() {
 
 #[test]
 fn opener_missing() {
-    let empty = scratch(&format!("empty-{}", std::process::id()));
+    let empty = Scratch::new("client", "opener-empty");
     if !in_child("opener_missing", &empty, &empty.join("record")) {
-        let _ = fs::remove_dir_all(&empty);
         return;
     }
     let captured = Captured::default();

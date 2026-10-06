@@ -15,4 +15,5 @@ tracing.workspace = true
 unicode-width.workspace = true
 
 [dev-dependencies]
+gband-scratch.workspace = true
 tracing-subscriber.workspace = true

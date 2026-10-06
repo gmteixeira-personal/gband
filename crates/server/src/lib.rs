@@ -234,15 +234,11 @@ mod tests {
 
     use super::*;
 
-    struct Scratch(PathBuf);
+    struct Scratch(gband_scratch::Scratch);
 
     impl Scratch {
         fn new(name: &str) -> Self {
-            let path =
-                std::env::temp_dir().join(format!("gband-bind-{}-{name}", std::process::id()));
-            let _ = fs::remove_dir_all(&path);
-            fs::create_dir_all(&path).unwrap();
-            Self(path)
+            Self(gband_scratch::Scratch::new("bind", name))
         }
 
         fn leftovers(&self) -> Vec<String> {
@@ -251,12 +247,6 @@ mod tests {
                 .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
                 .filter(|name| name.starts_with(PRIVATE_DIRECTORY_PREFIX))
                 .collect()
-        }
-    }
-
-    impl Drop for Scratch {
-        fn drop(&mut self) {
-            let _ = fs::remove_dir_all(&self.0);
         }
     }
 

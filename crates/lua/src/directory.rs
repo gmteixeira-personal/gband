@@ -182,26 +182,18 @@ mod tests {
         );
     }
 
-    struct Scratch(PathBuf);
+    struct Scratch(gband_scratch::Scratch);
 
     impl Scratch {
         fn new(name: &str) -> Self {
-            let path = std::env::temp_dir()
-                .join(format!("gband-lua-directory-{name}-{}", std::process::id()));
-            let _ = fs::remove_dir_all(&path);
-            fs::create_dir_all(&path).unwrap();
-            Self(path)
+            Self(gband_scratch::Scratch::new(
+                "lua",
+                &format!("directory-{name}"),
+            ))
         }
 
         fn dir(&self) -> PathBuf {
             self.0.join("gband")
-        }
-    }
-
-    impl Drop for Scratch {
-        fn drop(&mut self) {
-            let _ = fs::set_permissions(&self.0, fs::Permissions::from_mode(0o755));
-            let _ = fs::remove_dir_all(&self.0);
         }
     }
 

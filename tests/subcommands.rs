@@ -1,14 +1,34 @@
 mod common;
 
 use std::fs;
+use std::ops::Deref;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use common::scratch_root;
+use gband_scratch::Scratch;
 
-fn state_home(name: &str) -> PathBuf {
+struct State {
+    path: PathBuf,
+    runtime: Scratch,
+}
+
+impl Deref for State {
+    type Target = Path;
+
+    fn deref(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl AsRef<Path> for State {
+    fn as_ref(&self) -> &Path {
+        &self.path
+    }
+}
+
+fn state_home(name: &str) -> State {
     let path = Path::new(env!("CARGO_TARGET_TMPDIR"))
         .join("subcommands")
         .join(name);
@@ -17,24 +37,21 @@ fn state_home(name: &str) -> PathBuf {
         fs::remove_dir_all(&path).unwrap();
     }
     fs::create_dir_all(&path).unwrap();
-    let runtime = runtime_home(&path);
-    if runtime.exists() {
-        fs::set_permissions(runtime.join("gband"), fs::Permissions::from_mode(0o700)).ok();
-        fs::remove_dir_all(&runtime).unwrap();
+    State {
+        path,
+        runtime: Scratch::new("subcommands", name),
     }
-    path
 }
 
-fn runtime_home(state: &Path) -> PathBuf {
-    let name = state.file_name().unwrap().to_str().unwrap();
-    scratch_root("gband-subcommands", name)
+fn runtime_home(state: &State) -> PathBuf {
+    state.runtime.join("run")
 }
 
-fn gband(state: &Path, filter: Option<&str>, args: &[&str]) -> Output {
+fn gband(state: &State, filter: Option<&str>, args: &[&str]) -> Output {
     let mut command = Command::new(env!("CARGO_BIN_EXE_gband"));
     command
         .args(args)
-        .env("XDG_STATE_HOME", state)
+        .env("XDG_STATE_HOME", &**state)
         .env("XDG_RUNTIME_DIR", runtime_home(state))
         .env("SHELL", "/bin/true")
         .env_remove("GBAND");
@@ -125,7 +142,7 @@ fn attach_inside_a_window_is_refused() {
     let state = state_home("attach_nested");
     let output = Command::new(env!("CARGO_BIN_EXE_gband"))
         .arg("attach")
-        .env("XDG_STATE_HOME", &state)
+        .env("XDG_STATE_HOME", &*state)
         .env("XDG_RUNTIME_DIR", runtime_home(&state))
         .env("GBAND", "/somewhere/default.sock")
         .output()

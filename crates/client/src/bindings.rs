@@ -245,40 +245,36 @@ mod tests {
 
     fn with_saved_style(style: &str) -> gband_lua::Config {
         static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let dir = std::env::temp_dir().join(format!(
-            "gband-client-bindings-style-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
+        let dir = gband_scratch::Scratch::new(
+            "client",
+            &format!("bindings-style-{}", NEXT.fetch_add(1, Ordering::Relaxed)),
+        );
         let user = gband_lua::user_dir(&dir);
         std::fs::create_dir_all(&user).unwrap();
         std::fs::write(user.join("keystyle.lua"), format!("return \"{style}\"\n")).unwrap();
         let locations = gband_lua::Locations {
-            config: dir.clone(),
+            config: dir.to_path_buf(),
             plugins: None,
         };
-        let config = gband_lua::load(
+        gband_lua::load(
             &locations,
             gband_lua::Side::Client,
             &gband_lua::LoadOptions::default(),
         )
-        .unwrap();
-        let _ = std::fs::remove_dir_all(&dir);
-        config
+        .unwrap()
     }
 
     fn configured(source: &str) -> Keymap {
         static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let dir = std::env::temp_dir().join(format!(
-            "gband-client-bindings-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
+        let dir = gband_scratch::Scratch::new(
+            "client",
+            &format!("bindings-{}", NEXT.fetch_add(1, Ordering::Relaxed)),
+        );
         let path = gband_lua::user_file(&dir, gband_lua::Side::Client);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(&path, source).unwrap();
         let locations = gband_lua::Locations {
-            config: dir.clone(),
+            config: dir.to_path_buf(),
             plugins: None,
         };
         let config = gband_lua::load(
@@ -287,7 +283,6 @@ mod tests {
             &gband_lua::LoadOptions::default(),
         )
         .unwrap();
-        let _ = std::fs::remove_dir_all(&dir);
         Keymap::new(&config.options, config.keymap, config.modes)
     }
 

@@ -69,8 +69,8 @@ async fn explicit_socket_records_its_pid_beside_it() {
         socket: runtime_dir.join("s"),
         ..config(&runtime_dir, &["/bin/sh"])
     };
-    let server = TestServer::start_with(runtime_dir.clone(), config).await;
-    let record = fs::read_to_string(runtime_dir.join("s.lock")).unwrap();
+    let server = TestServer::start_with(runtime_dir, config).await;
+    let record = fs::read_to_string(server.runtime_dir.join("s.lock")).unwrap();
     assert_eq!(record, format!("{}\n", std::process::id()));
     let mut client = server.attach(80, 24).await;
     client.type_line("exit").await;
