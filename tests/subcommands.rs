@@ -220,6 +220,20 @@ fn invalid_session_name_is_rejected_without_a_log() {
 }
 
 #[test]
+fn invalid_server_size_is_rejected_without_a_log() {
+    let state = state_home("invalid_size");
+    for size in ["0x24", "80", "80x", "wide"] {
+        let output = gband(&state, None, &["server", "--size", size]);
+        assert_eq!(output.status.code(), Some(2), "{size}");
+        let stderr = String::from_utf8(output.stderr).unwrap();
+        assert!(stderr.contains(&format!("`{size}`")), "{stderr}");
+        assert!(stderr.contains("COLSxROWS"), "{stderr}");
+    }
+    assert!(!state.join("gband").exists());
+    assert!(!runtime_home(&state).exists());
+}
+
+#[test]
 fn session_option_on_a_subcommand_without_sessions_is_rejected() {
     let state = state_home("session_not_applicable");
     for (args, subcommand) in [

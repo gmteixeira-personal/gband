@@ -43,7 +43,7 @@ fn agent_status_example() {
     client.shell_pid(&env);
     client.send(b"\x00n");
     client.wait_for("the second tile focused", |screen| {
-        focused_left(screen) == Some(47)
+        focused_left(screen) == Some(49)
     });
     client.wait_for_prompt();
     client.send(b"printf 'Do you want to proceed?\\n'\r");
@@ -60,7 +60,7 @@ fn agent_status_example() {
     });
     client.send(b"a");
     client.wait_for("the waiting tile focused", |screen| {
-        focused_left(screen) == Some(47)
+        focused_left(screen) == Some(49)
     });
     assert!(!env.log_text("client").contains("requires the plugin"));
     assert!(!env.log_text("server").contains("configuration error"));

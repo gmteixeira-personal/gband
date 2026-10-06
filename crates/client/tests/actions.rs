@@ -430,6 +430,7 @@ fn send_prefix_follows_the_prefix_option() {
         .unwrap();
     let (mut display, windows) = three_columns();
     let mut controls = Controls::new(config, &mut display);
+    controls.place_bars(&mut display);
     assert_eq!(controls.press(&mut display, key("ctrl+b")), []);
     assert_eq!(
         controls.press(&mut display, key("ctrl+b")),
@@ -482,6 +483,7 @@ fn reload_replaces_the_bindings_and_ends_a_prefix_sequence() {
     let scratch = Scratch::new("reload");
     let (mut display, windows) = three_columns();
     let mut controls = Controls::new(scratch.load(DEFAULTS).unwrap(), &mut display);
+    controls.place_bars(&mut display);
     assert_eq!(controls.press(&mut display, key("ctrl+space")), []);
     controls.reload(
         &mut display,

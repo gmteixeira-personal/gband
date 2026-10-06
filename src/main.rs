@@ -12,10 +12,11 @@ use gband::executable;
 use gband::logging::{self, Role};
 use gband::paths::{self, ServerName};
 use gband_client::{ClientConfig, Configuration, Outcome, UnixTransport};
+use gband_core::geometry::Size;
 use gband_lua::{Config, ConfigError, LoadOptions, Locations, Side};
 use gband_protocol::SessionName;
 use gband_protocol::test;
-use gband_server::{SUN_PATH_MAX, Scripting, ServerConfig, TestChannel};
+use gband_server::{INITIAL_AREA, SUN_PATH_MAX, Scripting, ServerConfig, TestChannel};
 use tokio::sync::watch;
 
 #[derive(Parser)]
@@ -88,7 +89,15 @@ impl Selection {
 #[derive(Subcommand)]
 enum Command {
     #[command(about = "Run the server that hosts the windows")]
-    Server,
+    Server {
+        #[arg(
+            long,
+            value_name = "COLSxROWS",
+            value_parser = parse_area,
+            help = "Start the session at this screen area [default: 80x24]"
+        )]
+        size: Option<Size>,
+    },
     #[command(
         about = "Attach a client to a session, starting a server if needed; runs when no command is given"
     )]
@@ -141,7 +150,7 @@ struct TestArgs {
 impl Command {
     fn role(&self) -> Option<Role> {
         match self {
-            Command::Server => Some(Role::Server),
+            Command::Server { .. } => Some(Role::Server),
             Command::Attach
             | Command::ListSessions
             | Command::KillSession
@@ -156,7 +165,7 @@ impl Command {
         match self {
             Command::ListSessions => Some("list-sessions"),
             Command::KillServer => Some("kill-server"),
-            Command::Server
+            Command::Server { .. }
             | Command::Attach
             | Command::KillSession
             | Command::Completions { .. }
@@ -170,7 +179,7 @@ impl Command {
             Command::Completions { .. } => Some("completions"),
             Command::InstallCompletions { .. } => Some("install-completions"),
             Command::Test(_) => Some("test"),
-            Command::Server
+            Command::Server { .. }
             | Command::Attach
             | Command::ListSessions
             | Command::KillSession
@@ -251,7 +260,7 @@ fn main() -> ExitCode {
         .ok()
         .map(|socket| tracing::error_span!("gband", socket = %socket.display()).entered());
     let result = socket.and_then(|socket| match command {
-        Command::Server => server(socket, session, &runtime_dir),
+        Command::Server { size } => server(socket, session, size, &runtime_dir),
         Command::Attach => attach(socket, session, &cli.selection),
         Command::ListSessions => list_sessions(socket, &cli.selection),
         Command::KillSession => kill_session(socket, session, &cli.selection),
@@ -312,7 +321,23 @@ fn install_completions(shell: Shell) -> Result<ExitCode> {
     Ok(ExitCode::SUCCESS)
 }
 
-fn server(socket: PathBuf, session: SessionName, runtime_dir: &Path) -> Result<ExitCode> {
+fn parse_area(text: &str) -> Result<Size, String> {
+    let invalid = || format!("`{text}` is not a size of the form COLSxROWS with both above 0");
+    let (cols, rows) = text.split_once('x').ok_or_else(invalid)?;
+    let cols: u16 = cols.parse().map_err(|_| invalid())?;
+    let rows: u16 = rows.parse().map_err(|_| invalid())?;
+    if cols == 0 || rows == 0 {
+        return Err(invalid());
+    }
+    Ok(Size::new(cols, rows))
+}
+
+fn server(
+    socket: PathBuf,
+    session: SessionName,
+    size: Option<Size>,
+    runtime_dir: &Path,
+) -> Result<ExitCode> {
     match socket.parent() {
         Some(parent) if parent == runtime_dir => paths::prepare(runtime_dir)?,
         Some(parent) if !parent.is_dir() => {
@@ -359,6 +384,7 @@ fn server(socket: PathBuf, session: SessionName, runtime_dir: &Path) -> Result<E
         session,
         program: vec![gband_server::user_shell()],
         cwd: std::env::current_dir().context("cannot read the current directory")?,
+        area: size.unwrap_or(INITIAL_AREA),
         executable: executable::identity().context("cannot identify the gband executable")?,
         options,
         scripting: Some(scripting),

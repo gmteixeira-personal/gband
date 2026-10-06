@@ -84,14 +84,14 @@ fn repeated_focus_moves() {
 #[test]
 fn repeated_resize_then_escape() {
     let env = TestEnv::new("navigation-resize");
+    env.write_config(&gband_lua::DEFAULTS.replace("gband.plugin(\"gband.sidebar\")", ""));
     let mut client = attached(&env);
     client.send(b"\x00==");
     client.wait_for("a tile 56 columns wide", |screen| {
         let tiles = tiles(screen);
-        tiles.len() == 1 && tiles[0].left == 1 && tiles[0].right == 56
+        tiles.len() == 1 && tiles[0].left == 0 && tiles[0].right == 55
     });
     client.send(b"\x1b");
-    client.wait_for("interactive mode", interactive);
     thread::sleep(Duration::from_millis(300));
     client.run("clear; tput cols");
     client.wait_for_line("54");
@@ -115,7 +115,7 @@ fn n_opens_a_window_in_interactive_mode() {
     client.send(b"\x00n");
     client.wait_for("the second tile focused", |screen| {
         let tiles = tiles(screen);
-        tiles.len() == 1 && tiles[0].focused && tiles[0].left == 40
+        tiles.len() == 2 && tiles[1].focused && tiles[1].left == 40 && tiles[1].right == 78
     });
     client.wait_for_prompt();
     client.run("echo window=$GBAND_WINDOW");

@@ -3,6 +3,7 @@ use std::time::Duration;
 use anyhow::{Result, bail};
 use gband_protocol::{ClientMessage, ServerMessage, SessionSummary};
 
+use crate::connect::terminal_size;
 use crate::{ClientConfig, Transport, connect, runtime};
 
 const KILL_TIMEOUT: Duration = Duration::from_secs(5);
@@ -12,7 +13,7 @@ pub fn list_sessions(
     transport: &impl Transport,
 ) -> Result<Vec<SessionSummary>> {
     runtime()?.block_on(async {
-        let mut connection = connect(config, transport).await?;
+        let mut connection = connect(config, transport, terminal_size()).await?;
         connection.send(&ClientMessage::ListSessions).await?;
         match connection.receive().await? {
             ServerMessage::Sessions(sessions) => Ok(sessions),
@@ -24,7 +25,7 @@ pub fn list_sessions(
 pub fn kill_session(config: &ClientConfig, transport: &impl Transport) -> Result<()> {
     let session = &config.session;
     runtime()?.block_on(async {
-        let mut connection = connect(config, transport).await?;
+        let mut connection = connect(config, transport, terminal_size()).await?;
         connection
             .send(&ClientMessage::KillSession {
                 session: session.clone(),

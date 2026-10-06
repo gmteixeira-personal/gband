@@ -1,5 +1,37 @@
 ## MODIFIED Requirements
 
+### Requirement: Start a server when none is running
+When nothing accepts connections on the socket path, `gband attach` SHALL start `gband server` from its own executable, addressing the same socket path with `-p` and passing the session name `-s` names and its reported size, as "Ribbon area beside the bars" defines, with `--size`, detached from the client's terminal and session, with the client's working directory and environment, and with standard input, output and error on `/dev/null`. It SHALL then connect to it. If no connection succeeds within 5 seconds, the client SHALL print one line to standard error naming the socket path and the server log, and exit with status 1.
+
+#### Scenario: First attach starts the session
+- **WHEN** no server is running and the user runs `gband attach` in `~/repos/gband`
+- **THEN** a shell prompt appears in the client
+- **AND** `pwd` in the window prints the path of `~/repos/gband`
+
+#### Scenario: First attach names the session
+- **WHEN** no server is running and the user runs `gband attach -s work`
+- **THEN** the server it starts hosts exactly one session, named `work`
+- **AND** the client is attached to it
+
+#### Scenario: Named server started on demand
+- **WHEN** no server named `feature` is running and the user runs `gband -S feature attach`
+- **THEN** a server listening on `feature.sock` in the runtime directory starts
+- **AND** `echo $GBAND` in its window prints that socket path
+
+#### Scenario: Started server at the reported size
+- **WHEN** no server is running, the default configuration is in use and the user runs `gband attach` in an 80×24 terminal
+- **THEN** the client starts `gband server` with `--size 79x24`
+- **AND** the session's first window starts with a PTY of 37 columns by 22 rows and is not resized after the client attaches
+
+#### Scenario: Started server survives its terminal
+- **WHEN** `gband attach` started the server and the terminal emulator window running the client is closed
+- **THEN** the server and its shell keep running
+
+#### Scenario: Server cannot start
+- **WHEN** the server that `gband attach` starts exits before accepting a connection
+- **THEN** the client prints one line to standard error naming the socket path and the server log
+- **AND** it exits with status 1 within 5 seconds
+
 ### Requirement: Input to the server
 The client SHALL send each key press and repeat that the key bindings do not consume to the server as a key naming the focused window, each paste as a paste naming the focused window, and each change of its reported size, as "Ribbon area beside the bars" defines it, as a resize carrying the reported size. While a plugin window is focused, the plugin-windows capability SHALL take the keys and the pastes instead, whether or not a window is focused. Otherwise, keys and pastes SHALL be dropped while no window is focused. Keys the input-encoding capability cannot represent SHALL be dropped. On attach, the client SHALL send its reported size as the terminal size its hello carries, as the wire-protocol capability defines the hello. Its bars SHALL already be placed for that report, as the configuration loaded before the handshake adds them.
 

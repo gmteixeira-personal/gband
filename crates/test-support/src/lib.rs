@@ -16,7 +16,7 @@ use gband_protocol::{
     ClientMessage, ExecutableId, Hello, HelloReply, IoError, MessageReader, MessageWriter,
     PROTOCOL_VERSION, ServerMessage, SessionName, SessionSummary, Value, socket_path,
 };
-use gband_server::ServerConfig;
+use gband_server::{INITIAL_AREA, ServerConfig};
 use ratatui::buffer::Cell;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -64,6 +64,7 @@ pub fn config(runtime_dir: &Path, program: &[&str]) -> ServerConfig {
         session: SessionName::default(),
         program: program.iter().map(OsString::from).collect(),
         cwd: runtime_dir.to_path_buf(),
+        area: INITIAL_AREA,
         executable: IDENTITY,
         options: tokio::sync::watch::channel(LayoutOptions::default()).1,
         scripting: None,
@@ -598,7 +599,7 @@ impl fmt::Display for RelayTransport {
 }
 
 impl Transport for RelayTransport {
-    async fn open(&self) -> Result<Link> {
+    async fn open(&self, _: Size) -> Result<Link> {
         let (mut socket_reader, mut socket_writer) =
             UnixStream::connect(&self.socket).await?.into_split();
         let (reader, mut to_client) = tokio::io::duplex(RELAY_BUFFER_LEN);

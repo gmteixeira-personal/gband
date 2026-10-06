@@ -1,4 +1,5 @@
 use gband_client::{ClientConfig, connect};
+use gband_core::geometry::Size;
 use gband_protocol::{ClientMessage, ServerMessage, SessionName};
 use gband_test_support::{IDENTITY, Peer, RelayTransport, TestClient, TestServer};
 
@@ -14,7 +15,7 @@ async fn attach_through_a_relay() {
         replace_mismatched: false,
         kill_command: "gband kill-server".to_owned(),
     };
-    let connection = connect(&config, &relay).await.unwrap();
+    let connection = connect(&config, &relay, Size::new(80, 24)).await.unwrap();
     assert!(!connection.stale_server);
     let info = ServerMessage::Info {
         pid: connection.pid,

@@ -49,6 +49,7 @@ use crate::bindings::{Command, Keymap, Leader, ROOT};
 use crate::channel::{Channel, Served};
 pub use crate::channel::{Loader, TestChannel};
 use crate::color::ColorSupport;
+use crate::connect::terminal_size;
 pub use crate::connect::{Connection, connect};
 use crate::mouse::{
     Axis, DropPlace, Edges, Geometry, Gesture, Held, Hit, Motion, Pointer, Pressing, Resized,
@@ -100,8 +101,20 @@ pub fn run(
 ) -> Result<Report> {
     let cwd = std::env::current_dir().context("cannot read the current directory")?;
     let animations = parse_animations(std::env::var(ANIMATIONS_VARIABLE).ok().as_deref());
+    let mut display = Display::new(terminal_size(), animations);
+    display.set_colors(ColorSupport::detect());
+    let mut controls = Controls::new(configuration.config, &mut display);
+    let placed = controls.place_bars(&mut display);
+    if let Some(error) = configuration.error {
+        display.report_error(error.to_string());
+    }
+    let prepared = Prepared {
+        reloads: configuration.reloads,
+        channel: configuration.channel,
+        placed,
+    };
     runtime()?.block_on(async {
-        let mut connection = connect(&config, &transport).await?;
+        let mut connection = connect(&config, &transport, display.reported_size()).await?;
         connection
             .send(&ClientMessage::Attach {
                 session: config.session.clone(),
@@ -116,8 +129,9 @@ pub fn run(
             attach(
                 &mut terminal,
                 &mut connection,
-                animations,
-                configuration,
+                display,
+                controls,
+                prepared,
                 &config.session,
             )
             .await?
@@ -157,6 +171,7 @@ pub struct Display {
     area: Size,
     terminal: Size,
     ribbon: Rect,
+    reported: Size,
     bars: Vec<Bar>,
     placed: Vec<Option<Rect>>,
     error_item: bool,
@@ -188,6 +203,7 @@ impl Display {
             area: terminal,
             terminal,
             ribbon: Rect::new(0, 0, terminal.cols, terminal.rows),
+            reported: terminal,
             bars: Vec::new(),
             placed: Vec::new(),
             error_item: false,
@@ -578,7 +594,12 @@ impl Display {
     }
 
     pub fn reported_size(&self) -> Size {
-        self.terminal
+        self.ribbon_size()
+    }
+
+    fn report(&mut self) -> Option<Size> {
+        let size = self.ribbon_size();
+        (std::mem::replace(&mut self.reported, size) != size).then_some(size)
     }
 
     pub fn ribbon_area(&self) -> Rect {
@@ -615,22 +636,20 @@ impl Display {
     pub fn set_size(&mut self, terminal: Size) -> Option<Size> {
         let resized = std::mem::replace(&mut self.terminal, terminal) != terminal;
         let moved = self.place_bars();
-        if !resized && !moved {
-            return None;
-        }
-        self.presentation.snap();
-        self.with_view(View::sync);
-        resized.then_some(terminal)
-    }
-
-    pub fn set_bars(&mut self, bars: Vec<Bar>) -> bool {
-        self.bars = bars;
-        let moved = self.place_bars();
-        if moved {
+        if resized || moved {
             self.presentation.snap();
             self.with_view(View::sync);
         }
-        moved
+        self.report()
+    }
+
+    pub fn set_bars(&mut self, bars: Vec<Bar>) -> Option<Size> {
+        self.bars = bars;
+        if self.place_bars() {
+            self.presentation.snap();
+            self.with_view(View::sync);
+        }
+        self.report()
     }
 
     fn tiled_beside(&self, window: WindowId) -> Option<WindowId> {
@@ -1019,6 +1038,20 @@ impl Controls {
         }
     }
 
+    pub fn place_bars(&mut self, display: &mut Display) -> Vec<Step> {
+        let mut steps = Vec::new();
+        self.push_state(display, &mut steps);
+        if let Some(bars) = self.runtime.take_bars()
+            && display.set_bars(bars).is_some()
+        {
+            self.push_state(display, &mut steps);
+            if let Some(bars) = self.runtime.take_bars() {
+                display.set_bars(bars);
+            }
+        }
+        steps
+    }
+
     pub fn attach_when_ready(&mut self, session: &str) {
         self.awaiting = Some(session.to_owned());
     }
@@ -1357,12 +1390,15 @@ impl Controls {
         }
         self.push_state(display, &mut steps);
         if let Some(bars) = self.runtime.take_bars()
-            && display.set_bars(bars)
+            && let Some(mut size) = display.set_bars(bars)
         {
             self.push_state(display, &mut steps);
-            if let Some(bars) = self.runtime.take_bars() {
-                display.set_bars(bars);
+            if let Some(bars) = self.runtime.take_bars()
+                && let Some(again) = display.set_bars(bars)
+            {
+                size = again;
             }
+            steps.push(resize_step(size));
         }
         display.set_error_item(self.runtime.error_item_shown());
         let frames = self.runtime.take_frames();
@@ -1569,11 +1605,18 @@ pub(crate) async fn perform(
     Ok(None)
 }
 
+struct Prepared {
+    reloads: mpsc::UnboundedReceiver<Result<Config, ConfigError>>,
+    channel: Option<TestChannel>,
+    placed: Vec<Step>,
+}
+
 async fn attach(
     terminal: &mut DefaultTerminal,
     connection: &mut Connection,
-    animations: Animations,
-    configuration: Configuration,
+    mut display: Display,
+    mut controls: Controls,
+    prepared: Prepared,
     session: &SessionName,
 ) -> Result<Outcome> {
     let mut chunks = spawn_input();
@@ -1583,16 +1626,12 @@ async fn attach(
     let mut held = None;
     let mut window_changes =
         signal(SignalKind::window_change()).context("cannot watch for terminal resizes")?;
-    let size = terminal.size()?;
-    let mut display = Display::new(Size::new(size.width, size.height), animations);
-    display.set_colors(ColorSupport::detect());
-    let mut controls = Controls::new(configuration.config, &mut display);
-    if let Some(error) = configuration.error {
-        display.report_error(error.to_string());
-    }
-    let mut reloads = configuration.reloads;
-    let mut channel = configuration.channel.map(Channel::new).transpose()?;
+    let mut reloads = prepared.reloads;
+    let mut channel = prepared.channel.map(Channel::new).transpose()?;
     controls.attach_when_ready(session.as_str());
+    if let Some(outcome) = perform(connection, prepared.placed).await? {
+        return Ok(outcome);
+    }
     loop {
         let mut messages = Vec::new();
         while let Some(message) = connection.reader.try_recv::<ServerMessage>()? {

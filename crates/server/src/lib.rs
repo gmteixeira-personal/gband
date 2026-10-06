@@ -15,6 +15,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context as _, Result, bail};
+use gband_core::geometry::Size;
 use gband_core::layout::LayoutOptions;
 use gband_protocol::{ExecutableId, ServerMessage, SessionName};
 use portable_pty::CommandBuilder;
@@ -25,17 +26,16 @@ use tokio::sync::{broadcast, mpsc, oneshot, watch};
 use tokio::task::JoinSet;
 use tracing::Instrument;
 
-use crate::connection::Context;
-use crate::hub::Hub;
-use crate::registry::{Registry, Shared};
-use crate::scripting::Taps;
-use crate::session::INITIAL_AREA;
-
 pub use crate::channel::{Loader, TestChannel};
+use crate::connection::Context;
 pub use crate::event::{CAPACITY, Published, SessionEvent};
+use crate::hub::Hub;
 pub use crate::hub::QUEUE_LIMIT;
 pub use crate::lock::kill;
+use crate::registry::{Registry, Shared};
+use crate::scripting::Taps;
 pub use crate::scripting::{NOTICE_BUDGET, OUTPUT_BUDGET, Reloader, Scripting};
+pub use crate::session::INITIAL_AREA;
 
 pub const SUN_PATH_MAX: usize = 107;
 const PRIVATE_SOCKET_MASK: u32 = 0o177;
@@ -46,6 +46,7 @@ pub struct ServerConfig {
     pub session: SessionName,
     pub program: Vec<OsString>,
     pub cwd: PathBuf,
+    pub area: Size,
     pub executable: ExecutableId,
     pub options: watch::Receiver<LayoutOptions>,
     pub scripting: Option<Scripting>,
@@ -106,7 +107,7 @@ pub async fn run_with_events(
             taps: Arc::clone(&taps),
         },
     );
-    registry.create(config.session, config.cwd, INITIAL_AREA)?;
+    registry.create(config.session, config.cwd, config.area)?;
     let listener = bind(&socket)?;
     tracing::info!("listening");
 

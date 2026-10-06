@@ -2,6 +2,7 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use gband_client::{ClientConfig, UnixTransport, connect, kill_session, list_sessions};
+use gband_core::geometry::Size;
 use gband_core::layout::WindowId;
 use gband_protocol::{ClientMessage, ExecutableId, ServerMessage, SessionName, socket_path};
 use gband_server::ServerConfig;
@@ -49,6 +50,7 @@ async fn server_that_exits_at_once_fails_fast() {
     let error = connect(
         &client_config(SessionName::default(), true),
         &transport(&runtime_dir, "/bin/false", true),
+        Size::new(80, 24),
     )
     .await
     .err()
@@ -71,6 +73,7 @@ async fn mismatched_server_is_kept_when_replacing_is_off() {
     let mut connection = connect(
         &client_config(SessionName::default(), false),
         &transport(&runtime_dir, "/bin/false", true),
+        Size::new(80, 24),
     )
     .await
     .unwrap();

@@ -10,6 +10,7 @@ use std::process::{Command, Stdio};
 use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
+use gband_core::geometry::Size;
 use gband_protocol::{SessionName, lock_path};
 use rustix::process::Uid;
 use tokio::io::{AsyncRead, AsyncWrite};
@@ -26,7 +27,7 @@ pub struct Link {
 }
 
 pub trait Transport: fmt::Display {
-    fn open(&self) -> impl Future<Output = Result<Link>> + Send;
+    fn open(&self, size: Size) -> impl Future<Output = Result<Link>> + Send;
     fn may_replace_server(&self) -> bool;
     fn replace_server(&self) -> impl Future<Output = Result<()>> + Send;
 }
@@ -46,8 +47,8 @@ impl fmt::Display for UnixTransport {
 }
 
 impl Transport for UnixTransport {
-    async fn open(&self) -> Result<Link> {
-        let (reader, writer) = self.connect_or_start().await?.into_split();
+    async fn open(&self, size: Size) -> Result<Link> {
+        let (reader, writer) = self.connect_or_start(size).await?.into_split();
         Ok(Link {
             reader: Box::new(reader),
             writer: Box::new(writer),
@@ -64,7 +65,7 @@ impl Transport for UnixTransport {
 }
 
 impl UnixTransport {
-    async fn connect_or_start(&self) -> Result<UnixStream> {
+    async fn connect_or_start(&self, size: Size) -> Result<UnixStream> {
         let socket = &self.socket;
         match UnixStream::connect(socket).await {
             Ok(stream) => return owned_by_user(stream, socket),
@@ -78,7 +79,7 @@ impl UnixTransport {
             }
         }
         tracing::info!("no server on {}, starting one", socket.display());
-        let mut child = start_server(&self.executable_path, socket, &self.session)?;
+        let mut child = start_server(&self.executable_path, socket, &self.session, size)?;
         let deadline = Instant::now() + START_TIMEOUT;
         let not_started = || {
             format!(
@@ -147,6 +148,7 @@ fn start_server(
     executable: &Path,
     socket: &Path,
     session: &SessionName,
+    size: Size,
 ) -> Result<std::process::Child> {
     let mut command = Command::new(executable);
     command
@@ -155,6 +157,8 @@ fn start_server(
         .arg("server")
         .arg("-s")
         .arg(session.as_str())
+        .arg("--size")
+        .arg(format!("{}x{}", size.cols, size.rows))
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());

@@ -1,7 +1,8 @@
 mod common;
 
 use std::fs;
-use std::process::Output;
+use std::os::unix::fs::PermissionsExt;
+use std::process::{Output, Stdio};
 use std::thread;
 use std::time::Duration;
 
@@ -68,6 +69,36 @@ fn named_sessions_share_one_server() {
     assert_eq!(play.wait_exit(), 0);
     play.wait_for_text("[exited]");
     assert_eq!(list(&env), "work\t1\t1\n");
+}
+
+#[test]
+fn server_starts_its_session_at_the_given_size() {
+    let env = TestEnv::new("sessions-size");
+    let size = env.root.join("size");
+    let window = env.root.join("window.sh");
+    fs::write(
+        &window,
+        format!("#!/bin/sh\nstty size > {}\nsleep 100\n", size.display()),
+    )
+    .unwrap();
+    fs::set_permissions(&window, fs::Permissions::from_mode(0o755)).unwrap();
+    let mut server = env
+        .command(GBAND, &["server", "--size", "100x30"])
+        .env("SHELL", &window)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    env.shell_of(&server);
+    wait_until(
+        || fs::read_to_string(&size).is_ok_and(|text| text.ends_with('\n')),
+        "the window's size",
+    );
+    assert_eq!(fs::read_to_string(&size).unwrap(), "28 48\n");
+    let output = env.command(GBAND, &["kill-server"]).output().unwrap();
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    assert_eq!(wait_process_exit(&mut server).code(), Some(0));
 }
 
 #[test]
