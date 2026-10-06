@@ -1,13 +1,14 @@
 ## MODIFIED Requirements
 
 ### Requirement: Defaults use the public API
-The default configuration SHALL use only the `gband` API that the configuration file can use. It SHALL declare `prefix` a mode with the label `navigation`, with `gband.keymap.mode`. It SHALL make every key binding with `gband.keymap.set`. A binding to an action SHALL take the description of the action it binds, as the actions capability lists them or as `gband.action.list()` gives it for a registered action. A binding to a Lua function SHALL take the description the client-attach capability's default table gives its key. Evaluated alone, it SHALL produce the declared defaults of the options and the default key bindings of the client-attach capability. It SHALL set up, with `gband.plugin` and no options, the bundled key list plugin `gband.keylist` and the bundled prompt plugin `gband.prompt`, in that order, before it makes its key bindings, and the bundled segment plugins `gband.statusline.band`, `gband.statusline.mode`, `gband.statusline.hints` and `gband.statusline.position`, in that order. The default key bindings, the declaration of the `navigation` mode and the setup of the bundled plugins SHALL exist only in the default configuration.
+The default configuration SHALL use only the `gband` API that the configuration file can use. It SHALL declare `prefix` a mode with the label `navigation`, with `gband.keymap.mode`. It SHALL make every key binding with `gband.keymap.set`. A binding to an action SHALL take the description of the action it binds, as the actions capability lists them or as `gband.action.list()` gives it for a registered action. A binding to a Lua function SHALL take the description the client-attach capability's default table gives its key. Evaluated alone, it SHALL produce the declared defaults of the options and the default key bindings of the client-attach capability. It SHALL set up, with `gband.plugin` and no options, the bundled key list plugin `gband.keylist`, then the bundled prompt plugin `gband.prompt`, then the bundled error list plugin `gband.errors` before it makes its key bindings, then the bundled status line plugin `gband.statusline`, then the bundled segment plugins `gband.statusline.band`, `gband.statusline.mode`, `gband.statusline.hints` and `gband.statusline.position`, in that order. The default key bindings, the declaration of the `navigation` mode and the setup of the bundled plugins SHALL exist only in the default configuration.
 
 #### Scenario: Defaults reproduce the built-in behaviour
 - **WHEN** the default configuration is evaluated alone
 - **THEN** the options equal the defaults in the "Options" table
 - **AND** the bindings equal the client-attach capability's default table, entry for entry
 - **AND** `gband.ui.statusline.list()` names exactly the components `band`, `hints`, `mode` and `position`
+- **AND** `gband.bar.list()` holds exactly one bar, `statusline`, on the side `left`, 20 columns wide on an 80×24 terminal
 
 #### Scenario: Every default binding is described
 - **WHEN** the default configuration is evaluated alone and `gband.keymap.list("prefix")` is read

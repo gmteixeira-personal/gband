@@ -34,8 +34,8 @@ The floating plugin window SHALL hold one line: `:` followed by the typed text, 
 The plugin SHALL give the group `PromptCursor` the default `{ reverse = true }`, as the highlights capability defines defaults.
 
 #### Scenario: Prompt on the bottom rows
-- **WHEN** the ribbon area is 80×23 and a binding dispatches `prompt.open`
-- **THEN** a focused floating plugin window titled `lua` spans columns 0 to 79 and rows 20 to 22 of the ribbon area
+- **WHEN** the ribbon area is 60×24, as the default status line leaves it on an 80×24 terminal, and a binding dispatches `prompt.open`
+- **THEN** a focused floating plugin window titled `lua` spans columns 0 to 59 and rows 21 to 23 of the ribbon area
 - **AND** its content row reads `:` followed by one cell drawn reversed
 
 #### Scenario: Typed text and the cursor
@@ -139,8 +139,8 @@ The default configuration SHALL set up `gband.prompt` with `gband.plugin` and no
 - **THEN** the focused window prints `a:b` and no prompt opens
 
 #### Scenario: Hint for the prompt
-- **WHEN** the default configuration is in use, the client's terminal is 400 columns wide, and the user presses Ctrl+Space
-- **THEN** the hints segment shows `? list the keys  : run Lua  D detach`
+- **WHEN** the default configuration is in use, the client's terminal is 80×60, and the user presses Ctrl+Space
+- **THEN** the hints segment shows the hint `: run Lua` right after the hint `? list the keys` and right before the hint `D detach`
 
 #### Scenario: Prompt in the key list
 - **WHEN** the default configuration is in use and the key list opens

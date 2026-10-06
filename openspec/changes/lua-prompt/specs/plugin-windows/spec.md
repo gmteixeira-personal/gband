@@ -15,7 +15,7 @@
 | `on_resize` | both | function | none |
 | `row`, `col` | floating | an integer of at least 0, or `"center"` | `"center"` |
 | `width`, `height` | floating | an integer of at least 1 | half the ribbon area's width or height, rounded down, and at least 1 |
-| `border` | floating | boolean | `true` |
+| `border` | floating | a boolean, or a border table as the borders capability defines it | `true` |
 | `title` | floating | string | none |
 | `band`, `after` | tiled | band and window numbers, as the `open_window` target takes them | with neither given, the viewed band and the focused window, as open window resolves against the view |
 | `column_width` | tiled | a width, as `gband.window.set_width` takes it | the `default_column_width` option |
@@ -33,6 +33,10 @@ A field for the other kind SHALL be an error. A key name in `keys` SHALL be vali
 #### Scenario: Invalid key name
 - **WHEN** a binding function opens a plugin window with `keys = { ["ctrl+shift+1"] = fn }`
 - **THEN** the call raises an error naming `ctrl+shift+1`
+
+#### Scenario: Invalid border table
+- **WHEN** a binding function calls `gband.win.open({ border = { sides = { "middle" } } })`
+- **THEN** the call raises an error naming `middle`
 
 #### Scenario: Input handler of the wrong type
 - **WHEN** a binding function calls `gband.win.open({ on_input = "text" })`

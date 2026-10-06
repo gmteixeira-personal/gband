@@ -1,7 +1,3 @@
-## 0. Specs
-
-- [ ] 0.1 For each MODIFIED requirement in this change's delta specs, compare the block with the current `openspec/specs/<capability>/spec.md` block of the same requirement, as navigation-mode and every change archived before this one left it, sidebars-borders-steps included if it archived first. Fold in every requirement text, table row and scenario this change did not write, so the only differences left are this change's own: the `on_input` row, the key order and paste rules, the `on_input` callback, the paste scenarios of "Send input", the `:` row and its two scenarios, and the prompt's setup and scenario in "Defaults use the public API". Verify that `openspec validate lua-prompt --strict` passes
-
 ## 1. Text input for plugin windows
 
 - [ ] 1.1 In `crates/lua/src/runtime/gband/win.lua`, accept `on_input` as a common field of `gband.win.open`, checked as a function. Verify with a case in `crates/lua/tests/plugin_windows.rs` for "Input handler of the wrong type"
@@ -11,19 +7,19 @@
 
 ## 2. Bundled prompt plugin
 
-- [ ] 2.1 In `crates/lua/src/bundled.rs`, make `install_searcher` take the host table and pass it to a bundled module's chunk as its argument, without returning it from `require`, and add `prompt.lua` to `MODULES`. Pass the client's host from `crates/lua/src/runtime.rs`, and nil on the server and test sides. Verify that the bundled segment tests still pass, and that `require("gband.prompt")` in a user file returns the plugin table and the module's path, never the host table
+- [ ] 2.1 In `crates/lua/src/bundled.rs`, make `install_searcher` take the host table and pass it to a bundled module's chunk as its argument, without returning it from `require`, and add `prompt.lua` to `MODULES`. Pass the client's host from `crates/lua/src/runtime.rs`, and nil on the server and test sides. Verify that the bundled segment tests still pass, that `gband.plugin("gband.statusline")` and `gband.plugin("gband.errors")` still set up with the status line's API file run once, and that `require("gband.prompt")` in a user file returns the plugin table and the module's path, never the host table
 - [ ] 2.2 Create `crates/lua/src/runtime/gband/prompt.lua`: the `PromptCursor` default, `setup` refusing any option by name, the action `prompt.open` with the description `run Lua`, which enters `root` and opens the floating plugin window of "Prompt plugin window" with `on_input`, `on_resize` and `on_close`, or focuses the open one. Verify with a new `crates/lua/tests/prompt.rs` for "Action registered", "Unknown option", "Prompt on the bottom rows" and "Open again while open"
 - [ ] 2.3 Implement editing in `prompt.lua`: append typed text, turn each `\r\n` and every other control character of a paste into one space, Backspace, Backspace on an empty line, Ctrl+U, and fitting a long line so the cursor shows. Verify with `crates/lua/tests/prompt.rs` cases for every scenario of "Editing the line", "Typed text and the cursor" and "Long line shows its end"
 - [ ] 2.4 Implement Enter in `prompt.lua`: close the plugin window, then, for a line that is not empty, call `host.call(nil, nil, run, line)`, where `run` compiles with `load(line, "@prompt", "t")` and raises a compile error with `error(message, 0)`. Verify with `crates/lua/tests/prompt.rs` cases for "Run an action", "Open a plugin window", "Names are not namespaced", "Runtime error", "Syntax error", "Empty line", and "Endless loop" under `load_with_budget`, which also checks that `prompt` is not failed and a second line runs
 
 ## 3. Default configuration
 
-- [ ] 3.1 In `crates/lua/src/defaults.lua`, call `gband.plugin("gband.prompt")` right after `gband.plugin("gband.keylist")`, and bind `prefix :` to `gband.action["prompt.open"]` with the description `run Lua`, right after `prefix ?`. Verify with `crates/lua/tests/config.rs` for "Prompt set up by the defaults", and update the default table in `default_keys_follow_the_spec` in `crates/client/src/bindings.rs`, the prefix count in `crates/lua/tests/plugins.rs` and `PREFIX_HINTS` in `crates/lua/tests/key_hints.rs` to the new binding; verify `cargo test -p gband-lua -p gband-client`
+- [ ] 3.1 In `crates/lua/src/defaults.lua`, call `gband.plugin("gband.prompt")` right after `gband.plugin("gband.keylist")` and before `gband.plugin("gband.errors")`, and bind `prefix :` to `gband.action["prompt.open"]` with the description `run Lua`, right after `prefix ?`. Verify with `crates/lua/tests/config.rs` for "Prompt set up by the defaults", and update the default table in `default_keys_follow_the_spec` in `crates/client/src/bindings.rs`, the prefix count in `crates/lua/tests/plugins.rs` and `PREFIX_HINTS` in `crates/lua/tests/key_hints.rs` to the new binding; verify `cargo test -p gband-lua -p gband-client`
 
 ## 4. End-to-end and screen tests
 
 - [ ] 4.1 Add `tests/prompt.rs` with end-to-end cases for "Run an action", "Enter a mode", "Endless loop" and "Colon in interactive mode", using `\r` rather than Escape where byte timing matters; verify `cargo test --test prompt`
-- [ ] 4.2 Following `.claude/skills/gband-test/SKILL.md`, look at the open prompt with `gband test - --show`, then add `tests/lua/prompt_spec.lua` with cases for the prompt holding typed text, the cursor cell drawn reversed, a long line showing its end, and navigation mode's hints showing `? list the keys  : run Lua  D detach` on a wide terminal. Write the references under `tests/lua/screenshots/prompt_spec/` with `--update`, read them, and register the file in `tests/lua_specs.rs`; verify `cargo test --test lua_specs`
+- [ ] 4.2 Following `.claude/skills/gband-test/SKILL.md`, look at the open prompt with `gband test - --show`, then add `tests/lua/prompt_spec.lua` with cases for the prompt holding typed text, the cursor cell drawn reversed, a long line showing its end, and navigation mode's hints in the status line showing `: run Lua` between `? list the keys` and `D detach` on an 80×60 terminal. Write the references under `tests/lua/screenshots/prompt_spec/` with `--update`, read them, and register the file in `tests/lua_specs.rs`; verify `cargo test --test lua_specs`
 
 ## 5. Documentation and final checks
 

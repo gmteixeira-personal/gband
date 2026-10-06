@@ -7,7 +7,7 @@ Defines gband's two key styles, modal and direct: the bundled preset files that 
 ### Requirement: Key style presets
 gband SHALL bundle two key style presets, the modules `gband.keystyle.modal` and `gband.keystyle.direct`, which `require` finds as the plugins capability defines for bundled modules. Each preset SHALL be a file of top-level calls that uses only the `gband` API a configuration file can use. Requiring a preset while the configuration loads SHALL make its bindings in that configuration. A preset SHALL set no option and SHALL bind nothing in `root`.
 
-Before its bindings, each preset SHALL set up, with `gband.plugin` and no options, each bundled plugin that registers an action it binds: the key list plugin `gband.keylist`, then the Lua prompt plugin `gband.prompt`. A binding to an action SHALL take the description of the action it binds, as the actions capability lists them or as `gband.action.list()` gives it for a registered action. A binding to a Lua function SHALL take the description that the client-attach capability's default table gives its key.
+Before its bindings, each preset SHALL set up, with `gband.plugin` and no options, each bundled plugin that registers an action it binds: the key list plugin `gband.keylist`, then the Lua prompt plugin `gband.prompt`. It SHALL set up no other plugin, so the error list plugin `gband.errors`, whose action no preset binds, the status line plugin `gband.statusline` and its segment plugins stay with the default configuration, as the configuration capability defines. A binding to an action SHALL take the description of the action it binds, as the actions capability lists them or as `gband.action.list()` gives it for a registered action. A binding to a Lua function SHALL take the description that the client-attach capability's default table gives its key.
 
 Each action that a preset binds to `h`, `j`, `k` or `l`, alone or with Ctrl, SHALL also be bound to Left, Down, Up or Right, with the same modifier.
 
@@ -26,7 +26,8 @@ Each action that a preset binds to `h`, `j`, `k` or `l`, alone or with Ctrl, SHA
 #### Scenario: Bundled plugins set up by the preset
 - **WHEN** `user/init.lua` calls only `gband.keystyle.use("modal")`, and the user presses Ctrl+Space then `?`
 - **THEN** loading succeeds and the key list opens
-- **AND** `gband.action.list()` holds `keylist.open` and `prompt.open`
+- **AND** `gband.action.list()` holds `keylist.open` and `prompt.open`, and no `errors.open`
+- **AND** no status line is drawn
 
 ### Requirement: Modal preset
 `gband.keystyle.modal` SHALL declare `prefix` a mode with the label `navigation`, with `gband.keymap.mode`. It SHALL make the bindings of the modal key style that the client-attach capability's default table gives, in that order.
