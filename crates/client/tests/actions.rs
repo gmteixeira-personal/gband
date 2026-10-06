@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::PathBuf;
+use std::time::Instant;
 
 use gband_client::animation::Animations;
 use gband_client::{Controls, Display, Step, dispatch};
@@ -281,6 +282,71 @@ fn action_called_from_a_function() {
         [Step::Nothing, Step::Nothing]
     );
     assert_eq!(display.focused(), Some(windows[2]));
+}
+
+#[test]
+fn center_column_binding_moves_the_camera_locally() {
+    let scratch = Scratch::new("center");
+    let config = scratch
+        .load("gband.bind('alt+c', gband.action.center_column)")
+        .unwrap();
+    let (mut display, windows) = three_columns();
+    let mut controls = Controls::new(config, &mut display);
+    let camera = |display: &mut Display| display.present(Instant::now()).unwrap().bands[0].camera;
+    for _ in 0..2 {
+        dispatch(&mut display, Action::View(ViewAction::FocusRight));
+    }
+    assert_eq!(camera(&mut display), 40);
+    assert_eq!(controls.press(&mut display, key("alt+c")), [Step::Nothing]);
+    assert_eq!(camera(&mut display), 60);
+    assert_eq!(display.focused(), Some(windows[2]));
+}
+
+#[test]
+fn center_column_on_a_floating_window_sends_its_centred_position() {
+    let mut layout = Layout::new();
+    let band = layout.bands()[0].id;
+    let tiled = layout.allocate_window();
+    let floating = layout.allocate_window();
+    layout.open(tiled, band, None, None, &LayoutOptions::default());
+    layout.open(floating, band, Some(tiled), None, &LayoutOptions::default());
+    for action in [
+        SessionAction::ToggleFloating {
+            window: floating,
+            after: None,
+        },
+        SessionAction::SetPosition {
+            window: floating,
+            col: 0,
+            row: 0,
+        },
+    ] {
+        layout.apply(action, Size::new(80, 24), &LayoutOptions::default());
+    }
+    let mut display = Display::new(Size::new(80, 24), Animations::Off);
+    display.apply(ServerMessage::Layout {
+        cols: 80,
+        rows: 24,
+        layout,
+    });
+    dispatch(
+        &mut display,
+        Action::View(ViewAction::FocusWindow(floating)),
+    );
+    let camera = display.present(Instant::now()).unwrap().bands[0].camera;
+    assert_eq!(
+        dispatch(&mut display, Action::View(ViewAction::CenterColumn)),
+        Step::Send(ClientMessage::Action(SessionAction::SetPosition {
+            window: floating,
+            col: 20,
+            row: 2,
+        }))
+    );
+    assert_eq!(
+        display.present(Instant::now()).unwrap().bands[0].camera,
+        camera
+    );
+    assert_eq!(display.focused(), Some(floating));
 }
 
 #[test]

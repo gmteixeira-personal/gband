@@ -17,6 +17,7 @@ pub enum ViewAction {
     FocusWindow(WindowId),
     ViewBand(BandId),
     SwitchLayer,
+    CenterColumn,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -136,6 +137,21 @@ impl View {
         }
     }
 
+    pub fn centred_box(&self, scene: Scene<'_>) -> Option<SessionAction> {
+        let window = self.focused()?;
+        let band = scene.layout.band(self.band)?;
+        let placed = boxes(band, scene.area)
+            .into_iter()
+            .find(|placed| placed.window == window)?;
+        let col = (scene.area.cols - placed.width) / 2;
+        let row = (scene.area.rows - placed.height) / 2;
+        ((placed.x, placed.y) != (col, row)).then_some(SessionAction::SetPosition {
+            window,
+            col,
+            row,
+        })
+    }
+
     pub fn stacking(&self, scene: Scene<'_>) -> Vec<WindowId> {
         scene
             .layout
@@ -230,6 +246,18 @@ impl View {
                 if let Some(window) = target {
                     self.focus(band, window);
                 }
+            }
+            ViewAction::CenterColumn => {
+                let Some((column, _)) = self
+                    .tiled_focus()
+                    .filter(|_| self.layer() == Layer::Tiled)
+                    .and_then(|window| band.locate(window))
+                else {
+                    return;
+                };
+                let span = column_spans(band, scene.area)[column];
+                self.bands.entry(band.id).or_default().camera =
+                    centred(span, i64::from(scene.viewport.cols));
             }
             ViewAction::BandDown | ViewAction::BandUp => {
                 let target = match action {

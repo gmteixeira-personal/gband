@@ -23,7 +23,7 @@ const fn builtin(name: &'static str, action: Action, desc: &'static str) -> Buil
     BuiltinAction { name, action, desc }
 }
 
-pub const ACTIONS: [BuiltinAction; 25] = [
+pub const ACTIONS: [BuiltinAction; 26] = [
     builtin(
         "focus_column_left",
         Action::View(ViewAction::FocusLeft),
@@ -53,6 +53,11 @@ pub const ACTIONS: [BuiltinAction; 25] = [
         "focus_band_up",
         Action::View(ViewAction::BandUp),
         "view the band above",
+    ),
+    builtin(
+        "center_column",
+        Action::View(ViewAction::CenterColumn),
+        "center the focused column",
     ),
     builtin(
         "switch_focus_floating_tiled",

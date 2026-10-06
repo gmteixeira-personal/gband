@@ -10,6 +10,7 @@ local SHORT = {
   focus_window_up = "up",
   focus_band_down = "band down",
   focus_band_up = "band up",
+  center_column = "center",
   open_window = "new",
   close_window = "close",
   consume_or_expel_left = "stack left",

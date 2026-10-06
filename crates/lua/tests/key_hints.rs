@@ -49,7 +49,7 @@ fn resolved(config: &Config, group: &str) -> Vec<String> {
     )
 }
 
-const PREFIX_HINTS: &str = "h left  l right  j down  k up  u band down  i band up  enter new  q close  [ stack left  ] stack right  r width  f full  - narrower  = wider  _ shorter  + taller  R reset height  v float  V layer  C-h move left  C-l move right  C-j move down  C-k move up  C-left move left  C-right move right  C-down move down  C-up move up  D detach  C-space send prefix";
+const PREFIX_HINTS: &str = "h left  l right  j down  k up  u band down  i band up  c center  enter new  q close  [ stack left  ] stack right  r width  f full  - narrower  = wider  _ shorter  + taller  R reset height  v float  V layer  C-h move left  C-l move right  C-j move down  C-k move up  C-left move left  C-right move right  C-down move down  C-up move up  D detach  C-space send prefix";
 
 #[test]
 fn component_entry() {
@@ -271,6 +271,12 @@ fn separators_and_ellipsis_in_the_label_group() {
 fn default_description_gives_the_short_label() {
     let config = gband_lua::defaults(gband_lua::Side::Client);
     assert!(shown(&config, "prefix", 400).contains("  r width  "));
+}
+
+#[test]
+fn center_label() {
+    let config = gband_lua::defaults(gband_lua::Side::Client);
+    assert!(shown(&config, "prefix", 400).contains("  c center  "));
 }
 
 #[test]

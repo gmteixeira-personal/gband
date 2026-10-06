@@ -15,7 +15,7 @@ With no configuration file, the bindings SHALL be those the default configuratio
 | `k` | `prefix k` | focus the window above | view |
 | `u` | `prefix u` | view the band below | view |
 | `i` | `prefix i` | view the band above | view |
-| `c` | `prefix c` | center the focused column | view |
+| `c` | `prefix c` | center the focused column, or the focused floating window | view |
 | Enter | `prefix enter` | open a window right of the focused window's column | session |
 | `q` | `prefix q` | close the focused window | session |
 | `[` | `prefix [` | consume or expel the focused window to the left | session |
@@ -27,11 +27,21 @@ With no configuration file, the bindings SHALL be those the default configuratio
 | `_` | `prefix _` | shrink the height of the focused window | session |
 | `+` | `prefix +` | grow the height of the focused window | session |
 | `R` | `prefix R` | reset the height of the focused window | session |
+| `v` | `prefix v` | float or tile the focused window | session |
+| `V` | `prefix V` | switch focus between floating and tiled windows | view |
+| Ctrl+H | `prefix ctrl+h` | move the focused window's column, or its floating box, to the left | session |
+| Ctrl+L | `prefix ctrl+l` | move the focused window's column, or its floating box, to the right | session |
+| Ctrl+J | `prefix ctrl+j` | move the focused window, or its floating box, down | session |
+| Ctrl+K | `prefix ctrl+k` | move the focused window, or its floating box, up | session |
+| Ctrl+Left | `prefix ctrl+left` | move the focused window's column, or its floating box, to the left | session |
+| Ctrl+Right | `prefix ctrl+right` | move the focused window's column, or its floating box, to the right | session |
+| Ctrl+Down | `prefix ctrl+down` | move the focused window, or its floating box, down | session |
+| Ctrl+Up | `prefix ctrl+up` | move the focused window, or its floating box, up | session |
 | `D` | `prefix D` | detach | client |
 | Ctrl+Space | `prefix prefix` | send the prefix key to the focused window | client |
 | any other key | — | discard both keys | — |
 
-A binding to an action SHALL dispatch it. A binding to a Lua function SHALL run the function, as the configuration capability defines. A view action SHALL change this client's view as the layout-view capability defines, and SHALL send nothing to the server. A session action SHALL be sent to the server as an action naming the focused window. Open window SHALL name the viewed band and the focused window, or no window when none is focused. Any other session action, and sending the prefix key, SHALL do nothing when no window is focused. A character key SHALL match a binding by its character, Ctrl and Alt, so a `D` matches whether or not the terminal reports Shift with it.
+A binding to an action SHALL dispatch it. A binding to a Lua function SHALL run the function, as the configuration capability defines. A view action SHALL change this client's view as the layout-view capability defines, and SHALL send nothing to the server, except `center_column` on the floating layer, which sends the placing the layout-view capability defines. A session action SHALL be sent to the server as an action naming the focused window, resolved as the actions capability defines. Open window SHALL name the viewed band and the tiled window this client focused most recently there, or no window when there is none. Any other session action, and sending the prefix key, SHALL do nothing when no window is focused. A character key SHALL match a binding by its character, Ctrl and Alt, so a `D` matches whether or not the terminal reports Shift with it.
 
 #### Scenario: Detach
 - **WHEN** the user presses Ctrl+Space then Shift+D
@@ -130,3 +140,24 @@ A binding to an action SHALL dispatch it. A binding to a Lua function SHALL run 
 - **WHEN** `user/init.lua` binds `alt+h` in `root` to `gband.action.focus_column_left`, a floating plugin window binding `alt+h` in its `keys` is focused, and the user presses Alt+H
 - **THEN** the root binding runs and the floating plugin window's function does not
 
+#### Scenario: Float the focused window
+- **WHEN** the client's 80×24 terminal sets the screen area, the status line is off, the only window sits in a column of width 1/2, and the user presses Ctrl+Space then `v`
+- **THEN** the window is drawn in a box spanning columns 20 to 59 and rows 2 to 21, and stays focused
+
+#### Scenario: Switch to the tiled layer and back
+- **WHEN** two windows are open, the second floats and is focused, and the user presses Ctrl+Space then `V`, then types `echo tiled` and Enter
+- **THEN** `tiled` appears in the first window only
+- **AND** pressing Ctrl+Space then `V` again focuses the floating window
+
+#### Scenario: Move a column with Ctrl+H and Ctrl+Right
+- **WHEN** the viewed band holds columns A and B with B focused, and the user presses Ctrl+Space then Ctrl+H
+- **THEN** the band holds B and A, in that order, and B stays focused, and neither window receives a key
+- **AND** pressing Ctrl+Space then Ctrl+Right restores A and B
+
+#### Scenario: Move a window with Ctrl+J
+- **WHEN** a column holds P1 above P2 with P1 focused, and the user presses Ctrl+Space then Ctrl+J
+- **THEN** the column holds P2 above P1, and P1 stays focused
+
+#### Scenario: Move a floating window
+- **WHEN** the client's 80×24 terminal sets the screen area, a floating window is focused with its box starting at column 20, and the user presses Ctrl+Space then Ctrl+L
+- **THEN** the box is drawn from column 28
