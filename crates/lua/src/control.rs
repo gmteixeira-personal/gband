@@ -310,7 +310,10 @@ fn layout(lua: &Lua, (): ()) -> mlua::Result<Table> {
                         item.set("weight", f64::from(weight.num()) / f64::from(weight.den()))?
                     }
                 }
-                item.set("window", plugin_windows::plugin_window_of(lua, pane)?)?;
+                item.set(
+                    "plugin_window",
+                    plugin_windows::plugin_window_of(lua, pane)?,
+                )?;
                 panes.push(item)?;
             }
             described.set("panes", panes)?;
@@ -328,7 +331,7 @@ fn layout(lua: &Lua, (): ()) -> mlua::Result<Table> {
             item.set("col", placed.x)?;
             item.set("row", placed.y)?;
             item.set(
-                "window",
+                "plugin_window",
                 plugin_windows::plugin_window_of(lua, record.pane)?,
             )?;
             floating.push(item)?;
@@ -350,7 +353,7 @@ fn view(lua: &Lua, (): ()) -> mlua::Result<Table> {
         .pane
         .is_some_and(|pane| state.layout.floating(PaneId(pane)).is_some());
     table.set("floating", floating)?;
-    table.set("window", plugin_windows::focused(lua)?)?;
+    table.set("plugin_window", plugin_windows::focused(lua)?)?;
     table.set("table", state.table)?;
     table.set("cols", state.ribbon.cols)?;
     table.set("rows", state.ribbon.rows)?;

@@ -146,7 +146,7 @@ fn open_target(lua: &Lua, (band, after): (Value, Value)) -> mlua::Result<MultiVa
 }
 
 fn request(lua: &Lua, entry: Table) -> mlua::Result<()> {
-    let plugin_window: u32 = entry.get("window")?;
+    let plugin_window: u32 = entry.get("id")?;
     let request = match entry.get::<String>("op")?.as_str() {
         "open" => {
             let band: Option<u32> = entry.get("band")?;
@@ -187,7 +187,7 @@ fn read_frame(frame: &Table) -> mlua::Result<Frame> {
     let base = ui::style(&frame.get("base")?)?;
     let lines = read_runs(&frame.get("lines")?)?;
     Ok(match frame.get::<String>("kind")?.as_str() {
-        "float" => Frame::Floating(FloatingFrame {
+        "floating" => Frame::Floating(FloatingFrame {
             row: frame.get("row")?,
             col: frame.get("col")?,
             width: frame.get("width")?,
@@ -236,7 +236,7 @@ pub(crate) fn call<R: mlua::FromLuaMulti + Default>(
 }
 
 pub(crate) fn plugin_window_of(lua: &Lua, pane: PaneId) -> mlua::Result<Option<u32>> {
-    call(lua, "pane_window", pane.0)
+    call(lua, "plugin_window_of", pane.0)
 }
 
 pub(crate) fn focused(lua: &Lua) -> mlua::Result<Option<u32>> {

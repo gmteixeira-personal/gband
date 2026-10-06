@@ -263,7 +263,7 @@ fn escape_closes_a_float() {
     assert_eq!(client.display.focused_plugin_window(), None);
 }
 
-const PANE: &str = "gband.bind('alt+p', function() win = gband.win.open({ kind = 'pane', lines = { 'hello' }, column_width = 1/4, keys = { j = function() pressed = true end }, on_close = function(id) closed = id end }) end)\n";
+const PANE: &str = "gband.bind('alt+p', function() win = gband.win.open({ kind = 'tiled', lines = { 'hello' }, column_width = 1/4, keys = { j = function() pressed = true end }, on_close = function(id) closed = id end }) end)\n";
 
 #[test]
 fn tiled_plugin_window_opens_and_sends_its_contents() {

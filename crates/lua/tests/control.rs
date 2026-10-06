@@ -121,7 +121,7 @@ fn read_the_layout() {
           for _, column in ipairs(band.columns) do
             parts[#parts + 1] = string.format("%.4f %s", column.width, tostring(column.full_width))
             for _, pane in ipairs(column.panes) do
-              parts[#parts + 1] = string.format("%d %s %s %s", pane.id, tostring(pane.rows), tostring(pane.weight), tostring(pane.window))
+              parts[#parts + 1] = string.format("%d %s %s %s", pane.id, tostring(pane.rows), tostring(pane.weight), tostring(pane.plugin_window))
             end
           end
         end
@@ -158,7 +158,7 @@ fn read_the_view() {
     let view: Table = eval(&config, "return gband.view()");
     assert_eq!(view.get::<u32>("band").unwrap(), 1);
     assert_eq!(view.get::<Option<u32>>("pane").unwrap(), Some(2));
-    assert_eq!(view.get::<Option<u32>>("window").unwrap(), None);
+    assert_eq!(view.get::<Option<u32>>("plugin_window").unwrap(), None);
     assert_eq!(view.get::<String>("table").unwrap(), "prefix");
     assert_eq!(view.get::<u16>("cols").unwrap(), 80);
     assert_eq!(view.get::<u16>("rows").unwrap(), 23);
@@ -193,7 +193,7 @@ fn read_a_floating_pane() {
         local parts = {}
         for _, band in ipairs(gband.layout().bands) do
           for _, f in ipairs(band.floating) do
-            parts[#parts + 1] = string.format("%d %.1f %s %d %d %d %s", f.id, f.width, tostring(f.full_width), f.rows, f.col, f.row, tostring(f.window))
+            parts[#parts + 1] = string.format("%d %.1f %s %d %d %d %s", f.id, f.width, tostring(f.full_width), f.rows, f.col, f.row, tostring(f.plugin_window))
           end
           parts[#parts + 1] = "|"
         end

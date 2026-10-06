@@ -5,7 +5,7 @@ use gband_lua::DEFAULTS;
 
 const BINDINGS: &str = r#"
 gband.bind('alt+p', function()
-  gband.win.open({ kind = 'pane', lines = { 'hello from a plugin' }, column_width = 1/2 })
+  gband.win.open({ kind = 'tiled', lines = { 'hello from a plugin' }, column_width = 1/2 })
 end)
 gband.bind('alt+f', function()
   local win

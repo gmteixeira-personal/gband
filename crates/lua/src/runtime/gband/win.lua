@@ -1,18 +1,18 @@
 local host = ...
 
-gband.hl.default("Window", {})
-gband.hl.default("WindowBorder", { fg = 8 })
-gband.hl.default("WindowTitle", { bold = true })
-gband.hl.default("WindowCursorLine", { reverse = true })
+gband.hl.default("PluginWindow", {})
+gband.hl.default("PluginWindowBorder", { fg = 8 })
+gband.hl.default("PluginWindowTitle", { bold = true })
+gband.hl.default("PluginWindowCursorLine", { reverse = true })
 
 local COMMON = {
   kind = true, lines = true, focus = true, cursorline = true,
   keys = true, on_close = true, on_resize = true,
 }
-local FLOAT = { row = true, col = true, width = true, height = true, border = true, title = true }
-local PANE = { band = true, after = true, column_width = true }
+local FLOATING = { row = true, col = true, width = true, height = true, border = true, title = true }
+local TILED = { band = true, after = true, column_width = true }
 
-local windows = {}
+local wins = {}
 local dirty = {}
 local focused_float = nil
 local held = nil
@@ -30,8 +30,8 @@ local function is_integer(value)
   return math.type(value) == "integer" or (math.type(value) == "float" and value % 1 == 0)
 end
 
-local function touch(window)
-  dirty[window.id] = true
+local function touch(win)
+  dirty[win.id] = true
 end
 
 local function require_dispatch(name)
@@ -47,11 +47,11 @@ local function require_loaded(name)
 end
 
 local function lookup(id, name)
-  local window = math.type(id) and windows[id] or nil
-  if not window then
-    error(name .. ": no window " .. tostring(id) .. " is open", 3)
+  local win = math.type(id) and wins[id] or nil
+  if not win then
+    error(name .. ": no plugin window " .. tostring(id) .. " is open", 3)
   end
-  return window
+  return win
 end
 
 local function normalise_lines(lines)
@@ -63,14 +63,14 @@ local function normalise_lines(lines)
     local line = lines[index]
     local spans = {}
     if type(line) == "string" then
-      spans[1] = { text = clean(line), hl = "Window" }
+      spans[1] = { text = clean(line), hl = "PluginWindow" }
     elseif type(line) == "table" then
       for _, span in ipairs(line) do
         if type(span) == "string" then
-          spans[#spans + 1] = { text = clean(span), hl = "Window" }
+          spans[#spans + 1] = { text = clean(span), hl = "PluginWindow" }
         elseif type(span) == "table" and type(span.text) == "string"
           and (span.hl == nil or valid_group(span.hl)) then
-          spans[#spans + 1] = { text = clean(span.text), hl = span.hl or "Window" }
+          spans[#spans + 1] = { text = clean(span.text), hl = span.hl or "PluginWindow" }
         else
           return nil, "line " .. index .. " holds an invalid span"
         end
@@ -88,43 +88,43 @@ local function ribbon()
   return state.ribbon.cols, state.ribbon.rows
 end
 
-local function place(window)
+local function place(win)
   local cols, rows = ribbon()
-  local width = math.min(window.width or math.max(1, cols // 2), cols)
-  local height = math.min(window.height or math.max(1, rows // 2), rows)
-  local col = window.col == "center" and (cols - width) // 2 or math.min(window.col, cols - width)
-  local row = window.row == "center" and (rows - height) // 2 or math.min(window.row, rows - height)
-  window.placed = { row = row, col = col, width = width, height = height }
+  local width = math.min(win.width or math.max(1, cols // 2), cols)
+  local height = math.min(win.height or math.max(1, rows // 2), rows)
+  local col = win.col == "center" and (cols - width) // 2 or math.min(win.col, cols - width)
+  local row = win.row == "center" and (rows - height) // 2 or math.min(win.row, rows - height)
+  win.placed = { row = row, col = col, width = width, height = height }
 end
 
-local function content_size(window)
-  if window.kind == "float" then
-    local placed = window.placed
-    if window.border then
+local function content_size(win)
+  if win.kind == "floating" then
+    local placed = win.placed
+    if win.border then
       return math.max(0, placed.width - 2), math.max(0, placed.height - 2)
     end
     return placed.width, placed.height
   end
-  return window.cols, window.rows
+  return win.cols, win.rows
 end
 
-local function content_height(window)
-  local _, rows = content_size(window)
+local function content_height(win)
+  local _, rows = content_size(win)
   return math.max(rows or 1, 1)
 end
 
-local function clamp(window)
-  local count = #window.lines
-  local height = content_height(window)
-  window.cursor = math.max(1, math.min(window.cursor, math.max(1, count)))
-  if window.cursorline then
-    if window.cursor < window.top then
-      window.top = window.cursor
-    elseif window.cursor > window.top + height - 1 then
-      window.top = window.cursor - height + 1
+local function clamp(win)
+  local count = #win.lines
+  local height = content_height(win)
+  win.cursor = math.max(1, math.min(win.cursor, math.max(1, count)))
+  if win.cursorline then
+    if win.cursor < win.top then
+      win.top = win.cursor
+    elseif win.cursor > win.top + height - 1 then
+      win.top = win.cursor - height + 1
     end
   end
-  window.top = math.max(1, math.min(window.top, math.max(1, count - height + 1)))
+  win.top = math.max(1, math.min(win.top, math.max(1, count - height + 1)))
 end
 
 local function over(style, extra)
@@ -183,18 +183,18 @@ local function cut(text, width)
   return table.concat(pieces)
 end
 
-local function render(window)
-  local cols, rows = content_size(window)
+local function render(win)
+  local cols, rows = content_size(win)
   if cols == nil then
     return
   end
-  local base = host.hl.drawn("Window")
-  local cursor = window.cursorline and host.hl.drawn("WindowCursorLine") or nil
+  local base = host.hl.drawn("PluginWindow")
+  local cursor = win.cursorline and host.hl.drawn("PluginWindowCursorLine") or nil
   local plain, highlighted = {}, {}
   local lines = {}
   for row = 0, rows - 1 do
-    local index = window.top + row
-    local on_cursor = cursor ~= nil and index == window.cursor and index <= #window.lines
+    local index = win.top + row
+    local on_cursor = cursor ~= nil and index == win.cursor and index <= #win.lines
     local cache = on_cursor and highlighted or plain
     local row_base = on_cursor and over(base, cursor) or base
     local function style(group)
@@ -204,80 +204,80 @@ local function render(window)
       end
       return cache[group]
     end
-    lines[#lines + 1] = row_runs(window.lines[index] or {}, cols, row_base, style)
+    lines[#lines + 1] = row_runs(win.lines[index] or {}, cols, row_base, style)
   end
-  if window.kind == "pane" then
-    host.present_window(window.id, { kind = "pane", cols = cols, rows = rows, base = base, lines = lines })
+  if win.kind == "tiled" then
+    host.present_window(win.id, { kind = "tiled", cols = cols, rows = rows, base = base, lines = lines })
     return
   end
-  local placed = window.placed
-  local border_style = over(base, host.hl.drawn("WindowBorder"))
+  local placed = win.placed
+  local border_style = over(base, host.hl.drawn("PluginWindowBorder"))
   local title = nil
-  if window.border and window.title then
-    title = cut(clean(window.title), math.max(0, placed.width - 2))
+  if win.border and win.title then
+    title = cut(clean(win.title), math.max(0, placed.width - 2))
   end
-  host.present_window(window.id, {
-    kind = "float",
+  host.present_window(win.id, {
+    kind = "floating",
     row = placed.row,
     col = placed.col,
     width = placed.width,
     height = placed.height,
-    border = window.border,
+    border = win.border,
     title = title,
     base = base,
     border_style = border_style,
-    title_style = over(border_style, host.hl.drawn("WindowTitle")),
+    title_style = over(border_style, host.hl.drawn("PluginWindowTitle")),
     lines = lines,
-    z = window.z,
-    focused = focused_float == window.id,
+    z = win.z,
+    focused = focused_float == win.id,
   })
 end
 
-local function callback(window, field, ...)
-  local fn = window[field]
+local function callback(win, field, ...)
+  local fn = win[field]
   if fn then
-    host.call(window.owner, nil, fn, window.id, ...)
+    host.call(win.owner, nil, fn, win.id, ...)
   end
 end
 
-local function resized(window, before_cols, before_rows)
-  local cols, rows = content_size(window)
+local function resized(win, before_cols, before_rows)
+  local cols, rows = content_size(win)
   if cols ~= before_cols or rows ~= before_rows then
-    clamp(window)
-    callback(window, "on_resize", cols, rows)
+    clamp(win)
+    callback(win, "on_resize", cols, rows)
   end
 end
 
 local function unfocus()
-  local window = focused_float and windows[focused_float]
+  local win = focused_float and wins[focused_float]
   focused_float = nil
-  if window then
-    touch(window)
+  if win then
+    touch(win)
   end
 end
 
-local function raise(window)
-  if focused_float ~= window.id then
+local function raise(win)
+  if focused_float ~= win.id then
     unfocus()
   end
-  focused_float = window.id
+  focused_float = win.id
   stack = stack + 1
-  window.z = stack
-  touch(window)
+  win.z = stack
+  touch(win)
 end
 
-local function close(window, run_callback, request)
-  windows[window.id] = nil
-  dirty[window.id] = nil
-  if focused_float == window.id then
+local function close(win, run_callback, request)
+  wins[win.id] = nil
+  dirty[win.id] = nil
+  if focused_float == win.id then
     focused_float = nil
   end
-  host.forget_window(window.id)
-  if request and window.kind == "pane" then
-    host.request({ op = "close", window = window.id })
+  host.forget_window(win.id)
+  if request and win.kind == "tiled" then
+    host.request({ op = "close", id = win.id })
   end
   if run_callback then
-    callback(window, "on_close")
+    callback(win, "on_close")
   end
 end
 
@@ -332,10 +332,10 @@ end
 
 local function check_fields(opts, kind, name)
   for field in pairs(opts) do
-    local allowed = COMMON[field] or (kind == "float" and FLOAT or PANE)[field]
+    local allowed = COMMON[field] or (kind == "floating" and FLOATING or TILED)[field]
     if not allowed then
-      if FLOAT[field] or PANE[field] then
-        error(name .. ": `" .. field .. "` does not apply to a " .. kind .. " window", 3)
+      if FLOATING[field] or TILED[field] then
+        error(name .. ": `" .. field .. "` does not apply to a " .. kind .. " plugin window", 3)
       end
       error(name .. ": unknown field `" .. tostring(field) .. "`", 3)
     end
@@ -373,16 +373,16 @@ function api.open(opts)
   if type(opts) ~= "table" then
     error("gband.win.open expects a table of options", 2)
   end
-  local kind = opts.kind or "float"
-  if kind ~= "float" and kind ~= "pane" then
-    error("`kind` must be \"float\" or \"pane\"", 2)
+  local kind = opts.kind or "floating"
+  if kind ~= "floating" and kind ~= "tiled" then
+    error("`kind` must be \"floating\" or \"tiled\"", 2)
   end
   check_fields(opts, kind, "gband.win.open")
   local lines, reason = normalise_lines(opts.lines or {})
   if not lines then
     error(reason, 2)
   end
-  local window = {
+  local win = {
     kind = kind,
     owner = host.owner(),
     lines = lines,
@@ -395,13 +395,13 @@ function api.open(opts)
   }
   local focus = check_boolean(opts, "focus", true)
   local request = nil
-  if kind == "float" then
-    window.row = check_position(opts, "row")
-    window.col = check_position(opts, "col")
-    window.width = check_size(opts, "width")
-    window.height = check_size(opts, "height")
-    window.border = check_boolean(opts, "border", true)
-    window.title = check_title(opts)
+  if kind == "floating" then
+    win.row = check_position(opts, "row")
+    win.col = check_position(opts, "col")
+    win.width = check_size(opts, "width")
+    win.height = check_size(opts, "height")
+    win.border = check_boolean(opts, "border", true)
+    win.title = check_title(opts)
   else
     local ok, band, after = host.open_target(opts.band, opts.after)
     if not ok then
@@ -416,91 +416,91 @@ function api.open(opts)
       request.num, request.den = num, den
     end
   end
-  window.id = host.next_window()
-  windows[window.id] = window
-  if kind == "float" then
-    place(window)
-    clamp(window)
+  win.id = host.next_window()
+  wins[win.id] = win
+  if kind == "floating" then
+    place(win)
+    clamp(win)
     stack = stack + 1
-    window.z = stack
+    win.z = stack
     if focus then
-      raise(window)
+      raise(win)
     end
-    touch(window)
+    touch(win)
   else
-    request.window = window.id
+    request.id = win.id
     host.request(request)
-    clamp(window)
+    clamp(win)
   end
-  return window.id
+  return win.id
 end
 
 function api.close(id)
   require_dispatch("gband.win.close")
-  local window = math.type(id) and windows[id] or nil
-  if window then
-    close(window, true, true)
+  local win = math.type(id) and wins[id] or nil
+  if win then
+    close(win, true, true)
   end
 end
 
 function api.set_lines(id, lines)
   require_dispatch("gband.win.set_lines")
-  local window = lookup(id, "gband.win.set_lines")
+  local win = lookup(id, "gband.win.set_lines")
   local normalised, reason = normalise_lines(lines)
   if not normalised then
     error(reason, 2)
   end
-  window.lines = normalised
-  clamp(window)
-  touch(window)
+  win.lines = normalised
+  clamp(win)
+  touch(win)
 end
 
 function api.scroll(id, count)
   require_dispatch("gband.win.scroll")
-  local window = lookup(id, "gband.win.scroll")
+  local win = lookup(id, "gband.win.scroll")
   if type(count) ~= "number" or not is_integer(count) then
     error("gband.win.scroll expects a count as an integer", 2)
   end
-  window.top = window.top + math.tointeger(count)
-  clamp(window)
-  touch(window)
+  win.top = win.top + math.tointeger(count)
+  clamp(win)
+  touch(win)
 end
 
 function api.set_cursor(id, line)
   require_dispatch("gband.win.set_cursor")
-  local window = lookup(id, "gband.win.set_cursor")
+  local win = lookup(id, "gband.win.set_cursor")
   if type(line) ~= "number" or not is_integer(line) then
     error("gband.win.set_cursor expects a line as an integer", 2)
   end
-  window.cursor = math.tointeger(line)
-  clamp(window)
-  touch(window)
+  win.cursor = math.tointeger(line)
+  clamp(win)
+  touch(win)
 end
 
 function api.focus(id)
   require_dispatch("gband.win.focus")
-  local window = lookup(id, "gband.win.focus")
-  if window.kind == "float" then
-    raise(window)
+  local win = lookup(id, "gband.win.focus")
+  if win.kind == "floating" then
+    raise(win)
     return
   end
   unfocus()
-  if window.pane then
-    host.focus_pane(window.pane)
+  if win.pane then
+    host.focus_pane(win.pane)
   end
 end
 
 function api.set_config(id, config)
   require_dispatch("gband.win.set_config")
-  local window = lookup(id, "gband.win.set_config")
-  if window.kind ~= "float" then
-    error("gband.win.set_config applies only to floats", 2)
+  local win = lookup(id, "gband.win.set_config")
+  if win.kind ~= "floating" then
+    error("gband.win.set_config applies only to floating plugin windows", 2)
   end
   if type(config) ~= "table" then
     error("gband.win.set_config expects a table", 2)
   end
   for field in pairs(config) do
-    if not FLOAT[field] then
+    if not FLOATING[field] then
       error("gband.win.set_config: unknown field `" .. tostring(field) .. "`", 2)
     end
   end
@@ -513,38 +513,38 @@ function api.set_config(id, config)
     title = check_title(config),
   }
   for field, value in pairs(changes) do
-    window[field] = value
+    win[field] = value
   end
-  local cols, rows = content_size(window)
-  place(window)
-  resized(window, cols, rows)
-  touch(window)
+  local cols, rows = content_size(win)
+  place(win)
+  resized(win, cols, rows)
+  touch(win)
 end
 
-local function is_focused(window)
-  if window.kind == "float" then
-    return focused_float == window.id
+local function is_focused(win)
+  if win.kind == "floating" then
+    return focused_float == win.id
   end
-  return focused_float == nil and window.pane ~= nil and host.state().pane == window.pane
+  return focused_float == nil and win.pane ~= nil and host.state().pane == win.pane
 end
 
 function api.info(id)
   require_loaded("gband.win.info")
-  local window = lookup(id, "gband.win.info")
-  local cols, rows = content_size(window)
+  local win = lookup(id, "gband.win.info")
+  local cols, rows = content_size(win)
   local info = {
-    id = window.id,
-    kind = window.kind,
-    focused = is_focused(window),
-    pane = window.pane,
-    top = window.top,
-    cursor = window.cursor,
-    line_count = #window.lines,
+    id = win.id,
+    kind = win.kind,
+    focused = is_focused(win),
+    pane = win.pane,
+    top = win.top,
+    cursor = win.cursor,
+    line_count = #win.lines,
     cols = cols,
     rows = rows,
   }
-  if window.kind == "float" then
-    local placed = window.placed
+  if win.kind == "floating" then
+    local placed = win.placed
     info.row, info.col, info.width, info.height = placed.row, placed.col, placed.width, placed.height
   end
   return info
@@ -553,7 +553,7 @@ end
 function api.list()
   require_loaded("gband.win.list")
   local ids = {}
-  for id in pairs(windows) do
+  for id in pairs(wins) do
     ids[#ids + 1] = id
   end
   table.sort(ids)
@@ -562,60 +562,60 @@ end
 
 local LINE_STEPS = { up = -1, k = -1, down = 1, j = 1 }
 
-local function move(window, name)
-  local height = content_height(window)
-  local count = #window.lines
+local function move(win, name)
+  local height = content_height(win)
+  local count = #win.lines
   local step = LINE_STEPS[name]
   if step then
-    if window.cursorline then
-      window.cursor = window.cursor + step
+    if win.cursorline then
+      win.cursor = win.cursor + step
     else
-      window.top = window.top + step
+      win.top = win.top + step
     end
   elseif name == "pageup" or name == "pagedown" then
     local page = name == "pageup" and -height or height
-    window.top = window.top + page
-    if window.cursorline then
-      window.cursor = window.cursor + page
+    win.top = win.top + page
+    if win.cursorline then
+      win.cursor = win.cursor + page
     end
   elseif name == "home" then
-    window.top = 1
-    if window.cursorline then
-      window.cursor = 1
+    win.top = 1
+    if win.cursorline then
+      win.cursor = 1
     end
   elseif name == "end" then
-    window.top = count
-    if window.cursorline then
-      window.cursor = count
+    win.top = count
+    if win.cursorline then
+      win.cursor = count
     end
   else
     return false
   end
-  clamp(window)
-  touch(window)
+  clamp(win)
+  touch(win)
   return true
 end
 
 local hooks = {}
 
 function hooks.key(id, name)
-  local window = windows[id]
-  if not window then
+  local win = wins[id]
+  if not win then
     return
   end
-  local fn = window.keys[name]
+  local fn = win.keys[name]
   if fn then
     if focused_float == id then
       held = id
     end
-    host.call(window.owner, nil, fn, id)
+    host.call(win.owner, nil, fn, id)
     return
   end
-  if move(window, name) then
+  if move(win, name) then
     return
   end
-  if name == "escape" and window.kind == "float" then
-    close(window, true, true)
+  if name == "escape" and win.kind == "floating" then
+    close(win, true, true)
   end
 end
 
@@ -624,42 +624,42 @@ function hooks.release()
 end
 
 function hooks.opened(id, pane)
-  local window = windows[id]
-  if not window then
+  local win = wins[id]
+  if not win then
     return
   end
   if pane == nil then
-    close(window, true, false)
+    close(win, true, false)
     return
   end
-  window.pane = pane
+  win.pane = pane
 end
 
 function hooks.pane_resized(id, cols, rows)
-  local window = windows[id]
-  if not window then
+  local win = wins[id]
+  if not win then
     return
   end
-  local before_cols, before_rows = window.cols, window.rows
-  window.cols, window.rows = cols, rows
-  resized(window, before_cols, before_rows)
-  touch(window)
+  local before_cols, before_rows = win.cols, win.rows
+  win.cols, win.rows = cols, rows
+  resized(win, before_cols, before_rows)
+  touch(win)
 end
 
 function hooks.pane_closed(id)
-  local window = windows[id]
-  if window then
-    close(window, true, false)
+  local win = wins[id]
+  if win then
+    close(win, true, false)
   end
 end
 
 function hooks.ribbon_resized()
-  for _, window in pairs(windows) do
-    if window.kind == "float" then
-      local cols, rows = content_size(window)
-      place(window)
-      resized(window, cols, rows)
-      touch(window)
+  for _, win in pairs(wins) do
+    if win.kind == "floating" then
+      local cols, rows = content_size(win)
+      place(win)
+      resized(win, cols, rows)
+      touch(win)
     end
   end
 end
@@ -672,12 +672,12 @@ function hooks.focused()
   if pane == nil then
     return nil
   end
-  return hooks.pane_window(pane)
+  return hooks.plugin_window_of(pane)
 end
 
-function hooks.pane_window(pane)
-  for id, window in pairs(windows) do
-    if window.pane == pane then
+function hooks.plugin_window_of(pane)
+  for id, win in pairs(wins) do
+    if win.pane == pane then
       return id
     end
   end
@@ -685,17 +685,17 @@ function hooks.pane_window(pane)
 end
 
 function hooks.flush()
-  for id, window in pairs(windows) do
-    if window.owner and host.failed(window.owner) then
-      close(window, false, true)
+  for id, win in pairs(wins) do
+    if win.owner and host.failed(win.owner) then
+      close(win, false, true)
     end
   end
   local pending = dirty
   dirty = {}
   for id in pairs(pending) do
-    local window = windows[id]
-    if window then
-      render(window)
+    local win = wins[id]
+    if win then
+      render(win)
     end
   end
 end
@@ -708,8 +708,8 @@ host.after_event(function(name)
       unfocus()
     end
   elseif name == nil or name == "HighlightChanged" or name == "ColorschemeChanged" then
-    for _, window in pairs(windows) do
-      touch(window)
+    for _, win in pairs(wins) do
+      touch(win)
     end
   end
 end)

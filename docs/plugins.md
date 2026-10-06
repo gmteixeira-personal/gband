@@ -383,10 +383,10 @@ Bindings are made only while the configuration loads.
 - `cols` and `rows`: the size of the screen area.
 - `bands`: one table per band, in order, each with `id`, `columns` and `floating`.
 - `columns`: one table per column, left to right, each with `width` as a number, `full_width` and `panes`.
-- `panes`: one table per window, top to bottom, each with `id` and either `rows`, a fixed height, or `weight`, an automatic height's weight. A window that shows a tiled plugin window this client opened also has `window`.
-- `floating`: one table per floating window, in the band's floating order, each with `id`, `width` and `full_width` as a column has them, `rows`, the box's height, and `col` and `row`, the box's top-left cell as placed in the screen area. A window that shows a plugin window this client opened also has `window`.
+- `panes`: one table per window, top to bottom, each with `id` and either `rows`, a fixed height, or `weight`, an automatic height's weight. A window that shows a tiled plugin window this client opened also has `plugin_window`.
+- `floating`: one table per floating window, in the band's floating order, each with `id`, `width` and `full_width` as a column has them, `rows`, the box's height, and `col` and `row`, the box's top-left cell as placed in the screen area. A window that shows a plugin window this client opened also has `plugin_window`.
 
-`gband.view()` returns `band`, the viewed band, `pane`, the focused window or nil, `floating`, true while the band's floating layer has focus, `window`, the focused plugin window or nil, `table`, the active key table, and `cols` and `rows`, the size of the ribbon.
+`gband.view()` returns `band`, the viewed band, `pane`, the focused window or nil, `floating`, true while the band's floating layer has focus, `plugin_window`, the focused plugin window or nil, `table`, the active key table, and `cols` and `rows`, the size of the ribbon.
 
 Both can be called from any code that runs after loading.
 They describe the state when they are called: an action the running callback dispatched takes effect only after it returns.
@@ -459,15 +459,15 @@ end, { desc = "run make in the first window" })
 A plugin window shows lines of styled text that Lua writes.
 It is one of two kinds:
 
-- a **floating** plugin window, of kind `"float"`, drawn by this client only, over the ribbon, at a position and size in cells. Floating plugin windows change no layout, view or window, and other clients never see them.
-- a **tiled** plugin window, of kind `"pane"`, shown in a window of the shared layout that runs no program. It is placed, resized, moved, focused and closed like any window, and every client sees its contents. The server drops keys and pastes sent to it, and it closes when the client that opened it detaches, disconnects or reloads.
+- a **floating** plugin window, of kind `"floating"`, drawn by this client only, over the ribbon, at a position and size in cells. Floating plugin windows change no layout, view or window, and other clients never see them.
+- a **tiled** plugin window, of kind `"tiled"`, shown in a window of the shared layout that runs no program. It is placed, resized, moved, focused and closed like any window, and every client sees its contents. The server drops keys and pastes sent to it, and it closes when the client that opened it detaches, disconnects or reloads.
 
 `gband.win.open(opts)` opens a plugin window and returns its number, which is never reused.
 `info` and `list` can be called from any code that runs after loading; every other function only inside a callback.
 
 | option | kinds | value | default |
 |---|---|---|---|
-| `kind` | both | `"float"` or `"pane"` | `"float"` |
+| `kind` | both | `"floating"` or `"tiled"` | `"floating"` |
 | `lines` | both | the lines | none |
 | `focus` | both | boolean | `true` |
 | `cursorline` | both | boolean | `false` |
@@ -481,11 +481,11 @@ It is one of two kinds:
 | `column_width` | tiled | a width | the server's `default_column_width` |
 
 A line is a string or a list of spans; a span is a string or `{ text = ..., hl = "Group" }`.
-Spans without `hl` use `Window`, and a span's style is its group's resolved style over `Window`'s.
+Spans without `hl` use `PluginWindow`, and a span's style is its group's resolved style over `PluginWindow`'s.
 Control characters are removed, and a line longer than the plugin window is cut.
 
 - `gband.win.set_lines(win, lines)` replaces the lines.
-- `gband.win.scroll(win, count)` moves the first shown line, and `gband.win.set_cursor(win, line)` the cursor line. With `cursorline`, the plugin window scrolls just enough to keep the cursor line shown and draws it in `WindowCursorLine`.
+- `gband.win.scroll(win, count)` moves the first shown line, and `gband.win.set_cursor(win, line)` the cursor line. With `cursorline`, the plugin window scrolls just enough to keep the cursor line shown and draws it in `PluginWindowCursorLine`.
 - `gband.win.focus(win)` focuses a floating plugin window, or the window of a tiled plugin window.
 - `gband.win.set_config(win, config)` changes a floating plugin window's `row`, `col`, `width`, `height`, `border` or `title`.
 - `gband.win.close(win)` closes a plugin window, and for a tiled one its window too. Closing a plugin window that is not open does nothing.
@@ -525,7 +525,7 @@ gband.keymap.set("prefix", "?", function()
 end, { desc = "list the prefix keys" })
 
 gband.keymap.set("prefix", "P", function()
-  gband.win.open({ kind = "pane", column_width = 1/3, lines = { "notes", "", "- write the tests" } })
+  gband.win.open({ kind = "tiled", column_width = 1/3, lines = { "notes", "", "- write the tests" } })
 end, { desc = "open a notes window" })
 ```
 
@@ -789,10 +789,10 @@ The plugin window API defines these groups, as defaults:
 
 | group | default | use |
 |---|---|---|
-| `Window` | `{}` | every plugin window cell |
-| `WindowBorder` | `{ fg = 8 }` | a floating plugin window's border |
-| `WindowTitle` | `{ bold = true }` | a floating plugin window's title, over `WindowBorder` |
-| `WindowCursorLine` | `{ reverse = true }` | the cursor line |
+| `PluginWindow` | `{}` | every plugin window cell |
+| `PluginWindowBorder` | `{ fg = 8 }` | a floating plugin window's border |
+| `PluginWindowTitle` | `{ bold = true }` | a floating plugin window's title, over `PluginWindowBorder` |
+| `PluginWindowCursorLine` | `{ reverse = true }` | the cursor line |
 
 A change of any group redraws every plugin window.
 

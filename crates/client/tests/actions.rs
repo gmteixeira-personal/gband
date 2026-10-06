@@ -497,7 +497,7 @@ fn focus_and_view_by_number_change_the_view() {
 fn tiled_plugin_window_sends_open_pane_with_plugin_content() {
     let (_scratch, mut display, mut controls, panes) = bound(
         "pane-window",
-        "win = gband.win.open({ kind = 'pane', after = 2, focus = false })",
+        "win = gband.win.open({ kind = 'tiled', after = 2, focus = false })",
     );
     let steps = controls.press(&mut display, key("alt+x"));
     let plugin_window: u32 = controls.runtime().lua().globals().get("win").unwrap();
