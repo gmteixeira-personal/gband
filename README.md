@@ -62,15 +62,12 @@ The prefix key, Ctrl+Space, gives the keys below their gband meaning, in one of 
 - **modal**: Ctrl+Space enters navigation mode, and the sidebar shows `N`.
   Each key below acts and navigation mode stays active, so `l` `l` `l` moves three columns and `=` `=` widens the column twice.
   A key with no binding does nothing.
-  Escape or Enter returns to interactive mode, and so do `n`, `?`, `:` and Ctrl+Space once they have acted.
+  Escape or Enter returns to interactive mode, and so do `n`, `?`, `:`, `s` and Ctrl+Space once they have acted.
 - **direct**: Ctrl+Space then one key acts once, and the keys that follow reach the window again, as in tmux.
   Ctrl+Space `l` `l` moves one column and types `l`.
   Escape, Enter and any other key with no binding after Ctrl+Space are discarded.
 
-On the first start gband opens a box titled `key style  enter choose  esc later`, with a line per style.
-`j`, `k` and the arrow keys move between them, and Enter saves the style of the selected line to `user/keystyle.lua` and applies it at once.
-Escape or `q` closes the box and saves nothing: modal applies, and the next start offers the choice again.
-To choose again later, open the Lua prompt with Ctrl+Space then `:` and run `gband.keystyle.choose()`.
+The key style is chosen in the settings window, which Ctrl+Space then `s` opens; see [Settings](#settings).
 
 Both styles bind the same keys after Ctrl+Space:
 
@@ -94,6 +91,7 @@ Both styles bind the same keys after Ctrl+Space:
 | Ctrl+`j`, Ctrl+`k`, or Ctrl with the down or up arrow | move the window, or the floating window, down or up |
 | `?` | list these keys, and run the one you choose; the list takes the keys that follow |
 | `:` | open the Lua prompt, which runs one line of Lua |
+| `s` | open the settings window |
 | `D` | detach |
 | Escape, Enter | modal only: return to interactive mode |
 | Ctrl+Space | send Ctrl+Space to the window; modal returns to interactive mode |
@@ -101,6 +99,43 @@ Both styles bind the same keys after Ctrl+Space:
 Navigation mode changed two habits.
 Enter no longer opens a window: `n` does.
 After Ctrl+Space and a layout key, what you type no longer reaches the window until Escape or Enter returns to interactive mode.
+
+### Settings
+
+Ctrl+Space then `s` opens the settings window, a box titled `settings` over the windows, and returns to interactive mode so the box takes the keys that follow.
+It has three lines:
+
+| line | shows |
+|---|---|
+| `theme` | the active theme |
+| `sidebar` | `on` or `off` |
+| `keys` | the key style, `modal` or `direct` |
+
+`j`, `k` and the up and down arrows move between the lines.
+On `theme`, `l` or Right loads the next theme and `h` or Left the one before, and Enter opens the theme list.
+On `sidebar` and `keys`, Enter, `h`, `l`, Left and Right switch to the other value.
+Escape or `q` closes the box and saves nothing.
+
+Each change is saved at once.
+The configuration then reloads, and the box opens again on the same line.
+
+The theme list, titled `theme`, has one line per theme: the bundled themes, then every colorscheme of your own, such as `user/colors/dusk.lua`, or of a plugin.
+Moving through it previews the theme under the cursor line.
+Enter saves that theme, and Escape or `q` restores the theme that was active when the list opened.
+
+gband bundles these themes:
+
+| theme | look |
+|---|---|
+| `default` | sets no color: bars on your terminal's background, gband's own parts in their built-in styles, and programs in your terminal's colors |
+| `terminal` | colors gband's parts with the 16 colors of your terminal's palette only, so your terminal decides every color |
+| `catppuccin-latte`, `catppuccin-frappe`, `catppuccin-macchiato`, `catppuccin-mocha`, `tokyo-night`, `dracula`, `nord`, `gruvbox`, `one-dark`, `solarized`, `kanagawa`, `rose-pine`, `vesper` | colors gband's parts, and replaces the default colors and the 16 ANSI colors that programs in windows draw with, using the theme's published terminal colors |
+
+`catppuccin` loads `catppuccin-mocha`.
+A program's 256-color and 24-bit output keeps its own colors under every theme.
+
+With the default configuration, gband opens the settings window when it starts while no theme, sidebar or key style is saved.
+Escape closes it and saves nothing: the `default` theme, the sidebar and the modal key style apply, and the next start offers it again.
 
 ### Mouse
 
@@ -159,7 +194,9 @@ gband creates the directory when it starts, with two folders in it:
   Edits to them have no effect.
 - `user/` holds your configuration.
   gband creates it empty.
-  Choosing a key style writes `user/keystyle.lua`, which holds `return "modal"` or `return "direct"`; delete it to be offered the choice again.
+  The settings window saves each setting in a file of its own: `user/theme.lua` holds `return "<theme>"`, `user/sidebar.lua` holds `return true` or `return false`, and `user/keystyle.lua` holds `return "modal"` or `return "direct"`.
+  gband only reads a value from these files and never runs them as configuration, and nothing writes `user/init.lua`.
+  Delete all three to be offered the settings window again.
 
 The configuration has two files, one per process:
 
@@ -179,8 +216,11 @@ cp ~/.config/gband/defaults/init.lua ~/.config/gband/user/init.lua
 
 The copy binds its keys with `gband.keystyle.use()`, which makes the bindings of the saved key style, or of modal when none is saved.
 `gband.keystyle.use("direct")` picks a style whatever is saved, and a binding made after the call replaces the style's binding for that key.
-The choice applies only where your file calls `gband.keystyle.use()` with no argument: a file that binds its own keys keeps them, and the chooser then only saves the choice.
 To edit the bindings themselves, copy a style's bindings from `defaults/keystyle/` into `user/init.lua` in place of the `gband.keystyle.use()` call.
+
+The saved theme loads before `user/init.lua` runs, so it applies to your file too, unless your file calls `gband.colorscheme` itself.
+The settings window's `sidebar` and `keys` lines apply only where your file asks for them, as the copy does: it sets up the sidebar unless `gband.settings.sidebar()` returns `false`, and calls `gband.keystyle.use()` with no argument.
+A file that sets up the sidebar or binds its own keys keeps its choice, and the settings window then only saves the setting.
 
 Without `user/init.lua`, the defaults apply.
 Saving `user/init.lua`, or any other `.lua` file under `user/`, reloads the configuration while gband runs, and deleting `user/init.lua` returns to the defaults.
@@ -226,9 +266,11 @@ The client options, set in `user/init.lua`, and their defaults:
 | `center_focused_column` | `"never"`, `"always"` or `"on-overflow"` | `"never"` |
 | `loop_bands` | `true` or `false`: whether focus goes round from a band's last column to its first, drawing a long enough band as a loop | `true` |
 | `tile_border_sides` | the sides of a tiled window's border that are drawn: a list of `"top"`, `"right"`, `"bottom"` and `"left"` | `{ "top", "right", "bottom", "left" }` |
-| `tile_border_chars` | the border's characters: `"plain"`, `"rounded"`, `"double"`, `"thick"`, or a list of eight one-cell strings | `"plain"` |
+| `tile_border_chars` | the border's characters: `"plain"`, `"rounded"`, `"double"`, `"thick"`, or a list of eight one-cell strings | `"rounded"` |
+| `focused_tile_border_chars` | the focused tiled window border's characters, with the same sides | `"rounded"` |
 | `floating_border_sides` | the drawn sides of a floating window's border | `{ "top", "right", "bottom", "left" }` |
-| `floating_border_chars` | a floating window border's characters | `"plain"` |
+| `floating_border_chars` | a floating window border's characters | `"rounded"` |
+| `focused_floating_border_chars` | the focused floating window border's characters, with the same sides | `"rounded"` |
 | `width_step` | how much growing or shrinking changes a column's width, as a fraction of the screen | `1/10` |
 | `height_step` | how much growing or shrinking changes a window's height, as a fraction of the screen, at most 1 | `1/10` |
 | `mouse_mod` | the modifiers that `mod` stands for in a mouse name: `ctrl`, `alt` and `shift` joined by `+` | `"alt"` |
@@ -335,9 +377,25 @@ A side that is not drawn still takes its cell, which stays blank, so the border 
 
 ```lua
 gband.opt.tile_border_sides = { "top", "bottom" }
-gband.opt.tile_border_chars = "rounded"
-gband.opt.floating_border_chars = "double"
+gband.opt.focused_tile_border_chars = "double"
+gband.opt.floating_border_chars = "thick"
 ```
+
+Every border is rounded by default.
+The focused tiled window and the focused floating window take the characters of `focused_tile_border_chars` and `focused_floating_border_chars`, with the sides of the other windows, and a tile lifted with the mouse marks its drop place with the focused tile's characters.
+Rounded has no heavy form: a `"thick"` or `"double"` focused border has square corners beside the rounded ones.
+For the square borders gband drew before, set all four character options to `"plain"`:
+
+```lua
+gband.set {
+  tile_border_chars = "plain",
+  focused_tile_border_chars = "plain",
+  floating_border_chars = "plain",
+  focused_floating_border_chars = "plain",
+}
+```
+
+The groups `WindowBorder` and `WindowBorderFocused` color the borders, and each theme other than `default` sets both; [docs/plugins.md](docs/plugins.md#highlight-groups-gbandhl) lists them.
 
 ### Floating windows
 
@@ -358,6 +416,7 @@ Each client stacks floating windows in its own order, with the one it focused la
 
 Ctrl+Space then `?` opens a list of the navigation keys in a box titled `navigation keys`, or `prefix keys` with the direct key style, over the windows, each with its description, and returns to interactive mode so the list takes the keys that follow.
 Pressing a line's key selects that line and runs its binding, an action or a function, on the window behind the list, which stays open for the next choice: `l` focuses the column to the right, and `j` and `k` focus the window below and above.
+A binding that opens another box, such as `s` or `:`, closes the list, and that box takes the keys.
 Up and Down move through the list, PageUp, PageDown, Home and End jump through it, and Enter runs the selected line.
 Lines whose key is one of these, and the line of the prefix key, run only through Enter.
 The list's own `?` line shows dimmed, and pressing `?` or Enter on it only selects it.
@@ -407,14 +466,14 @@ The windows keep the size they would have without it: they are drawn in the colu
 | last | a red `!` while a configuration or plugin error is reported |
 
 A new session shows `I`, then `1` and `2`.
-The viewed band's label is bright and bold, and the others are dim.
+The viewed band's label is bold, and the others are dim, or in the theme's muted color.
 A label is the band's position, so the labels stay `1`, `2`, `3` after a band is removed.
 Bands that do not fit above the last row, and bands past the 35th, are not shown.
 With the direct key style, the sidebar shows `P` after the prefix key until the key sequence ends.
 Clicking a band's label with the left button views that band, in any mode.
 Turning the wheel over the sidebar views the band below or above the viewed band, one band per step, in any mode.
 
-The sidebar is a plugin bundled with gband, `gband.sidebar`, which the default configuration sets up after `gband.errors`.
+The sidebar is a plugin bundled with gband, `gband.sidebar`, which the default configuration sets up after `gband.errors` unless the settings window turned it off.
 A `user/init.lua` replaces the defaults, so it sets it up itself with the same call; a copy of `defaults/init.lua` already holds it:
 
 ```lua

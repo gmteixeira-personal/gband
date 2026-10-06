@@ -102,6 +102,7 @@ Call it once, before any other function of the handle.
 | `config` | the contents of `user/init.lua` | none: the default configuration |
 | `server_config` | the contents of `user/server.lua` | none: the default server configuration |
 | `keystyle` | the key style saved in `user/keystyle.lua`: `"modal"`, `"direct"`, or `false` to save none | `"modal"` |
+| `theme` | the theme saved in `user/theme.lua`: a colorscheme name, or `false` to save none | `"terminal"` |
 | `files` | a table from paths relative to the configuration directory to contents, such as `{ ["user/lua/extra.lua"] = "..." }` | none |
 | `plugins` | a list of further plugin directories for this case, relative to the test file's directory | none |
 | `env` | environment variables to set, or to remove with `false` | none |
@@ -109,8 +110,11 @@ Call it once, before any other function of the handle.
 
 A `config` replaces the default configuration, as `user/init.lua` does, so set up the sidebar, the plugins and the bindings the case needs.
 
-The key style is saved before `files` are written, so a case with the default configuration starts with no key style chooser open, and a `files` entry for `user/keystyle.lua` replaces it.
-Start with `keystyle = false` to see the chooser that a first start offers.
+The key style and the theme are saved before `files` are written, so a case with the default configuration starts with no settings window open, and a `files` entry for `user/keystyle.lua` or `user/theme.lua` replaces the saved file.
+Start with `keystyle = false` and `theme = false` to see the settings window that a first start offers.
+
+The `terminal` theme colors gband's own parts with the indexes 0 to 15 only and sets no terminal palette, so screenshots record small indexes, such as `fg=4` for the focused border, and programs' colors as they print them, whatever theme gband starts with by default.
+Give another theme, such as `theme = "gruvbox"`, to test what it draws.
 
 Each case gets a new directory tree under the system's temporary directory, holding its own configuration, data, state and runtime directories and a working directory.
 The plugin under test, every `--plugin` and every `plugins` entry are linked into its plugins directory under their directory names.
@@ -196,24 +200,32 @@ The handle also returns what the client wrote to its terminal since `g.start`, a
 
 ```
 size 60x4 cursor 1:4 shown
-0|I┌────────────────────────────┐┌────────────────window 1
-1| │$                           ││$
-2|1│                            ││
-3| └────────────────────────────┘└────────────────
+0|I╭─────────────────────╮╭─────────────────────╮ window 1
+1| │$                    ││$                    │
+2|1│                     ││                     │
+3| ╰─────────────────────╯╰─────────────────────╯
 --
-0:0 fg=#7aa2f7 bold
-0:1-30 bold
-0:31-47 dim
-0:48-55 fg=#7aa2f7 bold
-1:1 bold
-1:30 bold
-1:31 dim
-2:0 fg=#c0caf5 bold
-2:1 bold
-2:30 bold
-2:31 dim
-3:1-30 bold
-3:31-47 dim
+0:0 fg=4 bg=0 bold
+0:1-23 fg=4 bold
+0:24-46 fg=8
+0:48-55 fg=4 bg=0 bold
+0:56-59 bg=0
+1:0 bg=0
+1:1 fg=4 bold
+1:23 fg=4 bold
+1:24 fg=8
+1:46 fg=8
+1:48-59 bg=0
+2:0 fg=15 bg=0 bold
+2:1 fg=4 bold
+2:23 fg=4 bold
+2:24 fg=8
+2:46 fg=8
+2:48-59 bg=0
+3:0 bg=0
+3:1-23 fg=4 bold
+3:24-46 fg=8
+3:48-59 bg=0
 ```
 
 - The header gives the size, the cursor's row and column, and `shown` or `hidden`.

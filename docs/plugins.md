@@ -91,7 +91,7 @@ Each load runs in a new Lua state.
 In a client:
 
 1. gband sets `gband.side` to `"client"` and `gband.api_version` to `1`.
-2. gband installs the client's `gband` API, including its built-in highlight groups, and loads the `default` colorscheme.
+2. gband installs the client's `gband` API, including its built-in highlight groups, and loads the start theme: the saved theme, or `default`, as "Themes" describes.
 3. gband runs the init file: `user/init.lua` when it exists, the default client configuration otherwise.
 4. gband runs every manifest, in runtimepath order.
 5. For each plugin whose manifest is valid, in runtimepath order, gband runs its `client.lua`.
@@ -123,7 +123,7 @@ user/server.lua:3: `gband.keymap` is a client API; this is the server
 
 | only the client | only the server |
 |---|---|
-| `bind`, `unbind`, `spawn`, `keymap`, `keystyle`, `ui`, `hl`, `colorscheme`, `layout`, `view`, `window`, `band`, `win`, `bar`, `errors`, `clear_errors`, `rpc`, `notify`, `bell`, `clipboard`, `open` | `sessions`, `session` |
+| `bind`, `unbind`, `spawn`, `keymap`, `keystyle`, `settings`, `ui`, `hl`, `colorscheme`, `palette`, `layout`, `view`, `window`, `band`, `win`, `bar`, `errors`, `clear_errors`, `rpc`, `notify`, `bell`, `clipboard`, `open` | `sessions`, `session` |
 
 Every other field exists on both sides: `on`, `augroup`, `emit`, `cmd`, `opt`, `set`, `plugin`, `plugins`, `runtimepath`, `config_dir`, `side`, `api_version`, `window_state` and `action`.
 `emit`, `window_state`, `action` and the events differ between the sides, as their sections describe.
@@ -291,7 +291,7 @@ Each built-in option belongs to one side, and each process knows only its own si
 
 | side | options |
 |---|---|
-| client | `prefix`, `center_focused_column`, `loop_bands`, `notify_style`, `tile_border_sides`, `tile_border_chars`, `floating_border_sides`, `floating_border_chars`, `width_step`, `height_step`, `mouse_mod` |
+| client | `prefix`, `center_focused_column`, `loop_bands`, `notify_style`, `tile_border_sides`, `tile_border_chars`, `focused_tile_border_chars`, `floating_border_sides`, `floating_border_chars`, `focused_floating_border_chars`, `width_step`, `height_step`, `mouse_mod` |
 | server | `default_column_width`, `width_presets` |
 
 ```lua
@@ -608,7 +608,7 @@ It is one of two kinds:
 | `band`, `after` | tiled | as the `open_window` target takes them | the viewed band and focused window |
 | `column_width` | tiled | a width | the server's `default_column_width` |
 
-A border table draws the sides it lists, all four without `sides`, with the characters `chars` names, `"plain"` without it, as the client's border options do.
+A border table draws the sides it lists, all four without `sides`, with the characters `chars` names, `"plain"` without it; sides and characters take the same values as the client's border options.
 A side left out still takes its cell, so the content area is the same whatever the table says, and the title is drawn on the top row even when the top side is not.
 `true` is all four sides in `"plain"`.
 
@@ -769,7 +769,7 @@ return M
 
 gband bundles the sidebar, module `gband.sidebar`, plugin `sidebar`.
 Its `setup` adds one bar with `gband.bar.add`, 1 column wide, in the group `Bar`, so the bar's id is `sidebar`.
-The default configuration sets up `gband.errors` and then `gband.sidebar`, so on an 80×24 terminal the sidebar is column 0 and the ribbon spans columns 1 to 79.
+The default configuration sets up `gband.errors` and then `gband.sidebar`, unless `gband.settings.sidebar()` returns `false`, so on an 80×24 terminal the sidebar is column 0 and the ribbon spans columns 1 to 79.
 A `user/init.lua` replaces the default configuration, so it gets the sidebar only by setting it up, here on the right:
 
 ```lua
@@ -829,7 +829,8 @@ The plugin window is as wide as its longest line plus its border and as high as 
 Dispatching `keylist.open` while the list is open focuses it and opens no second one.
 
 Enter runs the binding on the cursor line with `gband.keymap.run("prefix", key)`: an action is dispatched with no target, so it acts on the focused window behind the list, and a function runs, as a key bound to it would.
-The list stays open and focused, by the rule for a floating plugin window's own `keys`, so you can choose again; a floating plugin window the binding opens takes focus above it.
+The list stays open and focused, by the rule for a floating plugin window's own `keys`, so you can choose again.
+When another floating plugin window has focus once the binding has run, such as the settings window or the Lua prompt it opened, the list closes itself.
 `close_window` closes the list itself, as it closes any focused floating plugin window.
 Enter does nothing on the line of `keylist.open` itself, the one line whose description is drawn in `KeyListMuted`.
 
@@ -899,6 +900,7 @@ gband bundles two key style presets, the modules `gband.keystyle.modal` and `gba
 Each is a file of plain top-level calls, as a `user/init.lua` is: it sets up `gband.keylist` and `gband.prompt`, whose actions it binds, then makes its bindings in `prefix`, and binds nothing in `root`.
 The modal preset declares `prefix` a mode labelled `navigation` and binds Escape and Enter to return to interactive mode.
 The direct preset declares no mode, so each key after the prefix key acts once; it binds `n` to `open_window` and the prefix key to `send_prefix` directly.
+Both bind Ctrl+Space then `s` to `gband.settings.open`, described `settings`, right after `:`.
 gband writes copies of both to `defaults/keystyle/` for you to read; loading never reads the copies.
 
 `gband.keystyle` is a client API:
@@ -907,26 +909,68 @@ gband writes copies of both to `defaults/keystyle/` for you to read; loading nev
 |---|---|
 | `gband.keystyle.use(style)` | makes the bindings of `"modal"` or `"direct"` by requiring `gband.keystyle.<style>`, and returns the style's name; with no argument it uses the saved style, or `"modal"` when none is saved |
 | `gband.keystyle.saved()` | the saved style, `"modal"` or `"direct"`, or nil |
-| `gband.keystyle.choose()` | enters `root` and opens the key style chooser, or focuses it when it is open |
 
 `use` runs only while the configuration loads, and once per load; any other style, a second call and a call after loading are errors at the line of the call.
 Bindings made after it replace the preset's binding for the same key.
-The default configuration calls `gband.keystyle.use()` with no argument, so the choice applies where a configuration does the same: a `user/init.lua` that binds its own keys keeps them, and the chooser then only saves the choice.
+The default configuration calls `gband.keystyle.use()` with no argument, so the saved style applies where a configuration does the same: a `user/init.lua` that binds its own keys keeps them, and the settings window's `keys` line then only saves the style.
 
 `saved` reads `user/keystyle.lua` as a text chunk with an empty environment, and returns its value when it is `"modal"` or `"direct"`.
 It returns nil when `gband.config_dir` is nil, and when the file is missing, does not compile, raises an error or returns anything else; it reports nothing.
 The file is never run as configuration, a plugin file or a module.
+The settings window's `keys` line saves it, as "Settings" describes.
 
-`choose` is callable wherever an action value is, and calling it while the configuration loads is an error.
-The chooser is a floating plugin window with a border, titled `key style  enter choose  esc later`, with one line per style, such as `modal   C-space enters a mode, keys repeat until Escape`, showing the prefix key in the key list's short form.
-Its cursor line starts on the saved style, or on `modal`.
-It is as wide as its longest line plus its border, at most as wide as the ribbon, and centred in it.
-`j`, `k` and the arrow keys move the cursor line, and Escape and `q` close it and save nothing.
-Enter closes it and saves the selected style: it writes `return "<style>"` and a newline to a temporary file in `user/` and renames it over `user/keystyle.lua`, which reloads the configuration as any saved `.lua` file under `user/` does.
-When there is no configuration directory or the write fails, Enter raises an error naming `user/keystyle.lua` and the reason, and the style in use stays.
+## Settings: `gband.settings`
 
-On `Attached`, the default configuration opens the chooser when `gband.config_dir` is set and `saved()` returns nil.
-`Attached` fires once per client and never for a reload, so the chooser opens at most once per start, and every start offers it until a style is saved.
+`gband.settings` is a client API for the settings window and the settings it saves:
+
+| function | effect |
+|---|---|
+| `gband.settings.open()` | enters `root` and opens the settings window, or focuses it when it is open |
+| `gband.settings.theme()` | the theme saved in `user/theme.lua`, or nil |
+| `gband.settings.sidebar()` | the sidebar setting saved in `user/sidebar.lua`, `true` or `false`, or nil |
+| `gband.settings.themes()` | a new list of the names the theme list shows |
+
+`theme` and `sidebar` read their file as `gband.keystyle.saved()` reads `user/keystyle.lua`, and return its value when it is a valid colorscheme name or a boolean.
+They return nil when `gband.config_dir` is nil, and when the file is missing, does not compile, raises an error or returns anything else; they report nothing.
+Neither file is ever run as configuration, a plugin file or a module.
+`themes` lists the bundled themes first, in the order "Themes" gives, without the alias `catppuccin`, then every other name for which a runtimepath entry holds `colors/<name>.lua`, in byte order.
+A name appears once, so a `user/colors/nord.lua` keeps `nord`'s place.
+These three are callable while the configuration loads and in any callback.
+
+`open` is callable wherever an action value is, and calling it while the configuration loads is an error.
+Called while the theme list is open, it closes the list as Escape does and focuses the settings window.
+
+The settings window is a floating plugin window with a border, titled `settings`, 31 columns wide and 5 rows high, at most the ribbon's size, centred in the ribbon, with its cursor line on its first line.
+It holds three lines, each a label in `SettingsLabel` padded to 9 cells, then the value:
+
+| line | value | Enter | `h`, Left, `l`, Right |
+|---|---|---|---|
+| `theme` | the name `gband.colorscheme()` returns | opens the theme list | `l` and Right load the theme after the active one in `themes()`, `h` and Left the one before, and save it |
+| `sidebar` | `off` when `sidebar()` returns `false`, `on` otherwise | saves the other value | the same as Enter |
+| `keys` | the style `gband.keystyle.saved()` returns, or `modal` | saves the other style | the same as Enter |
+
+The `theme` line wraps at both ends of the list, and an active colorscheme missing from it steps to the first or the last theme.
+A theme that fails to load is reported, as "Colorschemes" describes, and not saved.
+Every other key is a floating plugin window default: `j`, `k`, Up and Down move the cursor line, and Escape and `q` close the window and save nothing.
+
+The theme list is a floating plugin window with a border, titled `theme`, with one line per name of `themes()`, as wide as the longest name plus its border and as high as its lines plus its border, capped by the ribbon and centred in it.
+Its cursor line starts on the active colorscheme.
+Each move of the cursor line, by `j`, `k`, the arrow keys, PageUp, PageDown, Home, End, a click or the wheel, loads that line's theme with `gband.colorscheme`, so the ribbon previews it.
+Enter saves the line's theme and closes the list; when that theme failed to load, it only closes the list.
+Escape and `q` load again the colorscheme that was active when the list opened, save nothing and close the list.
+Closing the list focuses the settings window.
+
+Saving writes `return "<name>"`, `return true` or `return false`, or `return "<style>"`, and a newline, to a temporary file in `user/`, and renames it over `user/theme.lua`, `user/sidebar.lua` or `user/keystyle.lua`.
+That reloads the configuration, as any saved `.lua` file under `user/` does.
+The client keeps the line the setting belongs to across that reload, and when the load succeeds it opens the settings window again with its cursor line there, whatever configuration file is in use.
+When there is no configuration directory or the write fails, the key raises an error naming the file and the reason, the settings window stays open, and the setting in use stays.
+
+The saved theme applies to every configuration, since it loads before the init file.
+The sidebar and the key style apply where a configuration asks for them: the default configuration sets up `gband.sidebar` unless `sidebar()` returns `false`, and calls `gband.keystyle.use()` with no argument.
+A `user/init.lua` that sets up the sidebar or binds its own keys keeps its choice, and the settings window then only saves the setting.
+
+On `Attached`, the default configuration opens the settings window when `gband.config_dir` is set and `theme()`, `sidebar()` and `gband.keystyle.saved()` all return nil.
+`Attached` fires once per client and never for a reload, so the window opens at most once per start, and every start offers it until one setting is saved.
 
 ## Highlight groups: `gband.hl`
 
@@ -986,7 +1030,21 @@ The plugin window API defines these groups, as defaults:
 
 A change of any group redraws every plugin window and every bar.
 
+The client draws its own parts with these groups, which it defines as defaults before the init file runs:
+
+| group | default | use |
+|---|---|---|
+| `WindowBorder` | `{ dim = true }` | the border of each tiled or floating window that is not focused |
+| `WindowBorderFocused` | `{ fg = "#b1b9f9", bold = true }` | the focused tiled or floating window's border, and a lifted tile's drop outline |
+| `ErrorBanner` | `{ fg = "red", reverse = true }` | the error banner on the ribbon's bottom row |
+| `SettingsLabel` | `{ dim = true }` | the labels of the settings window |
+
+A change of one of them redraws the client.
+Floating plugin windows keep their own groups.
+
 The client draws window borders with its own options, `tile_border_sides` and `tile_border_chars` for tiles and `floating_border_sides` and `floating_border_chars` for floating windows.
+The focused tiled window takes the characters of `focused_tile_border_chars` and the focused floating window those of `focused_floating_border_chars`, each keeping its sides, and a lifted tile's drop outline is drawn with all four sides in `focused_tile_border_chars`.
+All four character options default to `"rounded"`.
 A list of sides holds `"top"`, `"right"`, `"bottom"` and `"left"`, and a character set is `"plain"`, `"rounded"`, `"double"`, `"thick"`, or eight one-cell strings in the order top-left, top, top-right, right, bottom-right, bottom, bottom-left, left.
 A corner where only one of its sides is drawn takes that side's character, and the cells of a side not drawn stay blank, so borders never change a window's size.
 
@@ -998,35 +1056,24 @@ The client draws 24-bit colors when its own `COLORTERM` is `truecolor` or `24bit
 Otherwise it draws each `"#rrggbb"` color as the nearest of the palette indexes 16 to 255.
 Index and named colors are drawn as their palette index either way.
 Floating plugin windows follow these rules.
+The terminal palette, as "The terminal palette" describes, then maps the default colors and the indexes 0 to 15 of every cell drawn.
 A tiled plugin window's contents are sent to the server as 24-bit colors, and every client shows them as its terminal does, as it shows a program's colors.
 
 ## Colorschemes: `gband.colorscheme`
 
-A colorscheme is a Lua file that sets groups with `gband.hl.set`.
+A colorscheme is a Lua file that sets groups with `gband.hl.set` and the terminal palette with `gband.palette.set`.
 `gband.colorscheme(name)` runs `colors/<name>.lua` from the first runtimepath entry that holds one, or the colorscheme of that name bundled with gband.
 Names start with an ASCII letter or digit and hold letters, digits, `_` and `-`.
 
-gband bundles `default`, which sets the sidebar's groups and the key list's groups, and loads it before the init file.
-It leaves `Bar` unset, so bars, the sidebar included, draw on the terminal's default background until a colorscheme sets `Bar`:
-
-| group | style |
-|---|---|
-| `SidebarMode` | `{ fg = "#7aa2f7", bold = true }` |
-| `SidebarBand` | `{ fg = "#565f89" }` |
-| `SidebarBandActive` | `{ fg = "#c0caf5", bold = true }` |
-| `SidebarError` | `{ fg = "#f7768e", bold = true }` |
-| `KeyListKey` | `{ fg = "#7aa2f7", bold = true }` |
-| `KeyListMuted` | `{ fg = "#9aa5ce" }` |
-
 `gband.colorscheme()` returns the active colorscheme's name.
 
-Switching first removes every group's explicit setting, keeping the defaults, then runs the file.
+Switching first removes every group's explicit setting, keeping the defaults, and empties the terminal palette, then runs the file.
 Set your own groups after the `gband.colorscheme` call.
 The code in a colorscheme file belongs to no plugin.
 
 A switch is atomic.
 It returns `true` and makes `name` active when the file runs to completion.
-When the colorscheme is missing, its name is invalid, or its file raises an error or hits the instruction limit, gband restores every explicit setting, keeps the active colorscheme, reports the error as `colors/<name>: ...` and returns `false`.
+When the colorscheme is missing, its name is invalid, or its file raises an error or hits the instruction limit, gband restores every explicit setting and the terminal palette, keeps the active colorscheme, reports the error as `colors/<name>: ...` and returns `false`.
 That error fails neither the load nor any plugin.
 
 After loading, a successful switch emits `ColorschemeChanged` with `name` and `previous`, once, and no `HighlightChanged` for the groups the file sets.
@@ -1037,6 +1084,77 @@ gband.hl.set("Bar", { fg = "#e0def4", bg = "#232136" })
 gband.hl.set("SidebarMode", { fg = "#c4a7e7", bold = true })
 gband.hl.set("WindowSegment", { fg = "#f6c177", bold = true })
 ```
+
+### Themes
+
+gband bundles these colorschemes, called themes, in this order: `default`, `terminal`, `catppuccin-latte`, `catppuccin-frappe`, `catppuccin-macchiato`, `catppuccin-mocha`, `tokyo-night`, `dracula`, `nord`, `gruvbox`, `one-dark`, `solarized`, `kanagawa`, `rose-pine` and `vesper`.
+It also bundles `catppuccin`, which sets exactly what `catppuccin-mocha` sets.
+A `colors/<name>.lua` on the runtimepath shadows the bundled theme of that name.
+
+When loading starts, before the init file, the client loads the start theme as `gband.colorscheme` does: the theme `gband.settings.theme()` returns, or `default` when none is saved or the saved one fails to load.
+The failure is reported as any failed colorscheme is.
+The init file may load another colorscheme, which replaces the start theme.
+
+`default` sets no group and no palette.
+Every group draws with its default, as "Highlight groups" lists them, and the terminal draws in its own palette.
+It leaves `Bar` unset, so bars, the sidebar included, draw on the terminal's default background.
+
+Every other theme sets each of these groups: `Bar`, `SidebarMode`, `SidebarBand`, `SidebarBandActive`, `SidebarError`, `KeyListKey`, `KeyListMuted`, `PluginWindow`, `PluginWindowBorder`, `PluginWindowTitle`, `PluginWindowCursorLine`, `PromptCursor`, `SettingsLabel`, `WindowBorder`, `WindowBorderFocused` and `ErrorBanner`.
+`terminal` uses only the 16 named colors, the indexes 0 to 15 and attributes, and sets no palette, so the host terminal's palette decides every color it draws.
+Each of the other themes also sets every field of the terminal palette, from the default colors and 16 ANSI colors its authors publish for terminals, and its groups use hex colors.
+
+Each of them is built with the bundled module `gband.theme`, which a colorscheme of your own can use too, from a terminal palette and five interface colors:
+
+```lua
+-- colors/ember.lua
+require("gband.theme").apply({
+  palette = {
+    fg = "#e6d5c3",
+    bg = "#1c1714",
+    red = "#d0574a",
+    bright_red = "#e8796c",
+  },
+  ui = {
+    surface = "#2a221d",
+    selection = "#43362e",
+    muted = "#8a7a6c",
+    accent = "#e3a857",
+    error = "#d0574a",
+  },
+})
+```
+
+`apply` calls `gband.palette.set(palette)`, so `palette` takes the fields of "The terminal palette"; give it `fg` and `bg`, which the groups use too.
+It then sets every theme group from these colors: `surface` is the background of bars and plugin windows, `selection` the cursor line's, `muted` the unfocused borders, the labels of bands not viewed, the key list's muted line and the settings labels, `accent` the mode letter, keys, titles, the prompt cursor and the focused border, and `error` the error marker and the banner.
+Set a group after the call to change it.
+
+### The terminal palette: `gband.palette`
+
+`gband.palette` is a client API for the terminal palette: the colors that the client's terminal draws its default colors and its 16 ANSI colors with.
+
+| function | effect |
+|---|---|
+| `gband.palette.set(spec)` | replaces the whole palette with `spec`; `gband.palette.set({})` empties it |
+| `gband.palette.get()` | a new table of the fields the palette sets, with hex colors in lowercase |
+
+`spec` is a table of up to 18 fields: `fg` and `bg`, the terminal's default foreground and background, and `black`, `red`, `green`, `yellow`, `blue`, `magenta`, `cyan`, `white` and their `bright_` forms, the indexes 0 to 15.
+Each value is a `"#rrggbb"` color, in either case; a name or an index is not accepted.
+A `spec` that is not a table, a field not listed or a value that is not a hex color is an error at the line of the call naming the field, and leaves the palette unchanged.
+Both functions are callable while the configuration loads and in any callback, and after loading a change of the palette redraws the client.
+
+The palette is empty when loading starts, before the start theme loads.
+A colorscheme switch empties it before the file runs and restores it when the switch fails, so set it after the `gband.colorscheme` call to keep it.
+
+After every other step of drawing, the client maps each cell of its terminal:
+
+- the default foreground becomes `fg`, and the default background `bg`;
+- index `n`, from 0 to 15, becomes the field of the `n`-th color name, `black` being 0.
+
+Each mapping applies only when the palette sets that field.
+It covers every cell: program output in windows, borders, the empty ribbon, bars, plugin windows and the banner.
+A mapped color is drawn as a hex color, so a client without 24-bit color draws the nearest of the indexes 16 to 255.
+Indexes 16 to 255 and hex colors are drawn unchanged.
+The palette changes nothing the server stores or sends, and nothing a program in a window reads.
 
 ## Plain data
 
