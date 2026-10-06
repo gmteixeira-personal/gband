@@ -9,8 +9,8 @@ local PROMPTS = {
 
 local tails = {}
 
-local function key(session, pane)
-  return session .. "/" .. pane
+local function key(session, window)
+  return session .. "/" .. window
 end
 
 local function plain(text)
@@ -26,8 +26,8 @@ local function waiting(text)
   return false
 end
 
-gband.on("PaneOutput", function(ev)
-  local id = key(ev.session, ev.pane)
+gband.on("WindowOutput", function(ev)
+  local id = key(ev.session, ev.window)
   local tail = (tails[id] or "") .. ev.data
   if #tail > TAIL then
     tail = tail:sub(-TAIL)
@@ -37,24 +37,24 @@ gband.on("PaneOutput", function(ev)
     return
   end
   tails[id] = ""
-  local state = gband.pane_state(ev.session, ev.pane)
+  local state = gband.window_state(ev.session, ev.window)
   if state == nil or state.agent == "waiting" then
     return
   end
   state.agent = "waiting"
-  gband.emit("agent.waiting", { session = ev.session, pane = ev.pane }, { session = ev.session })
+  gband.emit("agent.waiting", { session = ev.session, window = ev.window }, { session = ev.session })
 end)
 
-gband.on("PaneInput", function(ev)
-  tails[key(ev.session, ev.pane)] = nil
-  local state = gband.pane_state(ev.session, ev.pane)
+gband.on("WindowInput", function(ev)
+  tails[key(ev.session, ev.window)] = nil
+  local state = gband.window_state(ev.session, ev.window)
   if state ~= nil and state.agent ~= nil then
     state.agent = nil
   end
 end)
 
-gband.on("PaneClosed", function(ev)
-  tails[key(ev.session, ev.pane)] = nil
+gband.on("WindowClosed", function(ev)
+  tails[key(ev.session, ev.window)] = nil
 end)
 
 gband.cmd.register("next_waiting", function(args, ctx)
@@ -69,12 +69,12 @@ gband.cmd.register("next_waiting", function(args, ctx)
   local first, later
   for _, band in ipairs(session.bands) do
     for _, column in ipairs(band.columns) do
-      for _, entry in ipairs(column.panes) do
-        local state = gband.pane_state(ctx.session, entry.pane)
+      for _, entry in ipairs(column.windows) do
+        local state = gband.window_state(ctx.session, entry.window)
         if state ~= nil and state.agent == "waiting" then
-          first = first or entry.pane
-          if later == nil and entry.pane > after then
-            later = entry.pane
+          first = first or entry.window
+          if later == nil and entry.window > after then
+            later = entry.window
           end
         end
       end
@@ -85,4 +85,4 @@ gband.cmd.register("next_waiting", function(args, ctx)
     ctx.focus(target)
   end
   return target
-end, { desc = "focus the next pane whose agent waits for input", args = { "after" } })
+end, { desc = "focus the next window whose agent waits for input", args = { "after" } })

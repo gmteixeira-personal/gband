@@ -485,8 +485,8 @@ function api.focus(id)
     return
   end
   unfocus()
-  if win.pane then
-    host.focus_pane(win.pane)
+  if win.window then
+    host.focus_window(win.window)
   end
 end
 
@@ -525,7 +525,7 @@ local function is_focused(win)
   if win.kind == "floating" then
     return focused_float == win.id
   end
-  return focused_float == nil and win.pane ~= nil and host.state().pane == win.pane
+  return focused_float == nil and win.window ~= nil and host.state().window == win.window
 end
 
 function api.info(id)
@@ -536,7 +536,7 @@ function api.info(id)
     id = win.id,
     kind = win.kind,
     focused = is_focused(win),
-    pane = win.pane,
+    window = win.window,
     top = win.top,
     cursor = win.cursor,
     line_count = #win.lines,
@@ -623,19 +623,19 @@ function hooks.release()
   held = nil
 end
 
-function hooks.opened(id, pane)
+function hooks.opened(id, window)
   local win = wins[id]
   if not win then
     return
   end
-  if pane == nil then
+  if window == nil then
     close(win, true, false)
     return
   end
-  win.pane = pane
+  win.window = window
 end
 
-function hooks.pane_resized(id, cols, rows)
+function hooks.window_resized(id, cols, rows)
   local win = wins[id]
   if not win then
     return
@@ -646,7 +646,7 @@ function hooks.pane_resized(id, cols, rows)
   touch(win)
 end
 
-function hooks.pane_closed(id)
+function hooks.window_closed(id)
   local win = wins[id]
   if win then
     close(win, true, false)
@@ -668,16 +668,16 @@ function hooks.focused()
   if focused_float then
     return focused_float
   end
-  local pane = host.state().pane
-  if pane == nil then
+  local window = host.state().window
+  if window == nil then
     return nil
   end
-  return hooks.plugin_window_of(pane)
+  return hooks.plugin_window_of(window)
 end
 
-function hooks.plugin_window_of(pane)
+function hooks.plugin_window_of(window)
   for id, win in pairs(wins) do
-    if win.pane == pane then
+    if win.window == window then
       return id
     end
   end

@@ -10,7 +10,7 @@ use anyhow::{Result, bail};
 use gband_client::{Connection, Link, Transport};
 use gband_core::geometry::Size;
 use gband_core::input::{Key, KeyCode};
-use gband_core::layout::{Layout, LayoutOptions, PaneId, SessionAction};
+use gband_core::layout::{Layout, LayoutOptions, SessionAction, WindowId};
 pub use gband_emulator::{Emulator, Grid};
 use gband_protocol::{
     ClientMessage, ExecutableId, Hello, HelloReply, IoError, MessageReader, MessageWriter,
@@ -150,7 +150,7 @@ impl TestServer {
         self.list()
             .await
             .into_iter()
-            .map(|summary| (summary.name.to_string(), summary.panes, summary.clients))
+            .map(|summary| (summary.name.to_string(), summary.windows, summary.clients))
             .collect()
     }
 
@@ -168,11 +168,11 @@ impl TestServer {
         reply
     }
 
-    pub async fn screens(&self) -> HashMap<PaneId, Grid> {
+    pub async fn screens(&self) -> HashMap<WindowId, Grid> {
         self.screens_of("default").await
     }
 
-    pub async fn screens_of(&self, name: &str) -> HashMap<PaneId, Grid> {
+    pub async fn screens_of(&self, name: &str) -> HashMap<WindowId, Grid> {
         let mut client = self.attach_to(name, &self.runtime_dir, 0, 0).await;
         let screens = std::mem::take(&mut client.grids);
         client.send(&ClientMessage::Detach).await;
@@ -250,15 +250,15 @@ impl From<Connection> for Peer {
 
 pub struct TestClient {
     pub peer: Peer,
-    pub grids: HashMap<PaneId, Grid>,
+    pub grids: HashMap<WindowId, Grid>,
     pub layout: Layout,
     pub area: Size,
-    pub focus: Vec<PaneId>,
-    pub opened: Vec<(u32, Option<PaneId>)>,
+    pub focus: Vec<WindowId>,
+    pub opened: Vec<(u32, Option<WindowId>)>,
     pub info: ServerMessage,
     pub exited: bool,
     pub bridge: Vec<ServerMessage>,
-    pub states: HashMap<PaneId, BTreeMap<String, Value>>,
+    pub states: HashMap<WindowId, BTreeMap<String, Value>>,
 }
 
 impl TestClient {
@@ -326,8 +326,8 @@ impl TestClient {
         }
         while client
             .layout
-            .panes()
-            .any(|pane| !client.grids.contains_key(&pane))
+            .windows()
+            .any(|window| !client.grids.contains_key(&window))
         {
             match client.receive().await {
                 Some(ServerMessage::Snapshot { .. }) => {}
@@ -337,31 +337,31 @@ impl TestClient {
         loop {
             match client.receive().await {
                 Some(ServerMessage::Requirements(_)) => return client,
-                Some(ServerMessage::PaneState { .. }) => {}
-                other => panic!("expected pane states, then requirements, got {other:?}"),
+                Some(ServerMessage::WindowState { .. }) => {}
+                other => panic!("expected window states, then requirements, got {other:?}"),
             }
         }
     }
 
-    pub fn panes(&self) -> Vec<PaneId> {
-        self.layout.panes().collect()
+    pub fn windows(&self) -> Vec<WindowId> {
+        self.layout.windows().collect()
     }
 
-    pub fn first(&self) -> PaneId {
+    pub fn first(&self) -> WindowId {
         self.layout
-            .panes()
+            .windows()
             .next()
-            .expect("the layout holds no pane")
+            .expect("the layout holds no window")
     }
 
     pub fn screen(&self) -> &Grid {
-        self.pane_screen(self.first())
+        self.window_screen(self.first())
     }
 
-    pub fn pane_screen(&self, pane: PaneId) -> &Grid {
+    pub fn window_screen(&self, window: WindowId) -> &Grid {
         self.grids
-            .get(&pane)
-            .unwrap_or_else(|| panic!("no screen for pane {pane}"))
+            .get(&window)
+            .unwrap_or_else(|| panic!("no screen for window {window}"))
     }
 
     pub async fn send(&mut self, message: &ClientMessage) {
@@ -372,39 +372,39 @@ impl TestClient {
         self.send(&ClientMessage::Action(action)).await;
     }
 
-    pub async fn show(&mut self, panes: &[PaneId]) {
-        self.send(&ClientMessage::Shown(panes.to_vec())).await;
+    pub async fn show(&mut self, windows: &[WindowId]) {
+        self.send(&ClientMessage::Shown(windows.to_vec())).await;
     }
 
     pub async fn show_all(&mut self) {
-        let panes = self.panes();
-        self.show(&panes).await;
+        let windows = self.windows();
+        self.show(&windows).await;
     }
 
     pub async fn key(&mut self, key: Key) {
-        let pane = self.first();
-        self.key_to(pane, key).await;
+        let window = self.first();
+        self.key_to(window, key).await;
     }
 
-    pub async fn key_to(&mut self, pane: PaneId, key: Key) {
-        self.send(&ClientMessage::Key { pane, key }).await;
+    pub async fn key_to(&mut self, window: WindowId, key: Key) {
+        self.send(&ClientMessage::Key { window, key }).await;
     }
 
     pub async fn type_line(&mut self, line: &str) {
-        let pane = self.first();
-        self.type_line_to(pane, line).await;
+        let window = self.first();
+        self.type_line_to(window, line).await;
     }
 
-    pub async fn type_line_to(&mut self, pane: PaneId, line: &str) {
+    pub async fn type_line_to(&mut self, window: WindowId, line: &str) {
         self.send(&ClientMessage::Paste {
-            pane,
+            window,
             text: line.to_string(),
         })
         .await;
-        self.key_to(pane, Key::plain(KeyCode::Enter)).await;
+        self.key_to(window, Key::plain(KeyCode::Enter)).await;
     }
 
-    pub async fn open_after(&mut self, after: PaneId) -> PaneId {
+    pub async fn open_after(&mut self, after: WindowId) -> WindowId {
         let band = self.layout.bands()[self.layout.locate(after).unwrap().band].id;
         let seen = self.focus.len();
         self.act(SessionAction::open(band, Some(after), None)).await;
@@ -425,37 +425,37 @@ impl TestClient {
             ServerMessage::Layout { cols, rows, layout } => {
                 self.layout = layout.clone();
                 self.area = Size::new(*cols, *rows);
-                self.grids.retain(|pane, _| layout.contains(*pane));
+                self.grids.retain(|window, _| layout.contains(*window));
             }
             ServerMessage::Snapshot {
-                pane,
+                window,
                 cols,
                 rows,
                 contents,
             } => {
-                assert!(self.layout.contains(*pane), "snapshot before its layout");
+                assert!(self.layout.contains(*window), "snapshot before its layout");
                 let mut grid = Grid::new(Size::new(*cols, *rows));
                 grid.process(contents);
-                self.grids.insert(*pane, grid);
+                self.grids.insert(*window, grid);
             }
-            ServerMessage::Update { pane, contents } => self
+            ServerMessage::Update { window, contents } => self
                 .grids
-                .get_mut(pane)
-                .unwrap_or_else(|| panic!("update before a snapshot of pane {pane}"))
+                .get_mut(window)
+                .unwrap_or_else(|| panic!("update before a snapshot of window {window}"))
                 .process(contents),
-            ServerMessage::Focus(pane) => {
-                assert!(self.grids.contains_key(pane), "focus before a snapshot");
-                self.focus.push(*pane);
+            ServerMessage::Focus(window) => {
+                assert!(self.grids.contains_key(window), "focus before a snapshot");
+                self.focus.push(*window);
             }
-            ServerMessage::Opened { request, pane } => {
-                if let Some(pane) = pane {
-                    assert!(self.grids.contains_key(pane), "opened before a snapshot");
+            ServerMessage::Opened { request, window } => {
+                if let Some(window) = window {
+                    assert!(self.grids.contains_key(window), "opened before a snapshot");
                 }
-                self.opened.push((*request, *pane));
+                self.opened.push((*request, *window));
             }
             ServerMessage::Exited => self.exited = true,
-            ServerMessage::PaneState { pane, key, value } => {
-                let state = self.states.entry(*pane).or_default();
+            ServerMessage::WindowState { window, key, value } => {
+                let state = self.states.entry(*window).or_default();
                 match value {
                     Some(value) => state.insert(key.clone(), value.clone()),
                     None => state.remove(key),
@@ -475,11 +475,11 @@ impl TestClient {
 
     pub fn describe(&self) -> String {
         self.layout
-            .panes()
-            .filter_map(|pane| {
+            .windows()
+            .filter_map(|window| {
                 self.grids
-                    .get(&pane)
-                    .map(|grid| format!("pane {pane}:\n{}", grid.contents()))
+                    .get(&window)
+                    .map(|grid| format!("window {window}:\n{}", grid.contents()))
             })
             .collect::<Vec<_>>()
             .join("\n")
@@ -501,13 +501,13 @@ impl TestClient {
         self.wait_until(|client| predicate(client.screen())).await;
     }
 
-    pub async fn wait_for_pane(&mut self, pane: PaneId, predicate: impl Fn(&Grid) -> bool) {
-        self.wait_until(|client| client.grids.get(&pane).is_some_and(&predicate))
+    pub async fn wait_for_window(&mut self, window: WindowId, predicate: impl Fn(&Grid) -> bool) {
+        self.wait_until(|client| client.grids.get(&window).is_some_and(&predicate))
             .await;
     }
 
-    pub async fn wait_for_prompt(&mut self, pane: PaneId) {
-        self.wait_for_pane(pane, |screen| screen.contents().trim_end().ends_with('$'))
+    pub async fn wait_for_prompt(&mut self, window: WindowId) {
+        self.wait_for_window(window, |screen| screen.contents().trim_end().ends_with('$'))
             .await;
     }
 
@@ -521,8 +521,8 @@ impl TestClient {
             .await;
     }
 
-    pub async fn wait_for_pane_text(&mut self, pane: PaneId, text: &str) {
-        self.wait_for_pane(pane, |screen| screen.contents().contains(text))
+    pub async fn wait_for_window_text(&mut self, window: WindowId, text: &str) {
+        self.wait_for_window(window, |screen| screen.contents().contains(text))
             .await;
     }
 
@@ -558,10 +558,10 @@ pub async fn assert_converges(server: &TestServer, client: &mut TestClient) {
         client.pump(Duration::from_millis(100)).await;
         let expected = server.screens().await;
         let matches = expected.len() == client.grids.len()
-            && expected.iter().all(|(pane, screen)| {
+            && expected.iter().all(|(window, screen)| {
                 client
                     .grids
-                    .get(pane)
+                    .get(window)
                     .is_some_and(|grid| same_screen(grid, screen))
             });
         if matches {

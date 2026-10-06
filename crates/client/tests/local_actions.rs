@@ -40,9 +40,9 @@ impl Client {
         let mut display = Display::new(Size::new(80, 24), Animations::Off);
         let mut controls = Controls::new(config, &mut display);
         let mut layout = Layout::new();
-        let pane = layout.allocate_pane();
+        let window = layout.allocate_window();
         layout.open(
-            pane,
+            window,
             layout.bands()[0].id,
             None,
             None,

@@ -159,7 +159,7 @@ mod tests {
         let socket = resolve_socket(
             Some(Path::new("/tmp/s")),
             Some(&name("a")),
-            Some("/run/pane.sock".into()),
+            Some("/run/window.sock".into()),
             Path::new("/run/gband"),
         )
         .unwrap();
@@ -174,11 +174,11 @@ mod tests {
     }
 
     #[test]
-    fn name_wins_over_the_pane_socket() {
+    fn name_wins_over_the_window_socket() {
         let socket = resolve_socket(
             None,
             Some(&name("feature")),
-            Some("/run/pane.sock".into()),
+            Some("/run/window.sock".into()),
             Path::new("/run/gband"),
         )
         .unwrap();
@@ -186,19 +186,19 @@ mod tests {
     }
 
     #[test]
-    fn pane_socket_wins_over_the_default() {
+    fn window_socket_wins_over_the_default() {
         let socket = resolve_socket(
             None,
             None,
-            Some("/run/pane.sock".into()),
+            Some("/run/window.sock".into()),
             Path::new("/run/gband"),
         )
         .unwrap();
-        assert_eq!(socket, Path::new("/run/pane.sock"));
+        assert_eq!(socket, Path::new("/run/window.sock"));
     }
 
     #[test]
-    fn empty_pane_socket_falls_back_to_the_default() {
+    fn empty_window_socket_falls_back_to_the_default() {
         for gband in [None, Some(OsString::new())] {
             let socket = resolve_socket(None, None, gband, Path::new("/run/gband")).unwrap();
             assert_eq!(socket, Path::new("/run/gband/default.sock"));

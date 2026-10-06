@@ -1,7 +1,9 @@
 use std::collections::BTreeMap;
 
 use gband_core::action::{Action, ClientAction, SessionCommand};
-use gband_core::layout::{BandId, Direction, PaneContent, PaneId, SessionAction, Step, Vertical};
+use gband_core::layout::{
+    BandId, Direction, SessionAction, Step, Vertical, WindowContent, WindowId,
+};
 use gband_core::view::ViewAction;
 use mlua::{Lua, MetaMethod, Table, UserData, UserDataMethods, Value};
 
@@ -33,14 +35,14 @@ pub const ACTIONS: [BuiltinAction; 25] = [
         "focus the column to the right",
     ),
     builtin(
-        "focus_pane_down",
+        "focus_window_down",
         Action::View(ViewAction::FocusDown),
-        "focus the pane below",
+        "focus the window below",
     ),
     builtin(
-        "focus_pane_up",
+        "focus_window_up",
         Action::View(ViewAction::FocusUp),
-        "focus the pane above",
+        "focus the window above",
     ),
     builtin(
         "focus_band_down",
@@ -55,93 +57,93 @@ pub const ACTIONS: [BuiltinAction; 25] = [
     builtin(
         "switch_focus_floating_tiled",
         Action::View(ViewAction::SwitchLayer),
-        "switch focus between floating and tiled panes",
+        "switch focus between floating and tiled windows",
     ),
     builtin(
-        "open_pane",
-        Action::Session(SessionCommand::OpenPane),
-        "open a pane running the user's shell",
+        "open_window",
+        Action::Session(SessionCommand::OpenWindow),
+        "open a window running the user's shell",
     ),
     builtin(
-        "close_pane",
-        Action::Session(SessionCommand::ClosePane),
-        "close the pane",
+        "close_window",
+        Action::Session(SessionCommand::CloseWindow),
+        "close the window",
     ),
     builtin(
         "consume_or_expel_left",
         Action::Session(SessionCommand::ConsumeOrExpel(Direction::Left)),
-        "consume or expel the pane to the left",
+        "consume or expel the window to the left",
     ),
     builtin(
         "consume_or_expel_right",
         Action::Session(SessionCommand::ConsumeOrExpel(Direction::Right)),
-        "consume or expel the pane to the right",
+        "consume or expel the window to the right",
     ),
     builtin(
         "move_column_left",
         Action::Session(SessionCommand::MoveColumn(Direction::Left)),
-        "move the column or floating pane to the left",
+        "move the column or floating window to the left",
     ),
     builtin(
         "move_column_right",
         Action::Session(SessionCommand::MoveColumn(Direction::Right)),
-        "move the column or floating pane to the right",
+        "move the column or floating window to the right",
     ),
     builtin(
-        "move_pane_down",
-        Action::Session(SessionCommand::MovePane(Vertical::Down)),
-        "move the pane down",
+        "move_window_down",
+        Action::Session(SessionCommand::MoveWindow(Vertical::Down)),
+        "move the window down",
     ),
     builtin(
-        "move_pane_up",
-        Action::Session(SessionCommand::MovePane(Vertical::Up)),
-        "move the pane up",
+        "move_window_up",
+        Action::Session(SessionCommand::MoveWindow(Vertical::Up)),
+        "move the window up",
     ),
     builtin(
-        "toggle_pane_floating",
+        "toggle_window_floating",
         Action::Session(SessionCommand::ToggleFloating),
-        "float or tile the pane",
+        "float or tile the window",
     ),
     builtin(
         "cycle_column_width",
         Action::Session(SessionCommand::CycleWidth),
-        "cycle the width of the pane's column",
+        "cycle the width of the window's column",
     ),
     builtin(
         "toggle_full_width",
         Action::Session(SessionCommand::ToggleFullWidth),
-        "toggle full width of the pane's column",
+        "toggle full width of the window's column",
     ),
     builtin(
         "grow_column_width",
         Action::Session(SessionCommand::StepWidth(Step::Grow)),
-        "grow the width of the pane's column",
+        "grow the width of the window's column",
     ),
     builtin(
         "shrink_column_width",
         Action::Session(SessionCommand::StepWidth(Step::Shrink)),
-        "shrink the width of the pane's column",
+        "shrink the width of the window's column",
     ),
     builtin(
-        "grow_pane_height",
+        "grow_window_height",
         Action::Session(SessionCommand::StepHeight(Step::Grow)),
-        "grow the height of the pane",
+        "grow the height of the window",
     ),
     builtin(
-        "shrink_pane_height",
+        "shrink_window_height",
         Action::Session(SessionCommand::StepHeight(Step::Shrink)),
-        "shrink the height of the pane",
+        "shrink the height of the window",
     ),
     builtin(
-        "reset_pane_height",
+        "reset_window_height",
         Action::Session(SessionCommand::ResetHeight),
-        "reset the height of the pane",
+        "reset the height of the window",
     ),
     builtin("detach", Action::Client(ClientAction::Detach), "detach"),
     builtin(
         "send_prefix",
         Action::Client(ClientAction::SendPrefix),
-        "send the prefix key to the focused pane",
+        "send the prefix key to the focused window",
     ),
 ];
 
@@ -215,11 +217,11 @@ fn session_target(name: &str, command: SessionCommand, target: &Value) -> Result
             target.type_name()
         ));
     };
-    let opening = command == SessionCommand::OpenPane;
+    let opening = command == SessionCommand::OpenWindow;
     let allowed: &[&str] = match command {
-        SessionCommand::OpenPane => &["session", "band", "after", "program", "floating"],
-        SessionCommand::ToggleFloating => &["session", "pane", "after"],
-        _ => &["session", "pane"],
+        SessionCommand::OpenWindow => &["session", "band", "after", "program", "floating"],
+        SessionCommand::ToggleFloating => &["session", "window", "after"],
+        _ => &["session", "window"],
     };
     for pair in target.pairs::<Value, Value>() {
         let (field, _) = pair.map_err(|error| error.to_string())?;
@@ -260,7 +262,7 @@ fn session_target(name: &str, command: SessionCommand, target: &Value) -> Result
     };
     let action = if opening {
         let band = BandId(number("band", true)?.expect("required"));
-        let after = number("after", false)?.map(PaneId);
+        let after = number("after", false)?.map(WindowId);
         let floating = match get("floating")? {
             Value::Nil => false,
             Value::Boolean(floating) => floating,
@@ -296,24 +298,24 @@ fn session_target(name: &str, command: SessionCommand, target: &Value) -> Result
                 ));
             }
         };
-        SessionAction::OpenPane {
+        SessionAction::OpenWindow {
             band,
             after,
             width: None,
             floating,
             focus: false,
-            content: PaneContent::Program(program),
+            content: WindowContent::Program(program),
         }
     } else if command == SessionCommand::ToggleFloating {
         SessionAction::ToggleFloating {
-            pane: PaneId(number("pane", true)?.expect("required")),
-            after: number("after", false)?.map(PaneId),
+            window: WindowId(number("window", true)?.expect("required")),
+            after: number("after", false)?.map(WindowId),
         }
     } else {
-        let pane = PaneId(number("pane", true)?.expect("required"));
+        let window = WindowId(number("window", true)?.expect("required"));
         command
-            .on_pane(pane)
-            .expect("every command but open pane names a pane")
+            .on_window(window)
+            .expect("every command but open window names a window")
     };
     Ok(Dispatch::Targeted { session, action })
 }

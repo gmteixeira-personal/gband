@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 use gband_core::geometry::{Size, Tile, tiles};
-use gband_core::layout::{BandId, Layout, PaneId};
+use gband_core::layout::{BandId, Layout, WindowId};
 use gband_core::view::View;
 
 pub const ANIMATIONS_VARIABLE: &str = "GBAND_ANIMATIONS";
@@ -124,7 +124,7 @@ pub struct Targets {
     pub camera: i64,
     pub band_height: u16,
     pub tiles: Vec<Tile>,
-    pub focused: Option<PaneId>,
+    pub focused: Option<WindowId>,
 }
 
 impl Targets {
@@ -217,7 +217,7 @@ pub struct DrawnTile {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Drawn {
     pub bands: Vec<DrawnBand>,
-    pub tiles: HashMap<PaneId, DrawnTile>,
+    pub tiles: HashMap<WindowId, DrawnTile>,
     pub settled: bool,
 }
 
@@ -226,10 +226,10 @@ struct Shown {
     band: BandId,
     bands: Vec<BandId>,
     band_height: u16,
-    focused: Option<PaneId>,
+    focused: Option<WindowId>,
     camera: Spring,
     vertical: Spring,
-    tiles: HashMap<PaneId, TileSprings>,
+    tiles: HashMap<WindowId, TileSprings>,
     leaving: Vec<(BandId, i64)>,
 }
 
@@ -276,7 +276,7 @@ impl Presentation {
                 && shown.vertical.is_at_rest(now)
                 && shown
                     .focused
-                    .and_then(|pane| shown.tiles.get(&pane))
+                    .and_then(|window| shown.tiles.get(&window))
                     .is_none_or(|springs| springs.is_at_rest(now))
         })
     }
@@ -309,7 +309,7 @@ impl Presentation {
             tiles: shown
                 .tiles
                 .iter()
-                .map(|(&pane, springs)| (pane, springs.drawn(now)))
+                .map(|(&window, springs)| (window, springs.drawn(now)))
                 .collect(),
             settled: self.is_settled(now),
         }
@@ -328,7 +328,7 @@ impl Shown {
             tiles: targets
                 .tiles
                 .iter()
-                .map(|tile| (tile.pane, TileSprings::at_rest(tile, now)))
+                .map(|tile| (tile.window, TileSprings::at_rest(tile, now)))
                 .collect(),
             leaving: Vec::new(),
         }
@@ -372,10 +372,10 @@ impl Shown {
 
     fn retarget_tiles(&mut self, now: Instant, targets: &Targets) {
         self.tiles
-            .retain(|pane, _| targets.tiles.iter().any(|tile| tile.pane == *pane));
+            .retain(|window, _| targets.tiles.iter().any(|tile| tile.window == *window));
         for tile in &targets.tiles {
             self.tiles
-                .entry(tile.pane)
+                .entry(tile.window)
                 .and_modify(|springs| springs.retarget(tile, now))
                 .or_insert_with(|| TileSprings::at_rest(tile, now));
         }

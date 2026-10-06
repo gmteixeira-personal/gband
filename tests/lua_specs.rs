@@ -10,7 +10,7 @@ fn gband_test(directory: &Path, args: &[&str]) {
         .current_dir(directory)
         .env_remove("GBAND")
         .env_remove("GBAND_SESSION")
-        .env_remove("GBAND_PANE")
+        .env_remove("GBAND_WINDOW")
         .env_remove("GBAND_TEST_SOCKET")
         .output()
         .unwrap();
@@ -45,6 +45,6 @@ fn example_plugin_hello() {
 }
 
 #[test]
-fn example_plugin_pane() {
-    gband_test(&root().join("examples/plugins/pane"), &[]);
+fn example_plugin_window() {
+    gband_test(&root().join("examples/plugins/window"), &[]);
 }

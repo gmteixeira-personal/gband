@@ -1,4 +1,4 @@
 return {
-  name = "pane",
+  name = "window",
   version = "0.1.0",
 }

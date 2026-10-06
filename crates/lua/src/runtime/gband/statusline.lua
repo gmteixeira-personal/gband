@@ -326,8 +326,8 @@ local function context(component, state)
     table = state.table,
     band = { number = state.band.number, index = state.band.index, count = state.band.count },
     column = state.column and { index = state.column.index, count = state.column.count },
-    pane = state.pane,
-    panes = host.panes(),
+    window = state.window,
+    windows = host.windows(),
   }
 end
 

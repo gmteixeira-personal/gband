@@ -1,19 +1,19 @@
 use serde::{Deserialize, Serialize};
 
-use crate::layout::{BandId, FloatingPane, PaneHeight, PaneId, Proportion};
+use crate::layout::{BandId, FloatingWindow, Proportion, WindowHeight, WindowId};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LayoutEvent {
-    PaneOpened {
-        pane: PaneId,
+    WindowOpened {
+        window: WindowId,
         band: BandId,
     },
-    PaneClosed {
-        pane: PaneId,
+    WindowClosed {
+        window: WindowId,
         band: BandId,
     },
-    PaneMoved {
-        pane: PaneId,
+    WindowMoved {
+        window: WindowId,
         band: BandId,
         column: usize,
         row: usize,
@@ -24,32 +24,32 @@ pub enum LayoutEvent {
         width: Proportion,
         full_width: bool,
     },
-    PaneHeightsChanged {
+    WindowHeightsChanged {
         band: BandId,
         column: usize,
-        heights: Vec<PaneHeight>,
+        heights: Vec<WindowHeight>,
     },
     ColumnMoved {
         band: BandId,
         from: usize,
         to: usize,
     },
-    PaneFloated {
-        pane: PaneId,
+    WindowFloated {
+        window: WindowId,
         band: BandId,
-        record: FloatingPane,
+        record: FloatingWindow,
     },
-    PaneTiled {
-        pane: PaneId,
+    WindowTiled {
+        window: WindowId,
         band: BandId,
         column: usize,
         width: Proportion,
         full_width: bool,
     },
     FloatingBoxChanged {
-        pane: PaneId,
+        window: WindowId,
         band: BandId,
-        record: FloatingPane,
+        record: FloatingWindow,
     },
     BandAdded {
         band: BandId,

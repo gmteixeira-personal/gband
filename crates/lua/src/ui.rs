@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use gband_core::geometry::Size;
-use gband_core::layout::{Layout, PaneId};
+use gband_core::layout::{Layout, WindowId};
 use gband_protocol::Value as Data;
 
 use mlua::{Function, Lua, MultiValue, RegistryKey, Table, Value};
@@ -34,17 +34,17 @@ pub struct ViewState {
     pub table: String,
     pub band: BandState,
     pub column: Option<ColumnState>,
-    pub pane: Option<u32>,
+    pub window: Option<u32>,
     pub width: u16,
     pub drawn: bool,
     pub error: Option<String>,
     pub layout: Arc<Layout>,
     pub area: Size,
     pub ribbon: Size,
-    pub states: Arc<PaneStates>,
+    pub states: Arc<WindowStates>,
 }
 
-pub type PaneStates = BTreeMap<PaneId, BTreeMap<String, Data>>;
+pub type WindowStates = BTreeMap<WindowId, BTreeMap<String, Data>>;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Color {
@@ -209,7 +209,7 @@ fn host(lua: &Lua) -> mlua::Result<Table> {
         lua.create_sequence_from(events::NAMES.iter().copied())?,
     )?;
     host.set("state", lua.create_function(state)?)?;
-    host.set("panes", lua.create_function(panes)?)?;
+    host.set("windows", lua.create_function(windows)?)?;
     host.set("present", lua.create_function(present)?)?;
     host.set("timer", lua.create_function(timer)?)?;
     host.set(
@@ -354,7 +354,7 @@ fn state(lua: &Lua, (): ()) -> mlua::Result<Table> {
         entry.set("count", column.count)?;
         table.set("column", entry)?;
     }
-    table.set("pane", state.pane)?;
+    table.set("window", state.window)?;
     table.set("width", state.width)?;
     table.set("drawn", state.drawn)?;
     table.set("error", state.error)?;
@@ -365,16 +365,16 @@ fn state(lua: &Lua, (): ()) -> mlua::Result<Table> {
     Ok(table)
 }
 
-fn panes(lua: &Lua, (): ()) -> mlua::Result<Table> {
+fn windows(lua: &Lua, (): ()) -> mlua::Result<Table> {
     let state = current_state(lua);
     let list = lua.create_table()?;
     for band in state.layout.bands() {
-        for pane in band.panes() {
+        for window in band.windows() {
             let entry = lua.create_table()?;
-            entry.set("pane", pane.0)?;
+            entry.set("window", window.0)?;
             entry.set("band", band.id.0)?;
             let copy = lua.create_table()?;
-            for (key, value) in state.states.get(&pane).into_iter().flatten() {
+            for (key, value) in state.states.get(&window).into_iter().flatten() {
                 copy.set(key.as_str(), crate::value::into_lua(lua, value)?)?;
             }
             entry.set("state", copy)?;
@@ -520,7 +520,7 @@ pub(crate) fn fire_timers(lua: &Lua, now: Instant) -> mlua::Result<()> {
 mod tests {
     use std::path::Path;
 
-    use gband_core::layout::PaneId;
+    use gband_core::layout::WindowId;
 
     use super::*;
     use crate::{Config, Event, LoadOptions};
@@ -598,7 +598,7 @@ mod tests {
             .after_event
             .push(lua.create_registry_value(hook).unwrap());
         let outcome = config.runtime.emit(&Event::FocusChanged {
-            pane: Some(PaneId(1)),
+            window: Some(WindowId(1)),
             previous: None,
         });
         assert!(outcome.errors.is_empty(), "{:?}", outcome.errors);
@@ -626,7 +626,7 @@ mod tests {
         assert!(config.runtime.set_state(state).errors.is_empty());
         config.runtime.take_line();
         let outcome = config.runtime.emit(&Event::FocusChanged {
-            pane: Some(PaneId(1)),
+            window: Some(WindowId(1)),
             previous: None,
         });
         assert!(outcome.errors.is_empty(), "{:?}", outcome.errors);

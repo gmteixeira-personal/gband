@@ -3,10 +3,10 @@ mod connection;
 mod event;
 mod hub;
 mod lock;
-mod pane;
 mod registry;
 mod scripting;
 mod session;
+mod window;
 
 use std::ffi::OsString;
 use std::io::ErrorKind;
@@ -133,12 +133,12 @@ pub async fn run_with_events(
             },
             Some(request) = requests.recv() => registry.handle(request),
             Some(()) = terminate.recv() => {
-                tracing::info!("received SIGTERM, hanging up every pane of every session");
+                tracing::info!("received SIGTERM, hanging up every window of every session");
                 registry.terminate();
             }
             _ = async { closed.as_mut().expect("guarded by is_some").await }, if closed.is_some() => {
                 closed = None;
-                tracing::info!("the test channel closed, hanging up every pane of every session");
+                tracing::info!("the test channel closed, hanging up every window of every session");
                 registry.terminate();
             }
             Some(_) = clients.join_next(), if !clients.is_empty() => {}

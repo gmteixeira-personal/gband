@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::layout::{Band, Column, FloatingPane, PaneHeight, PaneId, Weight, gcd};
+use crate::layout::{Band, Column, FloatingWindow, Weight, WindowHeight, WindowId, gcd};
 
 pub const MIN_COLUMN_WIDTH: u16 = 3;
 pub const MIN_TILE_HEIGHT: u16 = 3;
@@ -32,7 +32,7 @@ impl Span {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Tile {
-    pub pane: PaneId,
+    pub window: WindowId,
     pub column: usize,
     pub row: usize,
     pub x: u32,
@@ -58,15 +58,15 @@ impl Tile {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct PaneBox {
-    pub pane: PaneId,
+pub struct WindowBox {
+    pub window: WindowId,
     pub x: u16,
     pub y: u16,
     pub width: u16,
     pub height: u16,
 }
 
-impl PaneBox {
+impl WindowBox {
     pub fn terminal_size(&self) -> Size {
         Size {
             cols: self.width.saturating_sub(2 * BORDER).max(1),
@@ -79,7 +79,7 @@ impl PaneBox {
     }
 }
 
-pub fn placed(floating: &FloatingPane, area: Size) -> PaneBox {
+pub fn placed(floating: &FloatingWindow, area: Size) -> WindowBox {
     let width = if floating.full_width {
         area.cols
     } else {
@@ -87,8 +87,8 @@ pub fn placed(floating: &FloatingPane, area: Size) -> PaneBox {
     };
     let width = width.max(MIN_COLUMN_WIDTH).min(area.cols);
     let height = floating.rows.min(area.rows);
-    PaneBox {
-        pane: floating.pane,
+    WindowBox {
+        window: floating.window,
         x: floating.col.min(area.cols - width),
         y: floating.row.min(area.rows - height),
         width,
@@ -96,7 +96,7 @@ pub fn placed(floating: &FloatingPane, area: Size) -> PaneBox {
     }
 }
 
-pub fn boxes(band: &Band, area: Size) -> Vec<PaneBox> {
+pub fn boxes(band: &Band, area: Size) -> Vec<WindowBox> {
     band.floating
         .iter()
         .map(|floating| placed(floating, area))
@@ -194,19 +194,19 @@ fn share_automatic(rows: u16, weights: &[Weight]) -> Vec<u16> {
     }
 }
 
-pub fn fixed_height_limit(panes: usize, rows: u16) -> u16 {
-    let others = panes.saturating_sub(1) as u16;
+pub fn fixed_height_limit(windows: usize, rows: u16) -> u16 {
+    let others = windows.saturating_sub(1) as u16;
     rows.saturating_sub(MIN_TILE_HEIGHT.saturating_mul(others))
 }
 
-pub fn pane_heights(column: &Column, rows: u16) -> Vec<u16> {
+pub fn window_heights(column: &Column, rows: u16) -> Vec<u16> {
     let ceiling = fixed_height_limit(column.heights.len(), rows);
     let mut heights: Vec<u16> = column
         .heights
         .iter()
         .map(|height| match *height {
-            PaneHeight::Fixed(fixed) => fixed.min(ceiling),
-            PaneHeight::Auto(_) => 0,
+            WindowHeight::Fixed(fixed) => fixed.min(ceiling),
+            WindowHeight::Auto(_) => 0,
         })
         .collect();
     let remaining = rows.saturating_sub(heights.iter().sum());
@@ -215,8 +215,8 @@ pub fn pane_heights(column: &Column, rows: u16) -> Vec<u16> {
         .iter()
         .enumerate()
         .filter_map(|(index, height)| match *height {
-            PaneHeight::Auto(weight) => Some((index, weight)),
-            PaneHeight::Fixed(_) => None,
+            WindowHeight::Auto(weight) => Some((index, weight)),
+            WindowHeight::Fixed(_) => None,
         })
         .collect();
     let weights: Vec<Weight> = automatic.iter().map(|&(_, weight)| weight).collect();
@@ -234,13 +234,13 @@ pub fn tiles(band: &Band, area: Size) -> Vec<Tile> {
         .flat_map(|(column_index, (column, span))| {
             let mut y = 0;
             column
-                .panes
+                .windows
                 .iter()
-                .zip(pane_heights(column, area.rows))
+                .zip(window_heights(column, area.rows))
                 .enumerate()
-                .map(move |(row, (&pane, height))| {
+                .map(move |(row, (&window, height))| {
                     let tile = Tile {
-                        pane,
+                        window,
                         column: column_index,
                         row,
                         x: span.x,

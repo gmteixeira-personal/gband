@@ -341,7 +341,7 @@ fn view_action_in_the_server() {
     assert_error_at(&error, &file, 1, "focus_column_left");
     assert!(error.message.contains("client"), "{error}");
     let scratch = Scratch::new("session-action");
-    scratch.server("kind = type(gband.action.close_pane)\nmissing = gband.action.absent == nil");
+    scratch.server("kind = type(gband.action.close_window)\nmissing = gband.action.absent == nil");
     let config = scratch.loaded_server();
     assert_eq!(global::<String>(&config, "kind"), "userdata");
     assert!(global::<bool>(&config, "missing"));
@@ -362,7 +362,7 @@ fn every_field_belongs_to_one_side() {
         "runtimepath",
         "side",
         "api_version",
-        "pane_state",
+        "window_state",
         "action",
     ];
     let list = |names: &[&str]| {
@@ -499,7 +499,7 @@ end }",
     assert!(outcome.disabled);
     assert!(outcome.dispatched.is_empty());
     clean(&config.runtime.emit(&gband_lua::Event::FocusChanged {
-        pane: None,
+        window: None,
         previous: None,
     }));
     assert!(global::<Option<bool>>(&config, "handled").is_none());
@@ -715,10 +715,10 @@ gband.keymap.set('prefix', 'g', gband.action['hello.greet'], { desc = 'Greet' })
     assert_eq!(argv.first().map(String::as_str), Some("sh"));
     assert_eq!(argv.last().map(String::as_str), Some("hi"));
     clean(&config.runtime.emit(&gband_lua::Event::FocusChanged {
-        pane: Some(gband_core::layout::PaneId(2)),
+        window: Some(gband_core::layout::WindowId(2)),
         previous: None,
     }));
-    assert_eq!(global::<Vec<String>>(&config, "log"), ["focused pane 2"]);
+    assert_eq!(global::<Vec<String>>(&config, "log"), ["focused window 2"]);
 }
 
 #[test]

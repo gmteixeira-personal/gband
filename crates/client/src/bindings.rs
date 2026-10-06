@@ -167,7 +167,7 @@ mod tests {
             ('k', Action::View(ViewAction::FocusUp)),
             ('u', Action::View(ViewAction::BandDown)),
             ('i', Action::View(ViewAction::BandUp)),
-            ('q', Action::Session(SessionCommand::ClosePane)),
+            ('q', Action::Session(SessionCommand::CloseWindow)),
             (
                 '[',
                 Action::Session(SessionCommand::ConsumeOrExpel(Direction::Left)),
@@ -196,7 +196,7 @@ mod tests {
         }
         assert_eq!(
             after_prefix(&keymap, Key::plain(KeyCode::Enter)),
-            Some(Action::Session(SessionCommand::OpenPane))
+            Some(Action::Session(SessionCommand::OpenWindow))
         );
         assert_eq!(
             after_prefix(&keymap, char_key('v')),
@@ -217,8 +217,12 @@ mod tests {
                 KeyCode::Right,
                 SessionCommand::MoveColumn(Direction::Right),
             ),
-            ('j', KeyCode::Down, SessionCommand::MovePane(Vertical::Down)),
-            ('k', KeyCode::Up, SessionCommand::MovePane(Vertical::Up)),
+            (
+                'j',
+                KeyCode::Down,
+                SessionCommand::MoveWindow(Vertical::Down),
+            ),
+            ('k', KeyCode::Up, SessionCommand::MoveWindow(Vertical::Up)),
         ];
         for (c, arrow, command) in moves {
             let action = Some(Action::Session(command));
@@ -332,7 +336,7 @@ mod tests {
     }
 
     #[test]
-    fn unbound_alt_key_reaches_the_pane() {
+    fn unbound_alt_key_reaches_the_window() {
         let keymap = configured("gband.bind('alt+h', gband.action.focus_column_left)");
         let mut leader = Leader::default();
         assert_eq!(
@@ -351,7 +355,7 @@ mod tests {
         assert_eq!(leader.handle(&keymap, key("ctrl+b")), Command::Discard);
         assert_eq!(
             ran(leader.handle(&keymap, char_key('q'))),
-            Some(Action::Session(SessionCommand::ClosePane))
+            Some(Action::Session(SessionCommand::CloseWindow))
         );
         assert_eq!(
             leader.handle(&keymap, key("ctrl+space")),

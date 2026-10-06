@@ -199,7 +199,7 @@ impl Attached {
             .iter()
             .filter_map(|line| parse_pid(line))
             .next_back()
-            .expect("no pid line in the focused pane")
+            .expect("no pid line in the focused window")
     }
 
     pub fn wait_exit(&mut self) -> u32 {

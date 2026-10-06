@@ -7,8 +7,8 @@ use gband_core::action::{Action, SessionCommand};
 use gband_core::geometry::Size;
 use gband_core::input::Key;
 use gband_core::layout::{
-    BandId, Direction, Layout, LayoutOptions, PaneContent, PaneHeight, PaneId, Program, Proportion,
-    SessionAction, Vertical,
+    BandId, Direction, Layout, LayoutOptions, Program, Proportion, SessionAction, Vertical,
+    WindowContent, WindowHeight, WindowId,
 };
 use gband_core::view::ViewAction;
 use gband_lua::keys::parse_key;
@@ -40,7 +40,7 @@ async fn receive_until(
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn close_pane_action_closes_the_focused_second_pane() {
+async fn close_window_action_closes_the_focused_second_window() {
     let server = TestServer::start("client-actions", &["/bin/sh"]).await;
     let mut client = server.attach(80, 24).await;
     let first = client.first();
@@ -55,24 +55,24 @@ async fn close_pane_action_closes_the_focused_second_pane() {
     run(
         &mut client,
         &mut display,
-        Action::Session(SessionCommand::OpenPane),
+        Action::Session(SessionCommand::OpenWindow),
     )
     .await;
     receive_until(&mut client, &mut display, |client, display| {
-        client.panes().len() == 2 && display.focused() != Some(first)
+        client.windows().len() == 2 && display.focused() != Some(first)
     })
     .await;
     let second = display.focused().unwrap();
-    assert_eq!(client.panes(), [first, second]);
+    assert_eq!(client.windows(), [first, second]);
 
     run(
         &mut client,
         &mut display,
-        Action::Session(SessionCommand::ClosePane),
+        Action::Session(SessionCommand::CloseWindow),
     )
     .await;
     receive_until(&mut client, &mut display, |client, _| {
-        client.panes() == [first]
+        client.windows() == [first]
     })
     .await;
     assert_eq!(display.focused(), Some(first));
@@ -97,7 +97,7 @@ async fn report(
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn shown_panes_follow_the_view_and_are_not_repeated() {
+async fn shown_windows_follow_the_view_and_are_not_repeated() {
     let server = TestServer::start("client-shown", &["/bin/sh"]).await;
     let mut client = server.attach(80, 24).await;
     let a = client.first();
@@ -106,7 +106,7 @@ async fn shown_panes_follow_the_view_and_are_not_repeated() {
     let d = client.open_after(c).await;
     client
         .act(SessionAction::ConsumeOrExpel {
-            pane: d,
+            window: d,
             direction: Direction::Left,
         })
         .await;
@@ -169,20 +169,20 @@ impl Drop for Scratch {
     }
 }
 
-fn three_columns() -> (Display, Vec<PaneId>) {
+fn three_columns() -> (Display, Vec<WindowId>) {
     let mut layout = Layout::new();
     let band = layout.bands()[0].id;
-    let mut panes = Vec::new();
+    let mut windows = Vec::new();
     for _ in 0..3 {
-        let pane = layout.allocate_pane();
+        let window = layout.allocate_window();
         layout.open(
-            pane,
+            window,
             band,
-            panes.last().copied(),
+            windows.last().copied(),
             None,
             &LayoutOptions::default(),
         );
-        panes.push(pane);
+        windows.push(window);
     }
     let mut display = Display::new(Size::new(80, 24), Animations::Off);
     display.apply(ServerMessage::Layout {
@@ -190,25 +190,25 @@ fn three_columns() -> (Display, Vec<PaneId>) {
         rows: 24,
         layout,
     });
-    (display, panes)
+    (display, windows)
 }
 
 #[test]
 fn new_actions_resolve_against_the_view() {
     let mut layout = Layout::new();
     let band = layout.bands()[0].id;
-    let panes: Vec<PaneId> = (0..2).map(|_| layout.allocate_pane()).collect();
-    layout.open(panes[0], band, None, None, &LayoutOptions::default());
+    let windows: Vec<WindowId> = (0..2).map(|_| layout.allocate_window()).collect();
+    layout.open(windows[0], band, None, None, &LayoutOptions::default());
     layout.open(
-        panes[1],
+        windows[1],
         band,
-        Some(panes[0]),
+        Some(windows[0]),
         None,
         &LayoutOptions::default(),
     );
     layout.apply(
         SessionAction::ToggleFloating {
-            pane: panes[1],
+            window: windows[1],
             after: None,
         },
         Size::new(80, 24),
@@ -220,14 +220,14 @@ fn new_actions_resolve_against_the_view() {
         rows: 24,
         layout,
     });
-    assert_eq!(display.focused(), Some(panes[0]));
+    assert_eq!(display.focused(), Some(windows[0]));
     let sent = |display: &mut Display, command: SessionCommand| {
         dispatch(display, Action::Session(command))
     };
     assert_eq!(
         sent(&mut display, SessionCommand::MoveColumn(Direction::Right)),
         Step::Send(ClientMessage::Action(SessionAction::MoveColumn {
-            pane: panes[0],
+            window: windows[0],
             direction: Direction::Right,
         }))
     );
@@ -235,27 +235,27 @@ fn new_actions_resolve_against_the_view() {
         dispatch(&mut display, Action::View(ViewAction::SwitchLayer)),
         Step::Nothing
     );
-    assert_eq!(display.focused(), Some(panes[1]));
+    assert_eq!(display.focused(), Some(windows[1]));
     assert_eq!(display.view_state("root").column, None);
     assert_eq!(
-        sent(&mut display, SessionCommand::MovePane(Vertical::Down)),
-        Step::Send(ClientMessage::Action(SessionAction::MovePane {
-            pane: panes[1],
+        sent(&mut display, SessionCommand::MoveWindow(Vertical::Down)),
+        Step::Send(ClientMessage::Action(SessionAction::MoveWindow {
+            window: windows[1],
             direction: Vertical::Down,
         }))
     );
     assert_eq!(
         sent(&mut display, SessionCommand::ToggleFloating),
         Step::Send(ClientMessage::Action(SessionAction::ToggleFloating {
-            pane: panes[1],
-            after: Some(panes[0]),
+            window: windows[1],
+            after: Some(windows[0]),
         }))
     );
     assert_eq!(
-        sent(&mut display, SessionCommand::OpenPane),
+        sent(&mut display, SessionCommand::OpenWindow),
         Step::Send(ClientMessage::Action(SessionAction::open(
             band,
-            Some(panes[0]),
+            Some(windows[0]),
             None
         )))
     );
@@ -273,29 +273,29 @@ fn action_called_from_a_function() {
             "gband.bind('alt+w', function()\n  gband.action.focus_column_right()\n  gband.action.focus_column_right()\nend)",
         )
         .unwrap();
-    let (mut display, panes) = three_columns();
+    let (mut display, windows) = three_columns();
     let mut controls = Controls::new(config, &mut display);
-    assert_eq!(display.focused(), Some(panes[0]));
+    assert_eq!(display.focused(), Some(windows[0]));
     assert_eq!(
         controls.press(&mut display, key("alt+w")),
         [Step::Nothing, Step::Nothing]
     );
-    assert_eq!(display.focused(), Some(panes[2]));
+    assert_eq!(display.focused(), Some(windows[2]));
 }
 
 #[test]
-fn spawn_a_command_line_sends_open_pane_with_the_program() {
+fn spawn_a_command_line_sends_open_window_with_the_program() {
     let scratch = Scratch::new("spawn");
     let config = scratch
         .load("gband.bind('alt+n', function() gband.spawn({ cmd = 'fish' }) end)")
         .unwrap();
-    let (mut display, panes) = three_columns();
+    let (mut display, windows) = three_columns();
     let mut controls = Controls::new(config, &mut display);
     assert_eq!(
         controls.press(&mut display, key("alt+n")),
         [Step::Send(ClientMessage::Action(SessionAction::open(
             BandId(1),
-            Some(panes[0]),
+            Some(windows[0]),
             Some(Program::CommandLine("fish".to_owned()))
         )))]
     );
@@ -309,14 +309,14 @@ fn error_in_a_binding_function_keeps_the_dispatched_actions() {
             "gband.bind('alt+e', function()\n  gband.action.focus_column_left()\n\n\n\n\n\n\n  error('broken')\nend)",
         )
         .unwrap();
-    let (mut display, panes) = three_columns();
+    let (mut display, windows) = three_columns();
     let mut controls = Controls::new(config, &mut display);
     for _ in 0..2 {
         dispatch(&mut display, Action::View(ViewAction::FocusRight));
     }
-    assert_eq!(display.focused(), Some(panes[2]));
+    assert_eq!(display.focused(), Some(windows[2]));
     controls.press(&mut display, key("alt+e"));
-    assert_eq!(display.focused(), Some(panes[1]));
+    assert_eq!(display.focused(), Some(windows[1]));
     let banner = display.banner().unwrap();
     let expected = format!(
         "{}:9: broken",
@@ -331,20 +331,20 @@ fn send_prefix_follows_the_prefix_option() {
     let config = scratch
         .load(&format!("{DEFAULTS}\ngband.set {{ prefix = 'ctrl+b' }}"))
         .unwrap();
-    let (mut display, panes) = three_columns();
+    let (mut display, windows) = three_columns();
     let mut controls = Controls::new(config, &mut display);
     assert_eq!(controls.press(&mut display, key("ctrl+b")), []);
     assert_eq!(
         controls.press(&mut display, key("ctrl+b")),
         [Step::Send(ClientMessage::Key {
-            pane: panes[0],
+            window: windows[0],
             key: key("ctrl+b"),
         })]
     );
     assert_eq!(
         controls.press(&mut display, key("ctrl+space")),
         [Step::Send(ClientMessage::Key {
-            pane: panes[0],
+            window: windows[0],
             key: key("ctrl+space"),
         })]
     );
@@ -353,7 +353,7 @@ fn send_prefix_follows_the_prefix_option() {
 #[test]
 fn reload_replaces_the_bindings_and_ends_a_prefix_sequence() {
     let scratch = Scratch::new("reload");
-    let (mut display, panes) = three_columns();
+    let (mut display, windows) = three_columns();
     let mut controls = Controls::new(scratch.load(DEFAULTS).unwrap(), &mut display);
     assert_eq!(controls.press(&mut display, key("ctrl+space")), []);
     controls.reload(
@@ -363,18 +363,18 @@ fn reload_replaces_the_bindings_and_ends_a_prefix_sequence() {
     assert_eq!(
         controls.press(&mut display, key("q")),
         [Step::Send(ClientMessage::Key {
-            pane: panes[0],
+            window: windows[0],
             key: key("q"),
         })]
     );
     controls.press(&mut display, key("alt+l"));
-    assert_eq!(display.focused(), Some(panes[1]));
+    assert_eq!(display.focused(), Some(windows[1]));
 }
 
 #[test]
 fn failed_reload_keeps_the_running_configuration_until_a_good_one() {
     let scratch = Scratch::new("broken");
-    let (mut display, panes) = three_columns();
+    let (mut display, windows) = three_columns();
     let mut controls = Controls::new(
         scratch
             .load("gband.bind('alt+l', gband.action.focus_column_right)")
@@ -388,11 +388,11 @@ fn failed_reload_keeps_the_running_configuration_until_a_good_one() {
     let banner = display.banner().unwrap().to_owned();
     assert!(banner.contains("init.lua:2:"), "{banner}");
     controls.press(&mut display, key("alt+l"));
-    assert_eq!(display.focused(), Some(panes[1]));
+    assert_eq!(display.focused(), Some(windows[1]));
     assert_eq!(
         controls.press(&mut display, key("alt+j")),
         [Step::Send(ClientMessage::Key {
-            pane: panes[1],
+            window: windows[1],
             key: key("alt+j"),
         })]
     );
@@ -417,62 +417,68 @@ fn camera_policy_follows_the_configuration() {
     let shown = display.report_shown();
     assert_eq!(
         shown,
-        Some(ClientMessage::Shown(vec![PaneId(1), PaneId(2), PaneId(3)]))
+        Some(ClientMessage::Shown(vec![
+            WindowId(1),
+            WindowId(2),
+            WindowId(3)
+        ]))
     );
 }
 
-fn bound(name: &str, source: &str) -> (Scratch, Display, Controls, Vec<PaneId>) {
+fn bound(name: &str, source: &str) -> (Scratch, Display, Controls, Vec<WindowId>) {
     let scratch = Scratch::new(name);
     let config = scratch
         .load(&format!("gband.bind('alt+x', function()\n{source}\nend)"))
         .unwrap();
-    let (mut display, panes) = three_columns();
+    let (mut display, windows) = three_columns();
     let controls = Controls::new(config, &mut display);
-    (scratch, display, controls, panes)
+    (scratch, display, controls, windows)
 }
 
 #[test]
 fn targeted_session_actions_send_their_target() {
-    let (_scratch, mut display, mut controls, panes) = bound(
+    let (_scratch, mut display, mut controls, windows) = bound(
         "targeted",
-        "gband.action.close_pane({ pane = 3 })\ngband.pane.set_width(2, 0.4)\ngband.pane.set_height(1, { rows = 8 })",
+        "gband.action.close_window({ window = 3 })\ngband.window.set_width(2, 0.4)\ngband.window.set_height(1, { rows = 8 })",
     );
     assert_eq!(
         controls.press(&mut display, key("alt+x")),
         [
-            Step::Send(ClientMessage::Action(SessionAction::ClosePane(panes[2]))),
+            Step::Send(ClientMessage::Action(SessionAction::CloseWindow(
+                windows[2]
+            ))),
             Step::Send(ClientMessage::Action(SessionAction::SetWidth {
-                pane: panes[1],
+                window: windows[1],
                 width: Proportion::new(2, 5),
             })),
             Step::Send(ClientMessage::Action(SessionAction::SetHeight {
-                pane: panes[0],
-                height: PaneHeight::Fixed(8),
+                window: windows[0],
+                height: WindowHeight::Fixed(8),
             })),
         ]
     );
-    assert_eq!(display.focused(), Some(panes[0]));
+    assert_eq!(display.focused(), Some(windows[0]));
 }
 
 #[test]
-fn input_to_a_named_pane_is_sent_as_keys_and_pastes() {
-    let (_scratch, mut display, mut controls, panes) = bound(
+fn input_to_a_named_window_is_sent_as_keys_and_pastes() {
+    let (_scratch, mut display, mut controls, windows) = bound(
         "input",
-        "gband.pane.send_text(2, 'a\\n')\ngband.pane.paste(3, 'b c')",
+        "gband.window.send_text(2, 'a\\n')\ngband.window.paste(3, 'b c')",
     );
     assert_eq!(
         controls.press(&mut display, key("alt+x")),
         [
             Step::Send(ClientMessage::Key {
-                pane: panes[1],
+                window: windows[1],
                 key: key("a"),
             }),
             Step::Send(ClientMessage::Key {
-                pane: panes[1],
+                window: windows[1],
                 key: key("enter"),
             }),
             Step::Send(ClientMessage::Paste {
-                pane: panes[2],
+                window: windows[2],
                 text: "b c".to_owned(),
             }),
         ]
@@ -482,36 +488,38 @@ fn input_to_a_named_pane_is_sent_as_keys_and_pastes() {
 
 #[test]
 fn focus_and_view_by_number_change_the_view() {
-    let (_scratch, mut display, mut controls, panes) = bound(
+    let (_scratch, mut display, mut controls, windows) = bound(
         "focus-view",
-        "gband.pane.focus(3)\ngband.band.view(2)\ngband.band.view(1)",
+        "gband.window.focus(3)\ngband.band.view(2)\ngband.band.view(1)",
     );
     assert_eq!(
         controls.press(&mut display, key("alt+x")),
         [Step::Nothing, Step::Nothing, Step::Nothing]
     );
-    assert_eq!(display.focused(), Some(panes[2]));
+    assert_eq!(display.focused(), Some(windows[2]));
 }
 
 #[test]
-fn tiled_plugin_window_sends_open_pane_with_plugin_content() {
-    let (_scratch, mut display, mut controls, panes) = bound(
-        "pane-window",
+fn tiled_plugin_window_sends_open_window_with_plugin_content() {
+    let (_scratch, mut display, mut controls, windows) = bound(
+        "tiled-plugin-window",
         "win = gband.win.open({ kind = 'tiled', after = 2, focus = false })",
     );
     let steps = controls.press(&mut display, key("alt+x"));
     let plugin_window: u32 = controls.runtime().lua().globals().get("win").unwrap();
     assert_eq!(
         steps,
-        [Step::Send(ClientMessage::Action(SessionAction::OpenPane {
-            band: BandId(1),
-            after: Some(panes[1]),
-            width: None,
-            floating: false,
-            focus: false,
-            content: PaneContent::Plugin {
-                request: plugin_window
-            },
-        }))]
+        [Step::Send(ClientMessage::Action(
+            SessionAction::OpenWindow {
+                band: BandId(1),
+                after: Some(windows[1]),
+                width: None,
+                floating: false,
+                focus: false,
+                content: WindowContent::Plugin {
+                    request: plugin_window
+                },
+            }
+        ))]
     );
 }

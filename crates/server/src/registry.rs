@@ -188,7 +188,7 @@ impl Registry {
                     .filter(|handle| !handle.is_ending())
                     .map(|handle| SessionSummary {
                         name: handle.name.clone(),
-                        panes: handle.state.borrow().layout.panes().count() as u32,
+                        windows: handle.state.borrow().layout.windows().count() as u32,
                         clients: handle.clients.load(Ordering::Acquire),
                     })
                     .collect();

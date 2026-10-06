@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use gband_core::geometry::Size;
-use gband_core::layout::{Direction, PaneHeight, PaneId, Proportion, SessionAction, Step};
+use gband_core::layout::{Direction, Proportion, SessionAction, Step, WindowHeight, WindowId};
 use gband_protocol::{ClientMessage, ServerMessage};
 use gband_test_support::*;
 
@@ -23,35 +23,35 @@ impl Winches {
     async fn server(&self) -> TestServer {
         let dir = self.dir.display();
         let script = format!(
-            "trap 'echo W >> {dir}/winch-$GBAND_PANE' WINCH; echo ready; \
-             while [ ! -e {dir}/exit-$GBAND_PANE ]; do read -t 1; done"
+            "trap 'echo W >> {dir}/winch-$GBAND_WINDOW' WINCH; echo ready; \
+             while [ ! -e {dir}/exit-$GBAND_WINDOW ]; do read -t 1; done"
         );
         TestServer::start_in(self.dir.clone(), &["/bin/bash", "-c", &script]).await
     }
 
-    fn count(&self, pane: PaneId) -> usize {
-        fs::read_to_string(self.dir.join(format!("winch-{pane}")))
+    fn count(&self, window: WindowId) -> usize {
+        fs::read_to_string(self.dir.join(format!("winch-{window}")))
             .map_or(0, |contents| contents.lines().count())
     }
 
-    fn exit(&self, pane: PaneId) {
-        fs::write(self.dir.join(format!("exit-{pane}")), "").unwrap();
+    fn exit(&self, window: WindowId) {
+        fs::write(self.dir.join(format!("exit-{window}")), "").unwrap();
     }
 
-    async fn settled(&self, client: &mut TestClient, pane: PaneId, size: Size) -> usize {
+    async fn settled(&self, client: &mut TestClient, window: WindowId, size: Size) -> usize {
         client
-            .wait_for_pane(pane, |screen| screen.size() == size)
+            .wait_for_window(window, |screen| screen.size() == size)
             .await;
         assert!(client.pump(BEYOND_SETTLE).await);
-        self.count(pane)
+        self.count(window)
     }
 }
 
-async fn ready(client: &mut TestClient, pane: PaneId) {
-    client.wait_for_pane_text(pane, "ready").await;
+async fn ready(client: &mut TestClient, window: WindowId) {
+    client.wait_for_window_text(window, "ready").await;
 }
 
-async fn open(client: &mut TestClient, after: PaneId) -> PaneId {
+async fn open(client: &mut TestClient, after: WindowId) -> WindowId {
     let seen = client.focus.len();
     client
         .act(SessionAction::open(
@@ -66,7 +66,7 @@ async fn open(client: &mut TestClient, after: PaneId) -> PaneId {
     opened
 }
 
-async fn three_columns(winches: &Winches) -> (TestServer, TestClient, [PaneId; 3]) {
+async fn three_columns(winches: &Winches) -> (TestServer, TestClient, [WindowId; 3]) {
     let server = winches.server().await;
     let mut client = server.attach(80, 24).await;
     let a = client.first();
@@ -81,16 +81,20 @@ async fn counter_sees_one_resize() {
     let winches = Winches::new("winch-counter");
     let server = winches.server().await;
     let mut client = server.attach(80, 24).await;
-    let pane = client.first();
-    ready(&mut client, pane).await;
+    let window = client.first();
+    ready(&mut client, window).await;
     client.show_all().await;
     assert_eq!(
-        winches.settled(&mut client, pane, Size::new(38, 22)).await,
+        winches
+            .settled(&mut client, window, Size::new(38, 22))
+            .await,
         0
     );
-    client.act(SessionAction::CycleWidth(pane)).await;
+    client.act(SessionAction::CycleWidth(window)).await;
     assert_eq!(
-        winches.settled(&mut client, pane, Size::new(51, 22)).await,
+        winches
+            .settled(&mut client, window, Size::new(51, 22))
+            .await,
         1
     );
 }
@@ -100,14 +104,16 @@ async fn burst_of_terminal_resizes_gives_one_sigwinch() {
     let winches = Winches::new("winch-burst");
     let server = winches.server().await;
     let mut client = server.attach(80, 24).await;
-    let pane = client.first();
-    ready(&mut client, pane).await;
+    let window = client.first();
+    ready(&mut client, window).await;
     client.show_all().await;
     for (cols, rows) in [(90, 25), (95, 28), (100, 30)] {
         client.send(&ClientMessage::Resize { cols, rows }).await;
     }
     assert_eq!(
-        winches.settled(&mut client, pane, Size::new(48, 28)).await,
+        winches
+            .settled(&mut client, window, Size::new(48, 28))
+            .await,
         1
     );
 }
@@ -117,8 +123,8 @@ async fn held_resize_key_gives_a_layout_per_action_and_one_sigwinch() {
     let winches = Winches::new("winch-held");
     let server = winches.server().await;
     let mut client = server.attach(80, 24).await;
-    let pane = client.first();
-    ready(&mut client, pane).await;
+    let window = client.first();
+    ready(&mut client, window).await;
     client.show_all().await;
     assert!(client.pump(BEYOND_SETTLE).await);
     let mut width = Proportion::ONE_HALF;
@@ -126,7 +132,7 @@ async fn held_resize_key_gives_a_layout_per_action_and_one_sigwinch() {
         width = width.step(Step::Grow);
         client
             .act(SessionAction::StepWidth {
-                pane,
+                window,
                 step: Step::Grow,
             })
             .await;
@@ -140,13 +146,15 @@ async fn held_resize_key_gives_a_layout_per_action_and_one_sigwinch() {
     }
     assert_eq!(width, Proportion::new(9, 10));
     assert_eq!(
-        winches.settled(&mut client, pane, Size::new(70, 22)).await,
+        winches
+            .settled(&mut client, window, Size::new(70, 22))
+            .await,
         1
     );
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn offscreen_pane_keeps_its_size_until_shown() {
+async fn offscreen_window_keeps_its_size_until_shown() {
     let winches = Winches::new("winch-offscreen");
     let (_server, mut client, [a, b, c]) = three_columns(&winches).await;
     client.show(&[a, b]).await;
@@ -158,7 +166,7 @@ async fn offscreen_pane_keeps_its_size_until_shown() {
         .await;
     assert_eq!(winches.settled(&mut client, a, Size::new(48, 28)).await, 1);
     assert_eq!(winches.settled(&mut client, b, Size::new(48, 28)).await, 1);
-    assert_eq!(client.pane_screen(c).size(), Size::new(38, 22));
+    assert_eq!(client.window_screen(c).size(), Size::new(38, 22));
     assert_eq!(winches.count(c), 0);
 
     client.show(&[b, c]).await;
@@ -166,7 +174,7 @@ async fn offscreen_pane_keeps_its_size_until_shown() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn panes_shown_by_different_clients_both_resize() {
+async fn windows_shown_by_different_clients_both_resize() {
     let winches = Winches::new("winch-two-clients");
     let (server, mut first, [a, b, c]) = three_columns(&winches).await;
     first.show(&[a]).await;
@@ -180,12 +188,12 @@ async fn panes_shown_by_different_clients_both_resize() {
         .await;
     assert_eq!(winches.settled(&mut first, a, Size::new(48, 28)).await, 1);
     assert_eq!(winches.settled(&mut first, c, Size::new(48, 28)).await, 1);
-    assert_eq!(first.pane_screen(b).size(), Size::new(38, 22));
+    assert_eq!(first.window_screen(b).size(), Size::new(38, 22));
     assert_eq!(winches.count(b), 0);
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn pane_left_alone_while_detached_keeps_its_size_until_shown() {
+async fn window_left_alone_while_detached_keeps_its_size_until_shown() {
     let winches = Winches::new("winch-detached");
     let server = winches.server().await;
     let mut client = server.attach(80, 24).await;
@@ -194,7 +202,7 @@ async fn pane_left_alone_while_detached_keeps_its_size_until_shown() {
     let bottom = open(&mut client, top).await;
     client
         .act(SessionAction::ConsumeOrExpel {
-            pane: bottom,
+            window: bottom,
             direction: Direction::Left,
         })
         .await;
@@ -208,9 +216,9 @@ async fn pane_left_alone_while_detached_keeps_its_size_until_shown() {
 
     winches.exit(bottom);
     let mut client = server.attach(80, 24).await;
-    client.wait_until(|client| client.panes() == [top]).await;
+    client.wait_until(|client| client.windows() == [top]).await;
     assert!(client.pump(BEYOND_SETTLE).await);
-    assert_eq!(client.pane_screen(top).size(), Size::new(38, 10));
+    assert_eq!(client.window_screen(top).size(), Size::new(38, 10));
     assert_eq!(winches.count(top), 1);
 
     client.show_all().await;
@@ -221,22 +229,25 @@ async fn pane_left_alone_while_detached_keeps_its_size_until_shown() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn floating_pane_takes_its_box_size() {
+async fn floating_window_takes_its_box_size() {
     let winches = Winches::new("winch-floating");
     let server = winches.server().await;
     let mut client = server.attach(80, 24).await;
     let first = client.first();
     ready(&mut client, first).await;
-    let pane = open(&mut client, first).await;
+    let window = open(&mut client, first).await;
     for action in [
-        SessionAction::ToggleFloating { pane, after: None },
+        SessionAction::ToggleFloating {
+            window,
+            after: None,
+        },
         SessionAction::SetWidth {
-            pane,
+            window,
             width: Proportion::ONE_THIRD,
         },
         SessionAction::SetHeight {
-            pane,
-            height: PaneHeight::Fixed(12),
+            window,
+            height: WindowHeight::Fixed(12),
         },
     ] {
         client.act(action).await;
@@ -245,17 +256,21 @@ async fn floating_pane_takes_its_box_size() {
         .wait_until(|client| {
             client
                 .layout
-                .floating(pane)
+                .floating(window)
                 .is_some_and(|floating| floating.rows == 12)
         })
         .await;
     client.show_all().await;
-    winches.settled(&mut client, pane, Size::new(24, 10)).await;
+    winches
+        .settled(&mut client, window, Size::new(24, 10))
+        .await;
     client
         .act(SessionAction::StepHeight {
-            pane,
+            window,
             step: Step::Grow,
         })
         .await;
-    winches.settled(&mut client, pane, Size::new(24, 12)).await;
+    winches
+        .settled(&mut client, window, Size::new(24, 12))
+        .await;
 }

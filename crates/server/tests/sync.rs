@@ -39,8 +39,8 @@ async fn slow_client_converges() {
     wait_for_file(&first_marker).await;
     wait_for_file(&second_marker).await;
     assert_converges(&server, &mut client).await;
-    assert!(client.pane_screen(first).contents().contains("10000"));
-    assert!(client.pane_screen(second).contents().contains("10005"));
+    assert!(client.window_screen(first).contents().contains("10000"));
+    assert!(client.window_screen(second).contents().contains("10005"));
 }
 
 #[tokio::test(flavor = "multi_thread")]

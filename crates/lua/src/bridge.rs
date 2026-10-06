@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use gband_core::layout::PaneId;
+use gband_core::layout::WindowId;
 use gband_protocol::Value as Data;
 use mlua::{Function, Lua, RegistryKey, Table, Value};
 
@@ -28,7 +28,7 @@ struct Pending(HashMap<u64, Call>);
 pub(crate) fn install(lua: &Lua, gband: &Table) -> mlua::Result<()> {
     lua.set_app_data(Pending::default());
     gband.set("rpc", lua.create_function(rpc)?)?;
-    gband.set("pane_state", lua.create_function(pane_state)?)?;
+    gband.set("window_state", lua.create_function(window_state)?)?;
     gband.set("notify", lua.create_function(notify)?)?;
     gband.set("bell", lua.create_function(bell)?)?;
     gband.set("clipboard", lua.create_function(clipboard)?)?;
@@ -122,19 +122,19 @@ pub(crate) fn answer(lua: &Lua, call: u64, result: Result<Data, String>) -> mlua
     Ok(())
 }
 
-fn pane_state(lua: &Lua, pane: Value) -> mlua::Result<Option<Table>> {
-    let number = match pane {
+fn window_state(lua: &Lua, window: Value) -> mlua::Result<Option<Table>> {
+    let number = match window {
         Value::Integer(number) => u32::try_from(number).ok(),
         _ => None,
     }
-    .ok_or_else(|| ConfigError::raise(lua, "gband.pane_state expects a pane number"))?;
+    .ok_or_else(|| ConfigError::raise(lua, "gband.window_state expects a window number"))?;
     let state = ui::current_state(lua);
-    let pane = PaneId(number);
-    if !state.layout.contains(pane) {
+    let window = WindowId(number);
+    if !state.layout.contains(window) {
         return Ok(None);
     }
     let table = lua.create_table()?;
-    if let Some(entries) = state.states.get(&pane) {
+    if let Some(entries) = state.states.get(&window) {
         for (key, value) in entries {
             table.set(key.as_str(), value::into_lua(lua, value)?)?;
         }

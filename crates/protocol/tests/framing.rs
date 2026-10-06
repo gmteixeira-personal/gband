@@ -1,9 +1,9 @@
-use gband_core::layout::PaneId;
+use gband_core::layout::WindowId;
 use gband_protocol::{ClientMessage, Decoder, FrameError, MAX_FRAME_LEN, ServerMessage, encode};
 
 fn sample() -> ServerMessage {
     ServerMessage::Snapshot {
-        pane: PaneId(1),
+        window: WindowId(1),
         cols: 80,
         rows: 24,
         contents: b"\x1b[1;31mhello\x1b[m".to_vec(),
@@ -47,7 +47,7 @@ fn frame_fed_byte_by_byte_decodes_once() {
 #[test]
 fn two_frames_in_one_chunk_decode_in_order() {
     let first = ServerMessage::Update {
-        pane: PaneId(1),
+        window: WindowId(1),
         contents: b"one".to_vec(),
     };
     let second = ServerMessage::Exited;

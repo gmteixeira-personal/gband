@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use gband_core::geometry::{BORDER, PaneBox, Size, Tile, placed, tiles};
-use gband_core::layout::{Layout, PaneId};
+use gband_core::geometry::{BORDER, Size, Tile, WindowBox, placed, tiles};
+use gband_core::layout::{Layout, WindowId};
 use gband_core::view::{Scene, View};
 use gband_emulator::{Emulator, Grid};
 use gband_lua::StatusLine;
@@ -30,7 +30,7 @@ pub struct Ribbon<'a> {
     pub layout: &'a Layout,
     pub area: Size,
     pub view: &'a View,
-    pub grids: &'a HashMap<PaneId, Grid>,
+    pub grids: &'a HashMap<WindowId, Grid>,
     pub drawn: &'a Drawn,
     pub region: Rect,
     pub floats: Vec<&'a FloatingFrame>,
@@ -164,20 +164,20 @@ pub fn render(ribbon: &Ribbon<'_>, buffer: &mut Buffer) -> Option<Position> {
         let Some(band) = ribbon.layout.band(drawn.band) else {
             continue;
         };
-        let mut placed: Vec<(PaneId, DrawnTile)> = tiles(band, ribbon.area)
+        let mut placed: Vec<(WindowId, DrawnTile)> = tiles(band, ribbon.area)
             .iter()
             .map(|tile| {
-                let moving = ribbon.drawn.tiles.get(&tile.pane).copied();
-                (tile.pane, moving.unwrap_or_else(|| DrawnTile::from(tile)))
+                let moving = ribbon.drawn.tiles.get(&tile.window).copied();
+                (tile.window, moving.unwrap_or_else(|| DrawnTile::from(tile)))
             })
             .collect();
-        placed.sort_by_key(|&(pane, _)| focused == Some(pane));
-        for (pane, tile) in placed {
+        placed.sort_by_key(|&(window, _)| focused == Some(window));
+        for (window, tile) in placed {
             let Some(placement) = Placement::new(&tile, drawn.camera, drawn.top, target) else {
                 continue;
             };
-            let is_focused = focused == Some(pane);
-            let grid = ribbon.grids.get(&pane);
+            let is_focused = focused == Some(window);
+            let grid = ribbon.grids.get(&window);
             paint(buffer, target, &tile, &placement, grid, is_focused);
             if is_focused && ribbon.drawn.settled {
                 cursor = grid.and_then(|grid| cursor_position(&tile, &placement, grid, target));
@@ -189,8 +189,8 @@ pub fn render(ribbon: &Ribbon<'_>, buffer: &mut Buffer) -> Option<Position> {
         area: ribbon.area,
         viewport: Size::new(target.width, target.height),
     };
-    for pane in ribbon.view.stacking(scene) {
-        let Some(floating) = ribbon.layout.floating(pane) else {
+    for window in ribbon.view.stacking(scene) {
+        let Some(floating) = ribbon.layout.floating(window) else {
             continue;
         };
         let placed = placed(floating, ribbon.area);
@@ -201,8 +201,8 @@ pub fn render(ribbon: &Ribbon<'_>, buffer: &mut Buffer) -> Option<Position> {
         if cursor.is_some_and(|cursor| covers(&placed, target, cursor)) {
             cursor = None;
         }
-        let is_focused = focused == Some(pane);
-        let grid = ribbon.grids.get(&pane);
+        let is_focused = focused == Some(window);
+        let grid = ribbon.grids.get(&window);
         paint(buffer, target, &tile, &placement, grid, is_focused);
         if is_focused && ribbon.drawn.settled {
             cursor = grid.and_then(|grid| cursor_position(&tile, &placement, grid, target));
@@ -211,7 +211,7 @@ pub fn render(ribbon: &Ribbon<'_>, buffer: &mut Buffer) -> Option<Position> {
     cursor
 }
 
-fn covers(placed: &PaneBox, target: Rect, cursor: Position) -> bool {
+fn covers(placed: &WindowBox, target: Rect, cursor: Position) -> bool {
     let x = cursor.x.checked_sub(target.x);
     let y = cursor.y.checked_sub(target.y);
     x.zip(y).is_some_and(|(x, y)| placed.contains(x, y))
@@ -237,8 +237,8 @@ fn paint(
     }
 }
 
-impl From<&PaneBox> for DrawnTile {
-    fn from(placed: &PaneBox) -> Self {
+impl From<&WindowBox> for DrawnTile {
+    fn from(placed: &WindowBox) -> Self {
         Self {
             x: i64::from(placed.x),
             y: i64::from(placed.y),

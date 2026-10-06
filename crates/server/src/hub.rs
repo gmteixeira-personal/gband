@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use gband_core::layout::PaneId;
+use gband_core::layout::WindowId;
 use gband_lua::server::{Host, SessionView};
 use gband_protocol::{Requirement, ServerMessage, SessionName, Value};
 use tokio::sync::mpsc;
@@ -29,7 +29,7 @@ struct Client {
 #[derive(Default)]
 struct Inner {
     sessions: BTreeMap<SessionName, Arc<SessionHandle>>,
-    states: HashMap<(SessionName, PaneId), State>,
+    states: HashMap<(SessionName, WindowId), State>,
     clients: BTreeMap<u64, Client>,
     queue: VecDeque<Queued>,
     error: Option<String>,
@@ -92,15 +92,15 @@ impl Hub {
         self.lock().sessions.get(&name).cloned()
     }
 
-    pub fn pane_opened(&self, session: &SessionName, pane: PaneId) {
+    pub fn window_opened(&self, session: &SessionName, window: WindowId) {
         self.lock()
             .states
-            .entry((session.clone(), pane))
+            .entry((session.clone(), window))
             .or_default();
     }
 
-    pub fn pane_closed(&self, session: &SessionName, pane: PaneId) {
-        self.lock().states.remove(&(session.clone(), pane));
+    pub fn window_closed(&self, session: &SessionName, window: WindowId) {
+        self.lock().states.remove(&(session.clone(), window));
     }
 
     pub fn session_ended(&self, session: &SessionName) {
@@ -114,17 +114,17 @@ impl Hub {
         sender: mpsc::UnboundedSender<ServerMessage>,
     ) -> Attached {
         let mut inner = self.lock();
-        let mut states: Vec<(&(SessionName, PaneId), &State)> = inner
+        let mut states: Vec<(&(SessionName, WindowId), &State)> = inner
             .states
             .iter()
             .filter(|((name, _), _)| name == session)
             .collect();
-        states.sort_by_key(|((_, pane), _)| *pane);
+        states.sort_by_key(|((_, window), _)| *window);
         let mut messages: Vec<ServerMessage> = states
             .into_iter()
-            .flat_map(|((_, pane), state)| {
-                state.iter().map(|(key, value)| ServerMessage::PaneState {
-                    pane: *pane,
+            .flat_map(|((_, window), state)| {
+                state.iter().map(|(key, value)| ServerMessage::WindowState {
+                    window: *window,
                     key: key.clone(),
                     value: Some(value.clone()),
                 })
@@ -166,13 +166,19 @@ impl Hub {
             .collect()
     }
 
-    pub fn state(&self, session: &SessionName, pane: PaneId) -> Option<State> {
-        self.lock().states.get(&(session.clone(), pane)).cloned()
+    pub fn state(&self, session: &SessionName, window: WindowId) -> Option<State> {
+        self.lock().states.get(&(session.clone(), window)).cloned()
     }
 
-    pub fn set_state(&self, session: &SessionName, pane: PaneId, key: &str, value: Option<Value>) {
+    pub fn set_state(
+        &self,
+        session: &SessionName,
+        window: WindowId,
+        key: &str,
+        value: Option<Value>,
+    ) {
         let mut inner = self.lock();
-        let Some(state) = inner.states.get_mut(&(session.clone(), pane)) else {
+        let Some(state) = inner.states.get_mut(&(session.clone(), window)) else {
             return;
         };
         match &value {
@@ -181,8 +187,8 @@ impl Hub {
         };
         inner.send_to(
             Some(session),
-            &ServerMessage::PaneState {
-                pane,
+            &ServerMessage::WindowState {
+                window,
                 key: key.to_owned(),
                 value,
             },
@@ -260,13 +266,13 @@ impl Host for HubHost {
         })
     }
 
-    fn pane_state(&self, session: &str, pane: PaneId) -> Option<State> {
-        self.0.state(&session_name(session)?, pane)
+    fn window_state(&self, session: &str, window: WindowId) -> Option<State> {
+        self.0.state(&session_name(session)?, window)
     }
 
-    fn set_pane_state(&self, session: &str, pane: PaneId, key: &str, value: Option<Value>) {
+    fn set_window_state(&self, session: &str, window: WindowId, key: &str, value: Option<Value>) {
         if let Some(session) = session_name(session) {
-            self.0.set_state(&session, pane, key, value);
+            self.0.set_state(&session, window, key, value);
         }
     }
 
@@ -376,14 +382,14 @@ mod tests {
     fn states_are_sent_and_removed_on_close() {
         let hub = Hub::default();
         let work = name("work");
-        hub.pane_opened(&work, PaneId(1));
-        hub.set_state(&work, PaneId(1), "agent", Some(Value::string("waiting")));
+        hub.window_opened(&work, WindowId(1));
+        hub.set_state(&work, WindowId(1), "agent", Some(Value::string("waiting")));
         let (sender, mut receiver) = mpsc::unbounded_channel();
         let attached = hub.attach(1, &work, sender);
         assert_eq!(
             attached.messages[0],
-            ServerMessage::PaneState {
-                pane: PaneId(1),
+            ServerMessage::WindowState {
+                window: WindowId(1),
                 key: "agent".to_owned(),
                 value: Some(Value::string("waiting")),
             }
@@ -392,18 +398,18 @@ mod tests {
             attached.messages[1],
             ServerMessage::Requirements(_)
         ));
-        hub.set_state(&work, PaneId(1), "agent", None);
+        hub.set_state(&work, WindowId(1), "agent", None);
         assert_eq!(
             drain(&mut receiver),
-            [ServerMessage::PaneState {
-                pane: PaneId(1),
+            [ServerMessage::WindowState {
+                window: WindowId(1),
                 key: "agent".to_owned(),
                 value: None,
             }]
         );
-        hub.pane_closed(&work, PaneId(1));
-        assert_eq!(hub.state(&work, PaneId(1)), None);
-        hub.set_state(&work, PaneId(1), "agent", Some(Value::Nil));
+        hub.window_closed(&work, WindowId(1));
+        assert_eq!(hub.state(&work, WindowId(1)), None);
+        hub.set_state(&work, WindowId(1), "agent", Some(Value::Nil));
         assert!(drain(&mut receiver).is_empty());
     }
 

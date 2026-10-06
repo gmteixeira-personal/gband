@@ -157,13 +157,13 @@ fn context(lua: &Lua, caller: Option<Caller>) -> mlua::Result<Table> {
     let focus = caller.focus;
     context.set(
         "focus",
-        lua.create_function(move |lua, pane: Value| {
-            let pane = match pane {
-                Value::Integer(pane) => u32::try_from(pane).ok(),
+        lua.create_function(move |lua, window: Value| {
+            let window = match window {
+                Value::Integer(window) => u32::try_from(window).ok(),
                 _ => None,
             }
-            .ok_or_else(|| ConfigError::raise(lua, "ctx.focus expects a pane number"))?;
-            focus(gband_core::layout::PaneId(pane));
+            .ok_or_else(|| ConfigError::raise(lua, "ctx.focus expects a window number"))?;
+            focus(gband_core::layout::WindowId(window));
             Ok(())
         })?,
     )?;

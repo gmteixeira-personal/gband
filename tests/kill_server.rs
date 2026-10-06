@@ -39,12 +39,12 @@ fn kill_server_without_a_server_fails_and_creates_nothing() {
 #[test]
 fn program_ignoring_sighup_is_killed() {
     let env = TestEnv::new("kill-trap");
-    let pane = env.root.join("pane.sh");
-    fs::write(&pane, "#!/bin/sh\ntrap '' HUP\nsleep 100\n").unwrap();
-    fs::set_permissions(&pane, fs::Permissions::from_mode(0o755)).unwrap();
-    let mut server = env.start_server(pane.to_str().unwrap());
+    let window = env.root.join("window.sh");
+    fs::write(&window, "#!/bin/sh\ntrap '' HUP\nsleep 100\n").unwrap();
+    fs::set_permissions(&window, fs::Permissions::from_mode(0o755)).unwrap();
+    let mut server = env.start_server(window.to_str().unwrap());
     let shell = env.shell_of(&server);
-    wait_until(|| !children(shell).is_empty(), "the pane's sleep");
+    wait_until(|| !children(shell).is_empty(), "the window's sleep");
     let sleep = children(shell)[0];
     env.track_shell(sleep);
 

@@ -161,7 +161,7 @@ pub fn drawn(width: u16) -> ViewState {
             count: 1,
         },
         column: None,
-        pane: None,
+        window: None,
         width,
         drawn: true,
         error: None,

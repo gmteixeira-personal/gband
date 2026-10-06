@@ -1,5 +1,5 @@
 use gband_core::event::LayoutEvent;
-use gband_core::layout::{Direction, PaneId, SessionAction};
+use gband_core::layout::{Direction, SessionAction, WindowId};
 use gband_protocol::{ClientMessage, socket_path};
 use gband_server::{CAPACITY, Published, SessionEvent};
 use gband_test_support::*;
@@ -39,15 +39,15 @@ async fn until(
     }
 }
 
-fn opened(event: &SessionEvent) -> Option<PaneId> {
+fn opened(event: &SessionEvent) -> Option<WindowId> {
     match event {
-        SessionEvent::Layout(LayoutEvent::PaneOpened { pane, .. }) => Some(*pane),
+        SessionEvent::Layout(LayoutEvent::WindowOpened { window, .. }) => Some(*window),
         _ => None,
     }
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn subscriber_sees_a_pane_opened_by_a_client() {
+async fn subscriber_sees_a_window_opened_by_a_client() {
     let (server, mut events) = start("ev-open").await;
     let mut client = server.attach(80, 24).await;
     let first = client.first();
@@ -61,7 +61,7 @@ async fn subscriber_sees_a_pane_opened_by_a_client() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn pane_exit_comes_before_its_close() {
+async fn window_exit_comes_before_its_close() {
     let (server, mut events) = start("ev-exit").await;
     let mut client = server.attach(80, 24).await;
     let first = client.first();
@@ -72,16 +72,18 @@ async fn pane_exit_comes_before_its_close() {
     let seen = until(&mut events, |event| {
         matches!(
             event,
-            SessionEvent::Layout(LayoutEvent::PaneClosed { pane, .. }) if *pane == second
+            SessionEvent::Layout(LayoutEvent::WindowClosed { window, .. }) if *window == second
         )
     })
     .await;
     let exited = seen
         .iter()
-        .position(|event| matches!(event, SessionEvent::PaneExited { pane, .. } if *pane == second))
+        .position(
+            |event| matches!(event, SessionEvent::WindowExited { window, .. } if *window == second),
+        )
         .expect("no exit before the close");
     assert_eq!(exited, seen.len() - 2, "{seen:?}");
-    let SessionEvent::PaneExited { code, signal, .. } = &seen[exited] else {
+    let SessionEvent::WindowExited { code, signal, .. } = &seen[exited] else {
         unreachable!();
     };
     assert_eq!((*code, *signal), (Some(3), None));
@@ -110,11 +112,11 @@ async fn attach_then_detach_name_the_same_client() {
 async fn lagging_subscriber_is_told_and_blocks_nothing() {
     let (server, mut events) = start("ev-lag").await;
     let mut client = server.attach(80, 24).await;
-    let pane = client.first();
+    let window = client.first();
     for _ in 0..2000 {
-        client.act(SessionAction::CycleWidth(pane)).await;
+        client.act(SessionAction::CycleWidth(window)).await;
     }
-    client.act(SessionAction::ToggleFullWidth(pane)).await;
+    client.act(SessionAction::ToggleFullWidth(window)).await;
     client
         .wait_until(|client| client.layout.bands()[0].columns[0].full_width)
         .await;
@@ -138,19 +140,19 @@ async fn subscriber_sees_floating_and_moves() {
     until(&mut events, |event| opened(event) == Some(second)).await;
     for action in [
         SessionAction::MoveColumn {
-            pane: second,
+            window: second,
             direction: Direction::Left,
         },
         SessionAction::ToggleFloating {
-            pane: second,
+            window: second,
             after: None,
         },
         SessionAction::MoveColumn {
-            pane: second,
+            window: second,
             direction: Direction::Right,
         },
         SessionAction::ToggleFloating {
-            pane: second,
+            window: second,
             after: Some(first),
         },
     ] {
@@ -162,12 +164,12 @@ async fn subscriber_sees_floating_and_moves() {
         panic!("expected a column moved event");
     };
     assert_eq!((from, to), (1, 0));
-    let SessionEvent::Layout(LayoutEvent::PaneFloated { pane, record, .. }) =
+    let SessionEvent::Layout(LayoutEvent::WindowFloated { window, record, .. }) =
         next(&mut events).await
     else {
-        panic!("expected a pane floated event");
+        panic!("expected a window floated event");
     };
-    assert_eq!((pane, record.col), (second, 20));
+    assert_eq!((window, record.col), (second, 20));
     let SessionEvent::Layout(LayoutEvent::FloatingBoxChanged { record, .. }) =
         next(&mut events).await
     else {
@@ -176,8 +178,8 @@ async fn subscriber_sees_floating_and_moves() {
     assert_eq!(record.col, 28);
     assert_eq!(
         next(&mut events).await,
-        SessionEvent::Layout(LayoutEvent::PaneTiled {
-            pane: second,
+        SessionEvent::Layout(LayoutEvent::WindowTiled {
+            window: second,
             band,
             column: 1,
             width: record.width,

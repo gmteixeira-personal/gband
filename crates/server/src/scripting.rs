@@ -3,7 +3,7 @@ use std::sync::{Arc, mpsc};
 use std::thread;
 
 use gband_core::event::LayoutEvent;
-use gband_core::layout::PaneId;
+use gband_core::layout::WindowId;
 use gband_lua::server::{Caller, Event};
 use gband_lua::{Config, ConfigError, Dispatch, Outcome};
 use gband_protocol::{Requirement, SessionName, Value};
@@ -22,12 +22,12 @@ pub(crate) enum Input {
     Bus(Published),
     Output {
         session: SessionName,
-        pane: PaneId,
+        window: WindowId,
         bytes: Vec<u8>,
     },
     Notice {
         session: SessionName,
-        pane: PaneId,
+        window: WindowId,
         client: u64,
     },
     Call {
@@ -106,7 +106,7 @@ impl Taps {
         }
     }
 
-    pub fn output(&self, session: &SessionName, pane: PaneId, bytes: &[u8]) {
+    pub fn output(&self, session: &SessionName, window: WindowId, bytes: &[u8]) {
         let Some(sender) = &self.sender else {
             return;
         };
@@ -122,7 +122,7 @@ impl Taps {
         }
         let input = Input::Output {
             session: session.clone(),
-            pane,
+            window,
             bytes: bytes.to_vec(),
         };
         if sender.send(input).is_err() {
@@ -130,7 +130,7 @@ impl Taps {
         }
     }
 
-    pub fn notice(&self, session: &SessionName, pane: PaneId, client: u64) {
+    pub fn notice(&self, session: &SessionName, window: WindowId, client: u64) {
         let Some(sender) = &self.sender else {
             return;
         };
@@ -144,7 +144,7 @@ impl Taps {
         }
         let input = Input::Notice {
             session: session.clone(),
-            pane,
+            window,
             client,
         };
         if sender.send(input).is_err() {
@@ -160,9 +160,9 @@ impl Taps {
 
     fn want(&self, config: &Config) {
         self.output
-            .store(config.runtime.handles("PaneOutput"), Ordering::Release);
+            .store(config.runtime.handles("WindowOutput"), Ordering::Release);
         self.input
-            .store(config.runtime.handles("PaneInput"), Ordering::Release);
+            .store(config.runtime.handles("WindowInput"), Ordering::Release);
     }
 }
 
@@ -373,25 +373,25 @@ impl Worker {
             }
             Input::Output {
                 session,
-                pane,
+                window,
                 bytes,
             } => {
                 self.taps.bytes.fetch_sub(bytes.len(), Ordering::AcqRel);
                 let dropped = self.taps.dropped.swap(0, Ordering::Relaxed);
                 if dropped > 0 {
                     tracing::warn!(
-                        "dropped {dropped} bytes of pane output the Lua handlers could not keep up with"
+                        "dropped {dropped} bytes of window output the Lua handlers could not keep up with"
                     );
                 }
-                self.emit(&Event::PaneOutput {
+                self.emit(&Event::WindowOutput {
                     session: session.as_str().to_owned(),
-                    pane,
+                    window,
                     data: bytes,
                 });
             }
             Input::Notice {
                 session,
-                pane,
+                window,
                 client,
             } => {
                 self.taps.notices.fetch_sub(1, Ordering::AcqRel);
@@ -401,9 +401,9 @@ impl Worker {
                         "dropped {dropped} input notices the Lua handlers could not keep up with"
                     );
                 }
-                self.emit(&Event::PaneInput {
+                self.emit(&Event::WindowInput {
                     session: session.as_str().to_owned(),
-                    pane,
+                    window,
                     client,
                 });
             }
@@ -419,8 +419,8 @@ impl Worker {
                 let caller = Caller {
                     session: session.as_str().to_owned(),
                     client,
-                    focus: Arc::new(move |pane| {
-                        let _ = focus.send(Reply::Focus(pane));
+                    focus: Arc::new(move |window| {
+                        let _ = focus.send(Reply::Focus(window));
                     }),
                 };
                 let (result, outcome) = self.config.runtime.command(&name, args, Some(caller));
@@ -462,26 +462,30 @@ impl Worker {
                 self.hub.session_ended(&session);
                 Event::SessionEnded { session: name() }
             }
-            SessionEvent::Layout(LayoutEvent::PaneOpened { pane, band }) => {
-                self.hub.pane_opened(&session, pane);
-                Event::PaneOpened {
+            SessionEvent::Layout(LayoutEvent::WindowOpened { window, band }) => {
+                self.hub.window_opened(&session, window);
+                Event::WindowOpened {
                     session: name(),
-                    pane,
+                    window,
                     band,
                 }
             }
-            SessionEvent::Layout(LayoutEvent::PaneClosed { pane, band }) => {
-                self.hub.pane_closed(&session, pane);
-                Event::PaneClosed {
+            SessionEvent::Layout(LayoutEvent::WindowClosed { window, band }) => {
+                self.hub.window_closed(&session, window);
+                Event::WindowClosed {
                     session: name(),
-                    pane,
+                    window,
                     band,
                 }
             }
             SessionEvent::Layout(_) => return,
-            SessionEvent::PaneExited { pane, code, signal } => Event::PaneExited {
+            SessionEvent::WindowExited {
+                window,
+                code,
+                signal,
+            } => Event::WindowExited {
                 session: name(),
-                pane,
+                window,
                 code,
                 signal,
             },

@@ -9,7 +9,7 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use gband_core::geometry::Size;
 use gband_core::input::{Key, Modes, encode_key, encode_paste};
-use gband_core::layout::PaneId;
+use gband_core::layout::WindowId;
 use gband_emulator::{Emulator, Grid};
 use gband_protocol::SessionName;
 use gband_protocol::test::SOCKET_VARIABLE;
@@ -31,7 +31,7 @@ pub enum Input {
     WriteBack(Vec<u8>),
 }
 
-pub struct Pane {
+pub struct Window {
     terminal: Mutex<Terminal>,
     generation: AtomicU64,
     changed: Arc<watch::Sender<u64>>,
@@ -54,25 +54,25 @@ pub enum Contents {
 }
 
 #[derive(Clone)]
-pub struct PaneEntry {
-    pub pane: Arc<Pane>,
+pub struct WindowEntry {
+    pub window: Arc<Window>,
     pub input: mpsc::UnboundedSender<Input>,
 }
 
 pub struct Spawned {
-    pub entry: PaneEntry,
+    pub entry: WindowEntry,
     pub killer: Box<dyn ChildKiller + Send + Sync>,
     pub pid: Option<u32>,
     pub exit: watch::Receiver<Option<ExitStatus>>,
 }
 
-pub struct PaneExit {
-    pub pane: PaneId,
+pub struct WindowExit {
+    pub window: WindowId,
     pub status: ExitStatus,
 }
 
 pub struct SpawnRequest<'a> {
-    pub id: PaneId,
+    pub id: WindowId,
     pub program: &'a [OsString],
     pub cwd: &'a Path,
     pub socket: &'a Path,
@@ -81,11 +81,11 @@ pub struct SpawnRequest<'a> {
     pub taps: &'a Arc<Taps>,
 }
 
-impl Pane {
-    pub fn blank(size: Size, changed: &Arc<watch::Sender<u64>>) -> PaneEntry {
+impl Window {
+    pub fn blank(size: Size, changed: &Arc<watch::Sender<u64>>) -> WindowEntry {
         let (input, mut discarded) = mpsc::unbounded_channel();
         tokio::spawn(async move { while discarded.recv().await.is_some() {} });
-        let pane = Arc::new(Pane {
+        let window = Arc::new(Window {
             terminal: Mutex::new(Terminal {
                 grid: Grid::new(size),
                 master: None,
@@ -94,7 +94,7 @@ impl Pane {
             changed: Arc::clone(changed),
             write_back: input.downgrade(),
         });
-        PaneEntry { pane, input }
+        WindowEntry { window, input }
     }
 
     pub fn replace(&self, output: &[u8]) {
@@ -187,7 +187,7 @@ impl Pane {
 pub fn spawn(
     request: SpawnRequest<'_>,
     changed: &Arc<watch::Sender<u64>>,
-    exits: mpsc::UnboundedSender<PaneExit>,
+    exits: mpsc::UnboundedSender<WindowExit>,
 ) -> Result<Spawned> {
     let SpawnRequest {
         id,
@@ -207,7 +207,7 @@ pub fn spawn(
     command.env("COLORTERM", "truecolor");
     command.env("GBAND", socket);
     command.env("GBAND_SESSION", session.as_str());
-    command.env("GBAND_PANE", id.to_string());
+    command.env("GBAND_WINDOW", id.to_string());
     command.env_remove(SOCKET_VARIABLE);
     command.cwd(cwd);
     let mut child = pair
@@ -217,7 +217,7 @@ pub fn spawn(
     drop(pair.slave);
     let pid = child.process_id();
     let killer = child.clone_killer();
-    tracing::info!(pane = %id, pid, "started {}", display_argv(program));
+    tracing::info!(window = %id, pid, "started {}", display_argv(program));
 
     let reader = pair
         .master
@@ -225,7 +225,7 @@ pub fn spawn(
         .context("cannot read the PTY")?;
     let writer = pair.master.take_writer().context("cannot write the PTY")?;
     let (input, receiver) = mpsc::unbounded_channel();
-    let pane = Arc::new(Pane {
+    let window = Arc::new(Window {
         terminal: Mutex::new(Terminal {
             grid: Grid::new(size),
             master: Some(pair.master),
@@ -236,14 +236,14 @@ pub fn spawn(
     });
 
     let (drained_tx, drained) = std_mpsc::channel::<()>();
-    let output_pane = Arc::clone(&pane);
+    let output_window = Arc::clone(&window);
     let tap = Tap {
         taps: Arc::clone(taps),
         session: session.clone(),
-        pane: id,
+        window: id,
     };
     thread::spawn(move || {
-        read_output(reader, &output_pane, &tap);
+        read_output(reader, &output_window, &tap);
         drop(drained_tx);
     });
 
@@ -257,12 +257,12 @@ pub fn spawn(
         });
         exit_tx.send_replace(Some(status.clone()));
         let _ = drained.recv_timeout(DRAIN_TIMEOUT);
-        let _ = exits.send(PaneExit { pane: id, status });
+        let _ = exits.send(WindowExit { window: id, status });
     });
 
-    spawn_input(Arc::clone(&pane), receiver, writer);
+    spawn_input(Arc::clone(&window), receiver, writer);
     Ok(Spawned {
-        entry: PaneEntry { pane, input },
+        entry: WindowEntry { window, input },
         killer,
         pid,
         exit,
@@ -272,24 +272,24 @@ pub fn spawn(
 struct Tap {
     taps: Arc<Taps>,
     session: SessionName,
-    pane: PaneId,
+    window: WindowId,
 }
 
-fn read_output(mut reader: Box<dyn Read + Send>, pane: &Pane, tap: &Tap) {
+fn read_output(mut reader: Box<dyn Read + Send>, window: &Window, tap: &Tap) {
     let mut buffer = vec![0; 64 * 1024];
     loop {
         match reader.read(&mut buffer) {
             Ok(0) | Err(_) => break,
             Ok(n) => {
-                tap.taps.output(&tap.session, tap.pane, &buffer[..n]);
-                pane.process(&buffer[..n]);
+                tap.taps.output(&tap.session, tap.window, &buffer[..n]);
+                window.process(&buffer[..n]);
             }
         }
     }
 }
 
 fn spawn_input(
-    pane: Arc<Pane>,
+    window: Arc<Window>,
     mut receiver: mpsc::UnboundedReceiver<Input>,
     mut writer: Box<dyn Write + Send>,
 ) {
@@ -298,8 +298,8 @@ fn spawn_input(
         let _span = span.enter();
         while let Some(input) = receiver.blocking_recv() {
             let bytes = match input {
-                Input::Key(key) => encode_key(key, pane.modes()),
-                Input::Paste(text) => encode_paste(&text, pane.modes()),
+                Input::Key(key) => encode_key(key, window.modes()),
+                Input::Paste(text) => encode_paste(&text, window.modes()),
                 Input::WriteBack(bytes) => bytes,
             };
             if let Err(error) = writer.write_all(&bytes).and_then(|()| writer.flush()) {
@@ -331,8 +331,8 @@ fn display_argv(program: &[OsString]) -> String {
 mod tests {
     use super::*;
 
-    fn blank(size: Size) -> PaneEntry {
-        Pane::blank(size, &Arc::new(watch::Sender::new(0)))
+    fn blank(size: Size) -> WindowEntry {
+        Window::blank(size, &Arc::new(watch::Sender::new(0)))
     }
 
     fn feed(grid: &mut Grid, contents: Contents) {
@@ -349,11 +349,11 @@ mod tests {
     async fn replaced_screen_reaches_a_client_as_an_update() {
         let entry = blank(Size::new(20, 5));
         let mut client = Grid::new(Size::new(20, 5));
-        entry.pane.replace(b"one");
-        let (_, seen, contents) = entry.pane.catch_up(None);
+        entry.window.replace(b"one");
+        let (_, seen, contents) = entry.window.catch_up(None);
         feed(&mut client, contents);
-        entry.pane.replace(b"\x1b[2;1Htwo");
-        let (_, _, contents) = entry.pane.catch_up(Some(&seen));
+        entry.window.replace(b"\x1b[2;1Htwo");
+        let (_, _, contents) = entry.window.catch_up(Some(&seen));
         assert!(matches!(contents, Contents::Update(_)));
         feed(&mut client, contents);
         let rows: Vec<String> = client.contents().lines().map(str::to_owned).collect();
@@ -363,11 +363,11 @@ mod tests {
     #[tokio::test]
     async fn resize_keeps_the_cells_that_fit() {
         let entry = blank(Size::new(20, 5));
-        entry.pane.replace(b"hello\r\nworld");
-        let before = entry.pane.generation();
-        entry.pane.resize(Size::new(3, 1));
-        assert!(entry.pane.generation() > before);
-        let (_, _, contents) = entry.pane.catch_up(None);
+        entry.window.replace(b"hello\r\nworld");
+        let before = entry.window.generation();
+        entry.window.resize(Size::new(3, 1));
+        assert!(entry.window.generation() > before);
+        let (_, _, contents) = entry.window.catch_up(None);
         let mut client = Grid::new(Size::new(1, 1));
         feed(&mut client, contents);
         assert_eq!(client.size(), Size::new(3, 1));
@@ -375,9 +375,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn input_to_a_blank_pane_is_discarded() {
+    async fn input_to_a_blank_window_is_discarded() {
         let entry = blank(Size::new(20, 5));
         assert!(entry.input.send(Input::Paste("x".into())).is_ok());
-        assert!(entry.pane.foreground_group().is_none());
+        assert!(entry.window.foreground_group().is_none());
     }
 }

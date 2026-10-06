@@ -18,7 +18,7 @@ pub(crate) const CLIENT_ONLY: [&str; 17] = [
     "colorscheme",
     "layout",
     "view",
-    "pane",
+    "window",
     "band",
     "win",
     "rpc",

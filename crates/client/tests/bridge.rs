@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use gband_client::animation::Animations;
 use gband_client::{Controls, Display, Step};
 use gband_core::geometry::Size;
-use gband_core::layout::{Layout, LayoutOptions, PaneId};
+use gband_core::layout::{Layout, LayoutOptions, WindowId};
 use gband_lua::keys::parse_key;
 use gband_lua::{Config, LoadOptions, Locations, Side};
 use gband_protocol::{ClientMessage, Key, Requirement, ServerMessage, Value};
@@ -59,9 +59,9 @@ fn layout_of(count: usize) -> Layout {
     let band = layout.bands()[0].id;
     let mut after = None;
     for _ in 0..count {
-        let pane = layout.allocate_pane();
-        layout.open(pane, band, after, None, &LayoutOptions::default());
-        after = Some(pane);
+        let window = layout.allocate_window();
+        layout.open(window, band, after, None, &LayoutOptions::default());
+        after = Some(window);
     }
     layout
 }
@@ -74,9 +74,9 @@ fn shown(layout: &Layout) -> ServerMessage {
     }
 }
 
-fn state(pane: u32, key: &str, value: Option<&str>) -> ServerMessage {
-    ServerMessage::PaneState {
-        pane: PaneId(pane),
+fn state(window: u32, key: &str, value: Option<&str>) -> ServerMessage {
+    ServerMessage::WindowState {
+        window: WindowId(window),
         key: key.to_owned(),
         value: value.map(Value::string),
     }
@@ -120,7 +120,7 @@ local function record(name)
     log[#log + 1] = name .. ' ' .. table.concat(keys, ',')
   end
 end
-for _, name in ipairs({ 'Attached', 'PaneStateChanged', 'PaneOpened' }) do
+for _, name in ipairs({ 'Attached', 'WindowStateChanged', 'WindowOpened' }) do
   gband.on(name, record(name))
 end
 ";
@@ -154,8 +154,8 @@ impl Client {
         received.steps
     }
 
-    fn attach(&mut self, panes: usize, extra: impl IntoIterator<Item = ServerMessage>) {
-        let mut messages = vec![shown(&layout_of(panes))];
+    fn attach(&mut self, windows: usize, extra: impl IntoIterator<Item = ServerMessage>) {
+        let mut messages = vec![shown(&layout_of(windows))];
         messages.extend(extra);
         messages.push(requirements(&[]));
         self.receive(messages);
@@ -188,7 +188,7 @@ impl Client {
 fn state_at_attach() {
     let mut client = Client::new(
         "state-at-attach",
-        "gband.on('Attached', function() seen = gband.pane_state(2).agent end)",
+        "gband.on('Attached', function() seen = gband.window_state(2).agent end)",
     );
     assert!(!client.controls.is_attached());
     client.attach(3, [state(2, "agent", Some("waiting"))]);
@@ -214,7 +214,7 @@ fn state_change() {
     client.receive([state(1, "agent", Some("waiting"))]);
     assert_eq!(
         client.log(),
-        ["PaneStateChanged key=agent,pane=1,value=waiting"]
+        ["WindowStateChanged key=agent,value=waiting,window=1"]
     );
 }
 
@@ -226,7 +226,7 @@ fn change_event() {
     client.receive([state(2, "agent", None)]);
     assert_eq!(
         client.log(),
-        ["PaneStateChanged key=agent,pane=2,previous=waiting"]
+        ["WindowStateChanged key=agent,previous=waiting,window=2"]
     );
 }
 
@@ -235,10 +235,10 @@ fn read_only_copy() {
     let mut client = Client::new(
         "read-only",
         "gband.bind('alt+x', function()
-  gband.pane_state(2).agent = 'x'
-  after = gband.pane_state(2).agent
-  empty = next(gband.pane_state(1)) == nil
-  absent = gband.pane_state(9) == nil
+  gband.window_state(2).agent = 'x'
+  after = gband.window_state(2).agent
+  empty = next(gband.window_state(1)) == nil
+  absent = gband.window_state(9) == nil
 end)",
     );
     client.attach(3, [state(2, "agent", Some("waiting"))]);
@@ -249,29 +249,29 @@ end)",
 }
 
 #[test]
-fn state_dropped_with_its_pane() {
+fn state_dropped_with_its_window() {
     let mut client = Client::new(
         "state-dropped",
-        "gband.bind('alt+x', function() absent = gband.pane_state(2) == nil end)",
+        "gband.bind('alt+x', function() absent = gband.window_state(2) == nil end)",
     );
     client.attach(2, [state(2, "agent", Some("waiting"))]);
     let mut layout = layout_of(2);
-    layout.remove(PaneId(2));
+    layout.remove(WindowId(2));
     client.receive([shown(&layout)]);
-    assert!(client.display.pane_state(PaneId(2)).is_none());
+    assert!(client.display.window_state(WindowId(2)).is_none());
     client.press("alt+x");
     assert!(client.eval::<bool>("return absent"));
 }
 
 #[test]
-fn state_of_a_pane_not_yet_in_the_layout_is_kept() {
+fn state_of_a_window_not_yet_in_the_layout_is_kept() {
     let mut client = Client::new("state-early", "");
     client.attach(1, []);
     client.receive([state(2, "agent", Some("waiting"))]);
     let mut layout = layout_of(1);
-    let pane = layout.allocate_pane();
+    let window = layout.allocate_window();
     layout.open(
-        pane,
+        window,
         layout.bands()[0].id,
         None,
         None,
@@ -279,7 +279,7 @@ fn state_of_a_pane_not_yet_in_the_layout_is_kept() {
     );
     client.receive([shown(&layout)]);
     assert_eq!(
-        client.display.pane_state(PaneId(2)).unwrap()["agent"],
+        client.display.window_state(WindowId(2)).unwrap()["agent"],
         Value::string("waiting")
     );
 }
@@ -366,13 +366,13 @@ end)",
     assert_eq!(name, "agents.next_waiting");
     assert_eq!(args, Value::Table(Vec::new()));
     client.receive([
-        ServerMessage::Focus(PaneId(4)),
+        ServerMessage::Focus(WindowId(4)),
         ServerMessage::Result {
             call,
             result: Ok(Value::Int(4)),
         },
     ]);
-    assert_eq!(client.display.focused(), Some(PaneId(4)));
+    assert_eq!(client.display.focused(), Some(WindowId(4)));
     assert_eq!(client.eval::<String>("return answer"), "true 4");
 }
 

@@ -9,7 +9,7 @@ use std::time::Instant;
 
 use gband_core::geometry::Size;
 use gband_core::input::Key;
-use gband_core::layout::PaneId;
+use gband_core::layout::WindowId;
 use gband_protocol::Value as Data;
 
 use mlua::{Function, IntoLuaMulti, Lua, MultiValue, Table, Value};
@@ -567,23 +567,27 @@ impl Runtime {
         })
     }
 
-    pub fn plugin_window_opened(&self, plugin_window: u32, pane: Option<PaneId>) -> Outcome {
+    pub fn plugin_window_opened(&self, plugin_window: u32, window: Option<WindowId>) -> Outcome {
         self.within_callback(|lua| {
-            plugin_windows::call::<()>(lua, "opened", (plugin_window, pane.map(|pane| pane.0)))
+            plugin_windows::call::<()>(
+                lua,
+                "opened",
+                (plugin_window, window.map(|window| window.0)),
+            )
+            .map(|()| false)
+        })
+    }
+
+    pub fn window_resized(&self, plugin_window: u32, size: Size) -> Outcome {
+        self.within_callback(|lua| {
+            plugin_windows::call::<()>(lua, "window_resized", (plugin_window, size.cols, size.rows))
                 .map(|()| false)
         })
     }
 
-    pub fn pane_resized(&self, plugin_window: u32, size: Size) -> Outcome {
+    pub fn window_closed(&self, plugin_window: u32) -> Outcome {
         self.within_callback(|lua| {
-            plugin_windows::call::<()>(lua, "pane_resized", (plugin_window, size.cols, size.rows))
-                .map(|()| false)
-        })
-    }
-
-    pub fn pane_closed(&self, plugin_window: u32) -> Outcome {
-        self.within_callback(|lua| {
-            plugin_windows::call::<()>(lua, "pane_closed", plugin_window).map(|()| false)
+            plugin_windows::call::<()>(lua, "window_closed", plugin_window).map(|()| false)
         })
     }
 

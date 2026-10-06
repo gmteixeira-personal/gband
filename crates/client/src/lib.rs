@@ -24,14 +24,14 @@ use gband_core::action::{Action, ClientAction, SessionCommand};
 use gband_core::geometry::Size;
 use gband_core::input::Key;
 use gband_core::layout::{
-    BandId, FloatingPane, Layout, PaneId, Program, Proportion, SessionAction,
+    BandId, FloatingWindow, Layout, Program, Proportion, SessionAction, WindowId,
 };
 use gband_core::view::{CenterFocusedColumn, Scene, View, ViewAction};
 use gband_emulator::{Emulator, Grid};
 use gband_lua::{
     BandState, Binding, ColumnState, Config, ConfigError, Dispatch, Event, Options, Outcome as Ran,
-    PaneInput, PaneStates, PluginManifest, PluginWindowRequest, Requirement as Needed, Runtime,
-    StatusLine, Version, ViewState,
+    PluginManifest, PluginWindowRequest, Requirement as Needed, Runtime, StatusLine, Version,
+    ViewState, WindowInput, WindowStates,
 };
 use gband_protocol::{ClientMessage, ExecutableId, Requirement, ServerMessage, SessionName, Value};
 use ratatui::layout::Rect;
@@ -149,9 +149,9 @@ pub struct Display {
     placement: Placement,
     ribbon: Rect,
     status: Option<Rect>,
-    grids: HashMap<PaneId, Grid>,
+    grids: HashMap<WindowId, Grid>,
     view: Option<View>,
-    shown: Option<Vec<PaneId>>,
+    shown: Option<Vec<WindowId>>,
     presentation: Presentation,
     prefix: Option<Key>,
     policy: CenterFocusedColumn,
@@ -159,7 +159,7 @@ pub struct Display {
     colors: ColorSupport,
     line: Option<StatusLine>,
     plugin_windows: PluginWindows,
-    states: Arc<PaneStates>,
+    states: Arc<WindowStates>,
     ready: bool,
 }
 
@@ -183,7 +183,7 @@ impl Display {
             colors: ColorSupport::default(),
             line: None,
             plugin_windows: PluginWindows::new(),
-            states: Arc::new(PaneStates::new()),
+            states: Arc::new(WindowStates::new()),
             ready: false,
         }
     }
@@ -192,19 +192,19 @@ impl Display {
         self.ready
     }
 
-    pub fn pane_state(&self, pane: PaneId) -> Option<&BTreeMap<String, Value>> {
-        self.states.get(&pane)
+    pub fn window_state(&self, window: WindowId) -> Option<&BTreeMap<String, Value>> {
+        self.states.get(&window)
     }
 
-    fn set_state(&mut self, pane: PaneId, key: String, value: Option<Value>) -> Option<Value> {
+    fn set_state(&mut self, window: WindowId, key: String, value: Option<Value>) -> Option<Value> {
         let states = Arc::make_mut(&mut self.states);
-        let state = states.entry(pane).or_default();
+        let state = states.entry(window).or_default();
         let previous = match value {
             Some(value) => state.insert(key, value),
             None => state.remove(&key),
         };
         if state.is_empty() {
-            states.remove(&pane);
+            states.remove(&window);
         }
         previous
     }
@@ -216,12 +216,12 @@ impl Display {
     pub fn focused_plugin_window(&self) -> Option<u32> {
         self.plugin_windows.focused_float().or_else(|| {
             self.focused()
-                .and_then(|pane| self.plugin_windows.plugin_window_of(pane))
+                .and_then(|window| self.plugin_windows.plugin_window_of(window))
         })
     }
 
-    pub fn grid_size(&self, pane: PaneId) -> Option<Size> {
-        self.grids.get(&pane).map(Grid::size)
+    pub fn grid_size(&self, window: WindowId) -> Option<Size> {
+        self.grids.get(&window).map(Grid::size)
     }
 
     pub fn configure(&mut self, options: &Options) {
@@ -279,8 +279,8 @@ impl Display {
         self.set_size(self.terminal, placement)
     }
 
-    fn tiled_beside(&self, pane: PaneId) -> Option<PaneId> {
-        let band = self.layout.bands().iter().find(|band| band.holds(pane))?;
+    fn tiled_beside(&self, window: WindowId) -> Option<WindowId> {
+        let band = self.layout.bands().iter().find(|band| band.holds(window))?;
         self.view.as_ref()?.tiled_in(band)
     }
 
@@ -308,7 +308,7 @@ impl Display {
                 count: count(bands.len()),
             },
             column,
-            pane: self.focused().map(|pane| pane.0),
+            window: self.focused().map(|window| window.0),
             width: self.terminal.cols,
             drawn: self.status.is_some(),
             error: self.banner.clone(),
@@ -336,7 +336,7 @@ impl Display {
         Some(ClientMessage::Shown(shown))
     }
 
-    pub fn focused(&self) -> Option<PaneId> {
+    pub fn focused(&self) -> Option<WindowId> {
         self.view.as_ref().and_then(View::focused)
     }
 
@@ -345,11 +345,11 @@ impl Display {
         Some(Observed {
             focused: view.focused(),
             band: view.band(),
-            panes: self
+            windows: self
                 .layout
                 .bands()
                 .iter()
-                .flat_map(|band| band.panes().map(move |pane| (pane, band.id)))
+                .flat_map(|band| band.windows().map(move |window| (window, band.id)))
                 .collect(),
             size: self.terminal,
             shape: self
@@ -360,7 +360,7 @@ impl Display {
                     let columns = band
                         .columns
                         .iter()
-                        .map(|column| (column.panes.clone(), column.width, column.full_width))
+                        .map(|column| (column.windows.clone(), column.width, column.full_width))
                         .collect();
                     (band.id, columns, band.floating.clone())
                 })
@@ -371,15 +371,15 @@ impl Display {
     pub fn apply(&mut self, message: ServerMessage) -> Option<Outcome> {
         match message {
             ServerMessage::Layout { cols, rows, layout } => {
-                self.grids.retain(|&pane, _| layout.contains(pane));
+                self.grids.retain(|&window, _| layout.contains(window));
                 let previous = Arc::clone(&self.layout);
                 if self
                     .states
                     .keys()
-                    .any(|&pane| previous.contains(pane) && !layout.contains(pane))
+                    .any(|&window| previous.contains(window) && !layout.contains(window))
                 {
                     Arc::make_mut(&mut self.states)
-                        .retain(|&pane, _| layout.contains(pane) || !previous.contains(pane));
+                        .retain(|&window, _| layout.contains(window) || !previous.contains(window));
                 }
                 self.layout = Arc::new(layout);
                 let area = Size::new(cols, rows);
@@ -390,25 +390,27 @@ impl Display {
                 self.sync();
             }
             ServerMessage::Snapshot {
-                pane,
+                window,
                 cols,
                 rows,
                 contents,
             } => {
                 let mut grid = Grid::new(Size::new(cols, rows));
                 grid.process(&contents);
-                self.grids.insert(pane, grid);
+                self.grids.insert(window, grid);
             }
-            ServerMessage::Update { pane, contents } => match self.grids.get_mut(&pane) {
+            ServerMessage::Update { window, contents } => match self.grids.get_mut(&window) {
                 Some(grid) => grid.process(&contents),
-                None => tracing::warn!(pane = %pane, "ignoring an update for an unknown pane"),
+                None => {
+                    tracing::warn!(window = %window, "ignoring an update for an unknown window")
+                }
             },
-            ServerMessage::Focus(pane) => {
-                self.with_view(|view, scene| view.focus_pane(pane, scene))
+            ServerMessage::Focus(window) => {
+                self.with_view(|view, scene| view.focus_window(window, scene))
             }
             ServerMessage::Opened { .. }
             | ServerMessage::Event { .. }
-            | ServerMessage::PaneState { .. }
+            | ServerMessage::WindowState { .. }
             | ServerMessage::Result { .. }
             | ServerMessage::Requirements(_)
             | ServerMessage::ServerError(_) => {
@@ -492,7 +494,8 @@ impl Display {
     }
 
     fn key_to_focused(&self, key: Key) -> Option<ClientMessage> {
-        self.focused().map(|pane| ClientMessage::Key { pane, key })
+        self.focused()
+            .map(|window| ClientMessage::Key { window, key })
     }
 }
 
@@ -506,28 +509,28 @@ pub enum Step {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Observed {
-    focused: Option<PaneId>,
+    focused: Option<WindowId>,
     band: BandId,
-    panes: BTreeMap<PaneId, BandId>,
+    windows: BTreeMap<WindowId, BandId>,
     size: Size,
-    shape: Vec<(BandId, Vec<ColumnShape>, Vec<FloatingPane>)>,
+    shape: Vec<(BandId, Vec<ColumnShape>, Vec<FloatingWindow>)>,
 }
 
-type ColumnShape = (Vec<PaneId>, Proportion, bool);
+type ColumnShape = (Vec<WindowId>, Proportion, bool);
 
 fn changes(before: Option<Observed>, after: Option<&Observed>) -> Vec<Event> {
     let (Some(before), Some(after)) = (before, after) else {
         return Vec::new();
     };
     let mut events = Vec::new();
-    for (&pane, &band) in &before.panes {
-        if !after.panes.contains_key(&pane) {
-            events.push(Event::PaneClosed { pane, band });
+    for (&window, &band) in &before.windows {
+        if !after.windows.contains_key(&window) {
+            events.push(Event::WindowClosed { window, band });
         }
     }
-    for (&pane, &band) in &after.panes {
-        if !before.panes.contains_key(&pane) {
-            events.push(Event::PaneOpened { pane, band });
+    for (&window, &band) in &after.windows {
+        if !before.windows.contains_key(&window) {
+            events.push(Event::WindowOpened { window, band });
         }
     }
     if after.shape != before.shape {
@@ -541,7 +544,7 @@ fn changes(before: Option<Observed>, after: Option<&Observed>) -> Vec<Event> {
     }
     if after.focused != before.focused {
         events.push(Event::FocusChanged {
-            pane: after.focused,
+            window: after.focused,
             previous: before.focused,
         });
     }
@@ -639,11 +642,11 @@ impl Controls {
 
     fn bridge(&mut self, display: &mut Display, message: ServerMessage, steps: &mut Vec<Step>) {
         match message {
-            ServerMessage::PaneState { pane, key, value } => {
-                let previous = display.set_state(pane, key.clone(), value.clone());
+            ServerMessage::WindowState { window, key, value } => {
+                let previous = display.set_state(window, key.clone(), value.clone());
                 if display.ready && previous != value {
-                    self.pending.push(Event::PaneStateChanged {
-                        pane,
+                    self.pending.push(Event::WindowStateChanged {
+                        window,
                         key,
                         value,
                         previous,
@@ -729,13 +732,13 @@ impl Controls {
         let mut outcome = None;
         let steps = self.react(display, Vec::new(), |controls, display, steps| {
             for message in messages {
-                if let ServerMessage::Opened { request, pane } = message {
-                    controls.opened(display, request, pane, steps);
+                if let ServerMessage::Opened { request, window } = message {
+                    controls.opened(display, request, window, steps);
                     continue;
                 }
                 if matches!(
                     message,
-                    ServerMessage::PaneState { .. }
+                    ServerMessage::WindowState { .. }
                         | ServerMessage::Event { .. }
                         | ServerMessage::Result { .. }
                         | ServerMessage::Requirements(_)
@@ -749,7 +752,7 @@ impl Controls {
                     return;
                 }
             }
-            controls.track_panes(display, steps);
+            controls.track_windows(display, steps);
         });
         match outcome {
             Some(outcome) => Received {
@@ -818,7 +821,7 @@ impl Controls {
         }
         display
             .focused()
-            .map(|pane| Step::Send(ClientMessage::Paste { pane, text }))
+            .map(|window| Step::Send(ClientMessage::Paste { window, text }))
             .into_iter()
             .collect()
     }
@@ -827,37 +830,37 @@ impl Controls {
         &mut self,
         display: &mut Display,
         request: u32,
-        pane: Option<PaneId>,
+        window: Option<WindowId>,
         steps: &mut Vec<Step>,
     ) {
-        match display.plugin_windows.opened(request, pane) {
-            Opened::Close(pane) => {
-                if let Some(pane) = pane {
-                    steps.push(Step::Send(ClientMessage::Action(SessionAction::ClosePane(
-                        pane,
-                    ))));
+        match display.plugin_windows.opened(request, window) {
+            Opened::Close(window) => {
+                if let Some(window) = window {
+                    steps.push(Step::Send(ClientMessage::Action(
+                        SessionAction::CloseWindow(window),
+                    )));
                 }
             }
             Opened::PluginWindow(plugin_window) => {
-                let outcome = self.runtime.plugin_window_opened(plugin_window, pane);
+                let outcome = self.runtime.plugin_window_opened(plugin_window, window);
                 self.apply(display, outcome, steps);
             }
         }
     }
 
-    fn track_panes(&mut self, display: &mut Display, steps: &mut Vec<Step>) {
-        for (pane, plugin_window) in display.plugin_windows.panes() {
-            if !display.layout.contains(pane) {
-                display.plugin_windows.forget(pane);
-                let outcome = self.runtime.pane_closed(plugin_window);
+    fn track_windows(&mut self, display: &mut Display, steps: &mut Vec<Step>) {
+        for (window, plugin_window) in display.plugin_windows.windows() {
+            if !display.layout.contains(window) {
+                display.plugin_windows.forget(window);
+                let outcome = self.runtime.window_closed(plugin_window);
                 self.apply(display, outcome, steps);
                 continue;
             }
-            let Some(size) = display.grid_size(pane) else {
+            let Some(size) = display.grid_size(window) else {
                 continue;
             };
-            if display.plugin_windows.resized(pane, size) {
-                let outcome = self.runtime.pane_resized(plugin_window, size);
+            if display.plugin_windows.resized(window, size) {
+                let outcome = self.runtime.window_resized(plugin_window, size);
                 self.apply(display, outcome, steps);
             }
         }
@@ -996,17 +999,20 @@ impl Controls {
                 Dispatch::Action(action) => steps.push(dispatch(display, action)),
                 Dispatch::Spawn(program) => steps.push(spawn(display, program)),
                 Dispatch::Enter(table) => self.leader.enter(table),
-                Dispatch::Session(SessionAction::ToggleFloating { pane, after: None }) => {
-                    let after = display.tiled_beside(pane);
-                    let action = SessionAction::ToggleFloating { pane, after };
+                Dispatch::Session(SessionAction::ToggleFloating {
+                    window,
+                    after: None,
+                }) => {
+                    let after = display.tiled_beside(window);
+                    let action = SessionAction::ToggleFloating { window, after };
                     steps.push(Step::Send(ClientMessage::Action(action)));
                 }
                 Dispatch::Session(action) => {
                     steps.push(Step::Send(ClientMessage::Action(action)));
                 }
-                Dispatch::Input { pane, input } => steps.push(Step::Send(match input {
-                    PaneInput::Key(key) => ClientMessage::Key { pane, key },
-                    PaneInput::Paste(text) => ClientMessage::Paste { pane, text },
+                Dispatch::Input { window, input } => steps.push(Step::Send(match input {
+                    WindowInput::Key(key) => ClientMessage::Key { window, key },
+                    WindowInput::Paste(text) => ClientMessage::Paste { window, text },
                 })),
                 Dispatch::PluginWindow(request) => steps.push(plugin_window_step(display, request)),
                 Dispatch::Write(bytes) => steps.push(Step::Write(bytes)),
@@ -1068,9 +1074,9 @@ fn spawn(display: &mut Display, program: Option<Program>) -> Step {
     let open = display
         .view
         .as_ref()
-        .and_then(|view| view.resolve(SessionCommand::OpenPane));
+        .and_then(|view| view.resolve(SessionCommand::OpenWindow));
     match open {
-        Some(SessionAction::OpenPane { band, after, .. }) => Step::Send(ClientMessage::Action(
+        Some(SessionAction::OpenWindow { band, after, .. }) => Step::Send(ClientMessage::Action(
             SessionAction::open(band, after, program),
         )),
         _ => Step::Nothing,

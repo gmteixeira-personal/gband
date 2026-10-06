@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use gband_core::geometry::{Size, placed};
-use gband_core::layout::{BandId, Layout, PaneId};
+use gband_core::layout::{BandId, Layout, WindowId};
 use gband_protocol::{Key, Value as Data};
 use mlua::{Function, Lua, MultiValue, Table, Value};
 
@@ -28,15 +28,15 @@ pub struct SessionView {
 pub trait Host: Send + Sync {
     fn sessions(&self) -> Vec<String>;
     fn session(&self, name: &str) -> Option<SessionView>;
-    fn pane_state(&self, session: &str, pane: PaneId) -> Option<BTreeMap<String, Data>>;
-    fn set_pane_state(&self, session: &str, pane: PaneId, key: &str, value: Option<Data>);
+    fn window_state(&self, session: &str, window: WindowId) -> Option<BTreeMap<String, Data>>;
+    fn set_window_state(&self, session: &str, window: WindowId, key: &str, value: Option<Data>);
     fn emit(&self, name: String, data: Data, session: Option<String>);
 }
 
 pub struct Caller {
     pub session: String,
     pub client: u64,
-    pub focus: Arc<dyn Fn(PaneId) + Send + Sync>,
+    pub focus: Arc<dyn Fn(WindowId) + Send + Sync>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -47,30 +47,30 @@ pub enum Event {
     SessionEnded {
         session: String,
     },
-    PaneOpened {
+    WindowOpened {
         session: String,
-        pane: PaneId,
+        window: WindowId,
         band: BandId,
     },
-    PaneClosed {
+    WindowClosed {
         session: String,
-        pane: PaneId,
+        window: WindowId,
         band: BandId,
     },
-    PaneExited {
+    WindowExited {
         session: String,
-        pane: PaneId,
+        window: WindowId,
         code: Option<u32>,
         signal: Option<i32>,
     },
-    PaneOutput {
+    WindowOutput {
         session: String,
-        pane: PaneId,
+        window: WindowId,
         data: Vec<u8>,
     },
-    PaneInput {
+    WindowInput {
         session: String,
-        pane: PaneId,
+        window: WindowId,
         client: u64,
     },
     ClientAttached {
@@ -87,11 +87,11 @@ pub enum Event {
 pub(crate) const NAMES: [&str; 10] = [
     "SessionCreated",
     "SessionEnded",
-    "PaneOpened",
-    "PaneClosed",
-    "PaneExited",
-    "PaneOutput",
-    "PaneInput",
+    "WindowOpened",
+    "WindowClosed",
+    "WindowExited",
+    "WindowOutput",
+    "WindowInput",
     "ClientAttached",
     "ClientDetached",
     "ConfigReloaded",
@@ -102,11 +102,11 @@ impl Event {
         match self {
             Event::SessionCreated { .. } => "SessionCreated",
             Event::SessionEnded { .. } => "SessionEnded",
-            Event::PaneOpened { .. } => "PaneOpened",
-            Event::PaneClosed { .. } => "PaneClosed",
-            Event::PaneExited { .. } => "PaneExited",
-            Event::PaneOutput { .. } => "PaneOutput",
-            Event::PaneInput { .. } => "PaneInput",
+            Event::WindowOpened { .. } => "WindowOpened",
+            Event::WindowClosed { .. } => "WindowClosed",
+            Event::WindowExited { .. } => "WindowExited",
+            Event::WindowOutput { .. } => "WindowOutput",
+            Event::WindowInput { .. } => "WindowInput",
             Event::ClientAttached { .. } => "ClientAttached",
             Event::ClientDetached { .. } => "ClientDetached",
             Event::ConfigReloaded => "ConfigReloaded",
@@ -119,47 +119,47 @@ impl Event {
             Event::SessionCreated { session } | Event::SessionEnded { session } => {
                 payload.set("session", session.as_str())?;
             }
-            Event::PaneOpened {
+            Event::WindowOpened {
                 session,
-                pane,
+                window,
                 band,
             }
-            | Event::PaneClosed {
+            | Event::WindowClosed {
                 session,
-                pane,
+                window,
                 band,
             } => {
                 payload.set("session", session.as_str())?;
-                payload.set("pane", pane.0)?;
+                payload.set("window", window.0)?;
                 payload.set("band", band.0)?;
             }
-            Event::PaneExited {
+            Event::WindowExited {
                 session,
-                pane,
+                window,
                 code,
                 signal,
             } => {
                 payload.set("session", session.as_str())?;
-                payload.set("pane", pane.0)?;
+                payload.set("window", window.0)?;
                 payload.set("code", *code)?;
                 payload.set("signal", *signal)?;
             }
-            Event::PaneOutput {
+            Event::WindowOutput {
                 session,
-                pane,
+                window,
                 data,
             } => {
                 payload.set("session", session.as_str())?;
-                payload.set("pane", pane.0)?;
+                payload.set("window", window.0)?;
                 payload.set("data", lua.create_string(data)?)?;
             }
-            Event::PaneInput {
+            Event::WindowInput {
                 session,
-                pane,
+                window,
                 client,
             } => {
                 payload.set("session", session.as_str())?;
-                payload.set("pane", pane.0)?;
+                payload.set("window", window.0)?;
                 payload.set("client", *client)?;
             }
             Event::ClientAttached { session, client }
@@ -188,7 +188,7 @@ pub(crate) fn install(lua: &Lua, gband: &Table) -> mlua::Result<()> {
     lua.set_app_data(Slot::default());
     gband.set("sessions", lua.create_function(sessions)?)?;
     gband.set("session", lua.create_function(session)?)?;
-    gband.set("pane_state", lua.create_function(pane_state)?)?;
+    gband.set("window_state", lua.create_function(window_state)?)?;
     Ok(())
 }
 
@@ -210,7 +210,7 @@ fn number(lua: &Lua, value: &Value, what: &str) -> mlua::Result<u32> {
         }
         _ => None,
     }
-    .ok_or_else(|| ConfigError::raise(lua, format!("{what} must be a pane number")))
+    .ok_or_else(|| ConfigError::raise(lua, format!("{what} must be a window number")))
 }
 
 fn sessions(lua: &Lua, (): ()) -> mlua::Result<Table> {
@@ -238,13 +238,13 @@ fn session(lua: &Lua, name: Value) -> mlua::Result<Option<Table>> {
                 f64::from(column.width.num) / f64::from(column.width.den),
             )?;
             described.set("full_width", column.full_width)?;
-            let panes = lua.create_table()?;
-            for pane in &column.panes {
+            let windows = lua.create_table()?;
+            for window in &column.windows {
                 let item = lua.create_table()?;
-                item.set("pane", pane.0)?;
-                panes.push(item)?;
+                item.set("window", window.0)?;
+                windows.push(item)?;
             }
-            described.set("panes", panes)?;
+            described.set("windows", windows)?;
             columns.push(described)?;
         }
         entry.set("columns", columns)?;
@@ -252,7 +252,7 @@ fn session(lua: &Lua, name: Value) -> mlua::Result<Option<Table>> {
         for record in &band.floating {
             let placed = placed(record, view.area);
             let item = lua.create_table()?;
-            item.set("pane", record.pane.0)?;
+            item.set("window", record.window.0)?;
             item.set(
                 "width",
                 f64::from(record.width.num) / f64::from(record.width.den),
@@ -273,19 +273,19 @@ fn session(lua: &Lua, name: Value) -> mlua::Result<Option<Table>> {
     Ok(Some(table))
 }
 
-fn pane_state(lua: &Lua, (session, pane): (Value, Value)) -> mlua::Result<Option<Table>> {
-    let session = text(lua, &session, "the session of gband.pane_state")?;
-    let pane = PaneId(number(lua, &pane, "the pane of gband.pane_state")?);
+fn window_state(lua: &Lua, (session, window): (Value, Value)) -> mlua::Result<Option<Table>> {
+    let session = text(lua, &session, "the session of gband.window_state")?;
+    let window = WindowId(number(lua, &window, "the window of gband.window_state")?);
     let Some(host) = host(lua) else {
         return Ok(None);
     };
-    if host.pane_state(&session, pane).is_none() {
+    if host.window_state(&session, window).is_none() {
         return Ok(None);
     }
-    proxy(lua, host, session, pane).map(Some)
+    proxy(lua, host, session, window).map(Some)
 }
 
-fn proxy(lua: &Lua, host: Arc<dyn Host>, session: String, pane: PaneId) -> mlua::Result<Table> {
+fn proxy(lua: &Lua, host: Arc<dyn Host>, session: String, window: WindowId) -> mlua::Result<Table> {
     let table = lua.create_table()?;
     let meta = lua.create_table()?;
     let (reader, writer, lister) = (Arc::clone(&host), Arc::clone(&host), host);
@@ -298,7 +298,7 @@ fn proxy(lua: &Lua, host: Arc<dyn Host>, session: String, pane: PaneId) -> mlua:
             };
             let key = key.to_str()?.to_owned();
             match reader
-                .pane_state(&read_session, pane)
+                .window_state(&read_session, window)
                 .and_then(|mut state| state.remove(&key))
             {
                 Some(value) => value::into_lua(lua, &value),
@@ -314,7 +314,7 @@ fn proxy(lua: &Lua, host: Arc<dyn Host>, session: String, pane: PaneId) -> mlua:
                 _ => {
                     return Err(ConfigError::raise(
                         lua,
-                        "a pane state key must be a non-empty string",
+                        "a window state key must be a non-empty string",
                     ));
                 }
             };
@@ -325,7 +325,7 @@ fn proxy(lua: &Lua, host: Arc<dyn Host>, session: String, pane: PaneId) -> mlua:
                         .map_err(|message| ConfigError::raise(lua, message))?,
                 ),
             };
-            let Some(mut state) = writer.pane_state(&write_session, pane) else {
+            let Some(mut state) = writer.window_state(&write_session, window) else {
                 return Ok(());
             };
             let previous = match &value {
@@ -339,11 +339,11 @@ fn proxy(lua: &Lua, host: Arc<dyn Host>, session: String, pane: PaneId) -> mlua:
                 return Err(ConfigError::raise(
                     lua,
                     format!(
-                        "setting `{key}` would make the state of pane {pane} larger than 64 KiB"
+                        "setting `{key}` would make the state of window {window} larger than 64 KiB"
                     ),
                 ));
             }
-            writer.set_pane_state(&write_session, pane, &key, value);
+            writer.set_window_state(&write_session, window, &key, value);
             Ok(())
         })?,
     )?;
@@ -351,7 +351,10 @@ fn proxy(lua: &Lua, host: Arc<dyn Host>, session: String, pane: PaneId) -> mlua:
         "__pairs",
         lua.create_function(move |lua, _: Value| {
             let snapshot = lua.create_table()?;
-            for (key, value) in lister.pane_state(&list_session, pane).unwrap_or_default() {
+            for (key, value) in lister
+                .window_state(&list_session, window)
+                .unwrap_or_default()
+            {
                 snapshot.set(key, value::into_lua(lua, &value)?)?;
             }
             let next: Function = lua.globals().get("next")?;

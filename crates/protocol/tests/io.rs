@@ -3,7 +3,7 @@ use std::io;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use gband_core::layout::PaneId;
+use gband_core::layout::WindowId;
 use gband_protocol::{
     ClientMessage, FrameError, IoError, MAX_FRAME_LEN, MessageReader, MessageWriter, encode,
 };
@@ -32,7 +32,7 @@ impl AsyncRead for Chunks {
 
 fn paste(text: &str) -> ClientMessage {
     ClientMessage::Paste {
-        pane: PaneId(1),
+        window: WindowId(1),
         text: text.to_owned(),
     }
 }

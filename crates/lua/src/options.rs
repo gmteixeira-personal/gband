@@ -196,7 +196,7 @@ const BUILTIN: [(&str, &str, &str); 8] = [
     (
         "default_column_width",
         "number",
-        "the width of a new pane's column, as a fraction of the screen",
+        "the width of a new window's column, as a fraction of the screen",
     ),
     (
         "width_presets",

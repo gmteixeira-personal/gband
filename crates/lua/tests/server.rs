@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex};
 use common::*;
 use gband_core::geometry::Size;
 use gband_core::layout::{
-    BandId, Layout, LayoutOptions, PaneContent, PaneId, Program, SessionAction, Vertical,
+    BandId, Layout, LayoutOptions, Program, SessionAction, Vertical, WindowContent, WindowId,
 };
 use gband_lua::server::{Caller, Event, Host, SessionView};
 use gband_lua::{Config, Dispatch, Outcome};
@@ -26,17 +26,17 @@ struct Fake {
 }
 
 impl Fake {
-    fn with_pane(session: &str, pane: u32) -> Arc<Self> {
+    fn with_window(session: &str, window: u32) -> Arc<Self> {
         let fake = Arc::new(Fake::default());
         fake.states
             .lock()
             .unwrap()
-            .insert((session.to_owned(), pane), BTreeMap::new());
+            .insert((session.to_owned(), window), BTreeMap::new());
         fake
     }
 
-    fn state(&self, session: &str, pane: u32) -> BTreeMap<String, Value> {
-        self.states.lock().unwrap()[&(session.to_owned(), pane)].clone()
+    fn state(&self, session: &str, window: u32) -> BTreeMap<String, Value> {
+        self.states.lock().unwrap()[&(session.to_owned(), window)].clone()
     }
 
     fn emitted(&self) -> Vec<(String, Value, Option<String>)> {
@@ -59,18 +59,18 @@ impl Host for Fake {
         })
     }
 
-    fn pane_state(&self, session: &str, pane: PaneId) -> Option<BTreeMap<String, Value>> {
+    fn window_state(&self, session: &str, window: WindowId) -> Option<BTreeMap<String, Value>> {
         self.states
             .lock()
             .unwrap()
-            .get(&(session.to_owned(), pane.0))
+            .get(&(session.to_owned(), window.0))
             .cloned()
     }
 
-    fn set_pane_state(&self, session: &str, pane: PaneId, key: &str, value: Option<Value>) {
+    fn set_window_state(&self, session: &str, window: WindowId, key: &str, value: Option<Value>) {
         *self.writes.lock().unwrap() += 1;
         let mut states = self.states.lock().unwrap();
-        let state = states.get_mut(&(session.to_owned(), pane.0)).unwrap();
+        let state = states.get_mut(&(session.to_owned(), window.0)).unwrap();
         match value {
             Some(value) => state.insert(key.to_owned(), value),
             None => state.remove(key),
@@ -92,10 +92,10 @@ fn server(source: &str, host: Arc<Fake>) -> (Scratch, Config) {
     (scratch, config)
 }
 
-fn opened(session: &str, pane: u32) -> Event {
-    Event::PaneOpened {
+fn opened(session: &str, window: u32) -> Event {
+    Event::WindowOpened {
         session: session.to_owned(),
-        pane: PaneId(pane),
+        window: WindowId(window),
         band: BandId(1),
     }
 }
@@ -115,9 +115,9 @@ fn user_event_refused() {
 #[test]
 fn server_event_name_in_the_client() {
     let scratch = Scratch::new("server-event-in-client");
-    let path = scratch.write("\n\n\ngband.on('PaneOutput', function() end)");
+    let path = scratch.write("\n\n\ngband.on('WindowOutput', function() end)");
     let error = scratch.load().err().unwrap();
-    assert_error_at(&error, &path, 4, "`PaneOutput`");
+    assert_error_at(&error, &path, 4, "`WindowOutput`");
     assert!(error.message.contains("server"), "{error}");
 }
 
@@ -133,7 +133,7 @@ fn client_event_in_the_server() {
 #[test]
 fn pattern_is_refused_for_server_events() {
     let scratch = Scratch::new("server-pattern");
-    let path = scratch.server("gband.on('PaneOpened', function() end, { pattern = 'x' })");
+    let path = scratch.server("gband.on('WindowOpened', function() end, { pattern = 'x' })");
     let error = scratch.load_server().err().unwrap();
     assert_error_at(&error, &path, 1, "pattern");
 }
@@ -143,11 +143,11 @@ fn payload_of_each_server_event() {
     let names = [
         "SessionCreated",
         "SessionEnded",
-        "PaneOpened",
-        "PaneClosed",
-        "PaneExited",
-        "PaneOutput",
-        "PaneInput",
+        "WindowOpened",
+        "WindowClosed",
+        "WindowExited",
+        "WindowOutput",
+        "WindowInput",
         "ClientAttached",
         "ClientDetached",
         "ConfigReloaded",
@@ -169,31 +169,31 @@ fn payload_of_each_server_event() {
         Event::SessionCreated { session: session() },
         Event::SessionEnded { session: session() },
         opened("work", 2),
-        Event::PaneClosed {
+        Event::WindowClosed {
             session: session(),
-            pane: PaneId(2),
+            window: WindowId(2),
             band: BandId(3),
         },
-        Event::PaneExited {
+        Event::WindowExited {
             session: session(),
-            pane: PaneId(2),
+            window: WindowId(2),
             code: Some(3),
             signal: None,
         },
-        Event::PaneExited {
+        Event::WindowExited {
             session: session(),
-            pane: PaneId(2),
+            window: WindowId(2),
             code: None,
             signal: Some(9),
         },
-        Event::PaneOutput {
+        Event::WindowOutput {
             session: session(),
-            pane: PaneId(2),
+            window: WindowId(2),
             data: b"hi\r\n".to_vec(),
         },
-        Event::PaneInput {
+        Event::WindowInput {
             session: session(),
-            pane: PaneId(2),
+            window: WindowId(2),
             client: 7,
         },
         Event::ClientAttached {
@@ -215,37 +215,37 @@ fn payload_of_each_server_event() {
         [
             "SessionCreated session=work",
             "SessionEnded session=work",
-            "PaneOpened band=1 pane=2 session=work",
-            "PaneClosed band=3 pane=2 session=work",
-            "PaneExited code=3 pane=2 session=work",
-            "PaneExited pane=2 session=work signal=9",
-            "PaneOutput data=hi\r\n pane=2 session=work",
-            "PaneInput client=7 pane=2 session=work",
+            "WindowOpened band=1 session=work window=2",
+            "WindowClosed band=3 session=work window=2",
+            "WindowExited code=3 session=work window=2",
+            "WindowExited session=work signal=9 window=2",
+            "WindowOutput data=hi\r\n session=work window=2",
+            "WindowInput client=7 session=work window=2",
             "ClientAttached client=7 session=work",
             "ClientDetached client=7 session=work",
             "ConfigReloaded ",
         ]
     );
-    assert!(config.runtime.handles("PaneOutput"));
+    assert!(config.runtime.handles("WindowOutput"));
 }
 
 #[test]
 fn handles_only_registered_events() {
     let (_scratch, config) = server(
-        "gband.on('PaneOpened', function() end)",
+        "gband.on('WindowOpened', function() end)",
         Arc::new(Fake::default()),
     );
-    assert!(config.runtime.handles("PaneOpened"));
-    assert!(!config.runtime.handles("PaneOutput"));
-    assert!(!config.runtime.handles("PaneInput"));
+    assert!(config.runtime.handles("WindowOpened"));
+    assert!(!config.runtime.handles("WindowOutput"));
+    assert!(!config.runtime.handles("WindowInput"));
 }
 
 #[test]
 fn emit_reaches_the_host() {
     let host = Arc::new(Fake::default());
     let (_scratch, config) = server(
-        "gband.on('PaneOpened', function(ev)
-           gband.emit('agent.waiting', { pane = ev.pane, title = 'build' })
+        "gband.on('WindowOpened', function(ev)
+           gband.emit('agent.waiting', { window = ev.window, title = 'build' })
            gband.emit('agent.done', nil, { session = 'work' })
          end)",
         Arc::clone(&host),
@@ -268,8 +268,8 @@ fn emit_reaches_the_host() {
             (
                 "agent.waiting".to_owned(),
                 Value::Table(vec![
-                    (Key::string("pane"), Value::Int(1)),
                     (Key::string("title"), text("build")),
+                    (Key::string("window"), Value::Int(1)),
                 ]),
                 None
             ),
@@ -279,7 +279,7 @@ fn emit_reaches_the_host() {
 }
 
 fn failed_handler(source: &str) -> (Outcome, Arc<Fake>) {
-    let host = Fake::with_pane("work", 1);
+    let host = Fake::with_window("work", 1);
     let (_scratch, config) = server(source, Arc::clone(&host));
     let outcome = config.runtime.emit_server(&opened("work", 1));
     (outcome, host)
@@ -288,7 +288,7 @@ fn failed_handler(source: &str) -> (Outcome, Arc<Fake>) {
 #[test]
 fn function_inside_emitted_data() {
     let (outcome, host) = failed_handler(
-        "gband.on('PaneOpened', function()
+        "gband.on('WindowOpened', function()
            local x = 1
            gband.emit('bad', { cb = { run = function() end } })
          end)",
@@ -311,8 +311,9 @@ fn emit_validation_errors_at_the_call_line() {
         ("gband.emit('x', {}, 'work')", "options"),
         ("local t = {} t.self = t gband.emit('x', t)", "`data.self`"),
     ] {
-        let (outcome, host) =
-            failed_handler(&format!("gband.on('PaneOpened', function()\n{call}\nend)"));
+        let (outcome, host) = failed_handler(&format!(
+            "gband.on('WindowOpened', function()\n{call}\nend)"
+        ));
         let [error] = outcome.errors.as_slice() else {
             panic!("{call}: {:?}", outcome.errors);
         };
@@ -335,10 +336,10 @@ fn emit_while_loading_is_an_error() {
 }
 
 #[test]
-fn set_and_clear_pane_state() {
+fn set_and_clear_window_state() {
     let (outcome, host) = failed_handler(
-        "gband.on('PaneOpened', function(ev)
-           local state = gband.pane_state(ev.session, ev.pane)
+        "gband.on('WindowOpened', function(ev)
+           local state = gband.window_state(ev.session, ev.window)
            state.agent = 'waiting'
            state.count = 2
            state.count = nil
@@ -352,17 +353,17 @@ fn set_and_clear_pane_state() {
 }
 
 #[test]
-fn pane_state_reads_return_copies() {
-    let host = Fake::with_pane("work", 1);
+fn window_state_reads_return_copies() {
+    let host = Fake::with_window("work", 1);
     let (_scratch, config) = server(
-        "gband.on('PaneOpened', function(ev)
-           local state = gband.pane_state(ev.session, ev.pane)
+        "gband.on('WindowOpened', function(ev)
+           local state = gband.window_state(ev.session, ev.window)
            state.list = { 1, 2 }
            local copy = state.list
            copy[1] = 9
            first = state.list[1]
            seen = state.list ~= state.list
-           missing = gband.pane_state(ev.session, 99) == nil
+           missing = gband.window_state(ev.session, 99) == nil
            keys = {}
            for k in pairs(state) do keys[#keys + 1] = k end
          end)",
@@ -376,10 +377,10 @@ fn pane_state_reads_return_copies() {
 }
 
 #[test]
-fn function_refused_in_pane_state() {
+fn function_refused_in_window_state() {
     let (outcome, host) = failed_handler(
-        "gband.on('PaneOpened', function(ev)
-           local state = gband.pane_state(ev.session, ev.pane)
+        "gband.on('WindowOpened', function(ev)
+           local state = gband.window_state(ev.session, ev.window)
            state.agent = 'waiting'
            local x = 1
            state.agent = function() end
@@ -400,8 +401,8 @@ fn function_refused_in_pane_state() {
 fn invalid_keys_are_refused() {
     for assignment in ["state[1] = 'x'", "state[''] = 'x'"] {
         let (outcome, host) = failed_handler(&format!(
-            "gband.on('PaneOpened', function(ev)
-               local state = gband.pane_state(ev.session, ev.pane)
+            "gband.on('WindowOpened', function(ev)
+               local state = gband.window_state(ev.session, ev.window)
                {assignment}
              end)"
         ));
@@ -413,8 +414,8 @@ fn invalid_keys_are_refused() {
 #[test]
 fn state_size_limit() {
     let (outcome, host) = failed_handler(
-        "gband.on('PaneOpened', function(ev)
-           local state = gband.pane_state(ev.session, ev.pane)
+        "gband.on('WindowOpened', function(ev)
+           local state = gband.window_state(ev.session, ev.window)
            state.a = string.rep('x', 40000)
            state.b = string.rep('y', 40000)
          end)",
@@ -431,8 +432,8 @@ fn state_size_limit() {
 #[test]
 fn equal_assignment_changes_nothing() {
     let (outcome, host) = failed_handler(
-        "gband.on('PaneOpened', function(ev)
-           local state = gband.pane_state(ev.session, ev.pane)
+        "gband.on('WindowOpened', function(ev)
+           local state = gband.window_state(ev.session, ev.window)
            state.agent = { name = 'build', n = 1 }
            state.agent = { name = 'build', n = 1 }
            state.absent = nil
@@ -442,14 +443,14 @@ fn equal_assignment_changes_nothing() {
     assert_eq!(*host.writes.lock().unwrap(), 1);
 }
 
-fn layout_of(panes: usize) -> Layout {
+fn layout_of(windows: usize) -> Layout {
     let mut layout = Layout::new();
     let band = layout.bands()[0].id;
     let mut after = None;
-    for _ in 0..panes {
-        let pane = layout.allocate_pane();
-        layout.open(pane, band, after, None, &LayoutOptions::default());
-        after = Some(pane);
+    for _ in 0..windows {
+        let window = layout.allocate_window();
+        layout.open(window, band, after, None, &LayoutOptions::default());
+        after = Some(window);
     }
     layout
 }
@@ -469,7 +470,7 @@ fn layout_of_a_session() {
         "gband.on('ConfigReloaded', function()
            names = gband.sessions()
            local work = gband.session('work')
-           second = work.bands[1].columns[2].panes[1].pane
+           second = work.bands[1].columns[2].windows[1].window
            width = work.bands[1].columns[1].width
            clients = #work.clients
            band = work.bands[1].band
@@ -487,19 +488,22 @@ fn layout_of_a_session() {
 }
 
 #[test]
-fn floating_pane_in_the_structure() {
+fn floating_window_in_the_structure() {
     let host = Arc::new(Fake::default());
     let mut layout = layout_of(2);
-    let pane = PaneId(2);
+    let window = WindowId(2);
     let options = LayoutOptions::default();
     layout.apply(
-        SessionAction::ToggleFloating { pane, after: None },
+        SessionAction::ToggleFloating {
+            window,
+            after: None,
+        },
         AREA,
         &options,
     );
     let (col, row) = (70, 3);
     layout.apply(
-        SessionAction::SetPosition { pane, col, row },
+        SessionAction::SetPosition { window, col, row },
         AREA,
         &options,
     );
@@ -511,7 +515,7 @@ fn floating_pane_in_the_structure() {
         "gband.on('ConfigReloaded', function()
            local band = gband.session('work').bands[1]
            local f = band.floating[1]
-           seen = string.format('%d %d %.1f %s %d %d %d', #band.columns, f.pane, f.width, tostring(f.full_width), f.rows, f.col, f.row)
+           seen = string.format('%d %d %.1f %s %d %d %d', #band.columns, f.window, f.width, tostring(f.full_width), f.rows, f.col, f.row)
          end)",
         host,
     );
@@ -522,11 +526,11 @@ fn floating_pane_in_the_structure() {
 #[test]
 fn floating_targets() {
     let (_scratch, config) = server(
-        "gband.on('PaneOpened', function(ev)
-           gband.action.open_pane({ session = ev.session, band = 1, floating = true })
-           gband.action.toggle_pane_floating({ session = ev.session, pane = 3, after = ev.pane })
-           gband.action.toggle_pane_floating({ session = ev.session, pane = 3 })
-           gband.action.move_pane_up({ session = ev.session, pane = 3 })
+        "gband.on('WindowOpened', function(ev)
+           gband.action.open_window({ session = ev.session, band = 1, floating = true })
+           gband.action.toggle_window_floating({ session = ev.session, window = 3, after = ev.window })
+           gband.action.toggle_window_floating({ session = ev.session, window = 3 })
+           gband.action.move_window_up({ session = ev.session, window = 3 })
          end)",
         Arc::new(Fake::default()),
     );
@@ -539,24 +543,24 @@ fn floating_targets() {
     assert_eq!(
         outcome.dispatched,
         [
-            targeted(SessionAction::OpenPane {
+            targeted(SessionAction::OpenWindow {
                 band: BandId(1),
                 after: None,
                 width: None,
                 floating: true,
                 focus: false,
-                content: PaneContent::Program(None),
+                content: WindowContent::Program(None),
             }),
             targeted(SessionAction::ToggleFloating {
-                pane: PaneId(3),
-                after: Some(PaneId(1)),
+                window: WindowId(3),
+                after: Some(WindowId(1)),
             }),
             targeted(SessionAction::ToggleFloating {
-                pane: PaneId(3),
+                window: WindowId(3),
                 after: None,
             }),
-            targeted(SessionAction::MovePane {
-                pane: PaneId(3),
+            targeted(SessionAction::MoveWindow {
+                window: WindowId(3),
                 direction: Vertical::Up,
             }),
         ]
@@ -564,11 +568,11 @@ fn floating_targets() {
 }
 
 #[test]
-fn open_pane_target_with_a_program_list() {
+fn open_window_target_with_a_program_list() {
     let (_scratch, config) = server(
-        "gband.on('PaneOpened', function(ev)
-           gband.action.open_pane({ session = ev.session, band = 1, after = ev.pane, program = { 'htop', '-d', '10' } })
-           gband.action.grow_column_width({ session = ev.session, pane = ev.pane })
+        "gband.on('WindowOpened', function(ev)
+           gband.action.open_window({ session = ev.session, band = 1, after = ev.window, program = { 'htop', '-d', '10' } })
+           gband.action.grow_column_width({ session = ev.session, window = ev.window })
          end)",
         Arc::new(Fake::default()),
     );
@@ -579,13 +583,13 @@ fn open_pane_target_with_a_program_list() {
         [
             Dispatch::Targeted {
                 session: "work".to_owned(),
-                action: SessionAction::OpenPane {
+                action: SessionAction::OpenWindow {
                     band: BandId(1),
-                    after: Some(PaneId(1)),
+                    after: Some(WindowId(1)),
                     width: None,
                     floating: false,
                     focus: false,
-                    content: PaneContent::Program(Some(Program::Argv(vec![
+                    content: WindowContent::Program(Some(Program::Argv(vec![
                         "htop".to_owned(),
                         "-d".to_owned(),
                         "10".to_owned()
@@ -595,7 +599,7 @@ fn open_pane_target_with_a_program_list() {
             Dispatch::Targeted {
                 session: "work".to_owned(),
                 action: SessionAction::StepWidth {
-                    pane: PaneId(1),
+                    window: WindowId(1),
                     step: gband_core::layout::Step::Grow,
                 },
             },
@@ -606,37 +610,38 @@ fn open_pane_target_with_a_program_list() {
 #[test]
 fn invalid_action_targets() {
     for (call, mentions) in [
-        ("gband.action.close_pane({ pane = 1 })", "`session`"),
-        ("gband.action.close_pane({ session = 'w' })", "`pane`"),
+        ("gband.action.close_window({ window = 1 })", "`session`"),
+        ("gband.action.close_window({ session = 'w' })", "`window`"),
         (
-            "gband.action.close_pane({ session = 'w', pane = 'x' })",
-            "`pane`",
+            "gband.action.close_window({ session = 'w', window = 'x' })",
+            "`window`",
         ),
         (
-            "gband.action.close_pane({ session = 'w', pane = 1, band = 1 })",
+            "gband.action.close_window({ session = 'w', window = 1, band = 1 })",
             "`band`",
         ),
-        ("gband.action.open_pane({ session = 'w' })", "`band`"),
+        ("gband.action.open_window({ session = 'w' })", "`band`"),
         (
-            "gband.action.open_pane({ session = 'w', band = 1, program = {} })",
+            "gband.action.open_window({ session = 'w', band = 1, program = {} })",
             "`program`",
         ),
-        ("gband.action.close_pane(1)", "target table"),
+        ("gband.action.close_window(1)", "target table"),
         (
-            "gband.action.open_pane({ session = 'w', band = 1, after = 1, floating = true })",
+            "gband.action.open_window({ session = 'w', band = 1, after = 1, floating = true })",
             "`after`",
         ),
         (
-            "gband.action.open_pane({ session = 'w', band = 1, floating = 1 })",
+            "gband.action.open_window({ session = 'w', band = 1, floating = 1 })",
             "`floating`",
         ),
         (
-            "gband.action.close_pane({ session = 'w', pane = 1, after = 2 })",
+            "gband.action.close_window({ session = 'w', window = 1, after = 2 })",
             "`after`",
         ),
     ] {
-        let (outcome, _) =
-            failed_handler(&format!("gband.on('PaneOpened', function()\n{call}\nend)"));
+        let (outcome, _) = failed_handler(&format!(
+            "gband.on('WindowOpened', function()\n{call}\nend)"
+        ));
         let [error] = outcome.errors.as_slice() else {
             panic!("{call}: {:?}", outcome.errors);
         };
@@ -649,7 +654,7 @@ fn invalid_action_targets() {
 #[test]
 fn actions_while_loading_are_an_error() {
     let scratch = Scratch::new("action-loading");
-    let path = scratch.server("gband.action.close_pane({ session = 'w', pane = 1 })");
+    let path = scratch.server("gband.action.close_window({ session = 'w', window = 1 })");
     let error = scratch.load_server().err().unwrap();
     assert_error_at(&error, &path, 1, "callback");
 }
@@ -687,7 +692,7 @@ fn command_from_a_client() {
     let caller = Caller {
         session: "work".to_owned(),
         client: 7,
-        focus: Arc::new(move |pane| sink.lock().unwrap().push(pane)),
+        focus: Arc::new(move |window| sink.lock().unwrap().push(window)),
     };
     let args = Value::Table(vec![(Key::string("n"), Value::Int(4))]);
     let (result, outcome) = config.runtime.command("list", args, Some(caller));
@@ -696,7 +701,7 @@ fn command_from_a_client() {
         result,
         Ok(Value::Table(vec![(Key::string("count"), Value::Int(4))]))
     );
-    assert_eq!(*focused.lock().unwrap(), [PaneId(3)]);
+    assert_eq!(*focused.lock().unwrap(), [WindowId(3)]);
     let session: String = eval(&config, "return seen.session");
     assert_eq!(session, "work");
     assert_eq!(eval::<i64>(&config, "return seen.client"), 7);

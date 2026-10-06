@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use gband_core::layout::{BandId, PaneId};
+use gband_core::layout::{BandId, WindowId};
 use gband_protocol::Value as Data;
 use mlua::{Lua, Table, Value};
 
@@ -17,19 +17,19 @@ pub enum Event {
         session: String,
     },
     FocusChanged {
-        pane: Option<PaneId>,
-        previous: Option<PaneId>,
+        window: Option<WindowId>,
+        previous: Option<WindowId>,
     },
     BandChanged {
         band: BandId,
         previous: BandId,
     },
-    PaneOpened {
-        pane: PaneId,
+    WindowOpened {
+        window: WindowId,
         band: BandId,
     },
-    PaneClosed {
-        pane: PaneId,
+    WindowClosed {
+        window: WindowId,
         band: BandId,
     },
     LayoutChanged,
@@ -55,8 +55,8 @@ pub enum Event {
         queued: bool,
         time: u64,
     },
-    PaneStateChanged {
-        pane: PaneId,
+    WindowStateChanged {
+        window: WindowId,
         key: String,
         value: Option<Data>,
         previous: Option<Data>,
@@ -70,8 +70,8 @@ pub(crate) const NAMES: [&str; 13] = [
     "Attached",
     "FocusChanged",
     "BandChanged",
-    "PaneOpened",
-    "PaneClosed",
+    "WindowOpened",
+    "WindowClosed",
     "LayoutChanged",
     "TerminalResized",
     "ConfigReloaded",
@@ -79,7 +79,7 @@ pub(crate) const NAMES: [&str; 13] = [
     "HighlightChanged",
     "ColorschemeChanged",
     "ServerEvent",
-    "PaneStateChanged",
+    "WindowStateChanged",
 ];
 
 fn names(side: Side) -> &'static [&'static str] {
@@ -96,8 +96,8 @@ impl Event {
             Event::Attached { .. } => "Attached",
             Event::FocusChanged { .. } => "FocusChanged",
             Event::BandChanged { .. } => "BandChanged",
-            Event::PaneOpened { .. } => "PaneOpened",
-            Event::PaneClosed { .. } => "PaneClosed",
+            Event::WindowOpened { .. } => "WindowOpened",
+            Event::WindowClosed { .. } => "WindowClosed",
             Event::LayoutChanged => "LayoutChanged",
             Event::TerminalResized { .. } => "TerminalResized",
             Event::ConfigReloaded => "ConfigReloaded",
@@ -105,7 +105,7 @@ impl Event {
             Event::HighlightChanged { .. } => "HighlightChanged",
             Event::ColorschemeChanged { .. } => "ColorschemeChanged",
             Event::ServerEvent { .. } => SERVER_EVENT,
-            Event::PaneStateChanged { .. } => "PaneStateChanged",
+            Event::WindowStateChanged { .. } => "WindowStateChanged",
         }
     }
 
@@ -120,16 +120,16 @@ impl Event {
         let payload = lua.create_table()?;
         match self {
             Event::Attached { session } => payload.set("session", session.as_str())?,
-            Event::FocusChanged { pane, previous } => {
-                payload.set("pane", pane.map(|pane| pane.0))?;
-                payload.set("previous", previous.map(|pane| pane.0))?;
+            Event::FocusChanged { window, previous } => {
+                payload.set("window", window.map(|window| window.0))?;
+                payload.set("previous", previous.map(|window| window.0))?;
             }
             Event::BandChanged { band, previous } => {
                 payload.set("band", band.0)?;
                 payload.set("previous", previous.0)?;
             }
-            Event::PaneOpened { pane, band } | Event::PaneClosed { pane, band } => {
-                payload.set("pane", pane.0)?;
+            Event::WindowOpened { window, band } | Event::WindowClosed { window, band } => {
+                payload.set("window", window.0)?;
                 payload.set("band", band.0)?;
             }
             Event::TerminalResized { cols, rows } => {
@@ -157,8 +157,8 @@ impl Event {
                 payload.set("queued", *queued)?;
                 payload.set("time", *time)?;
             }
-            Event::PaneStateChanged {
-                pane,
+            Event::WindowStateChanged {
+                window,
                 key,
                 value,
                 previous,
@@ -167,7 +167,7 @@ impl Event {
                     Some(value) => value::into_lua(lua, value),
                     None => Ok(Value::Nil),
                 };
-                payload.set("pane", pane.0)?;
+                payload.set("window", window.0)?;
                 payload.set("key", key.as_str())?;
                 payload.set("value", data(value)?)?;
                 payload.set("previous", data(previous)?)?;

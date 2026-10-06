@@ -5,7 +5,7 @@ local function config(opts)
     [[
       gband.plugin("hello", %s)
       gband.keymap.set("prefix", "g", gband.action["hello.greet"])
-      gband.keymap.set("prefix", "enter", gband.action.open_pane)
+      gband.keymap.set("prefix", "enter", gband.action.open_window)
     ]],
     opts or "nil"
   )
@@ -20,7 +20,7 @@ local function logged(g, text)
   return false
 end
 
-t.case("greet opens a pane that prints the greeting", function(g)
+t.case("greet opens a window that prints the greeting", function(g)
   g.start({
     size = "60x6",
     env = { SHELL = "/bin/cat" },
@@ -43,7 +43,7 @@ t.case("focus changes are printed", function(g)
   g.start({ config = config() })
   g.keys("ctrl+space enter")
   g.settle()
-  t.ok(logged(g, "focused pane\t2"), "the client log holds the focus change")
+  t.ok(logged(g, "focused window\t2"), "the client log holds the focus change")
 end)
 
 t.case("the greeting is an option", function(g)

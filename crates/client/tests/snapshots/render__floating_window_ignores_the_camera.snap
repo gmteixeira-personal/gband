@@ -6,13 +6,13 @@ Buffer {
     area: Rect { x: 0, y: 0, width: 80, height: 24 },
     content: [
         "┌──────────────────────────────────────┐┌──────────────────────────────────────┐",
-        "│pane 1                                ││pane 2                                │",
+        "│window 1                              ││window 2                              │",
         "│                                      ││                                      │",
         "│                                      ││                                      │",
         "│                                      ││                                      │",
         "│                                      ││                                      │",
         "│                   ┌──────────────────────────────────────┐                   │",
-        "│                   │pane 3                                │                   │",
+        "│                   │window 3                              │                   │",
         "│                   │                                      │                   │",
         "│                   │                                      │                   │",
         "│                   │                                      │                   │",
@@ -177,4 +177,4 @@ Buffer {
         x: 40, y: 23, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
     ]
 }
-cursor: Some(Position { x: 47, y: 1 })
+cursor: Some(Position { x: 49, y: 1 })

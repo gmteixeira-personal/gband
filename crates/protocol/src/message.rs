@@ -1,5 +1,5 @@
 use gband_core::input::Key;
-use gband_core::layout::{Layout, PaneId, SessionAction};
+use gband_core::layout::{Layout, SessionAction, WindowId};
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
@@ -33,11 +33,11 @@ pub enum ClientMessage {
         session: SessionName,
     },
     Key {
-        pane: PaneId,
+        window: WindowId,
         key: Key,
     },
     Paste {
-        pane: PaneId,
+        window: WindowId,
         text: String,
     },
     Resize {
@@ -46,9 +46,9 @@ pub enum ClientMessage {
     },
     Action(SessionAction),
     Detach,
-    Shown(Vec<PaneId>),
+    Shown(Vec<WindowId>),
     Content {
-        pane: PaneId,
+        window: WindowId,
         output: Vec<u8>,
     },
     Command {
@@ -70,23 +70,23 @@ pub enum ServerMessage {
         layout: Layout,
     },
     Snapshot {
-        pane: PaneId,
+        window: WindowId,
         cols: u16,
         rows: u16,
         contents: Vec<u8>,
     },
     Update {
-        pane: PaneId,
+        window: WindowId,
         contents: Vec<u8>,
     },
-    Focus(PaneId),
+    Focus(WindowId),
     Exited,
     Sessions(Vec<SessionSummary>),
     Killed,
     NoSuchSession,
     Opened {
         request: u32,
-        pane: Option<PaneId>,
+        window: Option<WindowId>,
     },
     Event {
         name: String,
@@ -94,8 +94,8 @@ pub enum ServerMessage {
         queued: bool,
         time: u64,
     },
-    PaneState {
-        pane: PaneId,
+    WindowState {
+        window: WindowId,
         key: String,
         value: Option<Value>,
     },

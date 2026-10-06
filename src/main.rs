@@ -87,7 +87,7 @@ impl Selection {
 
 #[derive(Subcommand)]
 enum Command {
-    #[command(about = "Run the server that hosts the panes")]
+    #[command(about = "Run the server that hosts the windows")]
     Server,
     #[command(
         about = "Attach a client to a session, starting a server if needed; runs when no command is given"
@@ -95,7 +95,7 @@ enum Command {
     Attach,
     #[command(about = "List the sessions of the running server")]
     ListSessions,
-    #[command(about = "End a session and its panes")]
+    #[command(about = "End a session and its windows")]
     KillSession,
     #[command(about = "Stop the running server and every session")]
     KillServer,
@@ -446,9 +446,9 @@ fn client(
 }
 
 fn attach(socket: PathBuf, session: SessionName, selection: &Selection) -> Result<ExitCode> {
-    if std::env::var_os("GBAND").is_some_and(|pane| Path::new(&pane) == socket) {
+    if std::env::var_os("GBAND").is_some_and(|window| Path::new(&window) == socket) {
         bail!(
-            "already inside a gband pane of the server on {}; attaching here would feed the \
+            "already inside a gband window of the server on {}; attaching here would feed the \
              session into itself",
             socket.display()
         );
@@ -509,7 +509,7 @@ fn list_sessions(socket: PathBuf, selection: &Selection) -> Result<ExitCode> {
     for session in gband_client::list_sessions(&config, &transport)? {
         listing.push_str(&format!(
             "{}\t{}\t{}\n",
-            session.name, session.panes, session.clients
+            session.name, session.windows, session.clients
         ));
     }
     print!("{listing}");

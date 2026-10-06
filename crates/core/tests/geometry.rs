@@ -1,27 +1,27 @@
 use gband_core::geometry::{
-    PaneBox, Size, Span, Tile, boxes, column_spans, column_width, height_step, pane_heights,
-    placed, tiles, width_step,
+    Size, Span, Tile, WindowBox, boxes, column_spans, column_width, height_step, placed, tiles,
+    width_step, window_heights,
 };
 use gband_core::layout::{
-    Band, BandId, Column, Direction, FloatingPane, Layout, LayoutOptions, PaneHeight, PaneId,
-    Proportion, SessionAction, Weight,
+    Band, BandId, Column, Direction, FloatingWindow, Layout, LayoutOptions, Proportion,
+    SessionAction, Weight, WindowHeight, WindowId,
 };
 
 const AREA: Size = Size::new(80, 24);
 
-fn single() -> (Layout, PaneId) {
+fn single() -> (Layout, WindowId) {
     let mut layout = Layout::new();
-    let pane = layout.allocate_pane();
+    let window = layout.allocate_window();
     let band = layout.bands()[0].id;
-    layout.open(pane, band, None, None, &LayoutOptions::default());
-    (layout, pane)
+    layout.open(window, band, None, None, &LayoutOptions::default());
+    (layout, window)
 }
 
-fn open_after(layout: &mut Layout, after: PaneId) -> PaneId {
-    let pane = layout.allocate_pane();
+fn open_after(layout: &mut Layout, after: WindowId) -> WindowId {
+    let window = layout.allocate_window();
     let band = layout.bands()[0].id;
-    layout.open(pane, band, Some(after), None, &LayoutOptions::default());
-    pane
+    layout.open(window, band, Some(after), None, &LayoutOptions::default());
+    window
 }
 
 fn first_tiles(layout: &Layout, area: Size) -> Vec<Tile> {
@@ -30,12 +30,12 @@ fn first_tiles(layout: &Layout, area: Size) -> Vec<Tile> {
 
 #[test]
 fn default_column_on_an_80_by_24_area() {
-    let (layout, pane) = single();
+    let (layout, window) = single();
     let tiles = first_tiles(&layout, Size::new(80, 24));
     assert_eq!(
         tiles,
         vec![Tile {
-            pane,
+            window,
             column: 0,
             row: 0,
             x: 0,
@@ -79,16 +79,19 @@ fn stack_with_a_leftover_row() {
     let second = open_after(&mut layout, first);
     layout.apply(
         SessionAction::ConsumeOrExpel {
-            pane: second,
+            window: second,
             direction: Direction::Left,
         },
         AREA,
         &LayoutOptions::default(),
     );
     let tiles = first_tiles(&layout, Size::new(80, 25));
-    assert_eq!((tiles[0].pane, tiles[0].y, tiles[0].height), (first, 0, 13));
     assert_eq!(
-        (tiles[1].pane, tiles[1].y, tiles[1].height),
+        (tiles[0].window, tiles[0].y, tiles[0].height),
+        (first, 0, 13)
+    );
+    assert_eq!(
+        (tiles[1].window, tiles[1].y, tiles[1].height),
         (second, 13, 12)
     );
     assert_eq!(tiles[1].terminal_size(), Size::new(38, 10));
@@ -123,7 +126,7 @@ fn terminal_size_is_at_least_one_cell() {
 
 #[test]
 fn column_width_follows_the_proportion_and_the_minimum() {
-    let mut column = Column::new(PaneId(1), Proportion::ONE_HALF);
+    let mut column = Column::new(WindowId(1), Proportion::ONE_HALF);
     let area = Size::new(90, 24);
     assert_eq!(column_width(&column, area), 45);
     column.width = Proportion::ONE_THIRD;
@@ -136,14 +139,14 @@ fn column_width_follows_the_proportion_and_the_minimum() {
 }
 
 #[test]
-fn panes_beyond_the_area_rows_get_no_height() {
+fn windows_beyond_the_area_rows_get_no_height() {
     let (mut layout, first) = single();
     let second = open_after(&mut layout, first);
     let third = open_after(&mut layout, second);
-    for pane in [second, third] {
+    for window in [second, third] {
         layout.apply(
             SessionAction::ConsumeOrExpel {
-                pane,
+                window,
                 direction: Direction::Left,
             },
             AREA,
@@ -153,7 +156,7 @@ fn panes_beyond_the_area_rows_get_no_height() {
     let tiles = first_tiles(&layout, Size::new(80, 2));
     let rows: Vec<_> = tiles
         .iter()
-        .map(|tile| (tile.pane, tile.y, tile.height))
+        .map(|tile| (tile.window, tile.y, tile.height))
         .collect();
     assert_eq!(rows, vec![(first, 0, 1), (second, 1, 1), (third, 2, 0)]);
     assert_eq!(tiles[2].terminal_size(), Size::new(38, 1));
@@ -165,7 +168,7 @@ fn tile_span_is_its_column_span() {
     let second = open_after(&mut layout, first);
     let area = Size::new(80, 24);
     let tiles = first_tiles(&layout, area);
-    assert_eq!(tiles[1].pane, second);
+    assert_eq!(tiles[1].window, second);
     assert_eq!(tiles[1].span(), Span { x: 40, width: 40 });
     assert_eq!(tiles[1].span(), column_spans(&layout.bands()[0], area)[1]);
 }
@@ -176,9 +179,9 @@ fn empty_band_has_no_tiles() {
     assert!(tiles(&layout.bands()[1], Size::new(80, 24)).is_empty());
 }
 
-fn column(heights: &[PaneHeight]) -> Column {
-    let mut column = Column::new(PaneId(1), Proportion::ONE_HALF);
-    column.panes = (1..=heights.len() as u32).map(PaneId).collect();
+fn column(heights: &[WindowHeight]) -> Column {
+    let mut column = Column::new(WindowId(1), Proportion::ONE_HALF);
+    column.windows = (1..=heights.len() as u32).map(WindowId).collect();
     column.heights = heights.to_vec();
     column
 }
@@ -191,29 +194,29 @@ fn band_of(columns: Vec<Column>) -> Band {
     }
 }
 
-fn rows(heights: &[PaneHeight]) -> Vec<(u16, u16)> {
+fn rows(heights: &[WindowHeight]) -> Vec<(u16, u16)> {
     tiles(&band_of(vec![column(heights)]), AREA)
         .iter()
         .map(|tile| (tile.y, tile.height))
         .collect()
 }
 
-fn auto(num: u32, den: u32) -> PaneHeight {
-    PaneHeight::Auto(Weight::new(num, den))
+fn auto(num: u32, den: u32) -> WindowHeight {
+    WindowHeight::Auto(Weight::new(num, den))
 }
 
 #[test]
-fn fixed_pane_above_an_automatic_pane() {
+fn fixed_window_above_an_automatic_window() {
     assert_eq!(
-        rows(&[PaneHeight::Fixed(16), auto(1, 1)]),
+        rows(&[WindowHeight::Fixed(16), auto(1, 1)]),
         [(0, 16), (16, 8)]
     );
 }
 
 #[test]
-fn automatic_panes_share_by_weight() {
+fn automatic_windows_share_by_weight() {
     assert_eq!(
-        rows(&[auto(10, 7), auto(1, 1), PaneHeight::Fixed(9)]),
+        rows(&[auto(10, 7), auto(1, 1), WindowHeight::Fixed(9)]),
         [(0, 9), (9, 6), (15, 9)]
     );
 }
@@ -221,30 +224,30 @@ fn automatic_panes_share_by_weight() {
 #[test]
 fn fixed_height_leaves_room_for_the_others() {
     assert_eq!(
-        rows(&[PaneHeight::Fixed(30), auto(1, 1), auto(1, 1)]),
+        rows(&[WindowHeight::Fixed(30), auto(1, 1), auto(1, 1)]),
         [(0, 18), (18, 3), (21, 3)]
     );
 }
 
 #[test]
-fn automatic_pane_raised_to_three_rows() {
+fn automatic_window_raised_to_three_rows() {
     assert_eq!(rows(&[auto(1, 20), auto(1, 1)]), [(0, 3), (3, 21)]);
 }
 
 #[test]
-fn lone_fixed_pane_leaves_rows_uncovered() {
-    assert_eq!(rows(&[PaneHeight::Fixed(20)]), [(0, 20)]);
-    assert_eq!(rows(&[PaneHeight::Fixed(30)]), [(0, 24)]);
+fn lone_fixed_window_leaves_rows_uncovered() {
+    assert_eq!(rows(&[WindowHeight::Fixed(20)]), [(0, 20)]);
+    assert_eq!(rows(&[WindowHeight::Fixed(30)]), [(0, 24)]);
 }
 
 #[test]
 fn weight_one_heights_split_as_before() {
-    let heights = pane_heights(&column(&[auto(1, 1); 3]), 25);
+    let heights = window_heights(&column(&[auto(1, 1); 3]), 25);
     assert_eq!(heights, [9, 8, 8]);
 }
 
 fn column_of_width(width: Proportion) -> Column {
-    let mut column = Column::new(PaneId(1), Proportion::ONE_HALF);
+    let mut column = Column::new(WindowId(1), Proportion::ONE_HALF);
     column.width = width;
     column
 }
@@ -273,9 +276,9 @@ fn column_width_stops_at_the_cell_limit() {
     assert_eq!((spans[1].x, spans[1].end()), (65535, 131070));
 }
 
-fn floating(col: u16, row: u16, width: Proportion, rows: u16) -> FloatingPane {
-    FloatingPane {
-        pane: PaneId(1),
+fn floating(col: u16, row: u16, width: Proportion, rows: u16) -> FloatingWindow {
+    FloatingWindow {
+        window: WindowId(1),
         col,
         row,
         width,
@@ -284,7 +287,7 @@ fn floating(col: u16, row: u16, width: Proportion, rows: u16) -> FloatingPane {
     }
 }
 
-fn cells(placed: PaneBox) -> ((u16, u16), (u16, u16)) {
+fn cells(placed: WindowBox) -> ((u16, u16), (u16, u16)) {
     (
         (placed.x, placed.x + placed.width - 1),
         (placed.y, placed.y + placed.height - 1),
@@ -346,14 +349,14 @@ fn band_boxes_follow_the_floating_list() {
     let mut band = band_of(Vec::new());
     band.floating = vec![
         floating(0, 0, Proportion::ONE_HALF, 5),
-        FloatingPane {
-            pane: PaneId(2),
+        FloatingWindow {
+            window: WindowId(2),
             ..floating(30, 2, Proportion::ONE_THIRD, 5)
         },
     ];
     let placed: Vec<_> = boxes(&band, AREA)
         .iter()
-        .map(|placed| placed.pane)
+        .map(|placed| placed.window)
         .collect();
-    assert_eq!(placed, [PaneId(1), PaneId(2)]);
+    assert_eq!(placed, [WindowId(1), WindowId(2)]);
 }

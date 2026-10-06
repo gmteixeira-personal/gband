@@ -81,8 +81,8 @@ fn options_replace_the_settings() {
 fn invalid_option() {
     for (opts, mentions) in [
         ("{ labels = 3 }", "labels"),
-        ("{ labels = { close_pane = 3 } }", "labels"),
-        ("{ labels = { close_pane = true } }", "labels"),
+        ("{ labels = { close_window = 3 } }", "labels"),
+        ("{ labels = { close_window = true } }", "labels"),
         ("{ labels = { 'kill' } }", "labels"),
         ("{ align = 'middle' }", "align"),
         ("{ priority = 'high' }", "priority"),
@@ -295,7 +295,7 @@ fn floating_keys() {
 
 #[test]
 fn label_option() {
-    let (_scratch, config) = defaults_with("label", "{ labels = { close_pane = 'kill' } }");
+    let (_scratch, config) = defaults_with("label", "{ labels = { close_window = 'kill' } }");
     let shown = shown(&config, "prefix", 400);
     assert!(shown.contains("  q kill  "), "{shown}");
 }

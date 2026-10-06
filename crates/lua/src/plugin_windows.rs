@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use gband_core::action::Action;
-use gband_core::layout::{BandId, PaneId, Proportion};
+use gband_core::layout::{BandId, Proportion, WindowId};
 use gband_core::view::ViewAction;
 use mlua::{Function, IntoLuaMulti, Lua, MultiValue, RegistryKey, Table, Value};
 
@@ -107,9 +107,9 @@ pub(crate) fn install(lua: &Lua, host: &Table) -> mlua::Result<()> {
         })?,
     )?;
     host.set(
-        "focus_pane",
-        lua.create_function(|lua, pane: u32| {
-            let action = Action::View(ViewAction::FocusPane(PaneId(pane)));
+        "focus_window",
+        lua.create_function(|lua, window: u32| {
+            let action = Action::View(ViewAction::FocusWindow(WindowId(window)));
             api::queue(lua, Dispatch::Action(action), "gband.win.focus")
         })?,
     )?;
@@ -140,7 +140,7 @@ pub(crate) fn take(lua: &Lua) -> Vec<(u32, Option<Frame>)> {
 fn open_target(lua: &Lua, (band, after): (Value, Value)) -> mlua::Result<MultiValue> {
     match control::open_target(lua, &band, &after) {
         Ok(None) => (true, Value::Nil, Value::Nil).into_lua_multi(lua),
-        Ok(Some((band, after))) => (true, band.0, after.map(|pane| pane.0)).into_lua_multi(lua),
+        Ok(Some((band, after))) => (true, band.0, after.map(|window| window.0)).into_lua_multi(lua),
         Err(message) => (false, message).into_lua_multi(lua),
     }
 }
@@ -155,7 +155,7 @@ fn request(lua: &Lua, entry: Table) -> mlua::Result<()> {
             let den: Option<u32> = entry.get("den")?;
             PluginWindowRequest::Open {
                 plugin_window,
-                target: band.map(|band| (BandId(band), after.map(PaneId))),
+                target: band.map(|band| (BandId(band), after.map(WindowId))),
                 width: num.zip(den).map(|(num, den)| Proportion::new(num, den)),
                 focus: entry.get("focus")?,
             }
@@ -235,8 +235,8 @@ pub(crate) fn call<R: mlua::FromLuaMulti + Default>(
     }
 }
 
-pub(crate) fn plugin_window_of(lua: &Lua, pane: PaneId) -> mlua::Result<Option<u32>> {
-    call(lua, "plugin_window_of", pane.0)
+pub(crate) fn plugin_window_of(lua: &Lua, window: WindowId) -> mlua::Result<Option<u32>> {
+    call(lua, "plugin_window_of", window.0)
 }
 
 pub(crate) fn focused(lua: &Lua) -> mlua::Result<Option<u32>> {

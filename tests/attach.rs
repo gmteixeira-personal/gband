@@ -112,7 +112,7 @@ fn prefix_key_twice_sends_one_ctrl_space() {
 }
 
 #[test]
-fn ctrl_a_reaches_the_pane_and_unbound_keys_are_discarded() {
+fn ctrl_a_reaches_the_window_and_unbound_keys_are_discarded() {
     let env = TestEnv::new("prefix-ctrl-a");
     let mut client = Attached::start(&env, 80, 24);
     client.wait_for_prompt();
@@ -154,19 +154,19 @@ fn killed_server_prints_lost_server() {
 }
 
 #[test]
-fn attach_inside_a_pane_is_refused() {
+fn attach_inside_a_window_is_refused() {
     let env = TestEnv::new("nested");
     let socket = env.socket();
     let mut client = Attached::start_with(&env, GBAND, &["attach"], 80, 24, |command| {
         command.env("GBAND", &socket);
     });
     assert_eq!(client.wait_exit(), 1);
-    client.wait_for_text("inside a gband pane");
+    client.wait_for_text("inside a gband window");
     assert!(!socket.exists());
 }
 
 #[test]
-fn named_attach_inside_its_own_pane_is_refused() {
+fn named_attach_inside_its_own_window_is_refused() {
     let env = TestEnv::new("nested-named");
     let feature = env.socket_named("feature");
     let args = ["-S", "feature", "attach"];
@@ -174,12 +174,12 @@ fn named_attach_inside_its_own_pane_is_refused() {
         command.env("GBAND", &feature);
     });
     assert_eq!(client.wait_exit(), 1);
-    client.wait_for_text("inside a gband pane");
+    client.wait_for_text("inside a gband window");
     assert!(!feature.exists());
 }
 
 #[test]
-fn named_attach_from_a_pane_of_another_server_attaches() {
+fn named_attach_from_a_window_of_another_server_attaches() {
     let env = TestEnv::new("nested-other");
     let default = env.socket();
     let args = ["-S", "feature", "attach"];
@@ -321,14 +321,14 @@ fn note_names_the_selected_server() {
     );
 }
 
-fn pane_number(lines: &[String]) -> Option<u32> {
+fn window_number(lines: &[String]) -> Option<u32> {
     lines
         .iter()
-        .find_map(|line| line.strip_prefix("pane="))
+        .find_map(|line| line.strip_prefix("window="))
         .and_then(|number| number.parse().ok())
 }
 
-fn open_second_pane(env: &TestEnv) -> Attached {
+fn open_second_window(env: &TestEnv) -> Attached {
     let mut client = Attached::start(env, 80, 24);
     client.wait_for_prompt();
     client.shell_pid(env);
@@ -356,16 +356,16 @@ fn lowercase_d_does_not_detach() {
 }
 
 #[test]
-fn leader_enter_opens_a_focused_pane() {
+fn leader_enter_opens_a_focused_window() {
     let env = TestEnv::new("open");
     let mut client = Attached::start(&env, 80, 24);
     client.wait_for_prompt();
     client.shell_pid(&env);
-    client.run("echo pane=$GBAND_PANE");
-    client.wait_for_focused("the first pane number", |lines| {
-        pane_number(lines).is_some()
+    client.run("echo window=$GBAND_WINDOW");
+    client.wait_for_focused("the first window number", |lines| {
+        window_number(lines).is_some()
     });
-    let first = pane_number(&client.focused_lines()).unwrap();
+    let first = window_number(&client.focused_lines()).unwrap();
 
     client.send(b"\x00\r");
     client.wait_for("two tiles with the second focused", |screen| {
@@ -374,17 +374,17 @@ fn leader_enter_opens_a_focused_pane() {
     });
     client.wait_for_prompt();
     client.shell_pid(&env);
-    client.run("echo pane=$GBAND_PANE");
-    client.wait_for_focused("the second pane number", |lines| {
-        pane_number(lines).is_some()
+    client.run("echo window=$GBAND_WINDOW");
+    client.wait_for_focused("the second window number", |lines| {
+        window_number(lines).is_some()
     });
-    assert_ne!(pane_number(&client.focused_lines()), Some(first));
+    assert_ne!(window_number(&client.focused_lines()), Some(first));
 }
 
 #[test]
-fn leader_h_focuses_the_left_pane() {
+fn leader_h_focuses_the_left_window() {
     let env = TestEnv::new("focus-left");
-    let mut client = open_second_pane(&env);
+    let mut client = open_second_window(&env);
     client.send(b"\x00h");
     client.wait_for("the first tile focused", |screen| tiles(screen)[0].focused);
     client.run("echo left");
@@ -395,9 +395,9 @@ fn leader_h_focuses_the_left_pane() {
 }
 
 #[test]
-fn leader_q_closes_the_focused_pane() {
+fn leader_q_closes_the_focused_window() {
     let env = TestEnv::new("close");
-    let mut client = open_second_pane(&env);
+    let mut client = open_second_window(&env);
     let second = client.last_pid();
     client.send(b"\x00q");
     client.wait_for("one tile left", |screen| {
@@ -421,7 +421,7 @@ fn leader_u_and_i_switch_bands() {
     client.send(b"\x00u");
     client.wait_for("an empty band", |screen| tiles(screen).is_empty());
     client.send(b"\x00\r");
-    client.wait_for("a pane in the second band", |screen| {
+    client.wait_for("a window in the second band", |screen| {
         tiles(screen).len() == 1
     });
     client.wait_for_prompt();
@@ -443,9 +443,9 @@ fn leader_u_and_i_switch_bands() {
 }
 
 #[test]
-fn kill_server_ends_a_session_of_two_panes() {
+fn kill_server_ends_a_session_of_two_windows() {
     let env = TestEnv::new("kill-two");
-    let mut client = open_second_pane(&env);
+    let mut client = open_second_window(&env);
     let status = env.command(GBAND, &["kill-server"]).status().unwrap();
     assert!(status.success());
     assert_eq!(client.wait_exit(), 0);
@@ -468,7 +468,7 @@ fn unknown_animations_value_is_logged() {
 }
 
 #[test]
-fn animations_off_opens_a_pane_without_motion() {
+fn animations_off_opens_a_window_without_motion() {
     let env = TestEnv::new("animations-off");
     let mut client = Attached::start_with(&env, GBAND, &["attach"], 80, 24, |command| {
         command.env("GBAND_ANIMATIONS", "off");

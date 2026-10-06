@@ -10,10 +10,10 @@
 
 ## 3. Rename the domain term
 
-- [ ] 3.1 Rename the term in `crates/core/src` and `crates/core/tests`, mapping `Panes`, `panes`, `Pane` and `pane` to `Windows`, `windows`, `Window` and `window`, including `PaneId`, `allocate_pane`, `SessionAction::OpenPane` and every test function name. Verify that `cargo test -p gband-core --locked` passes
-- [ ] 3.2 Apply the same rename to `crates/protocol`, `crates/server`, `crates/client`, `crates/harness` and `crates/test-support`. `git mv` `crates/server/src/pane.rs` to `window.rs`, `crates/server/tests/panes.rs` to `windows.rs` and `crates/server/tests/plugin_panes.rs` to `drawn_windows.rs`, and rename any snapshot file whose test was renamed, leaving its contents unchanged. Fix any local name the rename made clash. Verify that `cargo test -p gband-protocol -p gband-server -p gband-client -p gband-harness --locked` passes, that the wire-protocol byte tests are unchanged, and that `fd -e new . crates` prints nothing
-- [ ] 3.3 Apply the rename to `crates/lua`: the action names, `gband.window`, `gband.window_state`, the `Window*` events, every `pane` and `panes` field of payloads, targets, `gband.layout()`, `gband.view()`, `gband.sessions()`, `gband.win.info()` and the status line context, the default configuration's descriptions, the option descriptions and the hints labels. Verify that `cargo test -p gband-lua --locked` passes
-- [ ] 3.4 Apply the rename to `src/` and `tests/`: the CLI help, `list-sessions` output, error messages, `GBAND_PANE` to `GBAND_WINDOW`, and the test names, `TestEnv` names and echoed markers. Verify that `cargo test --workspace --locked` passes and that `gband --help` and `gband list-sessions` say window
+- [x] 3.1 Rename the term in `crates/core/src` and `crates/core/tests`, mapping `Panes`, `panes`, `Pane` and `pane` to `Windows`, `windows`, `Window` and `window`, including `PaneId`, `allocate_pane`, `SessionAction::OpenPane` and every test function name. Verify that `cargo test -p gband-core --locked` passes
+- [x] 3.2 Apply the same rename to `crates/protocol`, `crates/server`, `crates/client`, `crates/harness` and `crates/test-support`. `git mv` `crates/server/src/pane.rs` to `window.rs`, `crates/server/tests/panes.rs` to `windows.rs` and `crates/server/tests/plugin_panes.rs` to `drawn_windows.rs`, and rename any snapshot file whose test was renamed, leaving its contents unchanged. Fix any local name the rename made clash. Verify that `cargo test -p gband-protocol -p gband-server -p gband-client -p gband-harness --locked` passes, that the wire-protocol byte tests are unchanged, and that `fd -e new . crates` prints nothing
+- [x] 3.3 Apply the rename to `crates/lua`: the action names, `gband.window`, `gband.window_state`, the `Window*` events, every `pane` and `panes` field of payloads, targets, `gband.layout()`, `gband.view()`, `gband.sessions()`, `gband.win.info()` and the status line context, the default configuration's descriptions, the option descriptions and the hints labels. Verify that `cargo test -p gband-lua --locked` passes
+- [x] 3.4 Apply the rename to `src/` and `tests/`: the CLI help, `list-sessions` output, error messages, `GBAND_PANE` to `GBAND_WINDOW`, and the test names, `TestEnv` names and echoed markers. Verify that `cargo test --workspace --locked` passes and that `gband --help` and `gband list-sessions` say window
 
 ## 4. Removed names
 
@@ -21,7 +21,7 @@
 
 ## 5. Samples and docs
 
-- [ ] 5.1 `git mv examples/plugins/pane examples/plugins/window`, rename its module, component, group `PaneSegment` to `WindowSegment`, test file and screenshots, and update `hello` and `agent-status` to the new names. Regenerate only the screenshots whose text changed with `gband test --update`, and check each with `git diff`. Verify that `gband test` passes in each of the three sample directories
+- [x] 5.1 `git mv examples/plugins/pane examples/plugins/window`, rename its module, component, group `PaneSegment` to `WindowSegment`, test file and screenshots, and update `hello` and `agent-status` to the new names. Regenerate only the screenshots whose text changed with `gband test --update`, and check each with `git diff`. Verify that `gband test` passes in each of the three sample directories
 - [ ] 5.2 Update `README.md`, `docs/plugins.md`, `docs/testing.md`, the sample READMEs and `summary.txt` to the new Lua names, and say floating plugin window wherever they say float, and remove the README line saying that some Lua API names still say pane. Keep the README's comparison with tmux and Zellij. Verify with `cargo test -p gband-lua --locked guide`, which runs the guide's examples, and by reading the README's Names section
 
 ## 6. Check

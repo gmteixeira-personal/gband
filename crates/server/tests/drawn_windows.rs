@@ -2,24 +2,26 @@ use std::time::Duration;
 
 use gband_core::geometry::Size;
 use gband_core::input::{Key, KeyCode};
-use gband_core::layout::{BandId, Direction, PaneContent, PaneId, Proportion, SessionAction, Step};
+use gband_core::layout::{
+    BandId, Direction, Proportion, SessionAction, Step, WindowContent, WindowId,
+};
 use gband_protocol::{ClientMessage, ServerMessage};
 use gband_test_support::*;
 
 const QUIET: Duration = Duration::from_millis(300);
 
-fn open_plugin(band: BandId, after: Option<PaneId>, request: u32, focus: bool) -> SessionAction {
-    SessionAction::OpenPane {
+fn open_plugin(band: BandId, after: Option<WindowId>, request: u32, focus: bool) -> SessionAction {
+    SessionAction::OpenWindow {
         band,
         after,
         width: None,
         floating: false,
         focus,
-        content: PaneContent::Plugin { request },
+        content: WindowContent::Plugin { request },
     }
 }
 
-async fn opened(client: &mut TestClient, request: u32) -> Option<PaneId> {
+async fn opened(client: &mut TestClient, request: u32) -> Option<WindowId> {
     client
         .wait_until(|client| client.opened.iter().any(|&(seen, _)| seen == request))
         .await;
@@ -27,34 +29,38 @@ async fn opened(client: &mut TestClient, request: u32) -> Option<PaneId> {
         .opened
         .iter()
         .find(|&&(seen, _)| seen == request)
-        .and_then(|&(_, pane)| pane)
+        .and_then(|&(_, window)| window)
 }
 
-async fn plugin_after(client: &mut TestClient, after: PaneId, request: u32) -> PaneId {
+async fn plugin_after(client: &mut TestClient, after: WindowId, request: u32) -> WindowId {
     let band = client.layout.bands()[0].id;
     client
         .act(open_plugin(band, Some(after), request, false))
         .await;
     opened(client, request)
         .await
-        .expect("no plugin pane opened")
+        .expect("no plugin window opened")
 }
 
-async fn content(client: &mut TestClient, pane: PaneId, output: &[u8]) {
+async fn content(client: &mut TestClient, window: WindowId, output: &[u8]) {
     client
         .send(&ClientMessage::Content {
-            pane,
+            window,
             output: output.to_vec(),
         })
         .await;
 }
 
-fn text(client: &TestClient, pane: PaneId) -> String {
-    client.pane_screen(pane).contents().trim_end().to_owned()
+fn text(client: &TestClient, window: WindowId) -> String {
+    client
+        .window_screen(window)
+        .contents()
+        .trim_end()
+        .to_owned()
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn plugin_pane_opens_blank_then_reports_and_focuses() {
+async fn plugin_window_opens_blank_then_reports_and_focuses() {
     let server = TestServer::start("plugin-open", &["/bin/sh"]).await;
     let mut owner = server.attach(80, 24).await;
     let mut other = server.attach(80, 24).await;
@@ -72,14 +78,14 @@ async fn plugin_pane_opens_blank_then_reports_and_focuses() {
             _ => {}
         }
     }
-    let pane = owner.opened[0].1.expect("no pane opened");
-    assert_eq!(owner.opened, [(7, Some(pane))]);
-    assert_eq!(owner.focus, [pane]);
+    let window = owner.opened[0].1.expect("no window opened");
+    assert_eq!(owner.opened, [(7, Some(window))]);
+    assert_eq!(owner.focus, [window]);
     assert_eq!(order, ["layout", "snapshot", "opened", "focus"]);
-    assert_eq!(owner.panes(), [first, pane]);
-    assert_eq!(text(&owner, pane), "");
+    assert_eq!(owner.windows(), [first, window]);
+    assert_eq!(text(&owner, window), "");
     other
-        .wait_until(|client| client.grids.contains_key(&pane))
+        .wait_until(|client| client.grids.contains_key(&window))
         .await;
     assert!(other.pump(QUIET).await);
     assert!(other.opened.is_empty());
@@ -87,7 +93,7 @@ async fn plugin_pane_opens_blank_then_reports_and_focuses() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn ignored_request_is_reported_with_no_pane() {
+async fn ignored_request_is_reported_with_no_window() {
     let server = TestServer::start("plugin-ignored", &["/bin/sh"]).await;
     let mut client = server.attach(80, 24).await;
     let before = client.layout.clone();
@@ -101,10 +107,10 @@ async fn open_without_focus_tells_no_client_to_focus() {
     let server = TestServer::start("plugin-nofocus", &["/bin/sh"]).await;
     let mut client = server.attach(80, 24).await;
     let first = client.first();
-    let pane = plugin_after(&mut client, first, 1).await;
+    let window = plugin_after(&mut client, first, 1).await;
     assert!(client.pump(QUIET).await);
     assert!(client.focus.is_empty());
-    assert_eq!(client.panes(), [first, pane]);
+    assert_eq!(client.windows(), [first, window]);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -114,13 +120,13 @@ async fn open_with_a_width() {
     let first = client.first();
     let band = client.layout.bands()[0].id;
     client
-        .act(SessionAction::OpenPane {
+        .act(SessionAction::OpenWindow {
             band,
             after: Some(first),
             width: Some(Proportion::new(1, 4)),
             floating: false,
             focus: false,
-            content: PaneContent::Plugin { request: 3 },
+            content: WindowContent::Plugin { request: 3 },
         })
         .await;
     opened(&mut client, 3).await.unwrap();
@@ -136,11 +142,11 @@ async fn content_reaches_every_client() {
     let mut owner = server.attach(80, 24).await;
     let mut other = server.attach(80, 24).await;
     let first = owner.first();
-    let pane = plugin_after(&mut owner, first, 1).await;
-    content(&mut owner, pane, b"\x1b[1;1Hhello").await;
+    let window = plugin_after(&mut owner, first, 1).await;
+    content(&mut owner, window, b"\x1b[1;1Hhello").await;
     for client in [&mut owner, &mut other] {
         client
-            .wait_for_pane(pane, |screen| screen.contents().trim_end() == "hello")
+            .wait_for_window(window, |screen| screen.contents().trim_end() == "hello")
             .await;
     }
 }
@@ -150,12 +156,12 @@ async fn content_replaces_the_screen() {
     let server = TestServer::start("plugin-replace", &["/bin/sh"]).await;
     let mut client = server.attach(80, 24).await;
     let first = client.first();
-    let pane = plugin_after(&mut client, first, 1).await;
-    content(&mut client, pane, b"one").await;
-    client.wait_for_pane_text(pane, "one").await;
-    content(&mut client, pane, b"two").await;
+    let window = plugin_after(&mut client, first, 1).await;
+    content(&mut client, window, b"one").await;
+    client.wait_for_window_text(window, "one").await;
+    content(&mut client, window, b"two").await;
     client
-        .wait_for_pane(pane, |screen| screen.contents().trim_end() == "two")
+        .wait_for_window(window, |screen| screen.contents().trim_end() == "two")
         .await;
 }
 
@@ -165,80 +171,80 @@ async fn content_from_another_client_is_ignored() {
     let mut owner = server.attach(80, 24).await;
     let mut other = server.attach(80, 24).await;
     let first = owner.first();
-    let pane = plugin_after(&mut owner, first, 1).await;
+    let window = plugin_after(&mut owner, first, 1).await;
     other
-        .wait_until(|client| client.grids.contains_key(&pane))
+        .wait_until(|client| client.grids.contains_key(&window))
         .await;
-    content(&mut other, pane, b"intruder").await;
+    content(&mut other, window, b"intruder").await;
     content(&mut other, first, b"intruder").await;
     assert!(owner.pump(QUIET).await);
-    assert_eq!(text(&owner, pane), "");
-    assert!(!owner.pane_screen(first).contents().contains("intruder"));
+    assert_eq!(text(&owner, window), "");
+    assert!(!owner.window_screen(first).contents().contains("intruder"));
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn key_to_a_plugin_pane_is_dropped() {
+async fn key_to_a_plugin_window_is_dropped() {
     let server = TestServer::start("plugin-key", &["/bin/sh"]).await;
     let mut client = server.attach(80, 24).await;
     let first = client.first();
-    let pane = plugin_after(&mut client, first, 1).await;
-    client.key_to(pane, Key::plain(KeyCode::Char('x'))).await;
+    let window = plugin_after(&mut client, first, 1).await;
+    client.key_to(window, Key::plain(KeyCode::Char('x'))).await;
     client
         .send(&ClientMessage::Paste {
-            pane,
+            window,
             text: "pasted".into(),
         })
         .await;
     client.type_line_to(first, "echo still-serving").await;
-    client.wait_for_pane_text(first, "still-serving\n").await;
-    assert_eq!(text(&client, pane), "");
+    client.wait_for_window_text(first, "still-serving\n").await;
+    assert_eq!(text(&client, window), "");
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn closing_a_plugin_pane_is_immediate() {
+async fn closing_a_plugin_window_is_immediate() {
     let server = TestServer::start("plugin-close", &["/bin/sh"]).await;
     let mut client = server.attach(80, 24).await;
     let first = client.first();
-    let pane = plugin_after(&mut client, first, 1).await;
-    client.act(SessionAction::ClosePane(pane)).await;
+    let window = plugin_after(&mut client, first, 1).await;
+    client.act(SessionAction::CloseWindow(window)).await;
     tokio::time::timeout(
         Duration::from_millis(500),
-        client.wait_until(|client| client.panes() == [first]),
+        client.wait_until(|client| client.windows() == [first]),
     )
     .await
-    .expect("the plugin pane did not leave at once");
+    .expect("the plugin window did not leave at once");
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn plugin_panes_leave_with_their_owner() {
+async fn plugin_windows_leave_with_their_owner() {
     let server = TestServer::start("plugin-owner", &["/bin/sh"]).await;
     let mut owner = server.attach(80, 24).await;
     let mut other = server.attach(80, 24).await;
     let first = owner.first();
-    let pane = plugin_after(&mut owner, first, 1).await;
+    let window = plugin_after(&mut owner, first, 1).await;
     other
-        .wait_until(|client| client.panes().contains(&pane))
+        .wait_until(|client| client.windows().contains(&window))
         .await;
     owner.send(&ClientMessage::Detach).await;
     drop(owner);
-    other.wait_until(|client| client.panes() == [first]).await;
+    other.wait_until(|client| client.windows() == [first]).await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn session_ends_when_only_plugin_panes_remain() {
+async fn session_ends_when_only_plugin_windows_remain() {
     let server = TestServer::start("plugin-last", &["/bin/sh"]).await;
     let mut client = server.attach(80, 24).await;
     let first = client.first();
-    let pane = plugin_after(&mut client, first, 1).await;
+    let window = plugin_after(&mut client, first, 1).await;
     client.type_line_to(first, "exit").await;
     client.drain_to_end().await;
     assert!(client.exited);
-    assert!(!client.panes().contains(&pane));
+    assert!(!client.windows().contains(&window));
     server.finished().await.unwrap();
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn plugin_panes_count_in_the_session_list() {
+async fn plugin_windows_count_in_the_session_list() {
     let server = TestServer::start("plugin-count", &["/bin/sh"]).await;
     let mut client = server.attach(80, 24).await;
     let first = client.first();
@@ -254,7 +260,7 @@ async fn set_a_column_width() {
     client.act(SessionAction::ToggleFullWidth(first)).await;
     client
         .act(SessionAction::SetWidth {
-            pane: first,
+            window: first,
             width: Proportion::new(2, 5),
         })
         .await;
@@ -267,24 +273,24 @@ async fn set_a_column_width() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn plugin_pane_is_resized_like_a_pty() {
+async fn plugin_window_is_resized_like_a_pty() {
     let server = TestServer::start("plugin-resize", &["/bin/sh"]).await;
     let mut client = server.attach(80, 24).await;
     let first = client.first();
-    let pane = plugin_after(&mut client, first, 1).await;
-    content(&mut client, pane, b"kept").await;
+    let window = plugin_after(&mut client, first, 1).await;
+    content(&mut client, window, b"kept").await;
     client.show_all().await;
     client
-        .wait_for_pane(pane, |screen| screen.size() == Size::new(38, 22))
+        .wait_for_window(window, |screen| screen.size() == Size::new(38, 22))
         .await;
     client
         .act(SessionAction::StepWidth {
-            pane,
+            window,
             step: Step::Grow,
         })
         .await;
     client
-        .wait_for_pane(pane, |screen| {
+        .wait_for_window(window, |screen| {
             screen.size() == Size::new(46, 22) && screen.contents().contains("kept")
         })
         .await;
@@ -297,30 +303,30 @@ async fn stacked_shell_takes_the_column_when_the_owner_detaches() {
     let mut other = server.attach(80, 24).await;
     let first = owner.first();
     other.type_line_to(first, "echo before-detach").await;
-    other.wait_for_pane_text(first, "before-detach\n").await;
-    let pane = plugin_after(&mut owner, first, 1).await;
+    other.wait_for_window_text(first, "before-detach\n").await;
+    let window = plugin_after(&mut owner, first, 1).await;
     owner
         .act(SessionAction::ConsumeOrExpel {
-            pane,
+            window,
             direction: Direction::Left,
         })
         .await;
     other
-        .wait_until(|client| client.layout.bands()[0].columns[0].panes == [first, pane])
+        .wait_until(|client| client.layout.bands()[0].columns[0].windows == [first, window])
         .await;
     other.show_all().await;
     other
-        .wait_for_pane(first, |screen| screen.size() == Size::new(38, 10))
+        .wait_for_window(first, |screen| screen.size() == Size::new(38, 10))
         .await;
     owner.send(&ClientMessage::Detach).await;
     drop(owner);
-    other.wait_until(|client| client.panes() == [first]).await;
+    other.wait_until(|client| client.windows() == [first]).await;
     other.show_all().await;
     other
-        .wait_for_pane(first, |screen| {
+        .wait_for_window(first, |screen| {
             screen.size() == Size::new(38, 22) && screen.contents().contains("before-detach")
         })
         .await;
     other.type_line_to(first, "echo still-here").await;
-    other.wait_for_pane_text(first, "still-here\n").await;
+    other.wait_for_window_text(first, "still-here\n").await;
 }
