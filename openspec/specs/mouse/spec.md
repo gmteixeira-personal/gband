@@ -303,7 +303,7 @@ The gesture SHALL change nothing until a motion has `dx` of at least 2 either wa
 
 Horizontal: each motion SHALL set the camera to its value at the press less `dx`, and the client SHALL draw it at once. Sliding SHALL send nothing to the server and change no focus until the release.
 
-At the release of a horizontal slide, let C be the column of the viewed band whose span holds the strip position at the middle of the ribbon area, the camera plus half the ribbon area's width rounded down, or, when no column holds it, the column whose span lies nearest to it. Focus SHALL move to the tiled window this client focused most recently in C, or to C's first window, as focusing a window does. When C lies wholly inside the view, the camera SHALL stay where the slide left it. Otherwise it SHALL move as the layout-view capability's camera rule `"never"` moves it. On a band with no column, the release SHALL return the camera to where it was at the press.
+At the release of a horizontal slide, let C be the column of the viewed band whose span holds the strip position at the middle of the ribbon area, the camera plus half the ribbon area's width rounded down, or, when no column holds it, the column whose span lies nearest to it. Focus SHALL move to the tiled window this client focused most recently in C, or to C's first window, as focusing a window does. When C lies wholly inside the view, the camera SHALL stay where the slide left it, except that a strip that does not loop SHALL then be pulled back so it leaves no blank cells right of its end, as the layout-view capability's camera rule `"never"` pulls it back. Otherwise it SHALL move as that rule moves it. On a band with no column, the release SHALL return the camera to where it was at the press.
 
 Vertical: the bands SHALL follow the pointer row for row. Let `H` be the client terminal's height, the height of each band's region as the animations capability's band switch draws it, and `v` the viewed band's index in the layout. Each motion SHALL set the drawn vertical position to `v` times `H` less `dy`, kept between 0 and the last band's index times `H`, and the client SHALL draw the bands there at once. Moving the pointer up SHALL therefore bring the band below into view, and moving it down the band above. A band other than the viewed one SHALL be drawn with the camera that viewing it would give this client. A vertical drag SHALL send nothing to the server, change no camera and change neither focus nor the viewed band until the release. When bands are added or removed above the viewed band during the drag, the drawn vertical position SHALL shift with them, so that no band jumps on screen. When the viewed band leaves the layout, the gesture SHALL end at once with no further change.
 
@@ -317,6 +317,11 @@ At the release of a vertical drag, let B be the band whose region holds the term
 #### Scenario: Partly shown column snaps
 - **WHEN** the terminal is 80 columns wide, a band holds four columns of 60 cells, the first is focused with the camera at 0, and the user slides the band 70 cells left and releases
 - **THEN** the second column is focused and the camera moves to 60
+
+#### Scenario: Slide past the strip's end pulls back
+- **WHEN** `loop_bands` is on, the terminal is 80 columns wide, a band holds two columns of 40 cells, the first is focused with the camera at 0, and the user drags with `drag_band` from column 70 to column 40, then releases
+- **THEN** the camera is at 30 while dragging
+- **AND** after the release the second column is focused and the camera moves to 0
 
 #### Scenario: Middle button anywhere in navigation mode
 - **WHEN** navigation mode is active with the default bindings and the user drags with the middle button over a tile

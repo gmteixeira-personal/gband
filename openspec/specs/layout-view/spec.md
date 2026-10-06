@@ -123,7 +123,7 @@ A band's strip SHALL loop while the configuration's `loop_bands` is on and the s
 
 - Each column SHALL also stand at its strip position plus every whole multiple of the strip's width. Each of these positions is a copy of the column. The last column's copy ends at strip position 0 and the first column's copy starts at the strip's width, so the strip closes into a loop.
 - A tile's drawn copy SHALL be the copy of its column that has at least one cell inside the view. The strip's length ensures that a tile has at most one.
-- The policies below SHALL place the focused column at one of its copies. When focus moved to the column to the left or right, it SHALL be the copy next to the previously focused column's drawn copy, on the side of the move. Otherwise, or when that column has no drawn copy, it SHALL be the copy that needs the smallest camera move, the one with the smaller start on a tie.
+- The policies below SHALL place the focused column at one of its copies. When focus moved to the column to the left or right, it SHALL be the copy next to the previously focused column's drawn copy, on the side of the move. When focus moved to a column the layout opened beside the previously focused column, it SHALL be the copy next to the previously focused column's drawn copy, on the side the column opened. Otherwise, or when that column has no drawn copy, it SHALL be the copy that needs the smallest camera move, the one with the smaller start on a tie.
 - After every move, the camera SHALL be held at least 0 and below the strip's width, by adding or subtracting a whole multiple of the strip's width. Holding it SHALL NOT change what the view shows.
 
 Under `"never"`, the default:
@@ -131,6 +131,7 @@ Under `"never"`, the default:
 - When the focused window's column lies wholly inside the view, the camera SHALL not move.
 - Otherwise, when the column is at least as wide as the terminal or starts left of the view, the camera SHALL move to the column's start.
 - Otherwise, the camera SHALL move so that the column's end meets the terminal's right edge.
+- Once the camera has moved as above, when the strip does not loop, the camera is above 0 and the strip's end lies left of the terminal's right edge, the camera SHALL move left so that the strip's end meets the terminal's right edge, and SHALL NOT move below 0. This SHALL apply after every change that moves the camera by this policy, whether a change of focus, of the layout, of the screen area or of the terminal's width.
 
 Under `"always"`, the camera SHALL centre the focused column: it SHALL move to the column's start less half the difference between the terminal's width and the column's width, rounded down. When the column is at least as wide as the terminal, the camera SHALL move to the column's start.
 
@@ -208,6 +209,33 @@ Under `"on-overflow"`, when focus moves from one column to another column C of t
 #### Scenario: Looping off
 - **WHEN** `loop_bands` is off, the policy is `"always"`, the terminal is 80 columns wide, a band holds three columns of 40 cells at strip positions 0, 40 and 80, and the first column is focused
 - **THEN** the camera is at -20 and the 20 cells left of the first column are drawn empty
+
+#### Scenario: Opening across the seam
+- **WHEN** `loop_bands` is on, the policy is `"never"`, the terminal is 80 columns wide, a band holds two columns of 40 cells at strip positions 0 and 40, the second is focused with the camera at 0, and the layout opens a column of 40 cells right of the second, which the client focuses
+- **THEN** the camera moves to 40
+- **AND** the terminal shows the second column in cells 0 to 39 and the new column in cells 40 to 79
+
+#### Scenario: Closing the last column pulls the camera back
+- **WHEN** `loop_bands` is off, the policy is `"never"`, the terminal is 80 columns wide, a band holds three columns of 40 cells at strip positions 0, 40 and 80, the third is focused with the camera at 40, and the third column's only window exits
+- **THEN** the client focuses the second column and the camera moves to 0
+- **AND** the terminal shows the first column in cells 0 to 39 and the second in cells 40 to 79
+
+#### Scenario: Shrinking the last column pulls the camera back
+- **WHEN** `loop_bands` is off, the policy is `"never"`, the terminal is 80 columns wide, a band holds three columns of 40 cells at strip positions 0, 40 and 80, the third is focused with the camera at 40, and the third column's width becomes 20 cells
+- **THEN** the camera moves to 20 and the third column is drawn in cells 60 to 79
+
+#### Scenario: Narrower area pulls the camera back
+- **WHEN** the policy is `"never"`, the terminal is 60 columns wide, a band holds two columns of 40 cells at strip positions 0 and 40, the second is focused with the camera at 20, and the screen area changes so the columns are 30 cells wide at strip positions 0 and 30
+- **THEN** the camera moves to 0
+- **AND** the terminal shows the first column in cells 0 to 29 and the second in cells 30 to 59
+
+#### Scenario: Pulled back no further than 0
+- **WHEN** the policy is `"never"`, the terminal is 80 columns wide, a band holds two columns of 35 cells at strip positions 0 and 35, the second is focused with the camera at 10, and the screen area changes so the columns are 30 cells wide at strip positions 0 and 30
+- **THEN** the camera moves to 0 and cells 60 to 79 are drawn empty
+
+#### Scenario: Centred camera keeps its blank strip
+- **WHEN** `loop_bands` is off, the policy is `"always"`, the terminal is 80 columns wide, a band holds three columns of 40 cells at strip positions 0, 40 and 80, the third is focused, and the screen area changes so the columns are 30 cells wide at strip positions 0, 30 and 60
+- **THEN** the camera moves to 35 and cells 55 to 79 are drawn empty
 
 ### Requirement: Center the focused column
 While the tiled layer is active, the `center_column` view action SHALL move the viewed band's camera so that the focused window's column sits in the middle of the client's terminal, as niri's `center-column` does. The camera SHALL move to the column's start less half the difference between the terminal's width and the column's width, rounded down. When the column is at least as wide as the terminal, the camera SHALL move to the column's start. While the band's strip loops, as the Camera requirement defines, the column's start SHALL be that of the copy needing the smallest camera move, and the camera SHALL then be held within the strip. The action SHALL change neither the focused window nor the viewed band, and SHALL send nothing to the server. On a band with no focused window, it SHALL leave the view unchanged.
