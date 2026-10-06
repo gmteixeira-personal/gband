@@ -431,9 +431,9 @@ With no configuration file, `root` SHALL bind no mouse name, so every mouse even
 
 | mouse name in navigation mode | Lua binding | action | kind |
 |---|---|---|---|
-| `leftmouse` | `prefix leftmouse` | move the window with the mouse, or slide the band from empty ribbon | client |
+| `leftmouse` | `prefix leftmouse` | move the window with the mouse, or slide the band or switch bands from empty ribbon | client |
 | `rightmouse` | `prefix rightmouse` | resize the window with the mouse | client |
-| `middlemouse` | `prefix middlemouse` | slide the band with the mouse | client |
+| `middlemouse` | `prefix middlemouse` | slide the band or switch bands with the mouse | client |
 | any other mouse name | — | discard the press; navigation mode stays active | — |
 
 #### Scenario: Drag a floating window in navigation mode
@@ -447,6 +447,10 @@ With no configuration file, `root` SHALL bind no mouse name, so every mouse even
 #### Scenario: Left drag on a tile in interactive mode selects
 - **WHEN** the default configuration is in use, interactive mode is active, and the user drags across a shell window with the left button
 - **THEN** no window moves and the dragged text is selected
+
+#### Scenario: Middle drag up switches bands in navigation mode
+- **WHEN** the default configuration is in use, two bands hold windows, the first is viewed, navigation mode is active, and the user drags with the middle button from the bottom row to the top row and releases
+- **THEN** the second band is viewed and navigation mode stays active
 
 ### Requirement: Input to the server
 The client SHALL send each key press and repeat that the key bindings do not consume to the server as a key naming the focused window, each paste as a paste naming the focused window, and each change of its reported size, as "Ribbon area beside the bars" defines it, as a resize carrying the reported size. While a plugin window is focused, the plugin-windows capability SHALL take the keys and the pastes instead, whether or not a window is focused. Otherwise, keys and pastes SHALL be dropped while no window is focused. Keys the input-encoding capability cannot represent SHALL be dropped. On attach, the client SHALL report its reported size as its terminal size.

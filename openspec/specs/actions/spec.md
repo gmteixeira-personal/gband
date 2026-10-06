@@ -130,7 +130,7 @@ Every built-in action SHALL have one Lua name, under which `gband.action` holds 
 | `send_prefix` | send the prefix key to the focused window | client |
 | `drag_window` | move the window with the mouse | client |
 | `drag_resize_window` | resize the window with the mouse | client |
-| `drag_band` | slide the band with the mouse | client |
+| `drag_band` | slide the band or switch bands with the mouse | client |
 
 A width action named after a window's column SHALL act on the box of a floating window, as the floating-windows capability defines.
 
