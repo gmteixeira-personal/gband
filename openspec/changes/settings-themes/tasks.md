@@ -1,0 +1,51 @@
+## 1. Terminal palette
+
+- [ ] 1.1 Add the palette to the Lua host: a `Palette` type with `fg`, `bg` and 16 optional RGB entries in `crates/lua/src/ui.rs`, held in the client state in `crates/lua/src/runtime.rs` and exported from `crates/lua/src/lib.rs`, with `host.palette.set`, `get`, `snapshot` and `restore`, and a dirty mark on change. Verify with unit tests for set, replace, empty and restore
+- [ ] 1.2 Add `crates/lua/src/runtime/gband/palette.lua` to `bundled::API` with `gband.palette.set` and `gband.palette.get`: table check, the 18 field names, hex validation, lowercase output, copies on read, errors at the caller's line naming the field. Add `palette` to `CLIENT_ONLY` in `crates/lua/src/sides.rs`. Verify with `crates/lua/tests/palette.rs` cases for "Invalid palette field", "Invalid palette color", a returned table that does not change the palette, and a `sides.rs` unit test for "Palette in the server"
+- [ ] 1.3 Add `apply_palette` to `crates/client/src/render.rs`, run at the end of `render` over the whole buffer: `Color::Reset` foreground and background to `fg` and `bg`, indexes 0 to 15 and the named `ratatui` colors to their entries, through `ColorSupport::color` in `crates/client/src/color.rs`, and nothing when the palette is empty. Verify with `render.rs` unit tests for "Program color mapped", "Empty ribbon takes the background", "Mapped color without 24-bit color" (index 160), "256-color output unchanged" and an empty palette leaving the buffer equal
+- [ ] 1.4 Redraw when the palette changes after the load, in `crates/client/src/lib.rs`. Verify with a `crates/client/tests/` case where a binding sets `bg` and the next frame shows it
+
+## 2. Client groups
+
+- [ ] 2.1 Define `WindowBorder`, `WindowBorderFocused`, `ErrorBanner` and `SettingsLabel` defaults in the client's built-in groups before the init file, and draw borders and the banner from the resolved groups in `crates/client/src/render.rs`, removing `FOCUSED_BORDER`, `UNFOCUSED_BORDER` and `BANNER`. Verify with `crates/client/tests/` cases for "Defaults keep today's look", "Colored focused border" and "Banner group", and with `cargo test` showing no other screen change under a blank colorscheme
+
+## 3. Bundled themes
+
+- [ ] 3.1 Write `crates/lua/src/runtime/gband/theme.lua`, the helper that takes the palette and the semantic UI colors, calls `gband.palette.set`, and sets every theme group. List it in `MODULES` in `crates/lua/src/bundled.rs`. Verify with a `crates/lua/tests/themes.rs` case that a table passed to it sets all 16 theme groups and the palette
+- [ ] 3.2 Write `crates/lua/src/runtime/gband/colors/terminal.lua` with names and indexes 0 to 15 only and no palette. Verify the "Terminal theme uses the host palette" scenario in `crates/lua/tests/themes.rs`
+- [ ] 3.3 Write `crates/lua/src/runtime/gband/theme/catppuccin.lua` with the four flavors, and `colors/catppuccin-latte.lua`, `catppuccin-frappe.lua`, `catppuccin-macchiato.lua`, `catppuccin-mocha.lua` and `catppuccin.lua` over the helper. Verify the "Catppuccin alias" scenario in `crates/lua/tests/themes.rs`
+- [ ] 3.4 Write `colors/tokyo-night.lua`, `dracula.lua`, `nord.lua`, `gruvbox.lua`, `one-dark.lua`, `solarized.lua`, `kanagawa.lua`, `rose-pine.lua` and `vesper.lua` over the helper, with each palette taken from the source design.md names. List every theme in `bundled.rs` and remove `colors/default.lua`. Verify in `crates/lua/tests/themes.rs`: "Gruvbox palette", "Every theme sets every theme group", a table of eight base colors per theme checked against its palette, and that each theme's focused border, viewed band and cursor line differ from their unfocused peers
+
+## 4. Colorscheme switching and the start theme
+
+- [ ] 4.1 In `crates/lua/src/runtime/gband/colorscheme.lua`, clear the palette with the explicit settings before a file runs, and restore both on failure. Verify the "Palette replaced" and "Failing colorscheme" scenarios in `crates/lua/tests/colorschemes.rs`
+- [ ] 4.2 Replace the runtime's load of `default` before the init file with the start theme: `gband.settings.theme()`, then `gruvbox` when it is nil or fails, with the failure reported as `colors/<name>`. Install `settings.lua` before that step. Verify "Default at start", "Saved theme at start", "Init file replaces the start theme", "Saved theme missing", "Default sets the sidebar groups", "No default colorscheme" and "Switch at run time" in `crates/lua/tests/colorschemes.rs`, and update the existing colorscheme tests that named `default`
+
+## 5. The `gband.settings` API
+
+- [ ] 5.1 Create `crates/lua/src/runtime/gband/settings.lua` in `bundled::API` with `theme()` and `sidebar()`, sharing one reader and one atomic writer with `crates/lua/src/runtime/gband/keystyle.lua`. Add `settings` to `CLIENT_ONLY`. Verify with `crates/lua/tests/settings.rs` cases for every "Saved theme" and "Saved sidebar" scenario, and a `sides.rs` unit test for "Settings API in the server"
+- [ ] 5.2 Add `host.colorschemes()` in `crates/lua/src/runtime.rs`, listing `colors/*.lua` under each runtimepath entry, and `themes()` in `settings.lua`. Verify "Bundled themes only" and "User colorschemes after the bundled themes" in `crates/lua/tests/settings.rs`
+- [ ] 5.3 Add `open()`: enter `root`, open the settings window with its three lines, `SettingsLabel` labels, size and centering, focus an open one on a second call, close an open theme list first, and refuse while loading. Verify every "Settings window" scenario in `crates/lua/tests/settings.rs`, the 80×24 size and position included
+- [ ] 5.4 Add the settings window's keys: Enter, `h`, `l`, Left and Right on each line, saving through the shared writer, and the error naming the file on a failed write. Verify every "Settings window keys" scenario in `crates/lua/tests/settings.rs`, with a read-only `user` directory for "Cannot save"
+- [ ] 5.5 Add the theme list: lines from `themes()`, cursor on the active colorscheme, size and centering, its own movement keys that preview through `gband.colorscheme`, Enter saving, Escape and `q` restoring, and focus back to the settings window. Verify every "Theme list" scenario in `crates/lua/tests/settings.rs`
+
+## 6. Reopen after a save
+
+- [ ] 6.1 Add `host.settings_reopen(line)`, stored on `Display` in `crates/client/src/lib.rs`, and after a successful reload take it and open the settings window on that line through a runtime entry point. A failed reload clears it. Verify every "Reopen after a save" scenario in `tests/settings.rs`, plus a case where the reload fails and no window opens
+
+## 7. Key style, presets and defaults
+
+- [ ] 7.1 Remove `choose()` from `crates/lua/src/runtime/gband/keystyle.lua`, and bind `prefix s` to `gband.settings.open` with `{ desc = "settings" }` right after `:` in `crates/lua/src/runtime/gband/keystyle/modal.lua` and `direct.lua`. Verify `default_keys_follow_the_spec` and `direct_keys_follow_the_spec` in `crates/client/src/bindings.rs` against the updated client-attach table, and the key-style tests in `crates/lua/tests/keystyle.rs` with the chooser cases removed or moved to the settings window
+- [ ] 7.2 In `crates/lua/src/defaults.lua`, set up `gband.sidebar` unless `gband.settings.sidebar()` is `false`, and make the `Attached` handler call `gband.settings.open()` when `gband.config_dir` is set and no theme, sidebar or key style is saved. Verify each "Defaults use the public API" and "Offer on the first start" scenario in `crates/lua/tests/config.rs` and `tests/settings.rs`
+- [ ] 7.3 Close the key list in `crates/lua/src/runtime/gband/keylist.lua` when a line's binding leaves another floating plugin window focused. Verify "Run an action that opens a floating plugin window", "Open the settings from the list" and "Open the settings by the line's key" in `crates/lua/tests/keylist.rs` or the existing key list test file
+
+## 8. Test harnesses and references
+
+- [ ] 8.1 Add `theme` to `g.start` in `crates/harness/src/case.rs` and `crates/harness/src/runner.rs`, default `"terminal"`, written to `user/theme.lua` with the key style and before `files`. Save the `terminal` theme in `tests/common/mod.rs` too. Verify the "Case environment" scenarios in `tests/plugin_testing.rs`, "Theme of a case" and "First start in a case" included
+- [ ] 8.2 Add `tests/lua/settings_spec.lua` with screen references for the settings window, the theme list on 80×24, and a gruvbox frame, under `tests/lua/screenshots/settings_spec/`. Verify with `cargo test --test lua_specs`
+- [ ] 8.3 Regenerate the screen references in `tests/lua/screenshots/` and `examples/plugins/*/tests/screenshots/` under the `terminal` theme, and check that each diff changes only style lines. Verify with `cargo test` and `gband test` in each example plugin
+
+## 9. Documentation and gates
+
+- [ ] 9.1 Update `README.md` (the `s` key, the settings window, the themes, the saved files, and how a user's own `init.lua` uses them), `docs/plugins.md` (`gband.palette`, the theme groups, the start theme, `gband.settings`, the client-only fields table) and `docs/testing.md` (the `theme` option). Verify that every name in the docs exists, with `rg` for `default` colorscheme and `keystyle.choose` returning no stale mention
+- [ ] 9.2 Run `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test` and `openspec validate settings-themes --strict`, and verify all pass
