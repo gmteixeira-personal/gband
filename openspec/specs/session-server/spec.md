@@ -100,8 +100,8 @@ On creating a session, the server SHALL open that session's first window. Every 
 - **THEN** the new window prints its identifier, as the user's shell expands it
 
 #### Scenario: Argument list program
-- **WHEN** a client asks to open a window naming the argument list `printf`, `%s-%s`, `a`, `b`
-- **THEN** the new window prints `a-b` without a shell expanding it
+- **WHEN** a client asks to open a window naming the argument list `awk`, `BEGIN { printf "%s-%s", ARGV[1], ARGV[2]; getline line < "-" }`, `a`, `b`
+- **THEN** the new window prints `a-b` without a shell expanding it, and stays open while its program waits for input
 
 #### Scenario: Program that cannot start
 - **WHEN** a client asks to open a window naming the argument list `/nonexistent`
@@ -296,7 +296,7 @@ The server SHALL own the session's layout, as the layout capability defines it, 
 
 Set position naming a tiled window SHALL leave the layout unchanged.
 
-After placing an opened window whose action asks for focus, the server SHALL send the client that asked for it, after the layout that holds the window, a message telling it to focus that window. A window opened by the server's Lua SHALL NOT change any client's focus. When the program of a new window cannot be started, the server SHALL record the reason in its log and leave the layout unchanged.
+After placing an opened window whose action asks for focus, the server SHALL send the client that asked for it, after the layout that holds the window, a message telling it to focus that window. The server SHALL send that message only while the latest layout it has sent that client holds the window. When the window has left the layout before the message is sent, as when its program exits at once, the server SHALL send no focus message for it, so a client is never told to focus a window that the last layout it received does not hold. A window opened by the server's Lua SHALL NOT change any client's focus. When the program of a new window cannot be started, the server SHALL record the reason in its log and leave the layout unchanged.
 
 #### Scenario: Open a window
 - **WHEN** two clients are attached and the first asks to open a window next to the window it focuses
@@ -348,6 +348,11 @@ After placing an opened window whose action asks for focus, the server SHALL sen
 #### Scenario: Move to place reaches every client
 - **WHEN** two clients view a band holding columns A, B and C, and the first sends move to place naming A's window, B's window as the reference, and right of its column
 - **THEN** both clients receive a layout holding B, A and C, in that order
+
+#### Scenario: Window closed before its focus
+- **WHEN** a client asks to open a window running `printf` with focus, and the program exits before the server sends the focus message
+- **THEN** every focus message the client receives names a window that the last layout it received holds
+- **AND** the client receives no focus message naming the closed window after a layout that does not hold it
 
 ### Requirement: Close a window
 When a client asks to close a drawn window, the window SHALL leave the layout at once. When a client asks to close any other window, the server SHALL send SIGHUP to that window's program. If the program is still running 2 seconds later, the server SHALL send SIGKILL to the window's foreground process group and to its program. The window SHALL leave the layout when its program exits, as "Session ends with its last window" defines.
