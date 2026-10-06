@@ -50,7 +50,7 @@ At the release of a vertical drag, let B be the band whose region holds the term
 - **THEN** the client views B1
 
 #### Scenario: Vertical axis ignores sideways movement
-- **WHEN** the terminal is 80×24, the client views B1 of four 40-cell columns with the camera at 0, and the user drags with `drag_band` from column 40 and row 5 to column 41 and row 10, then to column 0 and row 10
+- **WHEN** the terminal is 80×24, the client views B1 of four 40-cell columns with the camera at 0, and the user drags with `drag_band` from column 40 and row 10 to column 41 and row 5, then to column 0 and row 5
 - **THEN** the camera stays at 0 and the drawn vertical position is 5 after both motions
 
 #### Scenario: First band stops the drag

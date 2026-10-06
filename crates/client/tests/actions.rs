@@ -1139,31 +1139,217 @@ fn partly_shown_column_snaps_after_a_slide() {
 }
 
 #[test]
-fn left_drag_on_empty_ribbon_slides_and_vertical_motion_does_not() {
+fn left_drag_on_empty_ribbon_slides_and_later_vertical_motion_does_not() {
     let (layout, windows) = columns_of(1, Some(Proportion::new(1, 4)));
     let mut mouse = dragging("mouse-slide-ribbon", layout);
-    mouse.event(MouseKind::Press(MouseButton::Left), 50, 5, Modifiers::NONE);
-    mouse.event(
-        MouseKind::Motion(Some(MouseButton::Left)),
-        50,
-        15,
-        Modifiers::NONE,
-    );
-    assert_eq!(mouse.display.camera(), Some(0));
-    mouse.event(
-        MouseKind::Motion(Some(MouseButton::Left)),
-        40,
-        15,
-        Modifiers::NONE,
-    );
+    let left = MouseButton::Left;
+    mouse.event(MouseKind::Press(left), 50, 5, Modifiers::NONE);
+    mouse.event(MouseKind::Motion(Some(left)), 40, 5, Modifiers::NONE);
     assert_eq!(mouse.display.camera(), Some(10));
-    mouse.event(
-        MouseKind::Release(MouseButton::Left),
-        40,
-        15,
-        Modifiers::NONE,
-    );
+    mouse.event(MouseKind::Motion(Some(left)), 40, 15, Modifiers::NONE);
+    assert_eq!(mouse.display.camera(), Some(10));
+    assert_eq!(mouse.tops(), [(mouse.layout.bands()[0].id, 0)]);
+    mouse.event(MouseKind::Release(left), 40, 15, Modifiers::NONE);
     assert_eq!(mouse.display.focused(), Some(windows[0]));
+}
+
+fn open_in(layout: &mut Layout, band: usize, width: Option<Proportion>) -> WindowId {
+    let window = layout.allocate_window();
+    let band = layout.bands()[band].id;
+    let after = layout.band(band).and_then(|band| band.windows().last());
+    layout.open(window, band, after, width, &LayoutOptions::default());
+    window
+}
+
+fn two_bands(columns: usize, width: Option<Proportion>) -> (Layout, Vec<WindowId>) {
+    let mut layout = Layout::new();
+    let mut windows: Vec<WindowId> = (0..columns)
+        .map(|_| open_in(&mut layout, 0, width))
+        .collect();
+    windows.push(open_in(&mut layout, 1, None));
+    (layout, windows)
+}
+
+impl Mouse {
+    fn tops(&mut self) -> Vec<(BandId, i64)> {
+        self.display
+            .present(self.now)
+            .unwrap()
+            .bands
+            .iter()
+            .map(|band| (band.band, band.top))
+            .collect()
+    }
+
+    fn viewed(&self) -> BandId {
+        BandId(self.display.view_state("root").band.number)
+    }
+
+    fn band(&self, index: usize) -> BandId {
+        self.layout.bands()[index].id
+    }
+
+    fn middle(&mut self, kind: fn(MouseButton) -> MouseKind, col: u16, row: u16) -> Vec<Step> {
+        self.event(kind(MouseButton::Middle), col, row, Modifiers::NONE)
+    }
+}
+
+fn motion(button: MouseButton) -> MouseKind {
+    MouseKind::Motion(Some(button))
+}
+
+#[test]
+fn horizontal_axis_ignores_vertical_movement() {
+    let (layout, _) = two_bands(4, None);
+    let mut mouse = dragging("mouse-axis-horizontal", layout);
+    let b1 = mouse.band(0);
+    mouse.middle(MouseKind::Press, 70, 5);
+    mouse.middle(motion, 40, 8);
+    assert_eq!(mouse.display.camera(), Some(30));
+    assert_eq!(mouse.tops(), [(b1, 0)]);
+    mouse.middle(motion, 40, 20);
+    assert_eq!(mouse.display.camera(), Some(30));
+    assert_eq!(mouse.tops(), [(b1, 0)]);
+    mouse.middle(MouseKind::Release, 40, 20);
+    assert_eq!(mouse.viewed(), b1);
+    assert_eq!(mouse.tops(), [(b1, 0)]);
+}
+
+#[test]
+fn small_movement_locks_no_axis() {
+    let (layout, _) = two_bands(4, None);
+    let mut mouse = dragging("mouse-axis-none", layout);
+    let before = mouse.tops();
+    mouse.middle(MouseKind::Press, 40, 10);
+    mouse.middle(motion, 41, 10);
+    assert_eq!(mouse.display.camera(), Some(0));
+    assert_eq!(mouse.tops(), before);
+}
+
+#[test]
+fn drag_up_holds_the_band_below_until_the_release() {
+    let (layout, windows) = two_bands(1, None);
+    let mut mouse = dragging("mouse-band-up", layout);
+    let (b1, b2) = (mouse.band(0), mouse.band(1));
+    mouse.middle(MouseKind::Press, 40, 20);
+    let steps = mouse.middle(motion, 40, 4);
+    assert!(messages(&steps).is_empty(), "{steps:?}");
+    assert_eq!(mouse.tops(), [(b2, 8), (b1, -16)]);
+    assert_eq!(mouse.viewed(), b1);
+    assert_eq!(mouse.display.focused(), Some(windows[0]));
+    let steps = mouse.middle(MouseKind::Release, 40, 4);
+    assert!(messages(&steps).is_empty(), "{steps:?}");
+    assert_eq!(mouse.viewed(), b2);
+    assert_eq!(mouse.display.focused(), Some(windows[1]));
+    assert_eq!(mouse.tops(), [(b2, 0)]);
+}
+
+#[test]
+fn bands_follow_the_pointer_with_animations_on() {
+    let (layout, _) = two_bands(1, None);
+    let mut mouse = Mouse::with("mouse-band-follow", DRAG, layout, Animations::On);
+    mouse.key("ctrl+space");
+    let (b1, b2) = (mouse.band(0), mouse.band(1));
+    mouse.middle(MouseKind::Press, 40, 12);
+    mouse.middle(motion, 40, 6);
+    assert_eq!(mouse.tops(), [(b2, 18), (b1, -6)]);
+}
+
+#[test]
+fn short_band_drag_returns() {
+    let (layout, windows) = two_bands(4, None);
+    let mut mouse = dragging("mouse-band-short", layout);
+    dispatch(&mut mouse.display, Action::View(ViewAction::FocusRight));
+    let camera = mouse.display.camera();
+    mouse.drag(MouseButton::Middle, (40, 12), (40, 6));
+    assert_eq!(mouse.viewed(), mouse.band(0));
+    assert_eq!(mouse.display.focused(), Some(windows[1]));
+    assert_eq!(mouse.display.camera(), camera);
+}
+
+#[test]
+fn drag_down_to_the_band_above() {
+    let (layout, _) = two_bands(1, None);
+    let mut mouse = dragging("mouse-band-down", layout);
+    dispatch(&mut mouse.display, Action::View(ViewAction::BandDown));
+    assert_eq!(mouse.viewed(), mouse.band(1));
+    mouse.drag(MouseButton::Middle, (40, 2), (40, 20));
+    assert_eq!(mouse.viewed(), mouse.band(0));
+}
+
+#[test]
+fn vertical_axis_ignores_sideways_movement() {
+    let (layout, _) = columns_of(4, None);
+    let mut mouse = dragging("mouse-axis-vertical", layout);
+    let (b1, b2) = (mouse.band(0), mouse.band(1));
+    mouse.middle(MouseKind::Press, 40, 10);
+    mouse.middle(motion, 41, 5);
+    assert_eq!(mouse.display.camera(), Some(0));
+    assert_eq!(mouse.tops(), [(b2, 19), (b1, -5)]);
+    mouse.middle(motion, 0, 5);
+    assert_eq!(mouse.display.camera(), Some(0));
+    assert_eq!(mouse.tops(), [(b2, 19), (b1, -5)]);
+}
+
+#[test]
+fn first_band_stops_the_drag() {
+    let (layout, windows) = two_bands(1, None);
+    let mut mouse = dragging("mouse-band-first", layout);
+    let b1 = mouse.band(0);
+    mouse.middle(MouseKind::Press, 40, 5);
+    mouse.middle(motion, 40, 15);
+    assert_eq!(mouse.tops(), [(b1, 0)]);
+    mouse.middle(MouseKind::Release, 40, 15);
+    assert_eq!(mouse.tops(), [(b1, 0)]);
+    assert_eq!(mouse.viewed(), b1);
+    assert_eq!(mouse.display.focused(), Some(windows[0]));
+}
+
+#[test]
+fn band_removed_above_shifts_the_held_bands() {
+    let mut layout = Layout::new();
+    let first = open_in(&mut layout, 0, None);
+    open_in(&mut layout, 1, None);
+    open_in(&mut layout, 2, None);
+    let mut mouse = dragging("mouse-band-shift", layout);
+    dispatch(&mut mouse.display, Action::View(ViewAction::BandDown));
+    let (b2, b3) = (mouse.band(1), mouse.band(2));
+    mouse.middle(MouseKind::Press, 40, 20);
+    mouse.middle(motion, 40, 14);
+    assert_eq!(mouse.tops(), [(b3, 18), (b2, -6)]);
+    mouse.layout.remove(first);
+    mouse.apply(&[]);
+    assert_eq!(mouse.tops(), [(b3, 18), (b2, -6)]);
+    mouse.middle(MouseKind::Release, 40, 14);
+    assert_eq!(mouse.viewed(), b2);
+}
+
+#[test]
+fn viewed_band_leaving_the_layout_ends_the_band_drag() {
+    let (layout, windows) = two_bands(1, None);
+    let mut mouse = dragging("mouse-band-removed", layout);
+    let b2 = mouse.band(1);
+    mouse.middle(MouseKind::Press, 40, 20);
+    mouse.middle(motion, 40, 8);
+    mouse.layout.remove(windows[0]);
+    mouse.apply(&[]);
+    assert_eq!(mouse.viewed(), b2);
+    assert_eq!(mouse.tops(), [(b2, 0)]);
+    let steps = mouse.middle(motion, 40, 2);
+    assert!(messages(&steps).is_empty(), "{steps:?}");
+    assert_eq!(mouse.tops(), [(b2, 0)]);
+    mouse.middle(MouseKind::Release, 40, 2);
+    assert_eq!(mouse.viewed(), b2);
+    assert_eq!(mouse.tops(), [(b2, 0)]);
+}
+
+#[test]
+fn left_drag_on_empty_ribbon_switches_bands() {
+    let (layout, _) = two_bands(1, Some(Proportion::new(1, 4)));
+    let mut mouse = dragging("mouse-band-ribbon", layout);
+    let steps = mouse.drag(MouseButton::Left, (50, 22), (50, 2));
+    assert!(messages(&steps).is_empty(), "{steps:?}");
+    assert_eq!(mouse.viewed(), mouse.band(1));
 }
 
 #[test]

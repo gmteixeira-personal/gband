@@ -326,7 +326,14 @@ pub enum Motion {
     },
     Slide {
         travel: i64,
+        axis: Option<Axis>,
     },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Axis {
+    Horizontal,
+    Vertical { band: BandId },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -881,7 +888,7 @@ impl Controls {
         };
         let motion = match (kind, hit.target, region) {
             (ClientAction::DragBand, _, _) | (ClientAction::DragWindow, Target::Ribbon, _) => {
-                Some(Motion::Slide { travel })
+                Some(Motion::Slide { travel, axis: None })
             }
             (
                 ClientAction::DragWindow | ClientAction::DragResize,
@@ -999,6 +1006,7 @@ impl Controls {
                         display.presentation.hold(Hold {
                             camera: edges.left,
                             windows: vec![window],
+                            ..Hold::default()
                         });
                     }
                     Resized::Floating { origin, .. } => {
@@ -1065,13 +1073,29 @@ impl Controls {
                     }
                 }
             }
-            Motion::Slide { travel } => {
-                let moved = *travel - dx;
-                display.with_view(|view, scene| view.slide(moved, scene));
-                display.presentation.hold(Hold {
-                    camera: true,
-                    windows: Vec::new(),
-                });
+            Motion::Slide { travel, axis } => {
+                if axis.is_none() && (dx.abs() >= 2 || dy.abs() >= 1) {
+                    *axis = if dx.abs() >= 2 * dy.abs() {
+                        Some(Axis::Horizontal)
+                    } else {
+                        display
+                            .view
+                            .as_ref()
+                            .map(|view| Axis::Vertical { band: view.band() })
+                    };
+                }
+                match *axis {
+                    None => {}
+                    Some(Axis::Horizontal) => {
+                        let moved = *travel - dx;
+                        display.with_view(|view, scene| view.slide(moved, scene));
+                        display.presentation.hold(Hold {
+                            camera: true,
+                            ..Hold::default()
+                        });
+                    }
+                    Some(Axis::Vertical { band }) => display.hold_bands(band, dy),
+                }
             }
         }
         display.pointer.held = Held::Gesture(gesture);
@@ -1127,7 +1151,11 @@ impl Controls {
                     view.sync(scene);
                 });
             }
-            Motion::Slide { travel } => {
+            Motion::Slide {
+                axis: Some(Axis::Vertical { band }),
+                ..
+            } => display.release_bands(band, dy, now),
+            Motion::Slide { travel, .. } => {
                 display.with_view(|view, scene| view.release_slide(scene, travel));
             }
             _ => {}

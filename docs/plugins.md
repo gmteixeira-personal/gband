@@ -438,6 +438,7 @@ The key list leaves mouse bindings out.
 A function bound to a mouse name runs with one argument, the `MousePressed` payload.
 The drag actions `drag_window`, `drag_resize_window` and `drag_band` start a gesture when a mouse press runs them, from its binding or a function it calls, and do nothing at any other time.
 The modal key style binds them to `leftmouse`, `rightmouse` and `middlemouse` in navigation mode.
+`drag_band`, and `drag_window` pressed on empty ribbon, slide the band sideways or switch bands vertically, whichever axis the drag starts on, and never both in one drag.
 
 ```lua
 gband.keymap.set("root", "ctrl+leftmouse", function(e)
