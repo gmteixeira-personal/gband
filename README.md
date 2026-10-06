@@ -57,10 +57,22 @@ Run `gband` again to attach to it.
 - `gband kill-server` stops the server and every session.
 
 Keys typed in gband go to the focused window: this is interactive mode.
-The prefix key, Ctrl+Space, enters navigation mode, and the status line shows `navigation`.
-In navigation mode each key below acts and navigation mode stays active, so `l` `l` `l` moves three columns and `=` `=` widens the column twice.
-A key with no binding does nothing.
-Escape or Enter returns to interactive mode, and so do `n`, `?`, `:` and Ctrl+Space once they have acted:
+The prefix key, Ctrl+Space, gives the keys below their gband meaning, in one of two key styles:
+
+- **modal**: Ctrl+Space enters navigation mode, and the status line shows `navigation`.
+  Each key below acts and navigation mode stays active, so `l` `l` `l` moves three columns and `=` `=` widens the column twice.
+  A key with no binding does nothing.
+  Escape or Enter returns to interactive mode, and so do `n`, `?`, `:` and Ctrl+Space once they have acted.
+- **direct**: Ctrl+Space then one key acts once, and the keys that follow reach the window again, as in tmux.
+  Ctrl+Space `l` `l` moves one column and types `l`.
+  Escape, Enter and any other key with no binding after Ctrl+Space are discarded.
+
+On the first start gband opens a box titled `key style  enter choose  esc later`, with a line per style.
+`j`, `k` and the arrow keys move between them, and Enter saves the style of the selected line to `user/keystyle.lua` and applies it at once.
+Escape or `q` closes the box and saves nothing: modal applies, and the next start offers the choice again.
+To choose again later, open the Lua prompt with Ctrl+Space then `:` and run `gband.keystyle.choose()`.
+
+Both styles bind the same keys after Ctrl+Space:
 
 | key | action |
 |---|---|
@@ -68,7 +80,7 @@ Escape or Enter returns to interactive mode, and so do `n`, `?`, `:` and Ctrl+Sp
 | `j`, `k`, or the down or up arrow | focus the window below or above |
 | `u`, `i` | view the band below or above |
 | `c` | center the focused column in the view, or the focused floating window on the screen |
-| `n` | open a window running your shell, and return to interactive mode |
+| `n` | open a window running your shell; modal returns to interactive mode |
 | `q` | close the window, or the key list or another floating plugin window when it has focus |
 | `[`, `]` | move the window into or out of the column to the left or right |
 | `r` | cycle the column's width through the presets |
@@ -83,8 +95,8 @@ Escape or Enter returns to interactive mode, and so do `n`, `?`, `:` and Ctrl+Sp
 | `?` | list these keys, and run the one you choose; the list takes the keys that follow |
 | `:` | open the Lua prompt, which runs one line of Lua |
 | `D` | detach |
-| Escape, Enter | return to interactive mode |
-| Ctrl+Space | send Ctrl+Space to the window, and return to interactive mode |
+| Escape, Enter | modal only: return to interactive mode |
+| Ctrl+Space | send Ctrl+Space to the window; modal returns to interactive mode |
 
 Navigation mode changed two habits.
 Enter no longer opens a window: `n` does.
@@ -101,10 +113,12 @@ gband keeps its configuration in `$XDG_CONFIG_HOME/gband/`, or `~/.config/gband/
 gband creates the directory when it starts, with two folders in it:
 
 - `defaults/init.lua` holds the full default client configuration, and `defaults/server.lua` the default server configuration.
+  `defaults/keystyle/modal.lua` and `defaults/keystyle/direct.lua` hold the bindings of the two key styles.
   gband owns these files: it writes each when it is missing and overwrites it when its content differs from the defaults of the running build.
   Edits to them have no effect.
 - `user/` holds your configuration.
   gband creates it empty.
+  Choosing a key style writes `user/keystyle.lua`, which holds `return "modal"` or `return "direct"`; delete it to be offered the choice again.
 
 The configuration has two files, one per process:
 
@@ -121,6 +135,11 @@ To start, copy `defaults/init.lua` to `user/init.lua` and edit the copy:
 ```sh
 cp ~/.config/gband/defaults/init.lua ~/.config/gband/user/init.lua
 ```
+
+The copy binds its keys with `gband.keystyle.use()`, which makes the bindings of the saved key style, or of modal when none is saved.
+`gband.keystyle.use("direct")` picks a style whatever is saved, and a binding made after the call replaces the style's binding for that key.
+The choice applies only where your file calls `gband.keystyle.use()` with no argument: a file that binds its own keys keeps them, and the chooser then only saves the choice.
+To edit the bindings themselves, copy a style's bindings from `defaults/keystyle/` into `user/init.lua` in place of the `gband.keystyle.use()` call.
 
 Without `user/init.lua`, the defaults apply.
 Saving `user/init.lua`, or any other `.lua` file under `user/`, reloads the configuration while gband runs, and deleting `user/init.lua` returns to the defaults.
@@ -202,7 +221,7 @@ A value set through `gband.opt` that the option rejects is reported, does not st
 
 `gband.keymap.mode(table, { label = ... })` makes a key table a mode: its keys act as often as you press them, and it stays active until one of its bindings enters another table.
 `gband.keymap.enter("root")` returns to interactive mode.
-The default configuration makes `prefix` a mode labelled `navigation`.
+The modal key style makes `prefix` a mode labelled `navigation`.
 A `user/init.lua` that declares no mode keeps one-key prefix bindings: the key after the prefix acts once, and the next key goes to the window.
 To get navigation mode in such a file, declare it and bind the keys that leave it:
 
@@ -221,7 +240,7 @@ gband.keymap.set("prefix", "n", function()
 end, { desc = "open a window" })
 ```
 
-A copy of `defaults/init.lua` keeps one-key prefix bindings when you delete its `gband.keymap.mode` line.
+The direct key style, `gband.keystyle.use("direct")`, is the one-key prefix bindings ready made.
 
 A key is a key name with optional `ctrl`, `alt` and `shift` modifiers joined by `+`, such as `alt+h`, `ctrl+PageUp` or `alt++`.
 A key name is one character, or `enter`, `tab`, `backtab`, `backspace`, `escape`, `space`, the arrow keys `up`, `down`, `left` and `right`, `home`, `end`, `insert`, `delete`, `pageup`, `pagedown`, or `f1` to `f12`.
@@ -289,15 +308,15 @@ Each client stacks floating windows in its own order, with the one it focused la
 
 ### Key list
 
-Ctrl+Space then `?` opens a list of the navigation keys in a box titled `navigation keys` over the windows, each with its description, and returns to interactive mode so the list takes the keys that follow.
+Ctrl+Space then `?` opens a list of the navigation keys in a box titled `navigation keys`, or `prefix keys` with the direct key style, over the windows, each with its description, and returns to interactive mode so the list takes the keys that follow.
 Pressing a line's key selects that line and runs its binding, an action or a function, on the window behind the list, which stays open for the next choice: `l` focuses the column to the right, and `j` and `k` focus the window below and above.
 Up and Down move through the list, PageUp, PageDown, Home and End jump through it, and Enter runs the selected line.
 Lines whose key is one of these, and the line of the prefix key, run only through Enter.
 The list's own `?` line shows dimmed, and pressing `?` or Enter on it only selects it.
 `q` runs its line, close the window, which closes the list; Escape, or Ctrl+Space then `q`, close it too.
 
-The list is a plugin bundled with gband, set up by the default configuration.
-A `user/init.lua` that replaces the defaults sets it up and binds it itself:
+The list is a plugin bundled with gband, set up by both key styles.
+A `user/init.lua` that calls no `gband.keystyle.use()` sets it up and binds it itself:
 
 ```lua
 gband.plugin("gband.keylist")
@@ -317,8 +336,8 @@ It runs with an instruction budget of its own: an endless loop stops only the li
 A syntax error, a runtime error or a stop by the instruction limit is reported like any configuration error, as `prompt:1: <message>`, so the status line shows `error`.
 Return values are dropped; `gband.notify(tostring(value))` shows one.
 
-The prompt is a plugin bundled with gband, set up by the default configuration.
-A `user/init.lua` that replaces the defaults sets it up and binds it itself:
+The prompt is a plugin bundled with gband, set up by both key styles.
+A `user/init.lua` that calls no `gband.keystyle.use()` sets it up and binds it itself:
 
 ```lua
 gband.plugin("gband.prompt")
@@ -332,7 +351,7 @@ gband.keymap.set("prefix", ":", gband.action["prompt.open"], { desc = "run Lua" 
 The status line is a side bar at the left of the terminal, 20 columns wide by default and as tall as the terminal.
 The windows keep the size they would have without it: they are drawn in the columns it leaves, and the view scrolls inside them, so a 1/2 column of an 80-column terminal is still 40 columns wide beside the bar.
 By default it shows the viewed band at the top, such as `band 1`, the label of the active mode below it after the prefix key, such as `navigation`, hints for the keys of that mode, and the focused column at the bottom, such as `2/3`.
-The hints show `C-space navigation` until the prefix key is pressed, then each key of navigation mode with a short label, such as `h left  l right`, wrapped onto as many rows as fit and ended with `…` when some are left out.
+The hints show `C-space navigation`, or `C-space prefix` with the direct key style, until the prefix key is pressed, then each key of navigation mode with a short label, such as `h left  l right`, wrapped onto as many rows as fit and ended with `…` when some are left out.
 While a configuration or plugin error is reported, the first row shows `error` in red.
 
 The status line is a plugin bundled with gband, `gband.statusline`, and each segment is another.

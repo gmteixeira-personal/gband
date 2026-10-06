@@ -350,6 +350,54 @@ end)
     assert_passed(&output);
 }
 
+#[test]
+fn key_style_of_a_case() {
+    let project = Project::new("keystyle");
+    project.file(
+        "tests/keystyle_spec.lua",
+        r#"local t = require("gband.test")
+
+t.case("default configuration without the chooser", function(g)
+  g.start()
+  g.settle()
+  t.eq(g.client("return #gband.win.list()"), 0)
+  t.eq(g.client("return gband.keystyle.saved()"), "modal")
+end)
+
+t.case("first start in a case", function(g)
+  g.start({ keystyle = false })
+  g.settle()
+  t.eq(g.client("return #gband.win.list()"), 1)
+  t.eq(g.client("return gband.win.info(gband.win.list()[1]).focused"), true)
+end)
+
+t.case("direct style in a case", function(g)
+  g.start({ keystyle = "direct" })
+  t.eq(g.client('return gband.keymap.label("prefix")'), "prefix")
+end)
+
+t.case("files replace the saved style", function(g)
+  g.start({ keystyle = "direct", files = { ["user/keystyle.lua"] = 'return "modal"' } })
+  t.eq(g.client("return gband.keystyle.saved()"), "modal")
+end)
+
+t.case("unknown key style", function(g)
+  local ok, err = pcall(function()
+    g.start({ keystyle = "vi" })
+  end)
+  t.eq(ok, false)
+  t.match(err, "keystyle_spec.lua:29: `keystyle` of g.start")
+  ok, err = pcall(function()
+    g.start({ keystyle = true })
+  end)
+  t.match(err, "keystyle_spec.lua:34: `keystyle` of g.start")
+end)
+"#,
+    );
+    let output = project.run(&[]);
+    assert_passed(&output);
+}
+
 fn processes_of(root_prefix: &str) -> Vec<i32> {
     let Ok(entries) = fs::read_dir("/proc") else {
         return Vec::new();

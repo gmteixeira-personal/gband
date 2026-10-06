@@ -9,11 +9,12 @@ use crate::actions::ACTIONS;
 use crate::error::{ConfigError, caller};
 use crate::removed;
 
-pub(crate) const CLIENT_ONLY: [&str; 20] = [
+pub(crate) const CLIENT_ONLY: [&str; 21] = [
     "bind",
     "unbind",
     "spawn",
     "keymap",
+    "keystyle",
     "ui",
     "hl",
     "colorscheme",
@@ -33,6 +34,8 @@ pub(crate) const CLIENT_ONLY: [&str; 20] = [
 ];
 
 pub(crate) const SERVER_ONLY: [&str; 2] = ["sessions", "session"];
+
+const UNSET_WITHOUT_LOCATIONS: [&str; 1] = ["config_dir"];
 
 fn other_only(side: Side) -> &'static [&'static str] {
     match side {
@@ -68,7 +71,12 @@ fn providers() -> &'static BTreeMap<String, Vec<Side>> {
             };
             let names = provided(side)
                 .into_iter()
-                .chain(only.iter().map(|name| (*name).to_owned()));
+                .chain(only.iter().map(|name| (*name).to_owned()))
+                .chain(
+                    UNSET_WITHOUT_LOCATIONS
+                        .iter()
+                        .map(|name| (*name).to_owned()),
+                );
             for name in names {
                 let sides = providers.entry(name).or_default();
                 if !sides.contains(&side) {
@@ -181,4 +189,50 @@ pub(crate) fn guard(lua: &Lua, gband: &Table, side: Side) -> mlua::Result<()> {
     };
     actions.set_metatable(Some(foreign(names, "gband.action.", "action")?))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_side() -> Lua {
+        let lua = Lua::new();
+        install_test(&lua, |_| {}).unwrap();
+        lua
+    }
+
+    fn read_error(lua: &Lua, source: &str) -> String {
+        lua.load(source)
+            .set_name("@spec_test.lua")
+            .exec()
+            .unwrap_err()
+            .to_string()
+    }
+
+    #[test]
+    fn configuration_directory_in_a_test_file() {
+        let error = read_error(&test_side(), "local a = 1\nreturn gband.config_dir");
+        assert!(error.contains("spec_test.lua:2:"), "{error}");
+        assert!(
+            error.contains("`gband.config_dir` is a client and server API"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn key_style_api_in_the_server() {
+        let lua = Lua::new();
+        crate::runtime::install(&lua, Side::Server, None, crate::BUDGET).unwrap();
+        let error = read_error(&lua, "local a = 1\ngband.keystyle.use()");
+        assert!(
+            error.contains("`gband.keystyle` is a client API"),
+            "{error}"
+        );
+        assert!(error.contains("this is the server"), "{error}");
+        let error = read_error(&test_side(), "return gband.keystyle");
+        assert!(
+            error.contains("`gband.keystyle` is a client API"),
+            "{error}"
+        );
+    }
 }

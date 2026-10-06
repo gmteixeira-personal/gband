@@ -50,6 +50,11 @@ fn bundled_lua_prompt() {
 }
 
 #[test]
+fn key_styles() {
+    gband_test(root(), &["tests/lua/keystyle_spec.lua"]);
+}
+
+#[test]
 fn looping_bands() {
     gband_test(root(), &["tests/lua/loop_bands_spec.lua"]);
 }

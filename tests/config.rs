@@ -99,7 +99,7 @@ fn echo_keys(client: &mut Attached) {
 
 #[test]
 fn harness_isolates_the_configuration() {
-    let env = TestEnv::new("config-harness");
+    let env = TestEnv::without_key_style("config-harness");
     let command = env.command(GBAND, &["list-sessions"]);
     let named = command
         .get_envs()
@@ -124,10 +124,14 @@ fn harness_isolates_the_configuration() {
 
 #[test]
 fn first_run() {
-    let env = TestEnv::new("config-first-run");
+    let env = TestEnv::without_key_style("config-first-run");
     let client = Attached::start(&env, 80, 24);
     client.wait_for_prompt();
     assert_eq!(fs::read_to_string(env.defaults_lua()).unwrap(), DEFAULTS);
+    for (style, preset) in gband_lua::KEY_STYLES {
+        let path = gband_lua::key_style_file(&env.config_dir(), style);
+        assert_eq!(fs::read_to_string(path).unwrap(), preset);
+    }
     assert!(entries(&env.config_dir().join("user")).is_empty());
     for role in ["client", "server"] {
         let log = env.log_text(role);
@@ -147,10 +151,9 @@ impl Drop for Writable<'_> {
 #[test]
 fn read_only_configuration_directory() {
     let env = TestEnv::new("config-read-only");
-    let config_home = env.config_home();
-    fs::create_dir_all(&config_home).unwrap();
-    fs::set_permissions(&config_home, fs::Permissions::from_mode(0o555)).unwrap();
-    let _writable = Writable(&config_home);
+    let config_dir = env.config_dir();
+    fs::set_permissions(&config_dir, fs::Permissions::from_mode(0o555)).unwrap();
+    let _writable = Writable(&config_dir);
     let mut client = Attached::start(&env, 80, 24);
     client.wait_for_prompt();
     client.shell_pid(&env);

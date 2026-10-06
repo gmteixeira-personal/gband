@@ -1,6 +1,6 @@
 use mlua::{Function, IntoLuaMulti, Lua, MultiValue, Table};
 
-pub(crate) const API: [(&str, &str); 5] = [
+pub(crate) const API: [(&str, &str); 6] = [
     ("hl.lua", include_str!("runtime/gband/hl.lua")),
     (
         "colorscheme.lua",
@@ -12,13 +12,21 @@ pub(crate) const API: [(&str, &str); 5] = [
         include_str!("runtime/gband/statusline.lua"),
     ),
     ("win.lua", include_str!("runtime/gband/win.lua")),
+    ("keystyle.lua", include_str!("runtime/gband/keystyle.lua")),
 ];
 
-const MODULES: [(&str, &str); 9] = [
+pub(crate) const KEY_STYLES: [(&str, &str); 2] = [
+    ("modal", include_str!("runtime/gband/keystyle/modal.lua")),
+    ("direct", include_str!("runtime/gband/keystyle/direct.lua")),
+];
+
+const MODULES: [(&str, &str); 11] = [
     ("errors.lua", include_str!("runtime/gband/errors.lua")),
     ("prompt.lua", include_str!("runtime/gband/prompt.lua")),
     ("keyform.lua", include_str!("runtime/gband/keyform.lua")),
     ("keylist.lua", include_str!("runtime/gband/keylist.lua")),
+    ("keystyle/modal.lua", KEY_STYLES[0].1),
+    ("keystyle/direct.lua", KEY_STYLES[1].1),
     (
         "statusline/band.lua",
         include_str!("runtime/gband/statusline/band.lua"),

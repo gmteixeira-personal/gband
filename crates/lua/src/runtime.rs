@@ -82,6 +82,10 @@ pub(crate) fn install(
                 .map(|entry| entry.to_string_lossy().into_owned()),
         )?,
     )?;
+    gband.set(
+        "config_dir",
+        locations.map(|locations| locations.config.to_string_lossy().into_owned()),
+    )?;
     gband.set("plugin", lua.create_function(plugin)?)?;
     gband.set("plugins", lua.create_function(plugins)?)?;
     let host = match side {

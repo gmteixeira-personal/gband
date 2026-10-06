@@ -134,7 +134,10 @@ mod tests {
     }
 
     fn default_prefix_entries() -> Vec<(String, Option<String>, String)> {
-        let config = gband_lua::defaults(gband_lua::Side::Client);
+        prefix_entries(&gband_lua::defaults(gband_lua::Side::Client))
+    }
+
+    fn prefix_entries(config: &gband_lua::Config) -> Vec<(String, Option<String>, String)> {
         let names: Vec<String> = config
             .runtime
             .lua()
@@ -162,6 +165,30 @@ mod tests {
                 )
             })
             .collect()
+    }
+
+    fn with_saved_style(style: &str) -> gband_lua::Config {
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
+        let dir = std::env::temp_dir().join(format!(
+            "gband-client-bindings-style-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        let user = gband_lua::user_dir(&dir);
+        std::fs::create_dir_all(&user).unwrap();
+        std::fs::write(user.join("keystyle.lua"), format!("return \"{style}\"\n")).unwrap();
+        let locations = gband_lua::Locations {
+            config: dir.clone(),
+            plugins: None,
+        };
+        let config = gband_lua::load(
+            &locations,
+            gband_lua::Side::Client,
+            &gband_lua::LoadOptions::default(),
+        )
+        .unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        config
     }
 
     fn configured(source: &str) -> Keymap {
@@ -337,6 +364,79 @@ mod tests {
         assert!(keymap.table(ROOT).is_empty());
         assert_eq!(keymap.table(PREFIX).len(), keys.len());
         assert!(keymap.modes.contains(PREFIX));
+    }
+
+    #[test]
+    fn direct_keys_follow_the_spec() {
+        let modal = defaults();
+        let modal_entries = default_prefix_entries();
+        let config = with_saved_style("direct");
+        let entries = prefix_entries(&config);
+        let keymap = Keymap::new(
+            config.options.prefix,
+            config.options.steps,
+            config.keymap,
+            config.modes,
+        );
+        let keys: Vec<&str> = entries.iter().map(|(key, _, _)| key.as_str()).collect();
+        let expected: Vec<&str> = modal_entries
+            .iter()
+            .map(|(key, _, _)| key.as_str())
+            .filter(|key| !matches!(*key, "escape" | "enter"))
+            .collect();
+        assert_eq!(keys, expected);
+        assert!(keymap.table(ROOT).is_empty());
+        assert!(keymap.modes.is_empty());
+        let own = [
+            (
+                "n",
+                "open_window",
+                "open a window running the user's shell",
+                Action::Session(SessionCommand::OpenWindow),
+            ),
+            (
+                "prefix",
+                "send_prefix",
+                "send the prefix key to the focused window",
+                Action::Client(ClientAction::SendPrefix),
+            ),
+        ];
+        for ((key, action, desc), (_, binding)) in entries.iter().zip(keymap.table(PREFIX)) {
+            if let Some((_, name, described, bound)) = own.iter().find(|(own, ..)| own == key) {
+                assert_eq!(action.as_deref(), Some(*name), "{key}");
+                assert_eq!(desc, described, "{key}");
+                assert_eq!(*binding, Binding::Action(*bound), "{key}");
+                continue;
+            }
+            let index = modal_entries
+                .iter()
+                .position(|(modal_key, _, _)| modal_key == key)
+                .unwrap();
+            let (_, modal_action, modal_desc) = &modal_entries[index];
+            assert_eq!((action, desc), (modal_action, modal_desc), "{key}");
+            let modal_binding = modal.table(PREFIX)[index].1;
+            match (binding, modal_binding) {
+                (Binding::Action(direct), Binding::Action(modal)) => {
+                    assert_eq!(*direct, modal, "{key}")
+                }
+                _ => assert!(
+                    matches!(action.as_deref(), Some("keylist.open" | "prompt.open")),
+                    "{key}"
+                ),
+            }
+        }
+        for pressed in [char_key('l'), Key::plain(KeyCode::Escape)] {
+            let mut leader = Leader::default();
+            assert_eq!(leader.handle(&keymap, keymap.prefix), Command::Discard);
+            leader.handle(&keymap, pressed);
+            assert_eq!(leader.active(), ROOT, "{pressed:?}");
+        }
+        let mut leader = Leader::default();
+        leader.handle(&keymap, keymap.prefix);
+        assert_eq!(
+            leader.handle(&keymap, Key::plain(KeyCode::Enter)),
+            Command::Discard
+        );
     }
 
     #[test]

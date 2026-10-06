@@ -40,8 +40,8 @@ pub use crate::bridge::{base64, notification};
 pub use crate::callbacks::CallbackId;
 pub use crate::clock::freeze as freeze_time;
 pub use crate::directory::{
-    Locations, config_dir, config_dir_from, defaults_file, plugins_dir, plugins_dir_from, prepare,
-    user_dir, user_file,
+    Locations, config_dir, config_dir_from, defaults_file, key_style_file, plugins_dir,
+    plugins_dir_from, prepare, user_dir, user_file,
 };
 pub use crate::error::ConfigError;
 pub use crate::events::Event;
@@ -58,6 +58,7 @@ pub mod plain {
 
 pub const DEFAULTS: &str = include_str!("defaults.lua");
 pub const DEFAULTS_SERVER: &str = include_str!("defaults_server.lua");
+pub const KEY_STYLES: [(&str, &str); 2] = bundled::KEY_STYLES;
 pub const BUDGET: u64 = 100_000_000;
 const TEST_SIDE: &str = "the test side loads no configuration and has no counterpart";
 

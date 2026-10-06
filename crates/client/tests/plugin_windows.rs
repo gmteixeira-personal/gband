@@ -28,6 +28,7 @@ impl Scratch {
     fn load(&self, source: &str) -> Config {
         let path = gband_lua::user_file(&self.0, gband_lua::Side::Client);
         fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path.with_file_name("keystyle.lua"), "return \"modal\"\n").unwrap();
         fs::write(
             &path,
             format!(

@@ -35,6 +35,9 @@ When the configuration starts to load, it holds:
 1. the `user` directory of the configuration directory, `~/.config/gband/user/`
 2. every directory directly under the plugins directory, in byte order of their names
 
+`gband.config_dir` holds the configuration directory's path, such as `/home/u/.config/gband`, on the client and the server, and is nil when the process has none or when the default configuration is evaluated alone.
+Assigning it changes nothing that gband loads or watches.
+
 The plugins directory is `$XDG_DATA_HOME/gband/plugins/`, or `~/.local/share/gband/plugins/` when `XDG_DATA_HOME` is unset or not absolute.
 To install a plugin, copy or link its directory there, on the server's machine for its server half and on each client's machine for its client half.
 A missing plugins directory, or a runtimepath entry that does not exist, is not an error.
@@ -58,6 +61,7 @@ No file under a `plugin/` directory is ever run: plugins written for the earlier
 In the client, when no entry holds the module, it looks among the modules bundled with gband, such as `gband.statusline.band`, and only then in Lua's own search path.
 The first file found wins, so a module in `user/lua/` overrides a plugin's module of the same name, and `user/lua/gband/statusline/band.lua` overrides the bundled one.
 Errors in a bundled module name its path under `gband/`, such as `gband/statusline/band.lua:12:`.
+The key style presets are bundled modules too, so `user/lua/gband/keystyle/direct.lua` replaces the direct key style wherever `gband.keystyle.use("direct")` runs.
 
 ## The manifest
 
@@ -119,9 +123,9 @@ user/server.lua:3: `gband.keymap` is a client API; this is the server
 
 | only the client | only the server |
 |---|---|
-| `bind`, `unbind`, `spawn`, `keymap`, `ui`, `hl`, `colorscheme`, `layout`, `view`, `window`, `band`, `win`, `bar`, `errors`, `clear_errors`, `rpc`, `notify`, `bell`, `clipboard`, `open` | `sessions`, `session` |
+| `bind`, `unbind`, `spawn`, `keymap`, `keystyle`, `ui`, `hl`, `colorscheme`, `layout`, `view`, `window`, `band`, `win`, `bar`, `errors`, `clear_errors`, `rpc`, `notify`, `bell`, `clipboard`, `open` | `sessions`, `session` |
 
-Every other field exists on both sides: `on`, `augroup`, `emit`, `cmd`, `opt`, `set`, `plugin`, `plugins`, `runtimepath`, `side`, `api_version`, `window_state` and `action`.
+Every other field exists on both sides: `on`, `augroup`, `emit`, `cmd`, `opt`, `set`, `plugin`, `plugins`, `runtimepath`, `config_dir`, `side`, `api_version`, `window_state` and `action`.
 `emit`, `window_state`, `action` and the events differ between the sides, as their sections describe.
 A test file's `gband` holds only `side` and `api_version`, and reading any other field names the sides that provide it, such as ``tests/a_spec.lua:4: `gband.opt` is a client and server API; this is the test side``.
 In the server, `gband.action` holds the session actions only; reading a view or client action, such as `gband.action.focus_column_left`, is the same kind of error.
@@ -417,7 +421,7 @@ Declaring a mode again replaces its label, and `gband.keymap.set` and `gband.key
 
 While a mode is active, a bound key runs its binding, any other key is discarded, and neither reaches a window or a plugin window.
 The mode stays active after each key and emits no `KeyTableChanged`, until a binding enters another table.
-The default configuration makes `prefix` a mode labelled `navigation`, and leaves it with Escape, Enter, `n`, `?` and the prefix key.
+The modal key style makes `prefix` a mode labelled `navigation`, and leaves it with Escape, Enter, `n`, `?`, `:` and the prefix key; the direct key style declares no mode.
 A mode of your own:
 
 ```lua
@@ -878,14 +882,14 @@ return M
 
 gband bundles one more client plugin beside the status line segments: the key list, module `gband.keylist`, plugin `keylist`.
 Its `setup` takes no options, and registers the action `keylist.open`, described as `list the keys`.
-The default configuration sets it up before its key bindings and binds Ctrl+Space then `?` to it:
+Both key style presets set it up before their key bindings and bind Ctrl+Space then `?` to it:
 
 ```lua
 gband.plugin("gband.keylist")
 gband.keymap.set("prefix", "?", gband.action["keylist.open"], { desc = "list the keys" })
 ```
 
-`keylist.open` opens a focused floating plugin window titled with `gband.keymap.label("prefix")` and ` keys`, `navigation keys` with the defaults, centred in the ribbon, with its cursor line on the first line.
+`keylist.open` opens a focused floating plugin window titled with `gband.keymap.label("prefix")` and ` keys`, `navigation keys` with the modal key style and `prefix keys` with the direct one, centred in the ribbon, with its cursor line on the first line.
 It enters `root` as it opens, and as it focuses an open list, so the keys that follow reach the list and not navigation mode.
 It holds one line per binding of the `prefix` table, in the order `gband.keymap.list("prefix")` gives them when it opens: the key in the hints segment's short form, such as `C-space` for the prefix key, padded to two cells more than the widest key, then the binding's description, its action's description when it has none, its action's name when that is empty too, or `function`.
 The plugin window is as wide as its longest line plus its border and as high as its lines plus its border, at most 15 rows, and the ribbon caps both.
@@ -911,7 +915,7 @@ The key list draws keys in `KeyListKey` and the description it cannot run in `Ke
 
 gband also bundles the Lua prompt, module `gband.prompt`, plugin `prompt`.
 Its `setup` takes no options, and registers the action `prompt.open`, described as `run Lua`.
-The default configuration sets it up right after the key list, before its key bindings, and binds Ctrl+Space then `:` to it, right after `?`:
+Both key style presets set it up right after the key list, before their key bindings, and bind Ctrl+Space then `:` to it, right after `?`:
 
 ```lua
 gband.plugin("gband.prompt")
@@ -942,6 +946,41 @@ A syntax error, a runtime error and a stop by the instruction limit are each rep
 Return values are dropped.
 
 The prompt gives `PromptCursor` the default `{ reverse = true }` when its module is first required.
+
+## Key styles: `gband.keystyle`
+
+gband bundles two key style presets, the modules `gband.keystyle.modal` and `gband.keystyle.direct`.
+Each is a file of plain top-level calls, as a `user/init.lua` is: it sets up `gband.keylist` and `gband.prompt`, whose actions it binds, then makes its bindings in `prefix`, and binds nothing in `root`.
+The modal preset declares `prefix` a mode labelled `navigation` and binds Escape and Enter to return to interactive mode.
+The direct preset declares no mode, so each key after the prefix key acts once; it binds `n` to `open_window` and the prefix key to `send_prefix` directly.
+gband writes copies of both to `defaults/keystyle/` for you to read; loading never reads the copies.
+
+`gband.keystyle` is a client API:
+
+| function | effect |
+|---|---|
+| `gband.keystyle.use(style)` | makes the bindings of `"modal"` or `"direct"` by requiring `gband.keystyle.<style>`, and returns the style's name; with no argument it uses the saved style, or `"modal"` when none is saved |
+| `gband.keystyle.saved()` | the saved style, `"modal"` or `"direct"`, or nil |
+| `gband.keystyle.choose()` | enters `root` and opens the key style chooser, or focuses it when it is open |
+
+`use` runs only while the configuration loads, and once per load; any other style, a second call and a call after loading are errors at the line of the call.
+Bindings made after it replace the preset's binding for the same key.
+The default configuration calls `gband.keystyle.use()` with no argument, so the choice applies where a configuration does the same: a `user/init.lua` that binds its own keys keeps them, and the chooser then only saves the choice.
+
+`saved` reads `user/keystyle.lua` as a text chunk with an empty environment, and returns its value when it is `"modal"` or `"direct"`.
+It returns nil when `gband.config_dir` is nil, and when the file is missing, does not compile, raises an error or returns anything else; it reports nothing.
+The file is never run as configuration, a plugin file or a module.
+
+`choose` is callable wherever an action value is, and calling it while the configuration loads is an error.
+The chooser is a floating plugin window with a border, titled `key style  enter choose  esc later`, with one line per style, such as `modal   C-space enters a mode, keys repeat until Escape`, showing the prefix key in the hints segment's short form.
+Its cursor line starts on the saved style, or on `modal`.
+It is as wide as its longest line plus its border, at most as wide as the ribbon, and centred in it.
+`j`, `k` and the arrow keys move the cursor line, and Escape and `q` close it and save nothing.
+Enter closes it and saves the selected style: it writes `return "<style>"` and a newline to a temporary file in `user/` and renames it over `user/keystyle.lua`, which reloads the configuration as any saved `.lua` file under `user/` does.
+When there is no configuration directory or the write fails, Enter raises an error naming `user/keystyle.lua` and the reason, and the style in use stays.
+
+On `Attached`, the default configuration opens the chooser when `gband.config_dir` is set and `saved()` returns nil.
+`Attached` fires once per client and never for a reload, so the chooser opens at most once per start, and every start offers it until a style is saved.
 
 ## Highlight groups: `gband.hl`
 
