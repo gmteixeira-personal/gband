@@ -45,6 +45,5 @@ None.
 - crates/lua/src/runtime/gband/keylist.lua
 - docs/plugins.md
 - tests/lua/keylist_spec.lua
-- tests/lua/screenshots/keylist_spec/
 - tests/navigation.rs
 - openspec/changes/key-list-shortcuts/
