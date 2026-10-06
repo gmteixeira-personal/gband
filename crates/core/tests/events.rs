@@ -1,17 +1,17 @@
 use gband_core::event::LayoutEvent;
 use gband_core::geometry::Size;
 use gband_core::layout::{
-    BandId, Direction, FloatingPane, Layout, LayoutOptions, PaneHeight, PaneId, Proportion,
-    SessionAction, Step, Vertical, Weight,
+    BandId, Direction, FloatingWindow, Layout, LayoutOptions, Proportion, SessionAction, Step,
+    Vertical, Weight, WindowHeight, WindowId,
 };
 
 const AREA: Size = Size::new(80, 24);
 
-fn open(layout: &mut Layout, band: usize, after: Option<PaneId>) -> (PaneId, Vec<LayoutEvent>) {
-    let pane = layout.allocate_pane();
+fn open(layout: &mut Layout, band: usize, after: Option<WindowId>) -> (WindowId, Vec<LayoutEvent>) {
+    let window = layout.allocate_window();
     let id = layout.bands()[band].id;
-    let events = layout.open(pane, id, after, None, &LayoutOptions::default());
-    (pane, events)
+    let events = layout.open(window, id, after, None, &LayoutOptions::default());
+    (window, events)
 }
 
 fn band(layout: &Layout, index: usize) -> BandId {
@@ -22,11 +22,14 @@ fn band(layout: &Layout, index: usize) -> BandId {
 fn open_in_the_empty_band_adds_one_below() {
     let mut layout = Layout::new();
     let empty = band(&layout, 0);
-    let (pane, events) = open(&mut layout, 0, None);
+    let (window, events) = open(&mut layout, 0, None);
     assert_eq!(
         events,
         [
-            LayoutEvent::PaneOpened { pane, band: empty },
+            LayoutEvent::WindowOpened {
+                window,
+                band: empty
+            },
             LayoutEvent::BandAdded {
                 band: band(&layout, 1),
                 index: 1,
@@ -36,21 +39,21 @@ fn open_in_the_empty_band_adds_one_below() {
 }
 
 #[test]
-fn open_beside_a_pane_adds_no_band() {
+fn open_beside_a_window_adds_no_band() {
     let mut layout = Layout::new();
     let (first, _) = open(&mut layout, 0, None);
     let (second, events) = open(&mut layout, 0, Some(first));
     assert_eq!(
         events,
-        [LayoutEvent::PaneOpened {
-            pane: second,
+        [LayoutEvent::WindowOpened {
+            window: second,
             band: band(&layout, 0),
         }]
     );
 }
 
 #[test]
-fn last_pane_of_a_middle_band_closing_removes_it() {
+fn last_window_of_a_middle_band_closing_removes_it() {
     let mut layout = Layout::new();
     let (top, _) = open(&mut layout, 0, None);
     open(&mut layout, 1, None);
@@ -58,8 +61,8 @@ fn last_pane_of_a_middle_band_closing_removes_it() {
     assert_eq!(
         layout.remove(top),
         [
-            LayoutEvent::PaneClosed {
-                pane: top,
+            LayoutEvent::WindowClosed {
+                window: top,
                 band: middle,
             },
             LayoutEvent::BandRemoved { band: middle },
@@ -68,27 +71,30 @@ fn last_pane_of_a_middle_band_closing_removes_it() {
 }
 
 #[test]
-fn closing_the_only_pane_removes_its_band() {
+fn closing_the_only_window_removes_its_band() {
     let mut layout = Layout::new();
-    let (pane, _) = open(&mut layout, 0, None);
+    let (window, _) = open(&mut layout, 0, None);
     let filled = band(&layout, 0);
     assert_eq!(
-        layout.remove(pane),
+        layout.remove(window),
         [
-            LayoutEvent::PaneClosed { pane, band: filled },
+            LayoutEvent::WindowClosed {
+                window,
+                band: filled
+            },
             LayoutEvent::BandRemoved { band: filled },
         ]
     );
 }
 
 #[test]
-fn consume_into_the_left_neighbour_moves_one_pane() {
+fn consume_into_the_left_neighbour_moves_one_window() {
     let mut layout = Layout::new();
     let (first, _) = open(&mut layout, 0, None);
     let (second, _) = open(&mut layout, 0, Some(first));
     let events = layout.apply(
         SessionAction::ConsumeOrExpel {
-            pane: second,
+            window: second,
             direction: Direction::Left,
         },
         AREA,
@@ -96,8 +102,8 @@ fn consume_into_the_left_neighbour_moves_one_pane() {
     );
     assert_eq!(
         events,
-        [LayoutEvent::PaneMoved {
-            pane: second,
+        [LayoutEvent::WindowMoved {
+            window: second,
             band: band(&layout, 0),
             column: 0,
             row: 1,
@@ -106,13 +112,13 @@ fn consume_into_the_left_neighbour_moves_one_pane() {
 }
 
 #[test]
-fn expel_to_the_right_moves_one_pane() {
+fn expel_to_the_right_moves_one_window() {
     let mut layout = Layout::new();
     let (first, _) = open(&mut layout, 0, None);
     let (second, _) = open(&mut layout, 0, Some(first));
     layout.apply(
         SessionAction::ConsumeOrExpel {
-            pane: second,
+            window: second,
             direction: Direction::Left,
         },
         AREA,
@@ -120,7 +126,7 @@ fn expel_to_the_right_moves_one_pane() {
     );
     let events = layout.apply(
         SessionAction::ConsumeOrExpel {
-            pane: second,
+            window: second,
             direction: Direction::Right,
         },
         AREA,
@@ -128,8 +134,8 @@ fn expel_to_the_right_moves_one_pane() {
     );
     assert_eq!(
         events,
-        [LayoutEvent::PaneMoved {
-            pane: second,
+        [LayoutEvent::WindowMoved {
+            window: second,
             band: band(&layout, 0),
             column: 1,
             row: 0,
@@ -143,11 +149,11 @@ fn consume_at_the_edge_produces_nothing() {
     let (first, _) = open(&mut layout, 0, None);
     let (second, _) = open(&mut layout, 0, Some(first));
     let before = layout.clone();
-    for (pane, direction) in [(first, Direction::Left), (second, Direction::Right)] {
+    for (window, direction) in [(first, Direction::Left), (second, Direction::Right)] {
         assert!(
             layout
                 .apply(
-                    SessionAction::ConsumeOrExpel { pane, direction },
+                    SessionAction::ConsumeOrExpel { window, direction },
                     AREA,
                     &LayoutOptions::default()
                 )
@@ -206,10 +212,10 @@ fn cycling_and_toggling_widths_report_the_column() {
 }
 
 #[test]
-fn actions_on_a_missing_pane_produce_nothing() {
+fn actions_on_a_missing_window_produce_nothing() {
     let mut layout = Layout::new();
     open(&mut layout, 0, None);
-    let missing = PaneId(99);
+    let missing = WindowId(99);
     assert!(layout.remove(missing).is_empty());
     assert!(
         layout
@@ -236,7 +242,7 @@ fn growing_a_column_width_reports_it_once() {
     let mut layout = Layout::new();
     let (first, _) = open(&mut layout, 0, None);
     let grow = SessionAction::StepWidth {
-        pane: first,
+        window: first,
         step: Step::Grow,
     };
     assert_eq!(
@@ -249,7 +255,7 @@ fn growing_a_column_width_reports_it_once() {
         }]
     );
     let shrink = SessionAction::StepWidth {
-        pane: first,
+        window: first,
         step: Step::Shrink,
     };
     for _ in 0..6 {
@@ -262,14 +268,14 @@ fn growing_a_column_width_reports_it_once() {
     );
 }
 
-fn second_column_stack() -> (Layout, PaneId, PaneId) {
+fn second_column_stack() -> (Layout, WindowId, WindowId) {
     let mut layout = Layout::new();
     let (first, _) = open(&mut layout, 0, None);
     let (top, _) = open(&mut layout, 0, Some(first));
     let (bottom, _) = open(&mut layout, 0, Some(top));
     layout.apply(
         SessionAction::ConsumeOrExpel {
-            pane: bottom,
+            window: bottom,
             direction: Direction::Left,
         },
         AREA,
@@ -279,21 +285,21 @@ fn second_column_stack() -> (Layout, PaneId, PaneId) {
 }
 
 #[test]
-fn growing_a_pane_height_reports_the_column() {
+fn growing_a_window_height_reports_the_column() {
     let (mut layout, top, _) = second_column_stack();
     assert_eq!(
         layout.apply(
             SessionAction::StepHeight {
-                pane: top,
+                window: top,
                 step: Step::Grow,
             },
             AREA,
             &LayoutOptions::default()
         ),
-        [LayoutEvent::PaneHeightsChanged {
+        [LayoutEvent::WindowHeightsChanged {
             band: band(&layout, 0),
             column: 1,
-            heights: vec![PaneHeight::Fixed(14), PaneHeight::Auto(Weight::ONE)],
+            heights: vec![WindowHeight::Fixed(14), WindowHeight::Auto(Weight::ONE)],
         }]
     );
 }
@@ -302,7 +308,7 @@ fn growing_a_pane_height_reports_the_column() {
 fn height_steps_at_the_limits_produce_nothing() {
     for (step, presses) in [(Step::Grow, 5), (Step::Shrink, 5)] {
         let (mut layout, top, _) = second_column_stack();
-        let action = SessionAction::StepHeight { pane: top, step };
+        let action = SessionAction::StepHeight { window: top, step };
         for _ in 0..presses {
             assert!(
                 !layout
@@ -324,7 +330,7 @@ fn apply(layout: &mut Layout, action: SessionAction) -> Vec<LayoutEvent> {
     layout.apply(action, AREA, &LayoutOptions::default())
 }
 
-fn row_of_three() -> (Layout, [PaneId; 3]) {
+fn row_of_three() -> (Layout, [WindowId; 3]) {
     let mut layout = Layout::new();
     let (a, _) = open(&mut layout, 0, None);
     let (b, _) = open(&mut layout, 0, Some(a));
@@ -339,7 +345,10 @@ fn moving_a_column_reports_both_positions() {
     assert_eq!(
         apply(
             &mut layout,
-            SessionAction::MoveColumn { pane: a, direction }
+            SessionAction::MoveColumn {
+                window: a,
+                direction
+            }
         ),
         [LayoutEvent::ColumnMoved {
             band: band(&layout, 0),
@@ -350,14 +359,14 @@ fn moving_a_column_reports_both_positions() {
 }
 
 #[test]
-fn swapping_two_panes_reports_each() {
+fn swapping_two_windows_reports_each() {
     let (mut layout, [_, _, c]) = row_of_three();
     let (p2, _) = open(&mut layout, 0, Some(c));
     let direction = Direction::Left;
     apply(
         &mut layout,
         SessionAction::ConsumeOrExpel {
-            pane: p2,
+            window: p2,
             direction,
         },
     );
@@ -365,16 +374,22 @@ fn swapping_two_panes_reports_each() {
     let id = band(&layout, 0);
     let direction = Vertical::Down;
     assert_eq!(
-        apply(&mut layout, SessionAction::MovePane { pane: c, direction }),
+        apply(
+            &mut layout,
+            SessionAction::MoveWindow {
+                window: c,
+                direction
+            }
+        ),
         [
-            LayoutEvent::PaneMoved {
-                pane: c,
+            LayoutEvent::WindowMoved {
+                window: c,
                 band: id,
                 column: 2,
                 row: 1,
             },
-            LayoutEvent::PaneMoved {
-                pane: p2,
+            LayoutEvent::WindowMoved {
+                window: p2,
                 band: id,
                 column: 2,
                 row: 0,
@@ -384,7 +399,7 @@ fn swapping_two_panes_reports_each() {
 }
 
 #[test]
-fn floating_a_pane_reports_its_box() {
+fn floating_a_window_reports_its_box() {
     let mut layout = Layout::new();
     let (first, _) = open(&mut layout, 0, None);
     let (p2, _) = open(&mut layout, 0, Some(first));
@@ -393,15 +408,15 @@ fn floating_a_pane_reports_its_box() {
         apply(
             &mut layout,
             SessionAction::ToggleFloating {
-                pane: p2,
+                window: p2,
                 after: None,
             }
         ),
-        [LayoutEvent::PaneFloated {
-            pane: p2,
+        [LayoutEvent::WindowFloated {
+            window: p2,
             band: id,
-            record: FloatingPane {
-                pane: p2,
+            record: FloatingWindow {
+                window: p2,
                 col: 20,
                 row: 2,
                 width: Proportion::ONE_HALF,
@@ -413,21 +428,24 @@ fn floating_a_pane_reports_its_box() {
 }
 
 #[test]
-fn moving_a_floating_pane_reports_its_new_box() {
+fn moving_a_floating_window_reports_its_new_box() {
     let mut layout = Layout::new();
     let (first, _) = open(&mut layout, 0, None);
-    let (pane, _) = open(&mut layout, 0, Some(first));
+    let (window, _) = open(&mut layout, 0, Some(first));
     apply(
         &mut layout,
-        SessionAction::ToggleFloating { pane, after: None },
+        SessionAction::ToggleFloating {
+            window,
+            after: None,
+        },
     );
-    let mut moved = *layout.floating(pane).unwrap();
+    let mut moved = *layout.floating(window).unwrap();
     moved.col = 28;
     let direction = Direction::Right;
     assert_eq!(
-        apply(&mut layout, SessionAction::MoveColumn { pane, direction }),
+        apply(&mut layout, SessionAction::MoveColumn { window, direction }),
         [LayoutEvent::FloatingBoxChanged {
-            pane,
+            window,
             band: band(&layout, 0),
             record: moved,
         }]
@@ -435,27 +453,27 @@ fn moving_a_floating_pane_reports_its_new_box() {
 }
 
 #[test]
-fn tiling_a_pane_reports_its_column() {
+fn tiling_a_window_reports_its_column() {
     let (mut layout, [a, b, _]) = row_of_three();
     apply(
         &mut layout,
         SessionAction::ToggleFloating {
-            pane: b,
+            window: b,
             after: None,
         },
     );
     let width = Proportion::ONE_THIRD;
-    apply(&mut layout, SessionAction::SetWidth { pane: b, width });
+    apply(&mut layout, SessionAction::SetWidth { window: b, width });
     assert_eq!(
         apply(
             &mut layout,
             SessionAction::ToggleFloating {
-                pane: b,
+                window: b,
                 after: Some(a)
             }
         ),
-        [LayoutEvent::PaneTiled {
-            pane: b,
+        [LayoutEvent::WindowTiled {
+            window: b,
             band: band(&layout, 0),
             column: 1,
             width,
@@ -467,16 +485,19 @@ fn tiling_a_pane_reports_its_column() {
 #[test]
 fn opening_floating_in_the_empty_band() {
     let mut layout = Layout::new();
-    let pane = layout.allocate_pane();
+    let window = layout.allocate_window();
     let empty = band(&layout, 0);
-    let events = layout.open_floating(pane, empty, None, AREA, &LayoutOptions::default());
-    let record = *layout.floating(pane).unwrap();
+    let events = layout.open_floating(window, empty, None, AREA, &LayoutOptions::default());
+    let record = *layout.floating(window).unwrap();
     assert_eq!(
         events,
         [
-            LayoutEvent::PaneOpened { pane, band: empty },
-            LayoutEvent::PaneFloated {
-                pane,
+            LayoutEvent::WindowOpened {
+                window,
+                band: empty
+            },
+            LayoutEvent::WindowFloated {
+                window,
                 band: empty,
                 record,
             },
@@ -495,10 +516,13 @@ fn floating_ops_without_change_produce_nothing() {
     assert!(
         apply(
             &mut layout,
-            SessionAction::MoveColumn { pane: a, direction }
+            SessionAction::MoveColumn {
+                window: a,
+                direction
+            }
         )
         .is_empty()
     );
-    let (pane, col, row) = (a, 3, 3);
-    assert!(apply(&mut layout, SessionAction::SetPosition { pane, col, row }).is_empty());
+    let (window, col, row) = (a, 3, 3);
+    assert!(apply(&mut layout, SessionAction::SetPosition { window, col, row }).is_empty());
 }

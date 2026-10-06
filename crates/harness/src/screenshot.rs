@@ -382,12 +382,12 @@ mod tests {
     fn run_of_one_colour() {
         let mut output = "\x1b[6;1H\x1b[1mbold \x1b[0m".to_owned();
         output.push_str(&" ".repeat(20));
-        output.push_str("\x1b[38;2;122;162;247;48;2;26;27;38mpane 1\x1b[0m\x1b[7mx\x1b[0m");
+        output.push_str("\x1b[38;2;122;162;247;48;2;26;27;38mwindow 1\x1b[0m\x1b[7mx\x1b[0m");
         let parser = screen(40, 6, &output);
         let text = render(parser.screen(), true);
-        assert!(text.contains("\n5:25-30 fg=#7aa2f7 bg=#1a1b26\n"), "{text}");
+        assert!(text.contains("\n5:25-32 fg=#7aa2f7 bg=#1a1b26\n"), "{text}");
         assert!(text.contains("\n5:0-4 bold\n"), "{text}");
-        assert!(text.contains("\n5:31 inverse\n"), "{text}");
+        assert!(text.contains("\n5:33 inverse\n"), "{text}");
     }
 
     #[test]
@@ -412,11 +412,11 @@ mod tests {
     fn named_screenshot_path() {
         assert_eq!(
             reference_path(
-                Path::new("tests/pane_spec.lua"),
-                "Shows the focused pane",
-                Some("two panes")
+                Path::new("tests/window_spec.lua"),
+                "Shows the focused window",
+                Some("two windows")
             ),
-            Path::new("tests/screenshots/pane_spec/shows-the-focused-pane--two-panes.txt")
+            Path::new("tests/screenshots/window_spec/shows-the-focused-window--two-windows.txt")
         );
         assert_eq!(
             reference_path(Path::new("t/a_spec.lua"), "  Ünicode -- case! ", None),

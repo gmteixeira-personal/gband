@@ -7,7 +7,7 @@ use std::time::Duration;
 use anyhow::{Result, bail};
 use gband_core::geometry::{Size, boxes, tiles};
 use gband_core::layout::{
-    BandId, Layout, LayoutOptions, PaneContent, PaneId, Program, Proportion, SessionAction,
+    BandId, Layout, LayoutOptions, Program, Proportion, SessionAction, WindowContent, WindowId,
 };
 use gband_protocol::{SessionName, Value};
 use portable_pty::{ChildKiller, ExitStatus};
@@ -17,8 +17,8 @@ use tokio::time::Instant;
 use tracing::Instrument;
 
 use crate::event::{Bus, SessionEvent};
-use crate::pane::{self, Pane, PaneEntry, PaneExit, SpawnRequest};
 use crate::scripting::{Taps, signal_number};
+use crate::window::{self, SpawnRequest, Window, WindowEntry, WindowExit};
 
 const KILL_GRACE: Duration = Duration::from_secs(2);
 const SETTLE: Duration = Duration::from_millis(100);
@@ -27,7 +27,7 @@ pub const INITIAL_AREA: Size = Size::new(80, 24);
 pub struct State {
     pub layout: Layout,
     pub area: Size,
-    pub panes: HashMap<PaneId, PaneEntry>,
+    pub windows: HashMap<WindowId, WindowEntry>,
 }
 
 pub enum Command {
@@ -42,11 +42,11 @@ pub enum Command {
     },
     Shown {
         client: u64,
-        panes: Vec<PaneId>,
+        windows: Vec<WindowId>,
     },
     Content {
         client: u64,
-        pane: PaneId,
+        window: WindowId,
         output: Vec<u8>,
     },
     Leave {
@@ -58,10 +58,10 @@ pub enum Command {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Reply {
-    Focus(PaneId),
+    Focus(WindowId),
     Opened {
         request: u32,
-        pane: Option<PaneId>,
+        window: Option<WindowId>,
     },
     Result {
         call: u64,
@@ -71,7 +71,7 @@ pub enum Reply {
 
 struct Placement {
     band: BandId,
-    after: Option<PaneId>,
+    after: Option<WindowId>,
     width: Option<Proportion>,
     floating: bool,
 }
@@ -88,44 +88,44 @@ pub struct SessionConfig {
 }
 
 struct Live {
-    entry: PaneEntry,
+    entry: WindowEntry,
     killer: Box<dyn ChildKiller + Send + Sync>,
     pid: Option<u32>,
     exit: watch::Receiver<Option<ExitStatus>>,
 }
 
-struct PluginPane {
+struct PluginWindow {
     owner: u64,
-    entry: PaneEntry,
+    entry: WindowEntry,
 }
 
 pub struct Session {
     config: SessionConfig,
     layout: Layout,
     area: Size,
-    panes: HashMap<PaneId, Live>,
-    plugins: HashMap<PaneId, PluginPane>,
+    windows: HashMap<WindowId, Live>,
+    plugins: HashMap<WindowId, PluginWindow>,
     state: watch::Sender<Arc<State>>,
     changed: Arc<watch::Sender<u64>>,
-    exits: mpsc::UnboundedSender<PaneExit>,
+    exits: mpsc::UnboundedSender<WindowExit>,
     last_status: Option<ExitStatus>,
-    shown: HashMap<u64, HashSet<PaneId>>,
+    shown: HashMap<u64, HashSet<WindowId>>,
     settle_at: Option<Instant>,
 }
 
 impl Session {
-    pub fn start(config: SessionConfig, exits: mpsc::UnboundedSender<PaneExit>) -> Result<Self> {
+    pub fn start(config: SessionConfig, exits: mpsc::UnboundedSender<WindowExit>) -> Result<Self> {
         let area = config.area;
         let mut session = Self {
             config,
             layout: Layout::new(),
             area,
-            panes: HashMap::new(),
+            windows: HashMap::new(),
             plugins: HashMap::new(),
             state: watch::Sender::new(Arc::new(State {
                 layout: Layout::new(),
                 area,
-                panes: HashMap::new(),
+                windows: HashMap::new(),
             })),
             changed: Arc::new(watch::Sender::new(0)),
             exits,
@@ -158,7 +158,7 @@ impl Session {
     }
 
     pub fn is_over(&self) -> bool {
-        self.panes.is_empty()
+        self.windows.is_empty()
     }
 
     pub fn handle(&mut self, command: Command) {
@@ -177,26 +177,26 @@ impl Session {
                 action,
                 reply,
             } => self.act(client, action, reply),
-            Command::Shown { client, panes } => self.show(client, panes),
+            Command::Shown { client, windows } => self.show(client, windows),
             Command::Content {
                 client,
-                pane,
+                window,
                 output,
-            } => match self.plugins.get(&pane) {
-                Some(plugin) if plugin.owner == client => plugin.entry.pane.replace(&output),
+            } => match self.plugins.get(&window) {
+                Some(plugin) if plugin.owner == client => plugin.entry.window.replace(&output),
                 _ => {
-                    tracing::debug!(pane = %pane, "ignoring content for a pane the client does not own")
+                    tracing::debug!(window = %window, "ignoring content for a window the client does not own")
                 }
             },
             Command::Leave { client } => {
-                let owned: Vec<PaneId> = self
+                let owned: Vec<WindowId> = self
                     .plugins
                     .iter()
                     .filter(|(_, plugin)| plugin.owner == client)
-                    .map(|(&pane, _)| pane)
+                    .map(|(&window, _)| window)
                     .collect();
-                for pane in owned {
-                    self.close(pane);
+                for window in owned {
+                    self.close(window);
                 }
             }
             Command::CloseAll => self.terminate(),
@@ -206,17 +206,17 @@ impl Session {
         }
     }
 
-    fn show(&mut self, client: u64, panes: Vec<PaneId>) {
-        let panes: HashSet<PaneId> = panes
+    fn show(&mut self, client: u64, windows: Vec<WindowId>) {
+        let windows: HashSet<WindowId> = windows
             .into_iter()
-            .filter(|&pane| self.layout.contains(pane))
+            .filter(|&window| self.layout.contains(window))
             .collect();
-        let previous = if panes.is_empty() {
+        let previous = if windows.is_empty() {
             self.shown.remove(&client)
         } else {
-            self.shown.insert(client, panes.clone())
+            self.shown.insert(client, windows.clone())
         };
-        if previous.unwrap_or_default() != panes {
+        if previous.unwrap_or_default() != windows {
             self.unsettle();
         }
     }
@@ -227,42 +227,42 @@ impl Session {
 
     fn settle(&mut self) {
         self.settle_at = None;
-        let shown: HashSet<PaneId> = self.shown.values().flatten().copied().collect();
+        let shown: HashSet<WindowId> = self.shown.values().flatten().copied().collect();
         for band in self.layout.bands() {
             let tiled = tiles(band, self.area)
                 .into_iter()
-                .map(|tile| (tile.pane, tile.terminal_size()));
+                .map(|tile| (tile.window, tile.terminal_size()));
             let floating = boxes(band, self.area)
                 .into_iter()
-                .map(|placed| (placed.pane, placed.terminal_size()));
-            for (pane, size) in tiled.chain(floating) {
-                if !shown.contains(&pane) {
+                .map(|placed| (placed.window, placed.terminal_size()));
+            for (window, size) in tiled.chain(floating) {
+                if !shown.contains(&window) {
                     continue;
                 }
-                if let Some(entry) = self.entry(pane) {
-                    entry.pane.resize(size);
+                if let Some(entry) = self.entry(window) {
+                    entry.window.resize(size);
                 }
             }
         }
     }
 
-    pub fn exited(&mut self, exit: PaneExit) {
-        tracing::info!(pane = %exit.pane, "program exited: {}", exit.status);
+    pub fn exited(&mut self, exit: WindowExit) {
+        tracing::info!(window = %exit.window, "program exited: {}", exit.status);
         let signal = exit.status.signal().map(|name| (name, signal_number(name)));
         if let Some((name, None)) = signal {
             tracing::debug!("no signal number is known for `{name}`");
         }
-        self.config.events.send(SessionEvent::PaneExited {
-            pane: exit.pane,
+        self.config.events.send(SessionEvent::WindowExited {
+            window: exit.window,
             code: signal.is_none().then(|| exit.status.exit_code()),
             signal: signal.and_then(|(_, number)| number),
         });
         self.last_status = Some(exit.status);
-        self.panes.remove(&exit.pane);
-        let mut events = self.layout.remove(exit.pane);
-        if self.panes.is_empty() {
-            for (pane, _) in self.plugins.drain() {
-                events.extend(self.layout.remove(pane));
+        self.windows.remove(&exit.window);
+        let mut events = self.layout.remove(exit.window);
+        if self.windows.is_empty() {
+            for (window, _) in self.plugins.drain() {
+                events.extend(self.layout.remove(window));
             }
         }
         if !events.is_empty() {
@@ -272,9 +272,9 @@ impl Session {
     }
 
     pub fn terminate(&mut self) {
-        let panes: Vec<_> = self.panes.keys().copied().collect();
-        for pane in panes {
-            self.close(pane);
+        let windows: Vec<_> = self.windows.keys().copied().collect();
+        for window in windows {
+            self.close(window);
         }
     }
 
@@ -290,7 +290,7 @@ impl Session {
             }
         };
         match action {
-            SessionAction::OpenPane {
+            SessionAction::OpenWindow {
                 band,
                 after,
                 width,
@@ -305,29 +305,29 @@ impl Session {
                     floating,
                 };
                 let opened = match content {
-                    PaneContent::Program(ref program) => self.open(placement, program.as_ref()),
-                    PaneContent::Plugin { .. } => Ok(self.open_plugin(client, placement)),
+                    WindowContent::Program(ref program) => self.open(placement, program.as_ref()),
+                    WindowContent::Plugin { .. } => Ok(self.open_plugin(client, placement)),
                 };
                 if let Ok(Some(_)) = opened {
                     self.publish();
                 }
-                if let (PaneContent::Plugin { request }, Ok(pane)) = (&content, &opened) {
+                if let (WindowContent::Plugin { request }, Ok(window)) = (&content, &opened) {
                     respond(Reply::Opened {
                         request: *request,
-                        pane: *pane,
+                        window: *window,
                     });
                 }
                 match opened {
-                    Ok(Some(pane)) => {
+                    Ok(Some(window)) => {
                         if focus {
-                            respond(Reply::Focus(pane));
+                            respond(Reply::Focus(window));
                         }
                     }
-                    Ok(None) => tracing::debug!("ignoring an open pane action on a stale target"),
-                    Err(error) => tracing::warn!("cannot open a pane: {error:#}"),
+                    Ok(None) => tracing::debug!("ignoring an open window action on a stale target"),
+                    Err(error) => tracing::warn!("cannot open a window: {error:#}"),
                 }
             }
-            SessionAction::ClosePane(pane) => self.close(pane),
+            SessionAction::CloseWindow(window) => self.close(window),
             other => {
                 let options = self.config.options.borrow().clone();
                 let events = self.layout.apply(other, self.area, &options);
@@ -344,11 +344,11 @@ impl Session {
         self.layout.can_open(placement.band, after)
     }
 
-    fn place(&mut self, placement: &Placement) -> Option<PaneId> {
+    fn place(&mut self, placement: &Placement) -> Option<WindowId> {
         if !self.placeable(placement) {
             return None;
         }
-        let id = self.layout.allocate_pane();
+        let id = self.layout.allocate_window();
         let options = self.config.options.borrow().clone();
         let events = if placement.floating {
             self.layout
@@ -366,22 +366,26 @@ impl Session {
         Some(id)
     }
 
-    fn open_plugin(&mut self, client: u64, placement: Placement) -> Option<PaneId> {
+    fn open_plugin(&mut self, client: u64, placement: Placement) -> Option<WindowId> {
         let id = self.place(&placement)?;
-        let size = self.terminal_size(id).expect("an opened pane has a tile");
-        let entry = Pane::blank(size, &self.changed);
+        let size = self.terminal_size(id).expect("an opened window has a tile");
+        let entry = Window::blank(size, &self.changed);
         self.plugins.insert(
             id,
-            PluginPane {
+            PluginWindow {
                 owner: client,
                 entry,
             },
         );
-        tracing::info!(pane = %id, client, "opened a plugin pane");
+        tracing::info!(window = %id, client, "opened a plugin window");
         Some(id)
     }
 
-    fn open(&mut self, placement: Placement, program: Option<&Program>) -> Result<Option<PaneId>> {
+    fn open(
+        &mut self,
+        placement: Placement,
+        program: Option<&Program>,
+    ) -> Result<Option<WindowId>> {
         if !self.placeable(&placement) {
             return Ok(None);
         }
@@ -394,7 +398,7 @@ impl Session {
             Some(Program::Argv(argv)) => argv.iter().map(OsString::from).collect(),
         };
         let id = self.place(&placement).expect("checked by can_open");
-        let size = self.terminal_size(id).expect("an opened pane has a tile");
+        let size = self.terminal_size(id).expect("an opened window has a tile");
         let request = SpawnRequest {
             id,
             program: &argv,
@@ -404,9 +408,9 @@ impl Session {
             size,
             taps: &self.config.taps,
         };
-        match pane::spawn(request, &self.changed, self.exits.clone()) {
+        match window::spawn(request, &self.changed, self.exits.clone()) {
             Ok(spawned) => {
-                self.panes.insert(
+                self.windows.insert(
                     id,
                     Live {
                         entry: spawned.entry,
@@ -425,44 +429,44 @@ impl Session {
         }
     }
 
-    fn close(&mut self, pane: PaneId) {
-        if self.plugins.remove(&pane).is_some() {
-            tracing::info!(pane = %pane, "closing a plugin pane");
-            let events = self.layout.remove(pane);
+    fn close(&mut self, window: WindowId) {
+        if self.plugins.remove(&window).is_some() {
+            tracing::info!(window = %window, "closing a plugin window");
+            let events = self.layout.remove(window);
             self.config.events.layout(events);
             self.publish();
             return;
         }
-        let Some(live) = self.panes.get_mut(&pane) else {
+        let Some(live) = self.windows.get_mut(&window) else {
             return;
         };
-        tracing::info!(pane = %pane, "hanging up the program");
+        tracing::info!(window = %window, "hanging up the program");
         if let Err(error) = live.killer.kill() {
             tracing::warn!("cannot send SIGHUP to the program: {error:#}");
         }
         tokio::spawn(
-            kill_if_running(live.exit.clone(), Arc::clone(&live.entry.pane), live.pid)
+            kill_if_running(live.exit.clone(), Arc::clone(&live.entry.window), live.pid)
                 .in_current_span(),
         );
     }
 
-    fn entry(&self, pane: PaneId) -> Option<&PaneEntry> {
-        self.panes
-            .get(&pane)
+    fn entry(&self, window: WindowId) -> Option<&WindowEntry> {
+        self.windows
+            .get(&window)
             .map(|live| &live.entry)
-            .or_else(|| self.plugins.get(&pane).map(|plugin| &plugin.entry))
+            .or_else(|| self.plugins.get(&window).map(|plugin| &plugin.entry))
     }
 
-    fn terminal_size(&self, pane: PaneId) -> Option<Size> {
+    fn terminal_size(&self, window: WindowId) -> Option<Size> {
         self.layout.bands().iter().find_map(|band| {
             let tiled = tiles(band, self.area)
                 .into_iter()
-                .find(|tile| tile.pane == pane)
+                .find(|tile| tile.window == window)
                 .map(|tile| tile.terminal_size());
             tiled.or_else(|| {
                 boxes(band, self.area)
                     .into_iter()
-                    .find(|placed| placed.pane == pane)
+                    .find(|placed| placed.window == window)
                     .map(|placed| placed.terminal_size())
             })
         })
@@ -470,8 +474,8 @@ impl Session {
 
     fn publish(&mut self) {
         self.unsettle();
-        let panes = self
-            .panes
+        let windows = self
+            .windows
             .iter()
             .map(|(&id, live)| (id, live.entry.clone()))
             .chain(
@@ -483,7 +487,7 @@ impl Session {
         self.state.send_replace(Arc::new(State {
             layout: self.layout.clone(),
             area: self.area,
-            panes,
+            windows,
         }));
         self.changed.send_modify(|generation| *generation += 1);
     }
@@ -492,7 +496,7 @@ impl Session {
 pub async fn drive(
     mut session: Session,
     mut commands: mpsc::UnboundedReceiver<Command>,
-    mut exits: mpsc::UnboundedReceiver<PaneExit>,
+    mut exits: mpsc::UnboundedReceiver<WindowExit>,
 ) {
     while !session.is_over() {
         let settle_at = session.settle_at;
@@ -512,7 +516,7 @@ pub async fn drive(
 
 async fn kill_if_running(
     mut exit: watch::Receiver<Option<ExitStatus>>,
-    pane: Arc<Pane>,
+    window: Arc<Window>,
     pid: Option<u32>,
 ) {
     let exited = tokio::time::timeout(KILL_GRACE, exit.wait_for(Option::is_some)).await;
@@ -520,7 +524,7 @@ async fn kill_if_running(
         return;
     }
     tracing::warn!("program still running after SIGHUP, sending SIGKILL");
-    if let Some(group) = pane.foreground_group().and_then(Pid::from_raw) {
+    if let Some(group) = window.foreground_group().and_then(Pid::from_raw) {
         let _ = rustix::process::kill_process_group(group, Signal::KILL);
     }
     if let Some(program) = pid.and_then(|pid| Pid::from_raw(pid as i32)) {

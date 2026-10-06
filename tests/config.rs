@@ -35,7 +35,7 @@ fn wait_for_reload(env: &TestEnv, role: &str, seen: usize) {
     wait_until(|| reloads(env, role) > seen, "a configuration reload");
 }
 
-fn two_panes_first_focused(env: &TestEnv) -> Attached {
+fn two_windows_first_focused(env: &TestEnv) -> Attached {
     let mut client = Attached::start(env, 80, 24);
     client.wait_for_prompt();
     client.shell_pid(env);
@@ -237,7 +237,7 @@ fn xdg_config_home_is_honoured() {
 fn default_prefix() {
     let env = TestEnv::new("config-default-prefix");
     env.write_config(
-        "gband.bind('prefix q', gband.action.close_pane)\ngband.bind('prefix enter', gband.action.open_pane)",
+        "gband.bind('prefix q', gband.action.close_window)\ngband.bind('prefix enter', gband.action.open_window)",
     );
     let mut client = Attached::start(&env, 80, 24);
     client.wait_for_prompt();
@@ -261,7 +261,7 @@ fn default_prefix() {
 fn direct_binding_acts_without_the_prefix() {
     let env = TestEnv::new("config-direct");
     env.write_config(
-        "gband.bind('alt+h', gband.action.focus_column_left)\ngband.bind('prefix enter', gband.action.open_pane)",
+        "gband.bind('alt+h', gband.action.focus_column_left)\ngband.bind('prefix enter', gband.action.open_window)",
     );
     let mut client = Attached::start(&env, 80, 24);
     client.wait_for_prompt();
@@ -296,7 +296,7 @@ fn spawn_a_command_line() {
     client.wait_for_prompt();
     client.shell_pid(&env);
     client.send(b"\x1bn");
-    client.wait_for("the spawned pane focused", |screen| {
+    client.wait_for("the spawned window focused", |screen| {
         let tiles = tiles(screen);
         tiles.len() == 2 && tiles[1].focused && tiles[1].left == 40
     });
@@ -351,7 +351,7 @@ fn broken_edit_keeps_the_running_configuration() {
     env.write_config(&with_defaults(
         "gband.bind('alt+h', gband.action.focus_column_left)",
     ));
-    let mut client = two_panes_first_focused(&env);
+    let mut client = two_windows_first_focused(&env);
     client.send(b"\x00l");
     client.wait_for("the second tile focused", |screen| tiles(screen)[1].focused);
     let seen = reloads(&env, "client");
@@ -374,7 +374,7 @@ fn broken_edit_keeps_the_running_configuration() {
 #[test]
 fn new_binding_without_restart() {
     let env = TestEnv::new("config-new-binding");
-    let mut client = two_panes_first_focused(&env);
+    let mut client = two_windows_first_focused(&env);
     let seen = reloads(&env, "client");
     env.write_config("gband.bind('alt+l', gband.action.focus_column_right)");
     wait_for_reload(&env, "client", seen);
@@ -386,7 +386,7 @@ fn new_binding_without_restart() {
 fn editor_replaces_the_file() {
     let env = TestEnv::new("config-rename");
     env.write_config(DEFAULTS);
-    let mut client = two_panes_first_focused(&env);
+    let mut client = two_windows_first_focused(&env);
     let (client_seen, server_seen) = (reloads(&env, "client"), reloads(&env, "server"));
     let temporary = env.user_lua().with_file_name("init.lua~");
     fs::write(
@@ -479,7 +479,7 @@ fn infinite_loop_in_setup() {
     );
 }
 
-fn open_second_pane(client: &mut Attached, env: &TestEnv) -> (u16, u16, u16) {
+fn open_second_window(client: &mut Attached, env: &TestEnv) -> (u16, u16, u16) {
     client.wait_for_prompt();
     client.shell_pid(env);
     client.send(b"\x00\r");
@@ -504,7 +504,7 @@ fn width_set_for_the_server() {
     let env = TestEnv::new("config-server-width");
     env.write_server_config("gband.opt.default_column_width = 1/3");
     let mut client = Attached::start(&env, 80, 24);
-    let (_, left, _) = open_second_pane(&mut client, &env);
+    let (_, left, _) = open_second_window(&mut client, &env);
     assert_eq!(left, 26);
 }
 
@@ -512,7 +512,7 @@ fn width_set_for_the_server() {
 fn no_server_configuration_file() {
     let env = TestEnv::new("config-no-server-file");
     let mut client = Attached::start(&env, 80, 24);
-    let (first, left, _) = open_second_pane(&mut client, &env);
+    let (first, left, _) = open_second_window(&mut client, &env);
     assert_eq!((first, left), (40, 40));
     assert!(!env.log_text("server").contains("configuration error"));
     assert!(env.server_lua().parent().unwrap().is_dir());
@@ -580,7 +580,7 @@ fn new_default_width() {
     let seen = reloads(&env, "server");
     env.write_server_config("gband.opt.default_column_width = 1/3");
     wait_for_reload(&env, "server", seen);
-    let (first, left, second) = open_second_pane(&mut client, &env);
+    let (first, left, second) = open_second_window(&mut client, &env);
     assert_eq!((first, left), (40, 40));
     assert!((26..=27).contains(&second), "{second}");
 }

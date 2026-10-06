@@ -4,8 +4,8 @@ use std::path::PathBuf;
 use gband_core::geometry::Size;
 use gband_core::input::{Key, KeyCode, Modifiers};
 use gband_core::layout::{
-    Direction, FloatingPane, Layout, LayoutOptions, PaneContent, PaneHeight, PaneId, Program,
-    Proportion, SessionAction, Step, Vertical, Weight,
+    Direction, FloatingWindow, Layout, LayoutOptions, Program, Proportion, SessionAction, Step,
+    Vertical, Weight, WindowContent, WindowHeight, WindowId,
 };
 use gband_protocol::test::{FromProcess, Role, ToProcess};
 use gband_protocol::{
@@ -98,12 +98,12 @@ fn session_answers_round_trip() {
     round_trip(ServerMessage::Sessions(vec![
         SessionSummary {
             name: session("default"),
-            panes: 1,
+            windows: 1,
             clients: 0,
         },
         SessionSummary {
             name: session("work"),
-            panes: 2,
+            windows: 2,
             clients: 1,
         },
     ]));
@@ -126,11 +126,11 @@ fn hello_pair_round_trips() {
 #[test]
 fn client_messages_round_trip() {
     round_trip(ClientMessage::Key {
-        pane: PaneId(1),
+        window: WindowId(1),
         key: Key::plain(KeyCode::Char('é')),
     });
     round_trip(ClientMessage::Key {
-        pane: PaneId(u32::MAX),
+        window: WindowId(u32::MAX),
         key: Key::new(
             KeyCode::F(12),
             Modifiers {
@@ -141,7 +141,7 @@ fn client_messages_round_trip() {
         ),
     });
     round_trip(ClientMessage::Paste {
-        pane: PaneId(2),
+        window: WindowId(2),
         text: "line one\nline two".into(),
     });
     round_trip(ClientMessage::Resize {
@@ -149,10 +149,10 @@ fn client_messages_round_trip() {
         rows: 90,
     });
     round_trip(ClientMessage::Detach);
-    round_trip(ClientMessage::Shown(vec![PaneId(1), PaneId(4)]));
+    round_trip(ClientMessage::Shown(vec![WindowId(1), WindowId(4)]));
     round_trip(ClientMessage::Shown(Vec::new()));
     round_trip(ClientMessage::Content {
-        pane: PaneId(4),
+        window: WindowId(4),
         output: b"\x1b[1;1Hhello".to_vec(),
     });
 }
@@ -163,10 +163,10 @@ fn session_actions_round_trip() {
     let band = layout.bands()[0].id;
     for action in [
         SessionAction::open(band, None, None),
-        SessionAction::open(band, Some(PaneId(4)), None),
+        SessionAction::open(band, Some(WindowId(4)), None),
         SessionAction::open(
             band,
-            Some(PaneId(2)),
+            Some(WindowId(2)),
             Some(Program::Argv(vec![
                 "htop".to_owned(),
                 "-d".to_owned(),
@@ -176,80 +176,80 @@ fn session_actions_round_trip() {
         SessionAction::open(
             band,
             None,
-            Some(Program::CommandLine("echo $GBAND_PANE".to_owned())),
+            Some(Program::CommandLine("echo $GBAND_WINDOW".to_owned())),
         ),
-        SessionAction::ClosePane(PaneId(5)),
+        SessionAction::CloseWindow(WindowId(5)),
         SessionAction::ConsumeOrExpel {
-            pane: PaneId(3),
+            window: WindowId(3),
             direction: Direction::Left,
         },
         SessionAction::ConsumeOrExpel {
-            pane: PaneId(3),
+            window: WindowId(3),
             direction: Direction::Right,
         },
-        SessionAction::CycleWidth(PaneId(6)),
-        SessionAction::ToggleFullWidth(PaneId(7)),
+        SessionAction::CycleWidth(WindowId(6)),
+        SessionAction::ToggleFullWidth(WindowId(7)),
         SessionAction::StepWidth {
-            pane: PaneId(8),
+            window: WindowId(8),
             step: Step::Grow,
         },
         SessionAction::StepHeight {
-            pane: PaneId(2),
+            window: WindowId(2),
             step: Step::Grow,
         },
         SessionAction::StepHeight {
-            pane: PaneId(2),
+            window: WindowId(2),
             step: Step::Shrink,
         },
-        SessionAction::ResetHeight(PaneId(9)),
-        SessionAction::OpenPane {
+        SessionAction::ResetHeight(WindowId(9)),
+        SessionAction::OpenWindow {
             band,
-            after: Some(PaneId(2)),
+            after: Some(WindowId(2)),
             width: Some(Proportion::new(1, 4)),
             floating: false,
             focus: false,
-            content: PaneContent::Plugin { request: 7 },
+            content: WindowContent::Plugin { request: 7 },
         },
-        SessionAction::OpenPane {
+        SessionAction::OpenWindow {
             band,
             after: None,
             width: Some(Proportion::ONE_THIRD),
             floating: true,
             focus: true,
-            content: PaneContent::Program(None),
+            content: WindowContent::Program(None),
         },
         SessionAction::ToggleFloating {
-            pane: PaneId(3),
-            after: Some(PaneId(1)),
+            window: WindowId(3),
+            after: Some(WindowId(1)),
         },
         SessionAction::ToggleFloating {
-            pane: PaneId(3),
+            window: WindowId(3),
             after: None,
         },
         SessionAction::MoveColumn {
-            pane: PaneId(2),
+            window: WindowId(2),
             direction: Direction::Right,
         },
-        SessionAction::MovePane {
-            pane: PaneId(2),
+        SessionAction::MoveWindow {
+            window: WindowId(2),
             direction: Vertical::Up,
         },
         SessionAction::SetPosition {
-            pane: PaneId(4),
+            window: WindowId(4),
             col: 12,
             row: 3,
         },
         SessionAction::SetWidth {
-            pane: PaneId(1),
+            window: WindowId(1),
             width: Proportion::new(2, 5),
         },
         SessionAction::SetHeight {
-            pane: PaneId(2),
-            height: PaneHeight::Auto(Weight::new(3, 2)),
+            window: WindowId(2),
+            height: WindowHeight::Auto(Weight::new(3, 2)),
         },
         SessionAction::SetHeight {
-            pane: PaneId(2),
-            height: PaneHeight::Fixed(8),
+            window: WindowId(2),
+            height: WindowHeight::Fixed(8),
         },
     ] {
         round_trip(ClientMessage::Action(action));
@@ -259,15 +259,15 @@ fn session_actions_round_trip() {
 #[test]
 fn layout_round_trips() {
     let mut layout = Layout::new();
-    let first = layout.allocate_pane();
-    let second = layout.allocate_pane();
-    let third = layout.allocate_pane();
+    let first = layout.allocate_window();
+    let second = layout.allocate_window();
+    let third = layout.allocate_window();
     let w1 = layout.bands()[0].id;
     layout.open(first, w1, None, None, &LayoutOptions::default());
     layout.open(second, w1, Some(first), None, &LayoutOptions::default());
     layout.apply(
         SessionAction::ConsumeOrExpel {
-            pane: second,
+            window: second,
             direction: Direction::Left,
         },
         AREA,
@@ -299,38 +299,38 @@ fn layout_round_trips() {
 }
 
 #[test]
-fn floating_panes_in_the_layout_round_trip() {
+fn floating_windows_in_the_layout_round_trip() {
     let mut layout = Layout::new();
     let options = LayoutOptions::default();
-    let panes: Vec<PaneId> = (0..3).map(|_| layout.allocate_pane()).collect();
+    let windows: Vec<WindowId> = (0..3).map(|_| layout.allocate_window()).collect();
     let band = layout.bands()[0].id;
-    layout.open(panes[0], band, None, None, &options);
-    layout.open(panes[1], band, Some(panes[0]), None, &options);
-    layout.open_floating(panes[2], band, None, AREA, &options);
+    layout.open(windows[0], band, None, None, &options);
+    layout.open(windows[1], band, Some(windows[0]), None, &options);
+    layout.open_floating(windows[2], band, None, AREA, &options);
     for action in [
         SessionAction::ToggleFloating {
-            pane: panes[1],
+            window: windows[1],
             after: None,
         },
         SessionAction::SetWidth {
-            pane: panes[1],
+            window: windows[1],
             width: Proportion::ONE_THIRD,
         },
         SessionAction::SetHeight {
-            pane: panes[1],
-            height: PaneHeight::Fixed(10),
+            window: windows[1],
+            height: WindowHeight::Fixed(10),
         },
         SessionAction::SetPosition {
-            pane: panes[1],
+            window: windows[1],
             col: 5,
             row: 3,
         },
         SessionAction::ToggleFloating {
-            pane: panes[2],
-            after: Some(panes[0]),
+            window: windows[2],
+            after: Some(windows[0]),
         },
         SessionAction::ToggleFloating {
-            pane: panes[2],
+            window: windows[2],
             after: None,
         },
     ] {
@@ -339,13 +339,13 @@ fn floating_panes_in_the_layout_round_trip() {
     let floating: Vec<_> = layout.bands()[0]
         .floating
         .iter()
-        .map(|floating| floating.pane)
+        .map(|floating| floating.window)
         .collect();
-    assert_eq!(floating, [panes[1], panes[2]]);
+    assert_eq!(floating, [windows[1], windows[2]]);
     assert_eq!(
-        *layout.floating(panes[1]).unwrap(),
-        FloatingPane {
-            pane: panes[1],
+        *layout.floating(windows[1]).unwrap(),
+        FloatingWindow {
+            window: windows[1],
             col: 5,
             row: 3,
             width: Proportion::ONE_THIRD,
@@ -364,9 +364,9 @@ fn floating_panes_in_the_layout_round_trip() {
 fn heights_in_the_layout_round_trip() {
     let mut layout = Layout::new();
     let band = layout.bands()[0].id;
-    let panes: Vec<PaneId> = (0..3).map(|_| layout.allocate_pane()).collect();
-    layout.open(panes[0], band, None, None, &LayoutOptions::default());
-    for pair in panes.windows(2) {
+    let windows: Vec<WindowId> = (0..3).map(|_| layout.allocate_window()).collect();
+    layout.open(windows[0], band, None, None, &LayoutOptions::default());
+    for pair in windows.windows(2) {
         layout.open(
             pair[1],
             band,
@@ -376,24 +376,31 @@ fn heights_in_the_layout_round_trip() {
         );
         layout.apply(
             SessionAction::ConsumeOrExpel {
-                pane: pair[1],
+                window: pair[1],
                 direction: Direction::Left,
             },
             AREA,
             &LayoutOptions::default(),
         );
     }
-    let grow = |pane| SessionAction::StepHeight {
-        pane,
+    let grow = |window| SessionAction::StepHeight {
+        window,
         step: Step::Grow,
     };
-    layout.apply(grow(panes[1]), AREA, &LayoutOptions::default());
-    layout.apply(grow(panes[0]), AREA, &LayoutOptions::default());
-    layout.remove(panes[2]);
-    layout.apply(grow(panes[0]), Size::new(80, 50), &LayoutOptions::default());
+    layout.apply(grow(windows[1]), AREA, &LayoutOptions::default());
+    layout.apply(grow(windows[0]), AREA, &LayoutOptions::default());
+    layout.remove(windows[2]);
+    layout.apply(
+        grow(windows[0]),
+        Size::new(80, 50),
+        &LayoutOptions::default(),
+    );
     assert_eq!(
         layout.bands()[0].columns[0].heights,
-        [PaneHeight::Fixed(14), PaneHeight::Auto(Weight::new(10, 7))]
+        [
+            WindowHeight::Fixed(14),
+            WindowHeight::Auto(Weight::new(10, 7))
+        ]
     );
     round_trip(ServerMessage::Layout {
         cols: 80,
@@ -412,28 +419,28 @@ fn server_messages_round_trip() {
         },
     });
     round_trip(ServerMessage::Snapshot {
-        pane: PaneId(1),
+        window: WindowId(1),
         cols: 80,
         rows: 24,
         contents: b"\x1b[H\x1b[2Jprompt$ ".to_vec(),
     });
     round_trip(ServerMessage::Update {
-        pane: PaneId(1),
+        window: WindowId(1),
         contents: Vec::new(),
     });
     round_trip(ServerMessage::Update {
-        pane: PaneId(9),
+        window: WindowId(9),
         contents: vec![0xff; 70_000],
     });
-    round_trip(ServerMessage::Focus(PaneId(3)));
+    round_trip(ServerMessage::Focus(WindowId(3)));
     round_trip(ServerMessage::Exited);
     round_trip(ServerMessage::Opened {
         request: 7,
-        pane: Some(PaneId(9)),
+        window: Some(WindowId(9)),
     });
     round_trip(ServerMessage::Opened {
         request: 8,
-        pane: None,
+        window: None,
     });
 }
 
@@ -527,17 +534,17 @@ fn bridge_messages_round_trip() {
     });
     round_trip(ServerMessage::Event {
         name: "agent.waiting".to_owned(),
-        data: Value::Table(vec![(ValueKey::string("pane"), Value::Int(1))]),
+        data: Value::Table(vec![(ValueKey::string("window"), Value::Int(1))]),
         queued: true,
         time: 1_700_000_000_000,
     });
-    round_trip(ServerMessage::PaneState {
-        pane: PaneId(2),
+    round_trip(ServerMessage::WindowState {
+        window: WindowId(2),
         key: "agent".to_owned(),
         value: Some(text("waiting")),
     });
-    round_trip(ServerMessage::PaneState {
-        pane: PaneId(2),
+    round_trip(ServerMessage::WindowState {
+        window: WindowId(2),
         key: "agent".to_owned(),
         value: None,
     });

@@ -1,18 +1,18 @@
-local M = { name = "pane", api = 1 }
+local M = { name = "window", api = 1 }
 
 function M.setup(opts)
-  gband.hl.default("PaneSegment", { link = "StatusLineAccent" })
+  gband.hl.default("WindowSegment", { link = "StatusLineAccent" })
   gband.ui.statusline.add({
     align = opts.align or "right",
     priority = opts.priority or 15,
     order = opts.order or 5,
-    hl = "PaneSegment",
+    hl = "WindowSegment",
     redraw_on = { "FocusChanged" },
     render = function(ctx)
-      if ctx.pane == nil then
+      if ctx.window == nil then
         return nil
       end
-      return "pane " .. ctx.pane
+      return "window " .. ctx.window
     end,
   })
 end

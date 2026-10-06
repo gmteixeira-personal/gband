@@ -14,6 +14,8 @@ mod keymap;
 pub mod keys;
 mod options;
 mod owner;
+pub mod plugin_windows;
+pub mod removed;
 mod runtime;
 pub mod server;
 mod sides;
@@ -21,7 +23,6 @@ pub mod ui;
 mod value;
 pub mod version;
 mod watch;
-pub mod windows;
 
 use std::collections::BTreeMap;
 use std::io::ErrorKind;
@@ -30,7 +31,7 @@ use std::path::Path;
 pub use mlua::Lua;
 
 pub use crate::actions::{ACTIONS, BuiltinAction};
-pub use crate::api::{Binding, Chord, Dispatch, PaneInput, WindowRequest};
+pub use crate::api::{Binding, Chord, Dispatch, PluginWindowRequest, WindowInput};
 pub use crate::bridge::{base64, notification};
 pub use crate::callbacks::CallbackId;
 pub use crate::clock::freeze as freeze_time;
@@ -44,7 +45,7 @@ pub use crate::options::{NotifyStyle, OptValue, Options, StatusLineOptions, Stat
 pub use crate::runtime::{API_VERSION, Outcome, Runtime};
 pub use crate::sides::install_test;
 pub use crate::ui::{
-    BandState, Color, ColumnState, PaneStates, Span, StatusLine, Style, ViewState,
+    BandState, Color, ColumnState, Span, StatusLine, Style, ViewState, WindowStates,
 };
 pub use crate::version::{Requirement, Version};
 pub use crate::watch::{Watcher, watch};

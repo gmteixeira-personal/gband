@@ -160,7 +160,7 @@ The server's `gband.action` SHALL hold one function for each session action the 
 - **THEN** `gband.session("work").bands[1].columns[2].windows[1].window` is 2
 - **AND** `gband.session("work").clients` holds one number
 
-#### Scenario: Floating pane in the structure
+#### Scenario: Floating window in the structure
 - **WHEN** the screen area of `work` is 80×24, and band 1 holds a column with window 1 and floating window 2 with `col` 70, `row` 3, width 1/2, full width off and `rows` 24
 - **THEN** `gband.session("work").bands[1].floating` is `{ { window = 2, width = 0.5, full_width = false, rows = 24, col = 40, row = 0 } }`
 

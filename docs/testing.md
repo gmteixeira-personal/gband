@@ -12,15 +12,15 @@ This guide assumes you know [the plugin guide](plugins.md).
 A plugin keeps its tests in `tests/`, beside its manifest:
 
 ```
-pane/
+window/
 ├── plugin.lua
-├── lua/pane/init.lua
+├── lua/window/init.lua
 └── tests/
-    ├── pane_spec.lua
+    ├── window_spec.lua
     ├── helpers.lua
     └── screenshots/
-        └── pane_spec/
-            └── shows-the-focused-pane--two-panes.txt
+        └── window_spec/
+            └── shows-the-focused-window--two-windows.txt
 ```
 
 Every file whose name ends in `_spec.lua` under `tests/`, at any depth, is a test file.
@@ -64,9 +64,9 @@ There `gband.side` is `"test"`, `gband.api_version` is `1`, and every other fiel
 ```lua
 local t = require("gband.test")
 
-t.case("the segment shows the focused pane", function(g)
-  g.start({ config = [[gband.plugin("pane")]] })
-  t.match(g.screen().row(23), "pane 1")
+t.case("the segment shows the focused window", function(g)
+  g.start({ config = [[gband.plugin("window")]] })
+  t.match(g.screen().row(23), "window 1")
 end)
 ```
 
@@ -88,7 +88,7 @@ When the file's top level raises an error or runs longer than 30 seconds, the fi
 A failing assertion raises an error at the line of its call, naming the expected and the actual value, and `message` when given:
 
 ```
-tests/pane_spec.lua:9: expected 4, got 3
+tests/window_spec.lua:9: expected 4, got 3
 ```
 
 ## The case
@@ -115,7 +115,7 @@ Its gband runs with:
 - `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME` and `XDG_RUNTIME_DIR` inside the tree
 - `SHELL=/bin/sh`, `PS1='$ '`, `INPUTRC=/dev/null`, `TERM=xterm-256color`, `COLORTERM=truecolor`, `TZ=UTC` and `GBAND_ANIMATIONS=off`
 - a directory of the tree first in `PATH`, holding `xdg-open` and `open`, which record their argument for `g.opened()` and open nothing
-- `GBAND_TEST_SOCKET`, as "The test channel" describes, and no `GBAND`, `GBAND_SESSION`, `GBAND_PANE` or `GBAND_LOG`
+- `GBAND_TEST_SOCKET`, as "The test channel" describes, and no `GBAND`, `GBAND_SESSION`, `GBAND_WINDOW` or `GBAND_LOG`
 - then the changes `env` asks for
 
 `g.start` runs `gband attach` from the same executable as `gband test`, so the client, the server and the runner are one build.
@@ -152,9 +152,9 @@ Arguments and results are plain data, as [the plugin guide](plugins.md#plain-dat
 
 ```lua
 local side, count = g.client("return gband.side, select('#', ...)", 1, 2)
-g.server([[gband.pane_state("default", 1).agent = "waiting"]])
+g.server([[gband.window_state("default", 1).agent = "waiting"]])
 g.settle()
-t.eq(g.client("return gband.pane_state(1).agent"), "waiting")
+t.eq(g.client("return gband.window_state(1).agent"), "waiting")
 ```
 
 A chunk that fails to compile, raises an error, hits the instruction limit or returns something that is not plain data fails the call with the reason, at the line of the call.
@@ -195,7 +195,7 @@ size 60x4 cursor 1:3 shown
 0|┌────────────────────────────┐┌────────────────────────────┐
 1|│$                           ││$                           │
 2|└────────────────────────────┘└────────────────────────────┘
-3|band 1                                                pane 1
+3|band 1                                                window 1
 --
 0:0-29 bold
 0:30-59 dim
@@ -218,7 +218,7 @@ size 60x4 cursor 1:3 shown
 `g.expect_screenshot(name, opts)` takes a screenshot and compares it with its reference, `screenshots/<file>/<case>.txt` in the test file's directory.
 `<file>` is the test file's name without `.lua`.
 `<case>` is the case's name, followed by `--` and `name` when given, lowercased, with every run of other characters than ASCII letters and digits turned into one `-`.
-So the case `Shows the focused pane` of `tests/pane_spec.lua` calling `g.expect_screenshot("two panes")` compares with `tests/screenshots/pane_spec/shows-the-focused-pane--two-panes.txt`.
+So the case `Shows the focused window` of `tests/window_spec.lua` calling `g.expect_screenshot("two windows")` compares with `tests/screenshots/window_spec/shows-the-focused-window--two-windows.txt`.
 Two comparisons with one reference in a run are an error, so give each screenshot of a case its own name.
 
 - A matching reference passes.
@@ -290,17 +290,17 @@ No Lua crosses the connection between a client and a server, and a server never 
 
 ## A worked example
 
-The [pane sample](../examples/plugins/pane) shows the focused window in the status line.
-The first case of its `tests/pane_spec.lua` opens a second window, moves back to the first, and keeps the screen as a reference, the screenshot shown under "Screenshots":
+The [window sample](../examples/plugins/window) shows the focused window in the status line.
+The first case of its `tests/window_spec.lua` opens a second window, moves back to the first, and keeps the screen as a reference, the screenshot shown under "Screenshots":
 
 ```lua
 local t = require("gband.test")
 
 local CONFIG = [[
-  gband.keymap.set("prefix", "enter", gband.action.open_pane)
+  gband.keymap.set("prefix", "enter", gband.action.open_window)
   gband.keymap.set("prefix", "h", gband.action.focus_column_left)
   gband.plugin("gband.statusline.band")
-  gband.plugin("pane")
+  gband.plugin("window")
 ]]
 
 local function prompts(g, count)
@@ -310,17 +310,17 @@ local function prompts(g, count)
   end)
 end
 
-t.case("shows the focused pane", function(g)
+t.case("shows the focused window", function(g)
   g.start({ size = "60x4", config = CONFIG })
-  t.match(g.screen().row(3), "pane 1$")
+  t.match(g.screen().row(3), "window 1$")
   g.keys("ctrl+space enter")
   g.settle()
-  t.match(g.screen().row(3), "pane 2$")
+  t.match(g.screen().row(3), "window 2$")
   g.keys("ctrl+space h")
   g.settle()
-  t.match(g.screen().row(3), "pane 1$")
+  t.match(g.screen().row(3), "window 1$")
   prompts(g, 2)
-  g.expect_screenshot("two panes")
+  g.expect_screenshot("two windows")
 end)
 ```
 
@@ -329,15 +329,15 @@ end)
 Start with a chunk on standard input and look at what gband draws:
 
 ```sh
-cd examples/plugins/pane
+cd examples/plugins/window
 gband test - --show <<'EOF'
 local t = require("gband.test")
 t.case("look", function(g)
-  g.start({ size = "60x4", config = [[gband.plugin("gband.statusline.band") gband.plugin("pane")]] })
+  g.start({ size = "60x4", config = [[gband.plugin("gband.statusline.band") gband.plugin("window")]] })
   g.expect_screenshot()
 end)
 EOF
 ```
 
-Then move the case into `tests/pane_spec.lua`, run `gband test --update` to write its reference, check the reference with `git diff`, and commit it.
+Then move the case into `tests/window_spec.lua`, run `gband test --update` to write its reference, check the reference with `git diff`, and commit it.
 From then on `gband test` fails with a diff whenever the segment draws differently.

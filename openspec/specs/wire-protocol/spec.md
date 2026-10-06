@@ -96,15 +96,15 @@ Pane and band identifiers SHALL name panes and bands of the client's session. Th
 - **WHEN** a client sends grow height naming pane 2
 - **THEN** the server decodes the same action and pane
 
-#### Scenario: Open pane with a program round trip
+#### Scenario: Open window with a program round trip
 - **WHEN** a client sends open pane naming band 1, pane 2 and the argument list `htop`, `-d`, `10`
 - **THEN** the server decodes the same band, pane and argument list
 
-#### Scenario: Open pane without a program round trip
+#### Scenario: Open window without a program round trip
 - **WHEN** a client sends open pane naming band 1 and no pane or program
 - **THEN** the server decodes open pane naming band 1 with no pane and no program
 
-#### Scenario: Open plugin pane round trip
+#### Scenario: Open drawn window round trip
 - **WHEN** a client sends open pane naming band 1, pane 2, the width 1/4, no focus, and plugin content with request number 7
 - **THEN** the server decodes the same band, pane, width, focus flag, content kind and request number
 
@@ -132,7 +132,7 @@ Pane and band identifiers SHALL name panes and bands of the client's session. Th
 - **WHEN** a client sends set position naming pane 4, column 12 and row 3
 - **THEN** the server decodes set position naming pane 4, column 12 and row 3
 
-#### Scenario: Open floating pane round trip
+#### Scenario: Open floating window round trip
 - **WHEN** a client sends open pane naming band 1, no pane, the width 1/3, floating, and no program
 - **THEN** the server decodes the same band, width and floating flag
 
@@ -202,7 +202,7 @@ A client SHALL keep one grid per pane. It SHALL build a pane's grid by replacing
 - **WHEN** a result message for call 7 holding the error `unknown command absent` is framed and decoded
 - **THEN** the decoded message equals the original
 
-#### Scenario: Floating panes in the layout
+#### Scenario: Floating windows in the layout
 - **WHEN** band 1 holds a column with pane 1 and floating panes 2 and 3, pane 2 with column 5, row 3, width 1/3, full width off and 10 rows, and the server sends the layout
 - **THEN** the client decodes band 1 with that column and floating panes 2 and 3 in that order, pane 2 with the same box record
 

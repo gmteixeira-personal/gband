@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use gband_core::input::{Key, KeyCode};
-use gband_core::layout::{PaneId, Program, SessionAction};
+use gband_core::layout::{Program, SessionAction, WindowId};
 use gband_test_support::*;
 
 async fn converges(name: &str, program: &str) -> TestClient {
@@ -72,7 +72,7 @@ async fn output_longer_than_one_screen() {
     assert!(client.screen().contents().contains("line 200"));
 }
 
-async fn open_running(client: &mut TestClient, program: Program) -> PaneId {
+async fn open_running(client: &mut TestClient, program: Program) -> WindowId {
     let first = client.first();
     let band = client.layout.bands()[0].id;
     client
@@ -86,15 +86,35 @@ async fn open_running(client: &mut TestClient, program: Program) -> PaneId {
 async fn command_line_program_runs_in_the_user_shell() {
     let server = TestServer::start("prog-line", &["/bin/sh"]).await;
     let mut client = server.attach(80, 24).await;
-    let pane = open_running(
+    let window = open_running(
         &mut client,
-        Program::CommandLine("echo $GBAND_PANE; sleep 5".to_owned()),
+        Program::CommandLine("echo $GBAND_WINDOW; sleep 5".to_owned()),
     )
     .await;
-    let id = pane.to_string();
+    let id = window.to_string();
     client
-        .wait_for_pane(pane, |screen| {
+        .wait_for_window(window, |screen| {
             screen.contents().lines().any(|line| line.trim() == id)
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn old_environment_variable_is_not_set() {
+    let server = TestServer::start("prog-old-variable", &["/bin/sh"]).await;
+    let mut client = server.attach(80, 24).await;
+    let window = open_running(
+        &mut client,
+        Program::CommandLine("echo \"[$GBAND_PANE] $GBAND_WINDOW\"; sleep 5".to_owned()),
+    )
+    .await;
+    let expected = format!("[] {window}");
+    client
+        .wait_for_window(window, |screen| {
+            screen
+                .contents()
+                .lines()
+                .any(|line| line.trim() == expected)
         })
         .await;
 }
@@ -104,8 +124,8 @@ async fn argument_list_program_runs_without_a_shell() {
     let server = TestServer::start("prog-argv", &["/bin/sh"]).await;
     let mut client = server.attach(80, 24).await;
     let argv = ["printf", "%s-%s", "a", "b"].map(str::to_owned).to_vec();
-    let pane = open_running(&mut client, Program::Argv(argv)).await;
-    client.wait_for_pane_text(pane, "a-b").await;
+    let window = open_running(&mut client, Program::Argv(argv)).await;
+    client.wait_for_window_text(window, "a-b").await;
 }
 
 #[tokio::test(flavor = "multi_thread")]

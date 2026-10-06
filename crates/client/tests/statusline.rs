@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use gband_client::animation::Animations;
 use gband_client::{Controls, Display, Step};
 use gband_core::geometry::Size;
-use gband_core::layout::{Layout, LayoutOptions, PaneId};
+use gband_core::layout::{Layout, LayoutOptions, WindowId};
 use gband_lua::keys::parse_key;
 use gband_lua::{Config, ConfigError, DEFAULTS, LoadOptions, Locations, StatusLine};
 use gband_protocol::{ClientMessage, ServerMessage};
@@ -71,7 +71,7 @@ fn write(path: &Path, source: &str) -> PathBuf {
 struct Client {
     display: Display,
     controls: Controls,
-    panes: Vec<PaneId>,
+    windows: Vec<WindowId>,
 }
 
 impl Client {
@@ -81,7 +81,7 @@ impl Client {
         Self {
             display,
             controls,
-            panes: Vec::new(),
+            windows: Vec::new(),
         }
     }
 
@@ -90,15 +90,15 @@ impl Client {
         let mut layout = Layout::new();
         let band = layout.bands()[0].id;
         for _ in 0..columns {
-            let pane = layout.allocate_pane();
+            let window = layout.allocate_window();
             layout.open(
-                pane,
+                window,
                 band,
-                self.panes.last().copied(),
+                self.windows.last().copied(),
                 None,
                 &LayoutOptions::default(),
             );
-            self.panes.push(pane);
+            self.windows.push(window);
         }
         let reported = self.display.reported_size();
         let mut messages = vec![ServerMessage::Layout {
@@ -106,8 +106,8 @@ impl Client {
             rows: reported.rows,
             layout,
         }];
-        if let Some(&pane) = self.panes.get(focused) {
-            messages.push(ServerMessage::Focus(pane));
+        if let Some(&window) = self.windows.get(focused) {
+            messages.push(ServerMessage::Focus(window));
         }
         let received = self.controls.receive(&mut self.display, messages);
         steps.extend(received.steps);
@@ -234,13 +234,13 @@ fn growing_past_the_status_height_draws_it() {
 }
 
 #[test]
-fn shown_panes_follow_the_ribbon() {
+fn shown_windows_follow_the_ribbon() {
     let (_scratch, mut client) = defaults("shown", "", Size::new(80, 24));
     client.attach(3, 0);
     let Some(ClientMessage::Shown(shown)) = client.display.report_shown() else {
         panic!("nothing shown");
     };
-    assert_eq!(shown, client.panes[..2]);
+    assert_eq!(shown, client.windows[..2]);
 }
 
 #[test]

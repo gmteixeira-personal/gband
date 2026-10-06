@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Defines how Lua code reads the client's layout and view, and how it performs every operation a user can, on any pane or band it names: targeted actions, exact widths and heights, focus, and input to a pane.
+Defines how Lua code reads the client's layout and view, and how it performs every operation a user can, on any window or band it names: targeted actions, exact widths and heights, focus, and input to a window.
 
 ## Requirements
 
@@ -27,7 +27,7 @@ Changing the returned table SHALL NOT change the layout. Calling `gband.layout()
 - **WHEN** line 4 of `user/init.lua` calls `gband.layout()`
 - **THEN** loading fails with an error at `user/init.lua` line 4
 
-#### Scenario: Floating pane
+#### Scenario: Floating window
 - **WHEN** the screen area is 80×24 and band 1 holds pane 1 in a column and floating pane 2 with `col` 50, `row` 3, width 1/2, full width off and `rows` 10, and a binding function calls `gband.layout()`
 - **THEN** its first band's `floating` is `{ { id = 2, width = 0.5, full_width = false, rows = 10, col = 40, row = 3 } }`
 
@@ -42,7 +42,7 @@ Changing the returned table SHALL NOT change the layout. Calling `gband.layout()
 
 Calling it while the configuration loads SHALL be an error at the line of the call.
 
-#### Scenario: Focused pane
+#### Scenario: Focused window
 - **WHEN** the client views band 1 with pane 2 focused, its ribbon area is 80×23, and a binding in `prefix` calls `gband.view()`
 - **THEN** the result is `{ band = 1, pane = 2, floating = false, table = "prefix", cols = 80, rows = 23 }`
 
@@ -81,7 +81,7 @@ A target passed to a view action or to `detach` SHALL be an error. Each of these
 
 Calling an action value with no target SHALL resolve it against the view, as the actions capability defines.
 
-#### Scenario: Close a named pane
+#### Scenario: Close a named window
 - **WHEN** panes 1 and 2 are open with pane 2 focused and a binding function calls `gband.action.close_pane({ pane = 1 })`
 - **THEN** the client sends close pane naming pane 1
 - **AND** pane 2 stays focused
@@ -95,7 +95,7 @@ Calling an action value with no target SHALL resolve it against the view, as the
 - **THEN** band 2 holds a new pane running the user's shell
 - **AND** the client views band 2 with the new pane focused
 
-#### Scenario: Unknown pane
+#### Scenario: Unknown window
 - **WHEN** line 6 of `user/init.lua` holds a binding function that calls `gband.action.close_pane({ pane = 99 })` and no pane 99 exists, and the user presses its key
 - **THEN** the client shows an error at `user/init.lua` line 6 naming pane 99
 - **AND** nothing is sent to the server
@@ -104,7 +104,7 @@ Calling an action value with no target SHALL resolve it against the view, as the
 - **WHEN** a binding function calls `gband.action.focus_column_left({ pane = 1 })`
 - **THEN** the call raises an error and the view is unchanged
 
-#### Scenario: Open a floating pane
+#### Scenario: Open a floating window
 - **WHEN** the client views band 1 and a binding function calls `gband.action.open_pane({ floating = true })`
 - **THEN** band 1's floating list ends with a new pane running the user's shell
 - **AND** the client focuses it with the floating layer active
@@ -113,18 +113,18 @@ Calling an action value with no target SHALL resolve it against the view, as the
 - **WHEN** a binding function calls `gband.action.open_pane({ after = 1, floating = true })`
 - **THEN** the call raises an error naming `after`
 
-#### Scenario: Tile a named pane after a named pane
+#### Scenario: Tile a named window after a named window
 - **WHEN** band 1 holds columns with panes 1 and 2 and floating pane 3, and a binding function calls `gband.action.toggle_pane_floating({ pane = 3, after = 1 })`
 - **THEN** band 1 holds the columns of pane 1, pane 3 and pane 2, in that order
 
-#### Scenario: Move a named pane
+#### Scenario: Move a named window
 - **WHEN** band 1 holds columns with panes 1 and 2, pane 2 is focused, and a binding function calls `gband.action.move_column_right({ pane = 1 })`
 - **THEN** band 1 holds the columns of pane 2 and pane 1, in that order, and pane 2 stays focused
 
 ### Requirement: Focus and view by number
 `gband.pane.focus(pane)` SHALL dispatch a view action that focuses the named pane, as the layout-view capability defines. `gband.band.view(band)` SHALL dispatch a view action that views the named band, as the layout-view capability defines. A number that names no pane or band in the client's layout SHALL be an error at the line of the call.
 
-#### Scenario: Focus a pane in another band
+#### Scenario: Focus a window in another band
 - **WHEN** band 1 holds pane 1, band 2 holds pane 2, the client views band 1, and a binding function calls `gband.pane.focus(2)`
 - **THEN** the client views band 2 with pane 2 focused
 
@@ -156,7 +156,7 @@ A pane number not in the client's layout, or an argument of the wrong type or ou
 ### Requirement: Input to a named pane
 `gband.pane.send_keys(pane, keys)` SHALL send each key, given as one key name or a list of key names as the configuration capability defines them, to the named pane as a key press. `gband.pane.send_text(pane, text)` SHALL send each character of `text` to the named pane as a key press of that character: a line feed or carriage return as Enter, and a tab as Tab. Any other control character SHALL be an error. `gband.pane.paste(pane, text)` SHALL send `text` to the named pane as a paste. The server SHALL encode them as it encodes keys and pastes the user sends. These functions SHALL NOT change the active key table or run any binding. An invalid key name or a pane number not in the client's layout SHALL be an error at the line of the call.
 
-#### Scenario: Run a command in another pane
+#### Scenario: Run a command in another window
 - **WHEN** panes 1 and 2 run shells, pane 2 is focused, and a binding function calls `gband.pane.send_text(1, "echo hi\n")`
 - **THEN** pane 1 prints `hi`
 - **AND** pane 2's screen is unchanged and pane 2 stays focused
@@ -187,7 +187,7 @@ A pane number not in the client's layout, or an argument of the wrong type or ou
 ### Requirement: Place a floating pane
 `gband.pane.set_position(pane, position)` SHALL dispatch set position naming the pane, as the session-server capability defines it. The `position` argument SHALL be a table holding `col` and `row`, each an integer of at least 0. The box SHALL be placed as the floating-panes capability defines. A pane number not in the client's layout, a pane that is not floating in the client's layout, a missing or unknown field, or a value of the wrong type or out of range SHALL be an error at the line of the call.
 
-#### Scenario: Place a floating pane
+#### Scenario: Place a floating window
 - **WHEN** the screen area is 80×24, pane 3 floats with a 40×12 box, and a binding function calls `gband.pane.set_position(3, { col = 10, row = 2 })`
 - **THEN** pane 3's box spans columns 10 to 49 and rows 2 to 13
 
@@ -195,7 +195,7 @@ A pane number not in the client's layout, or an argument of the wrong type or ou
 - **WHEN** the same binding function calls `gband.pane.set_position(3, { col = 70, row = 2 })`
 - **THEN** pane 3's box spans columns 40 to 79
 
-#### Scenario: Tiled pane
+#### Scenario: Tiled window
 - **WHEN** pane 1 is tiled and a binding function calls `gband.pane.set_position(1, { col = 0, row = 0 })`
 - **THEN** the call raises an error naming pane 1
 

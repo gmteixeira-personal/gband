@@ -6,7 +6,7 @@ use common::*;
 fn slow_handler() {
     let env = TestEnv::new("runtime-slow-handler");
     env.write_server_config(
-        "gband.on('PaneOutput', function()
+        "gband.on('WindowOutput', function()
   local start = os.clock()
   while os.clock() - start < 0.2 do end
 end)",
@@ -17,7 +17,7 @@ end)",
     client.send(b"head -c 8388608 /dev/zero | tr '\\0' x; echo; echo DO''NE\r");
     client.wait_for_line("DONE");
     wait_until(
-        || env.log_text("server").contains("bytes of pane output"),
+        || env.log_text("server").contains("bytes of window output"),
         "the server log to record dropped output",
     );
 }

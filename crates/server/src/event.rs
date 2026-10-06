@@ -1,5 +1,5 @@
 use gband_core::event::LayoutEvent;
-use gband_core::layout::PaneId;
+use gband_core::layout::WindowId;
 use gband_protocol::SessionName;
 use tokio::sync::broadcast::{self, error::RecvError};
 
@@ -10,8 +10,8 @@ pub enum SessionEvent {
     Created,
     Ended,
     Layout(LayoutEvent),
-    PaneExited {
-        pane: PaneId,
+    WindowExited {
+        window: WindowId,
         code: Option<u32>,
         signal: Option<i32>,
     },

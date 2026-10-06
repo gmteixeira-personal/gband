@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::input::Key;
-use crate::layout::{Direction, PaneId, SessionAction, Step, Vertical};
+use crate::layout::{Direction, SessionAction, Step, Vertical, WindowId};
 use crate::view::ViewAction;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -13,11 +13,11 @@ pub enum Action {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SessionCommand {
-    OpenPane,
-    ClosePane,
+    OpenWindow,
+    CloseWindow,
     ConsumeOrExpel(Direction),
     MoveColumn(Direction),
-    MovePane(Vertical),
+    MoveWindow(Vertical),
     ToggleFloating,
     CycleWidth,
     ToggleFullWidth,
@@ -27,23 +27,30 @@ pub enum SessionCommand {
 }
 
 impl SessionCommand {
-    pub fn on_pane(self, pane: PaneId) -> Option<SessionAction> {
+    pub fn on_window(self, window: WindowId) -> Option<SessionAction> {
         Some(match self {
-            SessionCommand::OpenPane => return None,
-            SessionCommand::ToggleFloating => SessionAction::ToggleFloating { pane, after: None },
+            SessionCommand::OpenWindow => return None,
+            SessionCommand::ToggleFloating => SessionAction::ToggleFloating {
+                window,
+                after: None,
+            },
 
-            SessionCommand::ClosePane => SessionAction::ClosePane(pane),
+            SessionCommand::CloseWindow => SessionAction::CloseWindow(window),
             SessionCommand::ConsumeOrExpel(direction) => {
-                SessionAction::ConsumeOrExpel { pane, direction }
+                SessionAction::ConsumeOrExpel { window, direction }
             }
-            SessionCommand::MoveColumn(direction) => SessionAction::MoveColumn { pane, direction },
-            SessionCommand::MovePane(direction) => SessionAction::MovePane { pane, direction },
+            SessionCommand::MoveColumn(direction) => {
+                SessionAction::MoveColumn { window, direction }
+            }
+            SessionCommand::MoveWindow(direction) => {
+                SessionAction::MoveWindow { window, direction }
+            }
 
-            SessionCommand::CycleWidth => SessionAction::CycleWidth(pane),
-            SessionCommand::ToggleFullWidth => SessionAction::ToggleFullWidth(pane),
-            SessionCommand::StepWidth(step) => SessionAction::StepWidth { pane, step },
-            SessionCommand::StepHeight(step) => SessionAction::StepHeight { pane, step },
-            SessionCommand::ResetHeight => SessionAction::ResetHeight(pane),
+            SessionCommand::CycleWidth => SessionAction::CycleWidth(window),
+            SessionCommand::ToggleFullWidth => SessionAction::ToggleFullWidth(window),
+            SessionCommand::StepWidth(step) => SessionAction::StepWidth { window, step },
+            SessionCommand::StepHeight(step) => SessionAction::StepHeight { window, step },
+            SessionCommand::ResetHeight => SessionAction::ResetHeight(window),
         })
     }
 }

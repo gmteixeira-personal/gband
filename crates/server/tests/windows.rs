@@ -3,15 +3,15 @@ use std::time::Duration;
 
 use gband_core::geometry::Size;
 use gband_core::input::{Key, KeyCode};
-use gband_core::layout::{LayoutOptions, PaneContent, PaneId, Proportion, SessionAction};
+use gband_core::layout::{LayoutOptions, Proportion, SessionAction, WindowContent, WindowId};
 use gband_protocol::ClientMessage;
 use gband_test_support::*;
 use tokio::time::Instant;
 
-async fn stty_size(client: &mut TestClient, pane: PaneId, expected: &str) {
-    client.type_line_to(pane, "clear; stty size").await;
+async fn stty_size(client: &mut TestClient, window: WindowId, expected: &str) {
+    client.type_line_to(window, "clear; stty size").await;
     client
-        .wait_for_pane(pane, |screen| {
+        .wait_for_window(window, |screen| {
             screen
                 .contents()
                 .lines()
@@ -20,16 +20,16 @@ async fn stty_size(client: &mut TestClient, pane: PaneId, expected: &str) {
         .await;
 }
 
-fn pane_number(screen: &Grid) -> Option<u32> {
+fn window_number(screen: &Grid) -> Option<u32> {
     screen
         .contents()
         .lines()
-        .find_map(|line| line.strip_prefix("pane="))
+        .find_map(|line| line.strip_prefix("window="))
         .and_then(|number| number.trim().parse().ok())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn first_pane_is_sized_from_the_initial_area() {
+async fn first_window_is_sized_from_the_initial_area() {
     let runtime_dir = runtime_dir("init-size");
     let record = runtime_dir.join("size");
     let script = format!("stty size > {}; exec sleep 100", record.display());
@@ -47,59 +47,61 @@ async fn first_pane_is_sized_from_the_initial_area() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn opening_a_pane_reaches_every_client_and_focuses_the_requester() {
+async fn opening_a_window_reaches_every_client_and_focuses_the_requester() {
     let server = TestServer::start("open", &["/bin/sh"]).await;
     let mut requester = server.attach(80, 24).await;
     let mut other = server.attach(80, 24).await;
     let first = requester.first();
     let opened = requester.open_after(first).await;
-    assert_eq!(requester.panes(), vec![first, opened]);
+    assert_eq!(requester.windows(), vec![first, opened]);
     other
-        .wait_until(|client| client.panes().len() == 2 && client.grids.len() == 2)
+        .wait_until(|client| client.windows().len() == 2 && client.grids.len() == 2)
         .await;
-    assert_eq!(other.panes(), vec![first, opened]);
+    assert_eq!(other.windows(), vec![first, opened]);
     assert!(other.pump(Duration::from_millis(200)).await);
     assert!(other.focus.is_empty());
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn panes_are_told_apart_by_their_environment() {
-    let server = TestServer::start("pane-env", &["/bin/sh"]).await;
+async fn windows_are_told_apart_by_their_environment() {
+    let server = TestServer::start("window-env", &["/bin/sh"]).await;
     let mut client = server.attach(80, 24).await;
     let first = client.first();
     let second = client.open_after(first).await;
-    for pane in [first, second] {
-        client.type_line_to(pane, "echo pane=$GBAND_PANE").await;
+    for window in [first, second] {
         client
-            .wait_for_pane(pane, |screen| pane_number(screen).is_some())
+            .type_line_to(window, "echo window=$GBAND_WINDOW")
+            .await;
+        client
+            .wait_for_window(window, |screen| window_number(screen).is_some())
             .await;
     }
-    assert_eq!(pane_number(client.pane_screen(first)), Some(first.0));
-    assert_eq!(pane_number(client.pane_screen(second)), Some(second.0));
+    assert_eq!(window_number(client.window_screen(first)), Some(first.0));
+    assert_eq!(window_number(client.window_screen(second)), Some(second.0));
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn keys_reach_only_their_pane() {
+async fn keys_reach_only_their_window() {
     let server = TestServer::start("routing", &["/bin/sh"]).await;
     let mut client = server.attach(80, 24).await;
     let first = client.first();
     let second = client.open_after(first).await;
     client.type_line_to(second, "echo routed-here").await;
-    client.wait_for_pane_text(second, "routed-here\n").await;
+    client.wait_for_window_text(second, "routed-here\n").await;
     client.pump(Duration::from_millis(200)).await;
-    assert!(!client.pane_screen(first).contents().contains("routed"));
+    assert!(!client.window_screen(first).contents().contains("routed"));
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn keys_for_a_missing_pane_are_dropped() {
-    let server = TestServer::start("no-pane", &["/bin/sh"]).await;
+async fn keys_for_a_missing_window_are_dropped() {
+    let server = TestServer::start("no-window", &["/bin/sh"]).await;
     let mut client = server.attach(80, 24).await;
     client
-        .key_to(PaneId(99), Key::plain(KeyCode::Char('x')))
+        .key_to(WindowId(99), Key::plain(KeyCode::Char('x')))
         .await;
     client
         .send(&ClientMessage::Paste {
-            pane: PaneId(99),
+            window: WindowId(99),
             text: "ignored".into(),
         })
         .await;
@@ -112,15 +114,17 @@ async fn concurrent_opens_give_every_client_the_same_layout() {
     let server = TestServer::start("conc-open", &["/bin/sh"]).await;
     let mut first = server.attach(80, 24).await;
     let mut second = server.attach(80, 24).await;
-    let pane = first.first();
+    let window = first.first();
     let band = first.layout.bands()[0].id;
-    let open = SessionAction::open(band, Some(pane), None);
+    let open = SessionAction::open(band, Some(window), None);
     first.act(open.clone()).await;
     second.act(open).await;
     first.wait_until(|client| client.focus.len() == 1).await;
     second.wait_until(|client| client.focus.len() == 1).await;
-    first.wait_until(|client| client.panes().len() == 3).await;
-    second.wait_until(|client| client.panes().len() == 3).await;
+    first.wait_until(|client| client.windows().len() == 3).await;
+    second
+        .wait_until(|client| client.windows().len() == 3)
+        .await;
     assert_eq!(first.layout, second.layout);
     assert_ne!(first.focus, second.focus);
 }
@@ -133,8 +137,8 @@ async fn latest_client_sets_the_area() {
     first
         .wait_for(|screen| screen.size() == Size::new(58, 38))
         .await;
-    let pane = first.first();
-    stty_size(&mut first, pane, "38 58").await;
+    let window = first.first();
+    stty_size(&mut first, window, "38 58").await;
 
     let mut second = server.attach(100, 30).await;
     second.show_all().await;
@@ -142,7 +146,7 @@ async fn latest_client_sets_the_area() {
     second
         .wait_for(|screen| screen.size() == Size::new(48, 28))
         .await;
-    stty_size(&mut second, pane, "28 48").await;
+    stty_size(&mut second, window, "28 48").await;
 
     first
         .send(&ClientMessage::Resize { cols: 90, rows: 25 })
@@ -150,17 +154,17 @@ async fn latest_client_sets_the_area() {
     first
         .wait_for(|screen| screen.size() == Size::new(43, 23))
         .await;
-    stty_size(&mut first, pane, "23 43").await;
+    stty_size(&mut first, window, "23 43").await;
 
     second.send(&ClientMessage::Detach).await;
     assert!(second.peer.closes().await);
     tokio::time::sleep(Duration::from_millis(100)).await;
-    stty_size(&mut first, pane, "23 43").await;
+    stty_size(&mut first, window, "23 43").await;
     assert_eq!(first.area, Size::new(90, 25));
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn opening_a_pane_keeps_other_sizes_and_width_changes_resize() {
+async fn opening_a_window_keeps_other_sizes_and_width_changes_resize() {
     let runtime_dir = runtime_dir("keep-size");
     let record = runtime_dir.join("winched");
     let server = TestServer::start_in(runtime_dir, &["/bin/sh"]).await;
@@ -180,7 +184,7 @@ async fn opening_a_pane_keeps_other_sizes_and_width_changes_resize() {
     let second = client.open_after(first).await;
     client.show_all().await;
     client
-        .wait_for_pane(second, |screen| screen.size() == Size::new(43, 28))
+        .wait_for_window(second, |screen| screen.size() == Size::new(43, 28))
         .await;
     stty_size(&mut client, first, "28 43").await;
     assert!(!record.exists());
@@ -194,21 +198,21 @@ async fn opening_a_pane_keeps_other_sizes_and_width_changes_resize() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn closing_a_shell_removes_its_pane() {
+async fn closing_a_shell_removes_its_window() {
     let server = TestServer::start("close", &["/bin/sh"]).await;
     let mut client = server.attach(80, 24).await;
     let first = client.first();
     let second = client.open_after(first).await;
-    client.act(SessionAction::ClosePane(second)).await;
+    client.act(SessionAction::CloseWindow(second)).await;
     client
-        .wait_until(|client| client.panes() == vec![first])
+        .wait_until(|client| client.windows() == vec![first])
         .await;
     assert!(!client.grids.contains_key(&second));
     assert!(!server.handle.is_finished());
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn closing_a_pane_that_ignores_sighup_kills_it() {
+async fn closing_a_window_that_ignores_sighup_kills_it() {
     let server = TestServer::start("close-hup", &["/bin/sh"]).await;
     let mut client = server.attach(80, 24).await;
     let first = client.first();
@@ -217,15 +221,15 @@ async fn closing_a_pane_that_ignores_sighup_kills_it() {
         .type_line_to(second, "trap '' HUP; echo trapped; sleep 100")
         .await;
     client
-        .wait_for_pane(second, |screen| {
+        .wait_for_window(second, |screen| {
             screen.contents().lines().any(|line| line == "trapped")
         })
         .await;
     tokio::time::sleep(Duration::from_millis(200)).await;
     let started = Instant::now();
-    client.act(SessionAction::ClosePane(second)).await;
+    client.act(SessionAction::CloseWindow(second)).await;
     client
-        .wait_until(|client| client.panes() == vec![first])
+        .wait_until(|client| client.windows() == vec![first])
         .await;
     assert!(started.elapsed() < Duration::from_secs(3));
 }
@@ -238,7 +242,7 @@ async fn one_of_two_shells_exiting_leaves_the_session_running() {
     let second = client.open_after(first).await;
     client.type_line_to(second, "exit").await;
     client
-        .wait_until(|client| client.panes() == vec![first])
+        .wait_until(|client| client.windows() == vec![first])
         .await;
     client.type_line("echo survivor").await;
     client.wait_for_text("survivor\n").await;
@@ -253,7 +257,7 @@ async fn one_of_two_shells_exiting_leaves_the_session_running() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn stacked_panes_share_the_height() {
+async fn stacked_windows_share_the_height() {
     let server = TestServer::start("stack", &["/bin/sh"]).await;
     let mut client = server.attach(80, 25).await;
     client.show_all().await;
@@ -262,7 +266,7 @@ async fn stacked_panes_share_the_height() {
     client.show_all().await;
     client
         .act(SessionAction::ConsumeOrExpel {
-            pane: second,
+            window: second,
             direction: gband_core::layout::Direction::Left,
         })
         .await;
@@ -289,8 +293,8 @@ async fn new_default_width_applies_to_columns_opened_after_it() {
         ..LayoutOptions::default()
     });
     let second = client.open_after(first).await;
-    let width = |client: &TestClient, pane: PaneId| {
-        let location = client.layout.locate(pane).unwrap();
+    let width = |client: &TestClient, window: WindowId| {
+        let location = client.layout.locate(window).unwrap();
         client.layout.bands()[location.band].columns[location.column].width
     };
     assert_eq!(width(&client, first), Proportion::ONE_HALF);
@@ -298,7 +302,7 @@ async fn new_default_width_applies_to_columns_opened_after_it() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn float_a_pane_for_every_client() {
+async fn float_a_window_for_every_client() {
     let server = TestServer::start("float-all", &["/bin/sh"]).await;
     let mut first = server.attach(80, 24).await;
     let mut second = server.attach(80, 24).await;
@@ -306,7 +310,7 @@ async fn float_a_pane_for_every_client() {
     let b = first.open_after(a).await;
     first
         .act(SessionAction::ToggleFloating {
-            pane: b,
+            window: b,
             after: None,
         })
         .await;
@@ -317,26 +321,26 @@ async fn float_a_pane_for_every_client() {
         let floating: Vec<_> = client.layout.bands()[0]
             .floating
             .iter()
-            .map(|floating| floating.pane)
+            .map(|floating| floating.window)
             .collect();
         assert_eq!(floating, [b]);
     }
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn open_a_floating_pane_with_focus() {
+async fn open_a_floating_window_with_focus() {
     let server = TestServer::start("open-floating", &["/bin/sh"]).await;
     let mut requester = server.attach(80, 24).await;
     let mut other = server.attach(80, 24).await;
     let band = requester.layout.bands()[0].id;
     requester
-        .act(SessionAction::OpenPane {
+        .act(SessionAction::OpenWindow {
             band,
             after: None,
             width: None,
             floating: true,
             focus: true,
-            content: PaneContent::Program(None),
+            content: WindowContent::Program(None),
         })
         .await;
     requester
@@ -349,7 +353,7 @@ async fn open_a_floating_pane_with_focus() {
                 client.layout.bands()[0]
                     .floating
                     .last()
-                    .map(|floating| floating.pane)
+                    .map(|floating| floating.window)
                     == Some(opened)
             })
             .await;

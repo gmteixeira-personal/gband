@@ -1,10 +1,10 @@
 local t = require("gband.test")
 
 local CONFIG = [[
-  gband.keymap.set("prefix", "enter", gband.action.open_pane)
+  gband.keymap.set("prefix", "enter", gband.action.open_window)
   gband.keymap.set("prefix", "h", gband.action.focus_column_left)
   gband.plugin("gband.statusline.band")
-  gband.plugin("pane")
+  gband.plugin("window")
 ]]
 
 local function prompts(g, count)
@@ -14,17 +14,17 @@ local function prompts(g, count)
   end)
 end
 
-t.case("shows the focused pane", function(g)
+t.case("shows the focused window", function(g)
   g.start({ size = "60x4", config = CONFIG })
-  t.match(g.screen().row(3), "pane 1$")
+  t.match(g.screen().row(3), "window 1$")
   g.keys("ctrl+space enter")
   g.settle()
-  t.match(g.screen().row(3), "pane 2$")
+  t.match(g.screen().row(3), "window 2$")
   g.keys("ctrl+space h")
   g.settle()
-  t.match(g.screen().row(3), "pane 1$")
+  t.match(g.screen().row(3), "window 1$")
   prompts(g, 2)
-  g.expect_screenshot("two panes")
+  g.expect_screenshot("two windows")
 end)
 
 t.case("links its group to the accent", function(g)

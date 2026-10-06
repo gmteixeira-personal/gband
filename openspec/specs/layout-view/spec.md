@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Defines one client's view of the session's layout: which band it shows, which pane has its focus, how focus moves and follows layout changes, and where its camera sits on the band's strip.
+Defines one client's view of the session's layout: which band it shows, which window has its focus, how focus moves and follows layout changes, and where its camera sits on the band's strip.
 
 ## Requirements
 
@@ -29,7 +29,7 @@ A client SHALL start by viewing the first band, with focus on the top pane of it
 ### Requirement: Focus across columns
 While the tiled layer is active, focusing the column to the left or right SHALL move focus to the adjacent column in that direction. Within that column, focus SHALL go to the pane this client focused most recently, or to the top pane when this client has focused none of its panes. When no column exists in that direction, the view SHALL not change. While the floating layer is active, these actions SHALL move focus between floating panes, as the floating-panes capability defines.
 
-#### Scenario: Return to the remembered pane
+#### Scenario: Return to the remembered window
 - **WHEN** column A holds P1 and P2, the client focuses P2, focuses the column to the right, then the column to the left
 - **THEN** the client focuses P2
 
@@ -88,7 +88,7 @@ When the layout changes, each client's view SHALL follow it:
 - **WHEN** a client focuses column C, the last of A, B and C, and C's only pane exits
 - **THEN** the client focuses the pane in B
 
-#### Scenario: Focused pane expelled
+#### Scenario: Focused window expelled
 - **WHEN** a client focuses P2 in a column holding P1 and P2, and P2 is expelled to the right
 - **THEN** the client still focuses P2, now alone in its new column
 
@@ -164,7 +164,7 @@ A view's shown panes SHALL be the panes of its viewed band whose tile, as the la
 - **WHEN** the screen area and the client's terminal are both 80×24, the viewed band holds two columns of width 2/3, and the client focuses the second
 - **THEN** the panes of both columns are shown
 
-#### Scenario: Pane below the bottom edge
+#### Scenario: Window below the bottom edge
 - **WHEN** the screen area is 120×60, the client's terminal is 100×30, and the viewed band holds one column of width 1/2 with two panes with automatic heights of weight 1
 - **THEN** only the top pane is shown
 
@@ -172,7 +172,7 @@ A view's shown panes SHALL be the panes of its viewed band whose tile, as the la
 - **WHEN** the layout holds B1 with pane P1 and B2 with pane P2, and the client views B2
 - **THEN** the only shown pane is P2
 
-#### Scenario: Floating pane shown
+#### Scenario: Floating window shown
 - **WHEN** the screen area and the client's terminal are both 80×24, the viewed band holds three columns of width 1/2 and floating pane P4, and the camera is at 40
 - **THEN** the shown panes are those of the second and third columns, and P4
 
@@ -183,16 +183,16 @@ A view's shown panes SHALL be the panes of its viewed band whose tile, as the la
 ### Requirement: Focus a named pane
 Focusing a named pane SHALL make that pane's band the viewed band, focus that pane, and make its layer active, as a focus message from the server does. The camera SHALL follow the new focus as it follows any change of focus. Focusing a pane not in the layout SHALL leave the view unchanged.
 
-#### Scenario: Pane in the viewed band
+#### Scenario: Window in the viewed band
 - **WHEN** a client views a band holding columns A, B and C, focuses A, and focuses the named pane in C
 - **THEN** the client focuses that pane
 - **AND** focusing the column to the left then focuses B
 
-#### Scenario: Pane in another band
+#### Scenario: Window in another band
 - **WHEN** a client views B1 and focuses a named pane in B2
 - **THEN** the client views B2 with that pane focused
 
-#### Scenario: Floating pane by name
+#### Scenario: Floating window by name
 - **WHEN** a client focuses a tiled pane of B1 and focuses floating pane P3 of B1 by name
 - **THEN** the client focuses P3 with the floating layer active
 

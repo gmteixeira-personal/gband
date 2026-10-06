@@ -34,7 +34,7 @@ t.case("mode", function(g)
     config = [[
       gband.plugin("gband.statusline.band")
       gband.plugin("gband.statusline.mode")
-      gband.keymap.set("prefix", "enter", gband.action.open_pane)
+      gband.keymap.set("prefix", "enter", gband.action.open_window)
     ]],
   })
   t.eq(status(g), "band 1")
@@ -52,10 +52,10 @@ t.case("hints", function(g)
   g.start({
     size = SIZE,
     config = [[
-      gband.keymap.set("prefix", "enter", gband.action.open_pane)
-      gband.keymap.set("prefix", "x", gband.action.close_pane)
+      gband.keymap.set("prefix", "enter", gband.action.open_window)
+      gband.keymap.set("prefix", "x", gband.action.close_window)
       gband.keymap.set("prefix", "d", gband.action.detach)
-      gband.plugin("gband.statusline.hints", { labels = { close_pane = "kill" } })
+      gband.plugin("gband.statusline.hints", { labels = { close_window = "kill" } })
     ]],
   })
   t.eq(status(g), "C-space prefix")
@@ -70,7 +70,7 @@ t.case("position", function(g)
   g.start({
     size = SIZE,
     config = [[
-      gband.keymap.set("prefix", "enter", gband.action.open_pane)
+      gband.keymap.set("prefix", "enter", gband.action.open_window)
       gband.keymap.set("prefix", "h", gband.action.focus_column_left)
       gband.plugin("gband.statusline.position")
     ]],

@@ -6,27 +6,27 @@ local ALIGN = { left = true, center = true, right = true }
 local SHORT = {
   focus_column_left = "left",
   focus_column_right = "right",
-  focus_pane_down = "down",
-  focus_pane_up = "up",
+  focus_window_down = "down",
+  focus_window_up = "up",
   focus_band_down = "band down",
   focus_band_up = "band up",
-  open_pane = "new",
-  close_pane = "close",
+  open_window = "new",
+  close_window = "close",
   consume_or_expel_left = "stack left",
   consume_or_expel_right = "stack right",
   move_column_left = "move left",
   move_column_right = "move right",
-  move_pane_down = "move down",
-  move_pane_up = "move up",
-  toggle_pane_floating = "float",
+  move_window_down = "move down",
+  move_window_up = "move up",
+  toggle_window_floating = "float",
   switch_focus_floating_tiled = "layer",
   cycle_column_width = "width",
   toggle_full_width = "full",
   grow_column_width = "wider",
   shrink_column_width = "narrower",
-  grow_pane_height = "taller",
-  shrink_pane_height = "shorter",
-  reset_pane_height = "reset height",
+  grow_window_height = "taller",
+  shrink_window_height = "shorter",
+  reset_window_height = "reset height",
   detach = "detach",
   send_prefix = "send prefix",
 }
@@ -157,6 +157,7 @@ local function invalid(opts)
       if type(name) ~= "string" or (type(text) ~= "string" and text ~= false) then
         return "`labels` must be a table from action names to strings or false"
       end
+      local _ = gband.action[name]
     end
   end
 end

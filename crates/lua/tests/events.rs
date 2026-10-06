@@ -2,14 +2,14 @@ mod common;
 
 use common::*;
 use gband_core::action::Action;
-use gband_core::layout::{BandId, PaneId};
+use gband_core::layout::{BandId, WindowId};
 use gband_core::view::ViewAction;
 use gband_lua::{Binding, Config, Dispatch, Event};
 
-fn focus(pane: u32, previous: u32) -> Event {
+fn focus(window: u32, previous: u32) -> Event {
     Event::FocusChanged {
-        pane: Some(PaneId(pane)),
-        previous: Some(PaneId(previous)),
+        window: Some(WindowId(window)),
+        previous: Some(WindowId(previous)),
     }
 }
 
@@ -42,7 +42,7 @@ local function record(e)
   table.sort(keys)
   log[#log + 1] = table.concat(keys, ',')
 end
-for _, name in ipairs({ 'Attached', 'FocusChanged', 'BandChanged', 'PaneOpened', 'PaneClosed', 'ConfigReloaded', 'KeyTableChanged' }) do
+for _, name in ipairs({ 'Attached', 'FocusChanged', 'BandChanged', 'WindowOpened', 'WindowClosed', 'ConfigReloaded', 'KeyTableChanged' }) do
   gband.on(name, record)
 end",
     );
@@ -52,19 +52,19 @@ end",
             session: "main".to_owned(),
         },
         Event::FocusChanged {
-            pane: None,
-            previous: Some(PaneId(2)),
+            window: None,
+            previous: Some(WindowId(2)),
         },
         Event::BandChanged {
             band: BandId(2),
             previous: BandId(1),
         },
-        Event::PaneOpened {
-            pane: PaneId(3),
+        Event::WindowOpened {
+            window: WindowId(3),
             band: BandId(1),
         },
-        Event::PaneClosed {
-            pane: PaneId(3),
+        Event::WindowClosed {
+            window: WindowId(3),
             band: BandId(1),
         },
         Event::ConfigReloaded,
@@ -81,8 +81,8 @@ end",
             "session=main",
             "previous=2",
             "band=2,previous=1",
-            "band=1,pane=3",
-            "band=1,pane=3",
+            "band=1,window=3",
+            "band=1,window=3",
             "",
             "previous=root,table=prefix",
         ]
@@ -104,8 +104,8 @@ fn payload_copies_are_separate() {
     let scratch = Scratch::new("copies");
     scratch.write(
         "log = {}
-gband.on('FocusChanged', function(e) e.pane = nil end)
-gband.on('FocusChanged', function(e) log[#log + 1] = tostring(e.pane) end)",
+gband.on('FocusChanged', function(e) e.window = nil end)
+gband.on('FocusChanged', function(e) log[#log + 1] = tostring(e.window) end)",
     );
     let config = scratch.loaded();
     clean(&config.runtime.emit(&focus(1, 2)));
@@ -264,10 +264,10 @@ gband.bind('alt+e', function() gband.emit('go') end)",
 #[test]
 fn handler_dispatches_are_returned() {
     let scratch = Scratch::new("dispatch");
-    scratch.write("gband.on('PaneOpened', function() gband.action.focus_column_left() end)");
+    scratch.write("gband.on('WindowOpened', function() gband.action.focus_column_left() end)");
     let config = scratch.loaded();
-    let outcome = config.runtime.emit(&Event::PaneOpened {
-        pane: PaneId(2),
+    let outcome = config.runtime.emit(&Event::WindowOpened {
+        window: WindowId(2),
         band: BandId(1),
     });
     clean(&outcome);

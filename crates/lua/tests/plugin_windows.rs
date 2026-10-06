@@ -5,20 +5,20 @@ use std::sync::Arc;
 use common::*;
 use gband_core::action::Action;
 use gband_core::geometry::Size;
-use gband_core::layout::{Layout, LayoutOptions, PaneId, Proportion};
+use gband_core::layout::{Layout, LayoutOptions, Proportion, WindowId};
 use gband_core::view::ViewAction;
-use gband_lua::windows::{FloatFrame, Frame, PaneFrame, Run};
+use gband_lua::plugin_windows::{FloatingFrame, Frame, Run, TiledFrame};
 use gband_lua::{
-    BandState, Binding, Chord, Color, Config, Dispatch, Event, Outcome, Style, ViewState,
-    WindowRequest,
+    BandState, Binding, Chord, Color, Config, Dispatch, Event, Outcome, PluginWindowRequest, Style,
+    ViewState,
 };
 use mlua::Table;
 
 fn layout() -> Layout {
     let mut layout = Layout::new();
-    let pane = layout.allocate_pane();
+    let window = layout.allocate_window();
     let band = layout.bands()[0].id;
-    layout.open(pane, band, None, None, &LayoutOptions::default());
+    layout.open(window, band, None, None, &LayoutOptions::default());
     layout
 }
 
@@ -30,7 +30,7 @@ fn state() -> ViewState {
             index: 1,
             count: 2,
         },
-        pane: Some(1),
+        window: Some(1),
         width: 80,
         layout: Arc::new(layout()),
         area: Size::new(80, 24),
@@ -79,15 +79,17 @@ impl Client {
         self.config.runtime.take_frames()
     }
 
-    fn float(&self) -> FloatFrame {
+    fn float(&self) -> FloatingFrame {
         match self.frames().pop() {
-            Some((_, Some(Frame::Float(frame)))) => frame,
+            Some((_, Some(Frame::Floating(frame)))) => frame,
             other => panic!("expected a float frame, got {other:?}"),
         }
     }
 
-    fn key(&self, window: u32, name: &str) -> Outcome {
-        self.config.runtime.window_key(window, key(name))
+    fn key(&self, plugin_window: u32, name: &str) -> Outcome {
+        self.config
+            .runtime
+            .plugin_window_key(plugin_window, key(name))
     }
 }
 
@@ -129,7 +131,7 @@ fn info_and_list_while_loading() {
 }
 
 #[test]
-fn unknown_window() {
+fn unknown_plugin_window() {
     let client = Client::new("win-unknown", "");
     let outcome = run_job(&client.config, "gband.win.set_lines(42, {})");
     let [error] = outcome.errors.as_slice() else {
@@ -153,7 +155,7 @@ fn numbers_are_not_reused() {
 fn bad_options_are_errors() {
     let client = Client::new("win-options", "");
     for (code, mentions) in [
-        ("gband.win.open({ kind = 'pane', row = 2 })", "row"),
+        ("gband.win.open({ kind = 'tiled', row = 2 })", "row"),
         ("gband.win.open({ border = false, band = 1 })", "band"),
         (
             "gband.win.open({ keys = { ['ctrl+shift+1'] = print } })",
@@ -164,9 +166,9 @@ fn bad_options_are_errors() {
         ("gband.win.open({ col = -1 })", "col"),
         ("gband.win.open({ lines = { 5 } })", "line 1"),
         ("gband.win.open({ colour = 1 })", "colour"),
-        ("gband.win.open({ kind = 'pane', after = 9 })", "9"),
+        ("gband.win.open({ kind = 'tiled', after = 9 })", "9"),
         (
-            "gband.win.open({ kind = 'pane', column_width = 0 })",
+            "gband.win.open({ kind = 'tiled', column_width = 0 })",
             "column_width",
         ),
     ] {
@@ -185,13 +187,13 @@ fn bad_options_are_errors() {
 fn styled_line() {
     let client = Client::new(
         "win-styled",
-        "gband.hl.set('Window', { fg = 7 })\ngband.hl.set('Key', { fg = 3, bold = true })",
+        "gband.hl.set('PluginWindow', { fg = 7 })\ngband.hl.set('Key', { fg = 3, bold = true })",
     );
     client.run(
         "gband.win.open({ border = false, width = 20, height = 1, lines = { { { text = 'C-h', hl = 'Key' }, ' left' } } })",
     );
     let frame = client.float();
-    let window = Style {
+    let plugin_window = Style {
         fg: Some(Color::Index(7)),
         ..Style::default()
     };
@@ -200,7 +202,7 @@ fn styled_line() {
         bold: true,
         ..Style::default()
     };
-    assert_eq!(frame.base, window);
+    assert_eq!(frame.base, plugin_window);
     assert_eq!(
         frame.lines,
         [vec![
@@ -210,11 +212,11 @@ fn styled_line() {
             },
             Run {
                 text: " left".to_owned(),
-                style: window,
+                style: plugin_window,
             },
             Run {
                 text: " ".repeat(12),
-                style: window,
+                style: plugin_window,
             },
         ]]
     );
@@ -270,7 +272,7 @@ fn fewer_lines_than_rows() {
 }
 
 #[test]
-fn key_entry_runs_with_the_window() {
+fn key_entry_runs_with_the_plugin_window() {
     let client = Client::new("win-key-entry", "");
     client.run(
         "win = gband.win.open({ cursorline = true, lines = { 'a', 'b', 'c' }, keys = { enter = function(id) got = id; cursor = gband.win.info(id).cursor end } })\n\
@@ -436,7 +438,7 @@ fn centered_float() {
     );
     let info: Table = client.eval("return gband.win.info(win)");
     let field = |name: &str| info.get::<mlua::Value>(name).unwrap();
-    assert_eq!(info.get::<String>("kind").unwrap(), "float");
+    assert_eq!(info.get::<String>("kind").unwrap(), "floating");
     assert!(info.get::<bool>("focused").unwrap());
     for (name, value) in [
         ("top", 1),
@@ -451,7 +453,7 @@ fn centered_float() {
     ] {
         assert_eq!(field(name).as_i64(), Some(value), "{name}");
     }
-    assert!(field("pane").is_nil());
+    assert!(field("window").is_nil());
 }
 
 #[test]
@@ -503,33 +505,38 @@ fn ribbon_resize_places_floats_again() {
 }
 
 #[test]
-fn set_config_on_a_pane_window_is_an_error() {
-    let client = Client::new("win-pane-config", "");
-    client.run("win = gband.win.open({ kind = 'pane' })");
+fn set_config_on_a_tiled_plugin_window_is_an_error() {
+    let client = Client::new("win-window-config", "");
+    client.run("win = gband.win.open({ kind = 'tiled' })");
     let outcome = run_job(&client.config, "gband.win.set_config(win, { width = 3 })");
     assert_eq!(outcome.errors.len(), 1, "{:?}", outcome.errors);
 }
 
 #[test]
-fn pane_window_request_and_contents() {
-    let client = Client::new("win-pane", "");
+fn tiled_plugin_window_request_and_contents() {
+    let client = Client::new("win-window", "");
     let outcome = client.run(
-        "win = gband.win.open({ kind = 'pane', lines = { 'hello' }, column_width = 1/4, on_resize = function(id, cols, rows) resized = { id, cols, rows } end })",
+        "win = gband.win.open({ kind = 'tiled', lines = { 'hello' }, column_width = 1/4, on_resize = function(id, cols, rows) resized = { id, cols, rows } end })",
     );
     let win: u32 = client.global("win");
     assert_eq!(
         outcome.dispatched,
-        [Dispatch::Window(WindowRequest::Open {
-            window: win,
+        [Dispatch::PluginWindow(PluginWindowRequest::Open {
+            plugin_window: win,
             target: None,
             width: Some(Proportion::new(1, 4)),
             focus: true,
         })]
     );
     assert!(client.frames().is_empty());
-    clean(&client.config.runtime.window_opened(win, Some(PaneId(5))));
+    clean(
+        &client
+            .config
+            .runtime
+            .plugin_window_opened(win, Some(WindowId(5))),
+    );
     assert_eq!(
-        client.eval::<Option<u32>>("return gband.win.info(win).pane"),
+        client.eval::<Option<u32>>("return gband.win.info(win).window"),
         Some(5)
     );
     assert!(
@@ -537,13 +544,13 @@ fn pane_window_request_and_contents() {
             .eval::<Option<u32>>("return gband.win.info(win).cols")
             .is_none()
     );
-    clean(&client.config.runtime.pane_resized(win, Size::new(18, 22)));
+    clean(&client.config.runtime.window_resized(win, Size::new(18, 22)));
     assert_eq!(client.global::<Vec<u32>>("resized"), [win, 18, 22]);
     let frames = client.frames();
     let [
         (
             id,
-            Some(Frame::Pane(PaneFrame {
+            Some(Frame::Tiled(TiledFrame {
                 cols,
                 rows: height,
                 lines,
@@ -558,21 +565,21 @@ fn pane_window_request_and_contents() {
     assert_eq!(trimmed(lines)[0], "hello");
     assert_eq!(lines.len(), 22);
     let layout: Option<u32> = client.eval(
-        "for _, band in ipairs(gband.layout().bands) do for _, column in ipairs(band.columns) do for _, pane in ipairs(column.panes) do if pane.window then return pane.window end end end end",
+        "for _, band in ipairs(gband.layout().bands) do for _, column in ipairs(band.columns) do for _, window in ipairs(column.windows) do if window.plugin_window then return window.window end end end end",
     );
     assert_eq!(layout, None);
 }
 
 #[test]
-fn pane_window_targets() {
-    let client = Client::new("win-pane-target", "");
-    let outcome = client.run("win = gband.win.open({ kind = 'pane', after = 1, focus = false })");
+fn tiled_plugin_window_targets() {
+    let client = Client::new("win-window-target", "");
+    let outcome = client.run("win = gband.win.open({ kind = 'tiled', after = 1, focus = false })");
     let win: u32 = client.global("win");
     assert_eq!(
         outcome.dispatched,
-        [Dispatch::Window(WindowRequest::Open {
-            window: win,
-            target: Some((gband_core::layout::BandId(1), Some(PaneId(1)))),
+        [Dispatch::PluginWindow(PluginWindowRequest::Open {
+            plugin_window: win,
+            target: Some((gband_core::layout::BandId(1), Some(WindowId(1)))),
             width: None,
             focus: false,
         })]
@@ -580,44 +587,51 @@ fn pane_window_targets() {
 }
 
 #[test]
-fn pane_window_with_no_pane_closes() {
-    let client = Client::new("win-pane-none", "");
-    client.run("win = gband.win.open({ kind = 'pane', on_close = function(id) closed = id end })");
+fn tiled_plugin_window_with_no_window_closes() {
+    let client = Client::new("win-window-none", "");
+    client.run("win = gband.win.open({ kind = 'tiled', on_close = function(id) closed = id end })");
     let win: u32 = client.global("win");
-    let outcome = client.config.runtime.window_opened(win, None);
+    let outcome = client.config.runtime.plugin_window_opened(win, None);
     clean(&outcome);
     assert!(outcome.dispatched.is_empty());
     assert_eq!(client.global::<u32>("closed"), win);
 }
 
 #[test]
-fn closing_windows() {
+fn closing_plugin_windows() {
     let client = Client::new("win-close", "");
     client.run(
         "float = gband.win.open({})\n\
-         pane = gband.win.open({ kind = 'pane', on_close = function(id) closed = id end })",
+         window = gband.win.open({ kind = 'tiled', on_close = function(id) closed = id end })",
     );
-    let (float, pane): (u32, u32) = (client.global("float"), client.global("pane"));
+    let (float, window): (u32, u32) = (client.global("float"), client.global("window"));
     client.frames();
     let outcome =
-        client.run("gband.win.close(float)\ngband.win.close(pane)\ngband.win.close(pane)");
+        client.run("gband.win.close(float)\ngband.win.close(window)\ngband.win.close(window)");
     assert_eq!(
         outcome.dispatched,
-        [Dispatch::Window(WindowRequest::Close { window: pane })]
+        [Dispatch::PluginWindow(PluginWindowRequest::Close {
+            plugin_window: window
+        })]
     );
-    assert_eq!(client.global::<u32>("closed"), pane);
-    assert_eq!(client.frames(), [(float, None), (pane, None)]);
-    let focused: Option<u32> = client.eval("return gband.view().window");
+    assert_eq!(client.global::<u32>("closed"), window);
+    assert_eq!(client.frames(), [(float, None), (window, None)]);
+    let focused: Option<u32> = client.eval("return gband.view().plugin_window");
     assert_eq!(focused, None);
 }
 
 #[test]
-fn pane_closed_by_the_user() {
-    let client = Client::new("win-pane-closed", "");
-    client.run("win = gband.win.open({ kind = 'pane', on_close = function(id) closed = id end })");
+fn window_closed_by_the_user() {
+    let client = Client::new("win-window-closed", "");
+    client.run("win = gband.win.open({ kind = 'tiled', on_close = function(id) closed = id end })");
     let win: u32 = client.global("win");
-    clean(&client.config.runtime.window_opened(win, Some(PaneId(5))));
-    let outcome = client.config.runtime.pane_closed(win);
+    clean(
+        &client
+            .config
+            .runtime
+            .plugin_window_opened(win, Some(WindowId(5))),
+    );
+    let outcome = client.config.runtime.window_closed(win);
     clean(&outcome);
     assert!(outcome.dispatched.is_empty());
     assert_eq!(client.global::<u32>("closed"), win);
@@ -629,12 +643,12 @@ fn float_takes_focus_and_moving_focus_leaves_it() {
     client.run("win = gband.win.open({})");
     let win: u32 = client.global("win");
     assert!(client.float().focused);
+    let plugin_window: Option<u32> = client.eval("return gband.view().plugin_window");
     let window: Option<u32> = client.eval("return gband.view().window");
-    let pane: Option<u32> = client.eval("return gband.view().pane");
-    assert_eq!((window, pane), (Some(win), Some(1)));
+    assert_eq!((plugin_window, window), (Some(win), Some(1)));
     clean(&client.config.runtime.emit(&Event::FocusChanged {
-        pane: Some(PaneId(2)),
-        previous: Some(PaneId(1)),
+        window: Some(WindowId(2)),
+        previous: Some(WindowId(1)),
     }));
     assert!(!client.float().focused);
     assert!(!client.eval::<bool>("return gband.win.info(win).focused"));
@@ -655,14 +669,14 @@ fn own_key_holds_the_float_focus_until_the_next_key() {
     );
     let focus_changed = || {
         clean(&client.config.runtime.emit(&Event::FocusChanged {
-            pane: Some(PaneId(2)),
-            previous: Some(PaneId(1)),
+            window: Some(WindowId(2)),
+            previous: Some(WindowId(1)),
         }))
     };
     let focused = || client.eval::<bool>("return gband.win.info(win).focused");
     focus_changed();
     assert!(focused());
-    clean(&client.config.runtime.release_windows());
+    clean(&client.config.runtime.release_plugin_windows());
     focus_changed();
     assert!(!focused());
 }
@@ -681,24 +695,29 @@ fn default_key_does_not_hold_the_float_focus() {
 }
 
 #[test]
-fn focus_a_pane_window() {
-    let client = Client::new("win-focus-pane", "");
-    client.run("float = gband.win.open({})\npane = gband.win.open({ kind = 'pane' })");
-    let pane: u32 = client.global("pane");
-    clean(&client.config.runtime.window_opened(pane, Some(PaneId(1))));
-    let outcome = client.run("gband.win.focus(pane)");
+fn focus_a_tiled_plugin_window() {
+    let client = Client::new("win-focus-window", "");
+    client.run("float = gband.win.open({})\nwindow = gband.win.open({ kind = 'tiled' })");
+    let window: u32 = client.global("window");
+    clean(
+        &client
+            .config
+            .runtime
+            .plugin_window_opened(window, Some(WindowId(1))),
+    );
+    let outcome = client.run("gband.win.focus(window)");
     assert_eq!(
         outcome.dispatched,
-        [Dispatch::Action(Action::View(ViewAction::FocusPane(
-            PaneId(1)
+        [Dispatch::Action(Action::View(ViewAction::FocusWindow(
+            WindowId(1)
         )))]
     );
-    let focused: Option<u32> = client.eval("return gband.view().window");
-    assert_eq!(focused, Some(pane));
-    let window: Option<u32> = client.eval(
-        "for _, column in ipairs(gband.layout().bands[1].columns) do for _, item in ipairs(column.panes) do return item.window end end",
+    let focused: Option<u32> = client.eval("return gband.view().plugin_window");
+    assert_eq!(focused, Some(window));
+    let plugin_window: Option<u32> = client.eval(
+        "for _, column in ipairs(gband.layout().bands[1].columns) do for _, item in ipairs(column.windows) do return item.plugin_window end end",
     );
-    assert_eq!(window, Some(pane));
+    assert_eq!(plugin_window, Some(window));
 }
 
 #[test]
@@ -709,8 +728,10 @@ fn later_float_stacks_on_top() {
     let z = |frames: Vec<(u32, Option<Frame>)>, id: u32| {
         frames
             .into_iter()
-            .find_map(|(window, frame)| match frame {
-                Some(Frame::Float(frame)) if window == id => Some((frame.z, frame.focused)),
+            .find_map(|(plugin_window, frame)| match frame {
+                Some(Frame::Floating(frame)) if plugin_window == id => {
+                    Some((frame.z, frame.focused))
+                }
                 _ => None,
             })
             .unwrap()
@@ -727,18 +748,18 @@ fn later_float_stacks_on_top() {
 }
 
 #[test]
-fn window_groups_have_defaults() {
+fn plugin_window_groups_have_defaults() {
     let client = Client::new("win-groups", "");
     let specs: Vec<String> = client.eval(
-        "local out = {}\nfor _, name in ipairs({ 'Window', 'WindowBorder', 'WindowTitle', 'WindowCursorLine' }) do\n  local spec = gband.hl.get(name)\n  local fields = {}\n  for field, value in pairs(spec) do fields[#fields + 1] = field .. '=' .. tostring(value) end\n  table.sort(fields)\n  out[#out + 1] = name .. ':' .. table.concat(fields, ',')\nend\nreturn out",
+        "local out = {}\nfor _, name in ipairs({ 'PluginWindow', 'PluginWindowBorder', 'PluginWindowTitle', 'PluginWindowCursorLine' }) do\n  local spec = gband.hl.get(name)\n  local fields = {}\n  for field, value in pairs(spec) do fields[#fields + 1] = field .. '=' .. tostring(value) end\n  table.sort(fields)\n  out[#out + 1] = name .. ':' .. table.concat(fields, ',')\nend\nreturn out",
     );
     assert_eq!(
         specs,
         [
-            "Window:",
-            "WindowBorder:fg=8",
-            "WindowTitle:bold=true",
-            "WindowCursorLine:reverse=true",
+            "PluginWindow:",
+            "PluginWindowBorder:fg=8",
+            "PluginWindowTitle:bold=true",
+            "PluginWindowCursorLine:reverse=true",
         ]
     );
 }
@@ -747,7 +768,7 @@ fn window_groups_have_defaults() {
 fn theme_overrides_the_border() {
     let client = Client::new(
         "win-theme",
-        "gband.hl.set('WindowBorder', { fg = '#ff0000' })",
+        "gband.hl.set('PluginWindowBorder', { fg = '#ff0000' })",
     );
     client.run("gband.win.open({ title = 'T' })");
     let frame = client.float();
@@ -761,15 +782,15 @@ fn highlight_change_redraws() {
     let client = Client::new("win-redraw", "");
     client.run("gband.win.open({ lines = { 'a' } })");
     client.frames();
-    client.run("gband.hl.set('Window', { fg = 4 })");
+    client.run("gband.hl.set('PluginWindow', { fg = 4 })");
     assert_eq!(client.float().base.fg, Some(Color::Index(4)));
 }
 
 #[test]
-fn failed_plugin_closes_its_windows() {
+fn failed_plugin_closes_its_plugin_windows() {
     let scratch = Scratch::new("win-failed");
     scratch.client_plugin("spin",
-        "gband.bind('alt+o', function() win = gband.win.open({ kind = 'pane', on_close = function() closed = true end }) end)\n\
+        "gband.bind('alt+o', function() win = gband.win.open({ kind = 'tiled', on_close = function() closed = true end }) end)\n\
          gband.bind('alt+s', function() while true do end end)",
     );
     let config = scratch.load_with_budget(100_000).unwrap();
@@ -788,7 +809,9 @@ fn failed_plugin_closes_its_windows() {
     assert!(!outcome.errors.is_empty());
     assert_eq!(
         outcome.dispatched,
-        [Dispatch::Window(WindowRequest::Close { window: win })]
+        [Dispatch::PluginWindow(PluginWindowRequest::Close {
+            plugin_window: win
+        })]
     );
     assert!(eval::<Vec<u32>>(&config, "return gband.win.list()").is_empty());
     assert!(eval::<Option<bool>>(&config, "return closed").is_none());
@@ -820,16 +843,16 @@ fn guide_examples_run() {
         for focused in [1, 2] {
             let mut layout = layout();
             let band = layout.bands()[0].id;
-            let second = layout.allocate_pane();
+            let second = layout.allocate_window();
             layout.open(
                 second,
                 band,
-                Some(PaneId(1)),
+                Some(WindowId(1)),
                 None,
                 &LayoutOptions::default(),
             );
             clean(&config.runtime.set_state(ViewState {
-                pane: Some(focused),
+                window: Some(focused),
                 layout: Arc::new(layout),
                 ..state()
             }));

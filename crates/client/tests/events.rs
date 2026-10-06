@@ -7,7 +7,7 @@ use gband_client::animation::Animations;
 use gband_client::{Controls, Display, Step};
 use gband_core::geometry::Size;
 use gband_core::input::Key;
-use gband_core::layout::{Direction, Layout, LayoutOptions, PaneId, SessionAction};
+use gband_core::layout::{Direction, Layout, LayoutOptions, SessionAction, WindowId};
 use gband_lua::keys::parse_key;
 use gband_lua::{Config, ConfigError, DEFAULTS, LoadOptions, Locations};
 use gband_protocol::{ClientMessage, ServerMessage};
@@ -72,22 +72,22 @@ fn key(name: &str) -> Key {
     parse_key(name).unwrap()
 }
 
-fn layout_of(count: usize) -> (Layout, Vec<PaneId>) {
+fn layout_of(count: usize) -> (Layout, Vec<WindowId>) {
     let mut layout = Layout::new();
     let band = layout.bands()[0].id;
-    let mut panes = Vec::new();
+    let mut windows = Vec::new();
     for _ in 0..count {
-        let pane = layout.allocate_pane();
+        let window = layout.allocate_window();
         layout.open(
-            pane,
+            window,
             band,
-            panes.last().copied(),
+            windows.last().copied(),
             None,
             &LayoutOptions::default(),
         );
-        panes.push(pane);
+        windows.push(window);
     }
-    (layout, panes)
+    (layout, windows)
 }
 
 fn shown(layout: &Layout) -> ServerMessage {
@@ -107,7 +107,7 @@ local function record(name)
     log[#log + 1] = name .. ' ' .. table.concat(keys, ',')
   end
 end
-for _, name in ipairs({ 'Attached', 'FocusChanged', 'BandChanged', 'PaneOpened', 'PaneClosed', 'LayoutChanged', 'TerminalResized', 'ConfigReloaded', 'KeyTableChanged' }) do
+for _, name in ipairs({ 'Attached', 'FocusChanged', 'BandChanged', 'WindowOpened', 'WindowClosed', 'LayoutChanged', 'TerminalResized', 'ConfigReloaded', 'KeyTableChanged' }) do
   gband.on(name, record(name))
 end
 ";
@@ -160,11 +160,11 @@ fn focus_change() {
         "focus",
         "gband.bind('alt+h', gband.action.focus_column_left)",
     );
-    let (layout, panes) = layout_of(2);
-    client.receive([shown(&layout), ServerMessage::Focus(panes[1])]);
+    let (layout, windows) = layout_of(2);
+    client.receive([shown(&layout), ServerMessage::Focus(windows[1])]);
     client.clear();
     client.press("alt+h");
-    assert_eq!(client.log(), ["FocusChanged pane=1,previous=2"]);
+    assert_eq!(client.log(), ["FocusChanged previous=2,window=1"]);
 }
 
 #[test]
@@ -182,58 +182,58 @@ fn band_change() {
 }
 
 #[test]
-fn pane_opened_and_closed() {
+fn window_opened_and_closed() {
     let (_scratch, mut client) = recording("opened", "");
     let (one, _) = layout_of(1);
-    let (two, panes) = layout_of(2);
+    let (two, windows) = layout_of(2);
     client.receive([shown(&one)]);
     client.receive([shown(&two)]);
     client.receive([shown(&one)]);
     let log: Vec<String> = client
         .log()
         .into_iter()
-        .filter(|entry| entry.starts_with("Pane"))
+        .filter(|entry| entry.starts_with("Window"))
         .collect();
-    let second = panes[1].0;
+    let second = windows[1].0;
     assert_eq!(
         log,
         [
-            format!("PaneOpened band=1,pane={second}"),
-            format!("PaneClosed band=1,pane={second}"),
+            format!("WindowOpened band=1,window={second}"),
+            format!("WindowClosed band=1,window={second}"),
         ]
     );
 }
 
 #[test]
-fn layout_changed_follows_pane_events() {
-    let (_scratch, mut client) = recording("layout-after-panes", "");
+fn layout_changed_follows_window_events() {
+    let (_scratch, mut client) = recording("layout-after-windows", "");
     let (one, _) = layout_of(1);
-    let (two, panes) = layout_of(2);
+    let (two, windows) = layout_of(2);
     client.receive([shown(&one)]);
     client.receive([shown(&two)]);
     let log: Vec<String> = client
         .log()
         .into_iter()
-        .filter(|entry| entry.starts_with("Pane") || entry.starts_with("Layout"))
+        .filter(|entry| entry.starts_with("Window") || entry.starts_with("Layout"))
         .collect();
     assert_eq!(
         log,
         [
-            format!("PaneOpened band=1,pane={}", panes[1].0),
+            format!("WindowOpened band=1,window={}", windows[1].0),
             "LayoutChanged ".to_owned(),
         ]
     );
 }
 
 #[test]
-fn layout_change_without_a_pane_change() {
+fn layout_change_without_a_window_change() {
     let (_scratch, mut client) = recording("layout-change", "");
-    let (mut layout, panes) = layout_of(2);
-    client.receive([shown(&layout), ServerMessage::Focus(panes[1])]);
+    let (mut layout, windows) = layout_of(2);
+    client.receive([shown(&layout), ServerMessage::Focus(windows[1])]);
     client.clear();
     layout.apply(
         SessionAction::ConsumeOrExpel {
-            pane: panes[1],
+            window: windows[1],
             direction: Direction::Left,
         },
         Size::new(80, 24),
@@ -246,11 +246,14 @@ fn layout_change_without_a_pane_change() {
 #[test]
 fn moving_a_floating_box_is_a_layout_change() {
     let (_scratch, mut client) = recording("layout-floating", "");
-    let (mut layout, panes) = layout_of(2);
+    let (mut layout, windows) = layout_of(2);
     let options = LayoutOptions::default();
-    let pane = panes[1];
+    let window = windows[1];
     layout.apply(
-        SessionAction::ToggleFloating { pane, after: None },
+        SessionAction::ToggleFloating {
+            window,
+            after: None,
+        },
         Size::new(80, 24),
         &options,
     );
@@ -258,7 +261,7 @@ fn moving_a_floating_box_is_a_layout_change() {
     client.clear();
     let direction = Direction::Right;
     layout.apply(
-        SessionAction::MoveColumn { pane, direction },
+        SessionAction::MoveColumn { window, direction },
         Size::new(80, 24),
         &options,
     );
@@ -269,10 +272,10 @@ fn moving_a_floating_box_is_a_layout_change() {
 #[test]
 fn heights_alone_are_no_layout_change() {
     let (_scratch, mut client) = recording("layout-heights", "");
-    let (mut layout, panes) = layout_of(2);
+    let (mut layout, windows) = layout_of(2);
     layout.apply(
         SessionAction::ConsumeOrExpel {
-            pane: panes[1],
+            window: windows[1],
             direction: Direction::Left,
         },
         Size::new(80, 24),
@@ -282,7 +285,7 @@ fn heights_alone_are_no_layout_change() {
     client.clear();
     layout.apply(
         SessionAction::StepHeight {
-            pane: panes[0],
+            window: windows[0],
             step: gband_core::layout::Step::Grow,
         },
         Size::new(80, 24),
@@ -296,8 +299,8 @@ fn heights_alone_are_no_layout_change() {
 fn nothing_at_attach() {
     let (_scratch, mut client) = recording("attach", "");
     client.controls.attached(&mut client.display, "main");
-    let (layout, panes) = layout_of(3);
-    client.receive([shown(&layout), ServerMessage::Focus(panes[0])]);
+    let (layout, windows) = layout_of(3);
+    client.receive([shown(&layout), ServerMessage::Focus(windows[0])]);
     assert_eq!(client.log(), ["Attached session=main"]);
 }
 
@@ -316,31 +319,31 @@ fn terminal_resized() {
 fn handler_dispatches_an_action() {
     let scratch = Scratch::new("handler-action");
     let config = scratch
-        .load("gband.on('PaneOpened', function() gband.action.focus_column_left() end)")
+        .load("gband.on('WindowOpened', function() gband.action.focus_column_left() end)")
         .unwrap();
     let mut client = Client::new(config);
     let (one, _) = layout_of(1);
-    let (two, panes) = layout_of(2);
+    let (two, windows) = layout_of(2);
     client.receive([shown(&one)]);
-    client.receive([shown(&two), ServerMessage::Focus(panes[1])]);
-    assert_eq!(client.display.focused(), Some(panes[0]));
+    client.receive([shown(&two), ServerMessage::Focus(windows[1])]);
+    assert_eq!(client.display.focused(), Some(windows[0]));
 }
 
 #[test]
 fn handler_session_actions_become_steps() {
     let scratch = Scratch::new("handler-steps");
     let config = scratch
-        .load("gband.on('PaneOpened', function() gband.action.close_pane() end)")
+        .load("gband.on('WindowOpened', function() gband.action.close_window() end)")
         .unwrap();
     let mut client = Client::new(config);
     let (one, _) = layout_of(1);
-    let (two, panes) = layout_of(2);
+    let (two, windows) = layout_of(2);
     client.receive([shown(&one)]);
-    let steps = client.receive([shown(&two), ServerMessage::Focus(panes[1])]);
+    let steps = client.receive([shown(&two), ServerMessage::Focus(windows[1])]);
     assert_eq!(
         steps,
         [Step::Send(ClientMessage::Action(
-            gband_core::layout::SessionAction::ClosePane(panes[1])
+            gband_core::layout::SessionAction::CloseWindow(windows[1])
         ))]
     );
 }
@@ -367,7 +370,7 @@ fn event_loop_is_cut() {
             "count = 0
 gband.on('FocusChanged', function(e)
   count = count + 1
-  if e.pane == 2 then gband.action.focus_column_left() else gband.action.focus_column_right() end
+  if e.window == 2 then gband.action.focus_column_left() else gband.action.focus_column_right() end
 end)
 gband.bind('alt+l', gband.action.focus_column_right)
 gband.bind('alt+x', function() pressed = true end)",
@@ -452,17 +455,17 @@ gband.bind('prefix m', function() gband.keymap.enter('move') end)",
         )
         .unwrap();
     let mut client = Client::new(config);
-    let (layout, panes) = layout_of(2);
+    let (layout, windows) = layout_of(2);
     client.receive([shown(&layout)]);
     client.press("ctrl+space");
     client.press("m");
     assert_eq!(client.controls.active_table(), "move");
     client.press("l");
-    assert_eq!(client.display.focused(), Some(panes[1]));
+    assert_eq!(client.display.focused(), Some(windows[1]));
     assert_eq!(
         client.press("l"),
         [Step::Send(ClientMessage::Key {
-            pane: panes[1],
+            window: windows[1],
             key: key("l"),
         })]
     );
@@ -567,14 +570,14 @@ fn infinite_loop_in_a_callback() {
         )
         .unwrap();
     let mut client = Client::new(config);
-    let (layout, panes) = layout_of(2);
+    let (layout, windows) = layout_of(2);
     client.receive([shown(&layout)]);
     assert_eq!(client.press("alt+s"), []);
     let banner = client.display.banner().unwrap().to_owned();
     assert!(banner.starts_with("spin: "), "{banner}");
     assert!(banner.contains("instruction limit"), "{banner}");
     client.press("alt+l");
-    assert_eq!(client.display.focused(), Some(panes[1]));
+    assert_eq!(client.display.focused(), Some(windows[1]));
     client.display.set_banner(None);
     assert_eq!(client.press("alt+s"), []);
     assert_eq!(client.display.banner(), None);

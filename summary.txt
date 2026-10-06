@@ -10,31 +10,31 @@
 
 ## Non-goals / decisions
 - Not a terminal emulator app (no window, fonts, GPU). Runs inside foot, Ghostty, etc.
-  Still needs an internal emulation layer per pane (vt100 grid) — every mux has one.
-- Pane processes do NOT survive a server crash (neither do herdr's or zellij's).
+  Still needs an internal emulation layer per window (vt100 grid) — every mux has one.
+- Window processes do NOT survive a server crash (neither do herdr's or zellij's).
   Instead: snapshot layout + relaunch agents via their native resume.
 - Keep PTY ownership behind an internal trait so live handoff / holder processes can be added later.
 
 ## Architecture: server owns content, client owns presentation (hybrid)
 
 ### Server (one per session)
-- Pane host: spawns programs in PTYs (portable-pty), one vt100 grid per pane.
-  Sets RMUX_PANE / RMUX_SOCKET env vars. Detects foreground process via tcgetpgrp + /proc/<pid>/cmdline.
-  Panics caught per pane.
+- Window host: spawns programs in PTYs (portable-pty), one vt100 grid per window.
+  Sets RMUX_WINDOW / RMUX_SOCKET env vars. Detects foreground process via tcgetpgrp + /proc/<pid>/cmdline.
+  Panics caught per window.
 - Core (pure logic, no I/O): bands, ribbon of columns, column widths, focus,
-  per-pane agent state machine. Changes happen via actions; every change emits events.
+  per-window agent state machine. Changes happen via actions; every change emits events.
 - Behavior Lua: keybindings for session actions, rules, agent adapters, spawn defaults.
   Runs on its own thread, talks to core via messages.
 - Services: agent events (kept pending if no client attached), persistence snapshots.
-- Decides everything that affects programs: PTY sizes, pane/column widths, input routing.
+- Decides everything that affects programs: PTY sizes, window/column widths, input routing.
 
 ### Client (same binary, local or remote)
 - Raw mode, crossterm for input, reports size + capabilities (kitty keyboard etc.) on attach.
-- Keeps its own vt100 grid per pane, fed by diffs from the server.
+- Keeps its own vt100 grid per window, fed by diffs from the server.
 - Composes and renders locally with ratatui + tui-term: camera, animations, chrome.
 - Resolves keybindings locally:
   - View actions (camera scroll, viewed band, on-screen focus) run instantly in the client.
-  - Session actions (new/close pane, resize columns) go to the server.
+  - Session actions (new/close window, resize columns) go to the server.
   - Program keystrokes go to the server, into the PTY.
 - Presentation Lua: theme, column headers, status bar, badges, view keybindings.
 - Notifications: desktop (notify-rust) when running locally; OSC 9 / 777 / 99 when over SSH.
@@ -57,9 +57,9 @@
 - Heartbeats, auto-reconnect with resync, visible "disconnected" state.
 
 ## Layout model (niri)
-- Session → bands (vertical) → infinite strip of columns → panes stacked in a column.
+- Session → bands (vertical) → infinite strip of columns → windows stacked in a column.
 - Column widths as proportions (1/3, 1/2, 2/3) or fixed cells.
-- Offscreen panes keep their size (no SIGWINCH thrash).
+- Offscreen windows keep their size (no SIGWINCH thrash).
 - Camera per client; center-on-focus or "just visible" policy, configurable.
 - Animations: cell-granular steps. For resizes, animate visually (clip/pad old grid),
   resize the PTY once at the end; debounce held resize keys (~100 ms).
@@ -69,15 +69,15 @@ Signal sources, most → least reliable:
 1. Agent hooks: e.g. Claude Code hooks (Notification, Stop, UserPromptSubmit) call
    `yourmux agent-event <state>`; forward hook JSON (session id, cwd).
    `yourmux install-hooks claude` can write the config.
-2. Escape sequences: bell, OSC 9 / 777 / 99 from the pane.
+2. Escape sequences: bell, OSC 9 / 777 / 99 from the window.
 3. Process detection: foreground process name.
 4. Heuristics: output quiescence, screen prompt patterns.
-- Per-pane state machine: none → working → waiting → done / error.
+- Per-window state machine: none → working → waiting → done / error.
   Notifications fire on transitions; higher-reliability sources override lower ones.
 - Adapters defined in Lua so new agents need no recompile.
 - UI: column badges, edge indicators for offscreen columns ("2 waiting ←"),
   per-band counts, "jump to next waiting agent" binding.
-- Suppress notifications for the focused pane of an active client.
+- Suppress notifications for the focused window of an active client.
 
 ## Configurability
 - Rust core small; defaults.lua built on the same public API users get.
@@ -98,14 +98,14 @@ Signal sources, most → least reliable:
   (e.g. `claude --resume <id>`), shells fresh.
 
 ## nvim compatibility checklist
-- Input encoding respecting per-pane modes (application cursor keys).
+- Input encoding respecting per-window modes (application cursor keys).
 - Kitty keyboard protocol (crossterm PushKeyboardEnhancementFlags; detect with
   supports_keyboard_enhancement per client).
-- Cursor shape passthrough (DECSCUSR) for focused pane.
+- Cursor shape passthrough (DECSCUSR) for focused window.
 - Undercurl / underline colors (verify vt100 + ratatui support).
 - Focus events, bracketed paste, mouse with coordinate translation, OSC 52 clipboard.
 - Synchronized output when the outer terminal supports it.
-- TERM=tmux-256color (or xterm-256color), COLORTERM=truecolor in panes.
+- TERM=tmux-256color (or xterm-256color), COLORTERM=truecolor in windows.
 - Test with :checkhealth, insert-mode cursor, <C-i> vs <Tab>, diagnostics, mouse, yank, big paste.
 
 ## Crates
@@ -122,14 +122,14 @@ Signal sources, most → least reliable:
 ## Crate layout
 - core: layout, ribbon, agent states (heavily unit tested, no I/O)
 - protocol: messages, versioning
-- server: pane host, services, behavior Lua host
+- server: window host, services, behavior Lua host
 - client: transports, rendering, presentation Lua host
 - lua: shared mlua bindings / API
 - yourmux binary with subcommands: server, attach, msg, agent-event, proxy, install-hooks
 
 ## Build order
-1. Single pane end to end over a local socket: server, PTY, vt100, client, attach/detach.
-2. Multiple panes in one column.
+1. Single window end to end over a local socket: server, PTY, vt100, client, attach/detach.
+2. Multiple windows in one column.
 3. Ribbon + camera, then bands.
 4. Lua (behavior + presentation), rules, keymaps.
 5. Agent detection + notifications.

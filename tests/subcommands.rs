@@ -121,7 +121,7 @@ fn attach_without_a_terminal_is_refused() {
 }
 
 #[test]
-fn attach_inside_a_pane_is_refused() {
+fn attach_inside_a_window_is_refused() {
     let state = state_home("attach_nested");
     let output = Command::new(env!("CARGO_BIN_EXE_gband"))
         .arg("attach")
@@ -131,7 +131,7 @@ fn attach_inside_a_pane_is_refused() {
         .output()
         .unwrap();
     let stderr = assert_one_line_failure(&output);
-    assert!(stderr.contains("inside a gband pane"), "{stderr}");
+    assert!(stderr.contains("inside a gband window"), "{stderr}");
 }
 
 #[test]

@@ -29,12 +29,12 @@ Each band SHALL hold an ordered list of floating windows beside its columns. A f
 
 A floating window SHALL NOT be placed on the band's strip, and SHALL NOT move with the camera.
 
-#### Scenario: Float the only pane of a band
+#### Scenario: Float the only window of a band
 - **WHEN** band B1 holds one column with window P1, and P1 is floated
 - **THEN** B1 holds no column and one floating window, P1
 - **AND** B1 is not removed, because it is not empty
 
-#### Scenario: Pane in one place only
+#### Scenario: Window in one place only
 - **WHEN** P1 is floated and then tiled again
 - **THEN** after each step P1 appears exactly once in the layout
 
@@ -98,11 +98,11 @@ When the window has been floating before, it SHALL take the box record it had wh
 ### Requirement: Tile a window
 Toggling floating on a floating window SHALL remove it from the floating list and place it alone in a new column of its band. The new column SHALL take the window's box width and full-width flag, and the window SHALL take an automatic height of weight 1. The toggle SHALL name optionally a tiled window of the same band. The new column SHALL be inserted right of that window's column, or as the band's first column when the toggle names none, or names a window that is not a tiled window of that band. The window's box record SHALL be kept for the next time it floats.
 
-#### Scenario: Tile right of the named pane
+#### Scenario: Tile right of the named window
 - **WHEN** a band holds columns A and B and floating window P3 of width 1/3, and P3 is tiled naming a window of A
 - **THEN** the band holds A, a column of width 1/3 with P3, and B, in that order, and no floating window
 
-#### Scenario: Tile with no pane named
+#### Scenario: Tile with no window named
 - **WHEN** a band holds column A and floating window P3, and P3 is tiled naming no window
 - **THEN** the band holds the column with P3, then A
 
@@ -134,7 +134,7 @@ The new `rows` SHALL be kept between 3 and the area's height. When the result eq
 - **THEN** its `rows` is 19
 
 
-#### Scenario: Consume or expel a floating pane
+#### Scenario: Consume or expel a floating window
 - **WHEN** a floating window is consumed or expelled to the left
 - **THEN** the layout is unchanged
 
@@ -169,7 +169,7 @@ Focusing a floating window by any means SHALL make the floating layer active. Fo
 - **WHEN** a client focuses floating window P3 in B1, views B2, and views B1 again
 - **THEN** the floating layer of B1 is active and P3 is focused
 
-#### Scenario: Last tiled pane closes
+#### Scenario: Last tiled window closes
 - **WHEN** a client focuses P1, the only tiled window of a band that also holds floating window P3, and P1's program exits
 - **THEN** the client focuses P3 in the floating layer
 
@@ -177,7 +177,7 @@ Focusing a floating window by any means SHALL make the floating layer active. Fo
 - **WHEN** a client focuses tiled window P1 and focuses floating window P3 by number
 - **THEN** the floating layer is active and P3 is focused
 
-#### Scenario: Band with only floating panes
+#### Scenario: Band with only floating windows
 - **WHEN** a band holds no column and one floating window P3, and a client views that band for the first time
 - **THEN** the floating layer is active and P3 is focused
 
@@ -192,7 +192,7 @@ Switching focus between floating and tiled windows SHALL make the other layer of
 - **WHEN** the client then switches layers again
 - **THEN** the client focuses P1
 
-#### Scenario: No floating pane
+#### Scenario: No floating window
 - **WHEN** the viewed band holds no floating window and the client switches layers
 - **THEN** the view is unchanged
 
@@ -203,22 +203,22 @@ While the floating layer is active, focusing the column to the left or right, or
 - **WHEN** the floating layer is active on P3, whose box spans columns 0 to 19, and floating windows P4 at columns 30 to 49 and P5 at columns 60 to 79 sit on the same rows
 - **THEN** focusing the column to the right focuses P4
 
-#### Scenario: No floating pane in that direction
+#### Scenario: No floating window in that direction
 - **WHEN** the floating layer is active on the leftmost floating window and the client focuses the column to the left
 - **THEN** the view is unchanged
 
 ### Requirement: Focus follows a window between layers
 When a window this client focuses moves to the other layer of its band, by this client or by another, focus SHALL stay on that window, and the layer SHALL follow it. When the focused floating window leaves the layout, focus SHALL go to the floating window this client focused most recently in that band, or to the last window of the floating list when it focused none. When no floating window remains, the tiled layer SHALL become active, with focus as "Switch layers" sends it.
 
-#### Scenario: Float the focused pane
+#### Scenario: Float the focused window
 - **WHEN** a client focuses P2 in the tiled layer and P2 is floated
 - **THEN** the client focuses P2 in the floating layer
 
-#### Scenario: Tile the focused pane
+#### Scenario: Tile the focused window
 - **WHEN** a client focuses floating window P3 and P3 is tiled
 - **THEN** the client focuses P3 in the tiled layer, in its new column
 
-#### Scenario: Last floating pane closes
+#### Scenario: Last floating window closes
 - **WHEN** a client focuses floating window P3, the only floating window of a band holding column A with P1, and P3's program exits
 - **THEN** the client focuses P1 in the tiled layer
 

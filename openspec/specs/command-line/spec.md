@@ -127,7 +127,7 @@ Giving both options, a name that breaks the rule, or an empty path SHALL be an i
 - **WHEN** the user runs `gband attach` outside a gband pane with `XDG_RUNTIME_DIR=/run/user/1000`
 - **THEN** the client connects to `/run/user/1000/gband/default.sock`
 
-#### Scenario: Inside a pane
+#### Scenario: Inside a window
 - **WHEN** the user runs `gband kill-server` without an option in a pane of the server named `feature`
 - **THEN** it stops the server named `feature`
 

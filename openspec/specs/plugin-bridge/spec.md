@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Defines what passes between the server's Lua and each client's Lua: the plain-data contract, server events and shared pane state as the client sees them, commands a client calls in the server, and plugin requirements the server advertises, with no code ever crossing the connection.
+Defines what passes between the server's Lua and each client's Lua: the plain-data contract, server events and shared window state as the client sees them, commands a client calls in the server, and plugin requirements the server advertises, with no code ever crossing the connection.
 
 ## Requirements
 

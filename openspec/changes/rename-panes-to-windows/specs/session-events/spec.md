@@ -23,7 +23,7 @@ A window opened or moved into a column SHALL take an automatic height of weight 
 - **WHEN** a window opens in the last, empty band
 - **THEN** the events are window opened for that band, then band added for the new empty band below it
 
-#### Scenario: Last pane of a middle band closes
+#### Scenario: Last window of a middle band closes
 - **WHEN** the only window of a band that is not the last one closes
 - **THEN** the events are window closed, then band removed
 
@@ -35,7 +35,7 @@ A window opened or moved into a column SHALL take an automatic height of weight 
 - **WHEN** a consume or expel leaves the layout unchanged
 - **THEN** no event is produced
 
-#### Scenario: Grow a pane's height
+#### Scenario: Grow a window's height
 - **WHEN** the screen area is 80×24, the second column of a band holds P1 above P2, both with automatic heights of weight 1, and P1's height is grown
 - **THEN** the events are one window heights changed naming that band, column 1, P1 fixed at 14 rows and P2 automatic with weight 1
 
@@ -47,19 +47,19 @@ A window opened or moved into a column SHALL take an automatic height of weight 
 - **WHEN** a band holds columns A, B and C, and A is moved right
 - **THEN** the events are one column moved naming that band, position 0 and position 1
 
-#### Scenario: Swap two panes
+#### Scenario: Swap two windows
 - **WHEN** a column at position 2 holds P1 above P2, and P1 is moved down
 - **THEN** the events are window moved for P1 naming column 2 and row 1, then window moved for P2 naming column 2 and row 0
 
-#### Scenario: Float a pane
+#### Scenario: Float a window
 - **WHEN** the screen area is 80×24, the default column width is 1/2, and P2, alone in a column, is floated
 - **THEN** the events are one window floated naming P2, its band, column 20, row 2, width 1/2, full width off and 20 rows
 
-#### Scenario: Move a floating pane
+#### Scenario: Move a floating window
 - **WHEN** the area is 80×24 and a floating window whose box starts at column 20 is moved right
 - **THEN** the events are one floating box changed naming its new column 28
 
-#### Scenario: Tile a pane
+#### Scenario: Tile a window
 - **WHEN** a floating window of width 1/3 is tiled as the band's second column
 - **THEN** the events are one window tiled naming column 1, width 1/3 and full width off
 
@@ -70,7 +70,7 @@ A window opened or moved into a column SHALL take an automatic height of weight 
 ### Requirement: Session event bus
 The server SHALL publish every layout event, every window exit with its exit status, and every client attaching and detaching, as session events. It SHALL publish them on one bus, in the order the session applied the changes. Every subscriber SHALL receive the events in that order. A subscriber that falls behind SHALL be told how many events it missed, and SHALL NOT slow the session or other subscribers. The server SHALL record every session event in its log at debug level.
 
-#### Scenario: Pane opened through the bus
+#### Scenario: Window opened through the bus
 - **WHEN** a subscriber is on the bus and a client opens a window
 - **THEN** the subscriber receives window opened for the new window before any later event
 

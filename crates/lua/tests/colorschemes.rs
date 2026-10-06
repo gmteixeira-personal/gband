@@ -130,11 +130,11 @@ fn user_settings_after_the_colorscheme() {
 fn plugin_default_kept() {
     let scratch = Scratch::new("plugin-default");
     scratch.user_file("colors/dusk.lua", DUSK);
-    scratch.client_plugin("pane", "gband.hl.default('PaneSegment', { fg = 4 })");
+    scratch.client_plugin("window", "gband.hl.default('WindowSegment', { fg = 4 })");
     scratch.write(JOB);
     let config = scratch.loaded();
     clean(&run_job(&config, "gband.colorscheme('dusk')"));
-    assert_eq!(resolved_fg(&config, "PaneSegment").as_deref(), Some("4"));
+    assert_eq!(resolved_fg(&config, "WindowSegment").as_deref(), Some("4"));
 }
 
 #[test]
@@ -142,13 +142,13 @@ fn colorscheme_overrides_a_plugin_default() {
     let scratch = Scratch::new("overrides");
     scratch.user_file(
         "colors/dusk.lua",
-        "gband.hl.set('PaneSegment', { fg = '#00ff00' })",
+        "gband.hl.set('WindowSegment', { fg = '#00ff00' })",
     );
-    scratch.client_plugin("pane", "gband.hl.default('PaneSegment', { fg = 4 })");
+    scratch.client_plugin("window", "gband.hl.default('WindowSegment', { fg = 4 })");
     scratch.write("gband.colorscheme('dusk')");
     let config = scratch.loaded();
     assert_eq!(
-        resolved_fg(&config, "PaneSegment").as_deref(),
+        resolved_fg(&config, "WindowSegment").as_deref(),
         Some("#00ff00")
     );
 }

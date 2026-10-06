@@ -44,7 +44,7 @@ A function that takes a plugin window SHALL take its number. A number that names
 - **WHEN** line 5 of `user/init.lua` calls `gband.win.open({})` at the top level
 - **THEN** loading fails with an error at `user/init.lua` line 5
 
-#### Scenario: Unknown window
+#### Scenario: Unknown plugin window
 - **WHEN** a binding function calls `gband.win.set_lines(42, {})` and no plugin window 42 is open
 - **THEN** the call raises an error naming plugin window 42
 
@@ -130,15 +130,15 @@ The client SHALL have at most one focused floating plugin window. The **focused 
 - After the focused floating plugin window runs one of its `keys` functions, a change of the focused window or of the viewed band SHALL leave that floating plugin window focused until the user presses another key. This holds whether the change comes from the client at once or from the server later, as the focus of an opened window does.
 - Closing the focused floating plugin window SHALL leave no focused floating plugin window.
 
-#### Scenario: Float takes focus
+#### Scenario: Floating plugin window takes focus
 - **WHEN** window 1 is focused and a binding function opens a floating plugin window
 - **THEN** the floating plugin window is the focused plugin window and `gband.view().window` is still 1
 
-#### Scenario: Moving focus leaves the float
+#### Scenario: Moving focus leaves the floating plugin window
 - **WHEN** a floating plugin window is focused and the user presses Ctrl+Space then `l`, with two columns open and the first focused
 - **THEN** the second column is focused, the floating plugin window is still drawn, and no floating plugin window is focused
 
-#### Scenario: Action from the float's own key
+#### Scenario: Action from the floating plugin window's own key
 - **WHEN** a focused floating plugin window has `keys = { enter = function() gband.action.focus_column_right() end }`, two columns are open with the first focused, and the user presses Enter
 - **THEN** the second column is focused and the floating plugin window is still the focused plugin window
 - **AND** when the user then presses Ctrl+Space then `h`, the first column is focused and no floating plugin window is focused
@@ -167,7 +167,7 @@ Any other key SHALL be discarded.
 - **WHEN** a focused floating plugin window without `cursorline` shows lines 1 to 10 of 25 and the user presses `j`, then `j`, then `k`
 - **THEN** it shows lines 2 to 11, then lines 3 to 12, then lines 2 to 11
 
-#### Scenario: Escape closes a float
+#### Scenario: Escape closes a floating plugin window
 - **WHEN** a focused floating plugin window binds no `escape` and the user presses Escape
 - **THEN** the floating plugin window closes and the focused window receives nothing
 
@@ -191,16 +191,16 @@ A floating plugin window with `border` on SHALL draw a one-cell border around it
 
 Floating plugin windows SHALL be drawn after the tiles and before a configuration error banner. They SHALL be stacked in the order they were last opened or focused, with the latest on top. A floating plugin window SHALL be drawn at rest during animations.
 
-#### Scenario: Centered float
+#### Scenario: Centered floating plugin window
 - **WHEN** the ribbon area is 80×23 and a binding function opens a floating plugin window with width 40 and height 11
 - **THEN** its box spans columns 20 to 59 and rows 6 to 16 of the ribbon area
 - **AND** its content area is 38×9
 
-#### Scenario: Float cut to the ribbon area
+#### Scenario: Floating plugin window cut to the ribbon area
 - **WHEN** the ribbon area is 80×23 and a floating plugin window has `col = 70` and width 20
 - **THEN** its box spans columns 60 to 79
 
-#### Scenario: Resize a float
+#### Scenario: Resize a floating plugin window
 - **WHEN** a floating plugin window's `on_resize` records its arguments and a binding function calls `gband.win.set_config(win, { width = 30, height = 12 })` on it, with border on
 - **THEN** the floating plugin window's box is 30×12 and `on_resize` runs with 28 and 10
 
@@ -215,12 +215,12 @@ The content area of a tiled plugin window SHALL be its drawn window's screen, at
 
 A tiled plugin window SHALL be resized, moved and focused through its window, like any window. Its drawn window leaving the layout, for any reason, SHALL close the plugin window.
 
-#### Scenario: Pane window on the strip
+#### Scenario: Tiled plugin window on the strip
 - **WHEN** the screen area is 80×24, window 1 is focused alone in its column, and a binding function calls `gband.win.open({ kind = "tiled", lines = { "hello" }, column_width = 1/4 })`
 - **THEN** a column of width 1/4 holding a new window is inserted right of window 1's column, and the new window is focused
 - **AND** the new window's tile shows `hello` on its first row, and its cursor is hidden
 
-#### Scenario: Resize through the pane
+#### Scenario: Resize through the window
 - **WHEN** a tiled plugin window's drawn window is window 3 and a binding function calls `gband.window.set_width(3, 1/2)`
 - **THEN** window 3's column has width 1/2
 - **AND** once the server resizes window 3, `on_resize` runs with its new size and the plugin window's lines are drawn again at that size
@@ -243,11 +243,11 @@ A plugin window's `keys` functions, `on_close` and `on_resize` SHALL run as call
 ### Requirement: Closing plugin windows
 `gband.win.close(win)` SHALL close the plugin window. For a tiled plugin window, it SHALL also dispatch close window naming its drawn window, or close that window as soon as the server reports it when the window is not yet known. Closing a plugin window that is not open SHALL do nothing. A plugin window SHALL also close when the plugin it belongs to is marked failed. A reload SHALL close every plugin window and every drawn window this client opened, before the new configuration's `ConfigReloaded` handlers run.
 
-#### Scenario: Close a float
+#### Scenario: Close a floating plugin window
 - **WHEN** a binding function closes the focused floating plugin window
 - **THEN** the floating plugin window is no longer drawn and no floating plugin window is focused
 
-#### Scenario: Close a pane window
+#### Scenario: Close a tiled plugin window
 - **WHEN** a binding function closes a tiled plugin window whose drawn window is window 3
 - **THEN** window 3 leaves the layout
 
@@ -263,7 +263,7 @@ A plugin window's `keys` functions, `on_close` and `on_resize` SHALL run as call
 - `cols` and `rows`: the content area's size, or nil while a tiled plugin window's size is unknown.
 - For a floating plugin window, `row`, `col`, `width` and `height`: its box as last placed.
 
-#### Scenario: Info of a float
+#### Scenario: Info of a floating plugin window
 - **WHEN** the ribbon area is 80×23 and a binding function opens a floating plugin window with width 40, height 11 and three lines, then calls `gband.win.info` on it
 - **THEN** the result holds `kind = "floating"`, `focused = true`, `top = 1`, `cursor = 1`, `line_count = 3`, `cols = 38`, `rows = 9`, `row = 6`, `col = 20`, `width = 40` and `height = 11`
 
@@ -280,5 +280,5 @@ The plugin window API SHALL own these groups and their defaults, set in the defa
 A change of any group's resolved style SHALL redraw every plugin window whose drawing uses it.
 
 #### Scenario: Theme overrides the border
-- **WHEN** `user/init.lua` calls `gband.hl.set("WindowBorder", { fg = "#ff0000" })` and a floating plugin window with a border is drawn on a truecolor terminal
+- **WHEN** `user/init.lua` calls `gband.hl.set("PluginWindowBorder", { fg = "#ff0000" })` and a floating plugin window with a border is drawn on a truecolor terminal
 - **THEN** its border has foreground `#ff0000`

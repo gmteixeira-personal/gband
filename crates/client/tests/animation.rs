@@ -4,16 +4,16 @@ use gband_client::animation::{
     Animations, DrawnBand, DrawnTile, Presentation, Spring, Targets, parse_animations,
 };
 use gband_core::geometry::{Size, Tile};
-use gband_core::layout::{BandId, Direction, Layout, LayoutOptions, PaneId, SessionAction};
+use gband_core::layout::{BandId, Direction, Layout, LayoutOptions, SessionAction, WindowId};
 use gband_core::view::{Scene, View};
 
 fn ms(millis: u64) -> Duration {
     Duration::from_millis(millis)
 }
 
-fn tile(pane: u32, x: u32, width: u16) -> Tile {
+fn tile(window: u32, x: u32, width: u16) -> Tile {
     Tile {
-        pane: PaneId(pane),
+        window: WindowId(window),
         column: 0,
         row: 0,
         x,
@@ -29,7 +29,7 @@ fn targets(band: u32, bands: &[u32], camera: i64, tiles: Vec<Tile>) -> Targets {
         bands: bands.iter().copied().map(BandId).collect(),
         camera,
         band_height: 24,
-        focused: tiles.first().map(|tile| tile.pane),
+        focused: tiles.first().map(|tile| tile.window),
         tiles,
     }
 }
@@ -44,8 +44,12 @@ fn camera(presentation: &Presentation, now: Instant) -> i64 {
     presentation.drawn(now).bands.last().unwrap().camera
 }
 
-fn drawn_tile(presentation: &Presentation, now: Instant, pane: u32) -> Option<DrawnTile> {
-    presentation.drawn(now).tiles.get(&PaneId(pane)).copied()
+fn drawn_tile(presentation: &Presentation, now: Instant, window: u32) -> Option<DrawnTile> {
+    presentation
+        .drawn(now)
+        .tiles
+        .get(&WindowId(window))
+        .copied()
 }
 
 fn band(band: u32, top: i64) -> DrawnBand {
@@ -117,7 +121,7 @@ fn camera_move_glides_to_its_target() {
 }
 
 #[test]
-fn pane_slides_after_an_open() {
+fn window_slides_after_an_open() {
     let mut presentation = settled(1, &[1], 0, vec![tile(1, 0, 30), tile(2, 30, 30)]);
     let start = Instant::now();
     let opened = vec![tile(1, 0, 30), tile(3, 30, 45), tile(2, 75, 30)];
@@ -130,7 +134,7 @@ fn pane_slides_after_an_open() {
 }
 
 #[test]
-fn closed_pane_is_dropped() {
+fn closed_window_is_dropped() {
     let tiles = vec![tile(1, 0, 30), tile(2, 30, 30), tile(3, 60, 30)];
     let mut presentation = settled(1, &[1], 0, tiles);
     let start = Instant::now();
@@ -286,17 +290,17 @@ fn moving_unfocused_tile_keeps_the_presentation_settled() {
 
 const AREA: Size = Size::new(80, 24);
 
-fn three_columns() -> (Layout, [PaneId; 3]) {
+fn three_columns() -> (Layout, [WindowId; 3]) {
     let mut layout = Layout::new();
     let band = layout.bands()[0].id;
-    let mut panes = [PaneId(0); 3];
+    let mut windows = [WindowId(0); 3];
     for index in 0..3usize {
-        let pane = layout.allocate_pane();
-        let after = index.checked_sub(1).map(|before| panes[before]);
-        layout.open(pane, band, after, None, &LayoutOptions::default());
-        panes[index] = pane;
+        let window = layout.allocate_window();
+        let after = index.checked_sub(1).map(|before| windows[before]);
+        layout.open(window, band, after, None, &LayoutOptions::default());
+        windows[index] = window;
     }
-    (layout, panes)
+    (layout, windows)
 }
 
 fn layout_targets(layout: &Layout) -> Targets {
@@ -308,16 +312,19 @@ fn layout_targets(layout: &Layout) -> Targets {
     Targets::new(layout, AREA, &View::new(scene), AREA)
 }
 
-fn toggle(layout: &mut Layout, pane: PaneId) {
+fn toggle(layout: &mut Layout, window: WindowId) {
     layout.apply(
-        SessionAction::ToggleFloating { pane, after: None },
+        SessionAction::ToggleFloating {
+            window,
+            after: None,
+        },
         AREA,
         &LayoutOptions::default(),
     );
 }
 
 #[test]
-fn float_a_pane_between_two_columns() {
+fn float_a_window_between_two_columns() {
     let (mut layout, [_, b, c]) = three_columns();
     let mut presentation = Presentation::new(Animations::On);
     presentation.update(Instant::now(), &layout_targets(&layout));
@@ -335,7 +342,7 @@ fn float_a_pane_between_two_columns() {
 }
 
 #[test]
-fn tiled_pane_appears_at_rest() {
+fn tiled_window_appears_at_rest() {
     let (mut layout, [_, b, _]) = three_columns();
     toggle(&mut layout, b);
     let mut presentation = Presentation::new(Animations::On);
@@ -348,14 +355,14 @@ fn tiled_pane_appears_at_rest() {
 }
 
 #[test]
-fn moving_a_floating_pane_does_not_animate() {
+fn moving_a_floating_window_does_not_animate() {
     let (mut layout, [_, b, _]) = three_columns();
     toggle(&mut layout, b);
     let mut presentation = Presentation::new(Animations::On);
     presentation.update(Instant::now(), &layout_targets(&layout));
     layout.apply(
         SessionAction::MoveColumn {
-            pane: b,
+            window: b,
             direction: Direction::Right,
         },
         AREA,

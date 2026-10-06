@@ -104,7 +104,7 @@ fn list_order_and_replacement() {
         "gband.keymap.set('move', 'h', gband.action.focus_column_left, { desc = 'left' })
 gband.keymap.set('move', 'l', gband.action.focus_column_right, { desc = 'right' })
 gband.keymap.set('move', 'j', function() end)
-gband.keymap.set('move', 'h', gband.action.focus_pane_down, { desc = 'down' })",
+gband.keymap.set('move', 'h', gband.action.focus_window_down, { desc = 'down' })",
     );
     let config = scratch.loaded();
     let listed: Vec<String> = eval(
@@ -120,7 +120,7 @@ gband.keymap.set('move', 'h', gband.action.focus_pane_down, { desc = 'down' })",
         [
             "l:right:focus_column_right",
             "j:nil:nil",
-            "h:down:focus_pane_down"
+            "h:down:focus_window_down"
         ]
     );
     let empty: usize = eval(&config, "return #gband.keymap.list('absent')");

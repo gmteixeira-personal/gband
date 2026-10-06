@@ -1,6 +1,6 @@
 use gband_core::action::Action;
 use gband_core::input::Key;
-use gband_core::layout::{BandId, PaneContent, PaneId, Program, Proportion, SessionAction};
+use gband_core::layout::{BandId, Program, Proportion, SessionAction, WindowContent, WindowId};
 use gband_protocol::Value as Data;
 use mlua::{Lua, Table, Value};
 
@@ -25,21 +25,21 @@ pub enum Binding {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum PaneInput {
+pub enum WindowInput {
     Key(Key),
     Paste(String),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum WindowRequest {
+pub enum PluginWindowRequest {
     Open {
-        window: u32,
-        target: Option<(BandId, Option<PaneId>)>,
+        plugin_window: u32,
+        target: Option<(BandId, Option<WindowId>)>,
         width: Option<Proportion>,
         focus: bool,
     },
     Close {
-        window: u32,
+        plugin_window: u32,
     },
 }
 
@@ -50,10 +50,10 @@ pub enum Dispatch {
     Enter(String),
     Session(SessionAction),
     Input {
-        pane: PaneId,
-        input: PaneInput,
+        window: WindowId,
+        input: WindowInput,
     },
-    Window(WindowRequest),
+    PluginWindow(PluginWindowRequest),
     Write(Vec<u8>),
     Call {
         call: u64,
@@ -228,13 +228,13 @@ fn spawn(lua: &Lua, request: Value) -> mlua::Result<()> {
         .map_err(|message| ConfigError::raise(lua, message))?
     {
         None => Dispatch::Spawn(program),
-        Some((band, after)) => Dispatch::Session(SessionAction::OpenPane {
+        Some((band, after)) => Dispatch::Session(SessionAction::OpenWindow {
             band,
             after,
             width: None,
             floating: false,
             focus: true,
-            content: PaneContent::Program(program),
+            content: WindowContent::Program(program),
         }),
     };
     queue(lua, entry, "gband.spawn")

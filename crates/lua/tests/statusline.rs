@@ -3,7 +3,7 @@ mod common;
 use std::time::{Duration, Instant};
 
 use common::*;
-use gband_core::layout::{BandId, PaneId};
+use gband_core::layout::{BandId, WindowId};
 use gband_lua::{Color, ColumnState, Config, Event, StatusLine, Style, ViewState};
 
 const COUNT: &str = "renders = {}\nlocal function counted(id, output)\n  return function(ctx)\n    renders[id] = (renders[id] or 0) + 1\n    widths = widths or {}\n    widths[id] = ctx.total_width\n    return output\n  end\nend\n";
@@ -51,22 +51,22 @@ fn plugin_error(config: &Config) -> &gband_lua::ConfigError {
 fn plugin_component_without_an_id() {
     let scratch = Scratch::new("plugin-no-id");
     scratch.client_plugin(
-        "pane",
+        "window",
         "added = gband.ui.statusline.add({ render = function() return 'x' end })",
     );
     let config = scratch.loaded();
-    assert_eq!(global::<String>(&config, "added"), "pane");
+    assert_eq!(global::<String>(&config, "added"), "window");
 }
 
 #[test]
 fn plugin_component_with_an_id() {
     let scratch = Scratch::new("plugin-id");
-    scratch.client_plugin("pane",
-        "added = gband.ui.statusline.add({ id = 'count', render = function() end })\nfull = gband.ui.statusline.add({ id = 'pane.other', render = function() end })\nok = pcall(gband.ui.statusline.add, { id = 'else.where', render = function() end })",
+    scratch.client_plugin("window",
+        "added = gband.ui.statusline.add({ id = 'count', render = function() end })\nfull = gband.ui.statusline.add({ id = 'window.other', render = function() end })\nok = pcall(gband.ui.statusline.add, { id = 'else.where', render = function() end })",
     );
     let config = scratch.loaded();
-    assert_eq!(global::<String>(&config, "added"), "pane.count");
-    assert_eq!(global::<String>(&config, "full"), "pane.other");
+    assert_eq!(global::<String>(&config, "added"), "window.count");
+    assert_eq!(global::<String>(&config, "full"), "window.other");
     assert!(!global::<bool>(&config, "ok"));
 }
 
@@ -95,14 +95,14 @@ fn duplicate_id() {
 fn unknown_event() {
     let scratch = Scratch::new("unknown-event");
     let module = scratch.plugin_file(
-        "pane",
-        "lua/pane/init.lua",
+        "window",
+        "lua/window/init.lua",
         "return { setup = function()\n\n  gband.ui.statusline.add({ redraw_on = { 'FocusChange' }, render = function() end })\nend }",
     );
-    scratch.write("gband.plugin('pane')");
+    scratch.write("gband.plugin('window')");
     let config = scratch.loaded();
     let error = plugin_error(&config);
-    assert_eq!(error.plugin.as_deref(), Some("pane"));
+    assert_eq!(error.plugin.as_deref(), Some("window"));
     assert_error_at(error, &module, 3, "FocusChange");
 }
 
@@ -161,19 +161,27 @@ fn user_events_and_built_in_events_are_accepted() {
 #[test]
 fn list_entries() {
     let scratch = Scratch::new("list");
-    scratch.client_plugin("pane",
-        "gband.ui.statusline.add({ align = 'right', priority = 3, order = 4, hl = 'PaneSegment', render = function() end })",
+    scratch.client_plugin("window",
+        "gband.ui.statusline.add({ align = 'right', priority = 3, order = 4, hl = 'WindowSegment', render = function() end })",
     );
     scratch.write("gband.ui.statusline.add({ id = 'zeta', render = function() end })\ngband.ui.statusline.add({ id = 'alpha', render = function() end })");
     let config = scratch.loaded();
-    assert_eq!(ids(&config), ["alpha", "pane", "zeta"]);
+    assert_eq!(ids(&config), ["alpha", "window", "zeta"]);
     let entry: Vec<String> = eval(
         &config,
         "local e = gband.ui.statusline.list()[2]\nreturn { e.id, e.align, tostring(e.priority), tostring(e.order), e.hl, e.plugin, tostring(e.enabled) }",
     );
     assert_eq!(
         entry,
-        ["pane", "right", "3", "4", "PaneSegment", "pane", "true"]
+        [
+            "window",
+            "right",
+            "3",
+            "4",
+            "WindowSegment",
+            "window",
+            "true"
+        ]
     );
     let defaults: Vec<String> = eval(
         &config,
@@ -291,7 +299,7 @@ fn context_values() {
             count: 3,
         },
         column: Some(ColumnState { index: 3, count: 5 }),
-        pane: Some(7),
+        window: Some(7),
         width: 100,
         drawn: true,
         error: None,
@@ -300,7 +308,7 @@ fn context_values() {
     presented(&config, state);
     let seen: Vec<String> = eval(
         &config,
-        "return { seen.id, seen.side, tostring(seen.total_width), seen.table, tostring(seen.band.number), tostring(seen.band.index), tostring(seen.band.count), tostring(seen.column.index), tostring(seen.column.count), tostring(seen.pane) }",
+        "return { seen.id, seen.side, tostring(seen.total_width), seen.table, tostring(seen.band.number), tostring(seen.band.index), tostring(seen.band.count), tostring(seen.column.index), tostring(seen.column.count), tostring(seen.window) }",
     );
     assert_eq!(
         seen,
@@ -314,13 +322,13 @@ fn context_values() {
 fn context_without_a_column() {
     let (_scratch, config) = loaded(
         "context-empty",
-        "gband.ui.statusline.add({ id = 'a', render = function(ctx) column, pane = ctx.column, ctx.pane end })",
+        "gband.ui.statusline.add({ id = 'a', render = function(ctx) column, window = ctx.column, ctx.window end })",
     );
     presented(&config, drawn(20));
     let column: Option<mlua::Table> = global(&config, "column");
     assert!(column.is_none());
-    let pane: Option<i64> = global(&config, "pane");
-    assert!(pane.is_none());
+    let window: Option<i64> = global(&config, "window");
+    assert!(window.is_none());
 }
 
 #[test]
@@ -366,8 +374,8 @@ fn column_state(index: u32, count: u32) -> ViewState {
 fn focus(config: &Config, state: ViewState) {
     clean(&config.runtime.set_state(state));
     clean(&config.runtime.emit(&Event::FocusChanged {
-        pane: Some(PaneId(1)),
-        previous: Some(PaneId(2)),
+        window: Some(WindowId(1)),
+        previous: Some(WindowId(2)),
     }));
 }
 
@@ -454,7 +462,7 @@ fn default_config(name: &str) -> (Scratch, Config) {
 fn default_state() -> ViewState {
     let mut state = drawn(80);
     state.column = Some(ColumnState { index: 2, count: 3 });
-    state.pane = Some(2);
+    state.window = Some(2);
     state
 }
 
@@ -631,8 +639,8 @@ fn redraw_on_an_event() {
     );
     presented(&config, drawn(20));
     let focus = Event::FocusChanged {
-        pane: Some(PaneId(1)),
-        previous: Some(PaneId(2)),
+        window: Some(WindowId(1)),
+        previous: Some(WindowId(2)),
     };
     clean(&config.runtime.emit(&focus));
     clean(&config.runtime.emit(&Event::BandChanged {
@@ -651,7 +659,7 @@ fn render_follows_the_handlers() {
     );
     presented(&config, drawn(20));
     clean(&config.runtime.emit(&Event::FocusChanged {
-        pane: Some(PaneId(1)),
+        window: Some(WindowId(1)),
         previous: None,
     }));
     let line = config.runtime.take_line().unwrap();
@@ -728,7 +736,7 @@ fn no_render_while_not_drawn() {
     clean(&config.runtime.set_state(state));
     clean(&config.runtime.refresh_statusline());
     clean(&config.runtime.emit(&Event::FocusChanged {
-        pane: None,
+        window: None,
         previous: None,
     }));
     assert_eq!(renders(&config, "a"), 0);
@@ -789,7 +797,7 @@ fn added_after_the_load() {
 #[test]
 fn failing_component() {
     let scratch = Scratch::new("failing");
-    let file = scratch.client_plugin("pane",
+    let file = scratch.client_plugin("window",
         "gband.ui.statusline.add({\n  order = 1,\n  render = function()\n\n\n\n\n\n    error('boom')\n  end,\n})",
     );
     scratch.write(
@@ -801,7 +809,7 @@ fn failing_component() {
     let [error] = outcome.errors.as_slice() else {
         panic!("{:?}", outcome.errors);
     };
-    let message = format!("pane: {}:9: boom", file.display());
+    let message = format!("window: {}:9: boom", file.display());
     assert_eq!(error.to_string(), message);
     let line = config.runtime.take_line().unwrap();
     assert_eq!(text(&line, 40).trim_end(), "ok");
@@ -852,7 +860,7 @@ fn looping_render() {
     let line = config.runtime.take_line().unwrap();
     assert_eq!(text(&line, 40).trim_end(), "b");
     clean(&config.runtime.emit(&Event::FocusChanged {
-        pane: None,
+        window: None,
         previous: None,
     }));
     let handled: Option<bool> = global(&config, "spin_handled");
@@ -862,12 +870,12 @@ fn looping_render() {
 #[test]
 fn failed_plugin_components_are_hidden() {
     let scratch = Scratch::new("failed-plugin");
-    scratch.client_plugin("pane",
-        "gband.ui.statusline.add({ render = function() return 'pane' end })\ngband.bind('alt+p', function() while true do end end)",
+    scratch.client_plugin("window",
+        "gband.ui.statusline.add({ render = function() return 'window' end })\ngband.bind('alt+p', function() while true do end end)",
     );
     scratch.write(JOB);
     let config = scratch.load_with_budget(500_000).unwrap();
-    assert_eq!(shown(&config, drawn(20)).trim_end(), "pane");
+    assert_eq!(shown(&config, drawn(20)).trim_end(), "window");
     let gband_lua::Binding::Callback(spin) = config.keymap["root"]
         .iter()
         .find(|(chord, _)| *chord == gband_lua::Chord::Key(key("alt+p")))
@@ -974,14 +982,14 @@ fn invalid_segment_options_fail_setup() {
 }
 
 #[test]
-fn sample_pane_plugin() {
+fn sample_window_plugin() {
     let example = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../examples/plugins/pane")
+        .join("../../examples/plugins/window")
         .canonicalize()
         .unwrap();
-    let scratch = Scratch::new("sample-pane");
+    let scratch = Scratch::new("sample-window");
     scratch.write(&format!(
-        "table.insert(gband.runtimepath, {:?})\ngband.colorscheme('dusk')\ngband.plugin('pane')",
+        "table.insert(gband.runtimepath, {:?})\ngband.colorscheme('dusk')\ngband.plugin('window')",
         example.display().to_string()
     ));
     let config = scratch.loaded();
@@ -992,38 +1000,38 @@ fn sample_pane_plugin() {
     );
     let style: Vec<String> = eval(
         &config,
-        "local s = gband.hl.get('PaneSegment', { resolve = true })\nreturn { s.fg, tostring(s.bold) }",
+        "local s = gband.hl.get('WindowSegment', { resolve = true })\nreturn { s.fg, tostring(s.bold) }",
     );
     assert_eq!(style, ["#f6c177", "true"]);
     let mut state = drawn(30);
-    state.pane = Some(3);
+    state.window = Some(3);
     let line = presented(&config, state);
-    assert_eq!(text(&line, 30).trim_start(), "pane 3");
+    assert_eq!(text(&line, 30).trim_start(), "window 3");
     assert_eq!(line.spans[0].style.fg, Some(Color::Rgb(0xf6, 0xc1, 0x77)));
     let mut state = drawn(30);
-    state.pane = Some(4);
+    state.window = Some(4);
     clean(&config.runtime.set_state(state));
     clean(&config.runtime.emit(&Event::FocusChanged {
-        pane: Some(PaneId(4)),
-        previous: Some(PaneId(3)),
+        window: Some(WindowId(4)),
+        previous: Some(WindowId(3)),
     }));
     let line = config.runtime.take_line().unwrap();
-    assert_eq!(text(&line, 30).trim_start(), "pane 4");
+    assert_eq!(text(&line, 30).trim_start(), "window 4");
 }
 
 #[test]
-fn sample_pane_plugin_default_group() {
+fn sample_window_plugin_default_group() {
     let example = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../examples/plugins/pane")
+        .join("../../examples/plugins/window")
         .canonicalize()
         .unwrap();
-    let scratch = Scratch::new("sample-pane-default");
+    let scratch = Scratch::new("sample-window-default");
     scratch.write(&format!(
-        "table.insert(gband.runtimepath, {:?})\ngband.plugin('pane')",
+        "table.insert(gband.runtimepath, {:?})\ngband.plugin('window')",
         example.display().to_string()
     ));
     let config = scratch.loaded();
-    let link: String = eval(&config, "return gband.hl.get('PaneSegment').link");
+    let link: String = eval(&config, "return gband.hl.get('WindowSegment').link");
     assert_eq!(link, "StatusLineAccent");
 }
 
@@ -1033,15 +1041,15 @@ fn waiting_agents_counted() {
         "waiting-agents",
         "gband.ui.statusline.add({
   id = 'agents',
-  redraw_on = { 'PaneStateChanged' },
+  redraw_on = { 'WindowStateChanged' },
   render = function(ctx)
     local waiting = 0
-    for _, entry in ipairs(ctx.panes) do
+    for _, entry in ipairs(ctx.windows) do
       if entry.state.agent == 'waiting' then
         waiting = waiting + 1
       end
     end
-    first = ctx.panes[1].pane .. '/' .. ctx.panes[1].band
+    first = ctx.windows[1].window .. '/' .. ctx.windows[1].band
     return 'waiting ' .. waiting
   end,
 })",
@@ -1050,15 +1058,15 @@ fn waiting_agents_counted() {
     let band = layout.bands()[0].id;
     let mut after = None;
     for _ in 0..3 {
-        let pane = layout.allocate_pane();
+        let window = layout.allocate_window();
         layout.open(
-            pane,
+            window,
             band,
             after,
             None,
             &gband_core::layout::LayoutOptions::default(),
         );
-        after = Some(pane);
+        after = Some(window);
     }
     let waiting = || {
         std::collections::BTreeMap::from([(
@@ -1069,8 +1077,8 @@ fn waiting_agents_counted() {
     let state = ViewState {
         layout: std::sync::Arc::new(layout),
         states: std::sync::Arc::new(std::collections::BTreeMap::from([
-            (PaneId(1), waiting()),
-            (PaneId(3), waiting()),
+            (WindowId(1), waiting()),
+            (WindowId(3), waiting()),
         ])),
         ..drawn(40)
     };

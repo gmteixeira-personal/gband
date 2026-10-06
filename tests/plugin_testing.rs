@@ -46,7 +46,7 @@ impl Project {
             .current_dir(&self.dir)
             .env_remove("GBAND")
             .env_remove("GBAND_SESSION")
-            .env_remove("GBAND_PANE")
+            .env_remove("GBAND_WINDOW")
             .env_remove("GBAND_TEST_SOCKET")
             .env("XDG_STATE_HOME", self.root.join("outer-state"))
             .env("XDG_CONFIG_HOME", self.root.join("outer-config"))
@@ -116,7 +116,7 @@ fn position(text: &str, needle: &str) -> usize {
         .unwrap_or_else(|| panic!("{needle:?} is not in:\n{text}"))
 }
 
-const MANIFEST: &str = "return { name = 'pane', version = '0.1.0' }";
+const MANIFEST: &str = "return { name = 'window', version = '0.1.0' }";
 
 #[test]
 fn plugin_tests_found() {
@@ -161,14 +161,14 @@ fn no_tests() {
 
 #[test]
 fn duplicate_plugin_names() {
-    let project = Project::named("duplicate", "pane");
+    let project = Project::named("duplicate", "window");
     project.file("plugin.lua", MANIFEST);
     project.file("tests/a_spec.lua", "");
-    let other = project.root.join("elsewhere").join("pane");
+    let other = project.root.join("elsewhere").join("window");
     fs::create_dir_all(&other).unwrap();
     let output = project.run(&["--plugin", other.to_str().unwrap()]);
     assert_eq!(output.status.code(), Some(2), "{}", report(&output));
-    assert!(stderr(&output).contains("`pane`"), "{}", report(&output));
+    assert!(stderr(&output).contains("`window`"), "{}", report(&output));
 }
 
 #[test]
@@ -286,13 +286,13 @@ fn filter() {
 
 #[test]
 fn case_environment() {
-    let project = Project::named("environment", "pane");
+    let project = Project::named("environment", "window");
     project.file("plugin.lua", MANIFEST);
     project.file(
-        "lua/pane/init.lua",
-        "local M = { name = 'pane' }\n\
+        "lua/window/init.lua",
+        "local M = { name = 'window' }\n\
          function M.setup()\n\
-           gband.ui.statusline.add({ align = 'right', render = function() return 'PANE-SEGMENT' end })\n\
+           gband.ui.statusline.add({ align = 'right', render = function() return 'WINDOW-SEGMENT' end })\n\
          end\n\
          return M\n",
     );
@@ -314,8 +314,8 @@ t.case("configuration of the case", function(g)
 end)
 
 t.case("plugin under test is installed", function(g)
-  g.start({ config = [[gband.plugin("pane")]] })
-  t.match(g.screen().text(), "PANE%-SEGMENT")
+  g.start({ config = [[gband.plugin("window")]] })
+  t.match(g.screen().text(), "WINDOW%-SEGMENT")
 end)
 
 t.case("files and env", function(g)
@@ -369,7 +369,7 @@ fn nothing_left_behind() {
     project.file(
         "tests/left_spec.lua",
         "local t = require('gband.test')\n\
-         t.case('three panes', function(g)\n\
+         t.case('three windows', function(g)\n\
            g.start()\n\
            g.keys('ctrl+space enter ctrl+space enter')\n\
            g.settle()\n\
@@ -398,7 +398,7 @@ fn nothing_left_behind() {
 }
 
 #[test]
-fn run_from_inside_a_pane() {
+fn run_from_inside_a_window() {
     let project = Project::new("inside");
     project.file(
         "tests/inside_spec.lua",
@@ -412,7 +412,7 @@ fn run_from_inside_a_pane() {
         .command(&[])
         .env("GBAND", "/tmp/some/default.sock")
         .env("GBAND_SESSION", "work")
-        .env("GBAND_PANE", "3")
+        .env("GBAND_WINDOW", "3")
         .output()
         .unwrap();
     assert_passed(&output);
@@ -426,7 +426,7 @@ fn users_server_untouched() {
     project.file(
         "tests/untouched_spec.lua",
         "local t = require('gband.test')\n\
-         t.case('opens panes', function(g)\n\
+         t.case('opens windows', function(g)\n\
            g.start()\n\
            g.keys('ctrl+space enter ctrl+space enter')\n\
            g.settle()\n\
@@ -463,7 +463,7 @@ t.case("wait for program output", function(g)
   end), "found")
 end)
 
-t.case("open a pane by key", function(g)
+t.case("open a window by key", function(g)
   g.start({ size = "60x12" })
   g.keys("ctrl+space enter")
   g.settle()
@@ -500,7 +500,7 @@ end)
     let text = stdout(&output);
     for case in [
         "wait for program output",
-        "open a pane by key",
+        "open a window by key",
         "paste and type",
         "resize",
     ] {
@@ -609,16 +609,16 @@ fn standard_input_takes_no_file() {
 fn screenshot_references() {
     let project = Project::new("references");
     project.file(
-        "tests/pane_spec.lua",
+        "tests/window_spec.lua",
         "local t = require('gband.test')\n\
-         t.case('Shows the focused pane', function(g)\n\
+         t.case('Shows the focused window', function(g)\n\
            g.start({ size = '30x5', config = [[gband.plugin('gband.statusline.band')]] })\n\
-           g.expect_screenshot('two panes')\n\
+           g.expect_screenshot('two windows')\n\
          end)\n",
     );
     let reference = project
         .dir
-        .join("tests/screenshots/pane_spec/shows-the-focused-pane--two-panes.txt");
+        .join("tests/screenshots/window_spec/shows-the-focused-window--two-windows.txt");
     let pending = reference.with_extension("txt.new");
 
     let first = project.run(&[]);
@@ -710,9 +710,9 @@ end)
 
 t.case("act in the server", function(g)
   g.start()
-  g.server([[gband.pane_state("default", 1).agent = "waiting"]])
+  g.server([[gband.window_state("default", 1).agent = "waiting"]])
   g.settle()
-  t.eq(g.client("return gband.pane_state(1).agent"), "waiting")
+  t.eq(g.client("return gband.window_state(1).agent"), "waiting")
 end)
 
 t.case("errors are answered", function(g)
@@ -741,7 +741,7 @@ t.case("real time", function(g)
   t.ok(g.client("return os.time()") > 1735732800)
 end)
 
-t.case("test channel kept out of panes", function(g)
+t.case("test channel kept out of windows", function(g)
   g.start()
   g.run('echo "[$GBAND_TEST_SOCKET]"')
   g.wait_text("[]")
@@ -828,18 +828,18 @@ end)
 t.case("server handler effect is drawn", function(g)
   g.start({
     server_config = [[
-      gband.on("PaneOpened", function(ev)
-        gband.pane_state(ev.session, ev.pane).agent = "busy-" .. ev.pane
+      gband.on("WindowOpened", function(ev)
+        gband.window_state(ev.session, ev.window).agent = "busy-" .. ev.window
       end)
     ]],
     config = [[
-      gband.keymap.set("prefix", "enter", gband.action.open_pane)
+      gband.keymap.set("prefix", "enter", gband.action.open_window)
       gband.ui.statusline.add({
         id = "agent",
-        redraw_on = { "PaneStateChanged" },
+        redraw_on = { "WindowStateChanged" },
         render = function(ctx)
           local found = {}
-          for _, entry in ipairs(ctx.panes) do
+          for _, entry in ipairs(ctx.windows) do
             found[#found + 1] = entry.state.agent
           end
           return table.concat(found, " ")

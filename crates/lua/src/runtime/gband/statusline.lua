@@ -100,7 +100,7 @@ local function validate(spec)
         return nil, "`redraw_on` must be a list of event names"
       end
       if not EVENTS[name] then
-        return nil, "unknown event `" .. name .. "` in `redraw_on`"
+        return nil, host.removed(name) or "unknown event `" .. name .. "` in `redraw_on`"
       end
       redraw_on[name] = true
     end
@@ -326,8 +326,8 @@ local function context(component, state)
     table = state.table,
     band = { number = state.band.number, index = state.band.index, count = state.band.count },
     column = state.column and { index = state.column.index, count = state.column.count },
-    pane = state.pane,
-    panes = host.panes(),
+    window = state.window,
+    windows = host.windows(),
   }
 end
 

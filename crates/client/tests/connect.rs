@@ -2,7 +2,7 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use gband_client::{ClientConfig, UnixTransport, connect, kill_session, list_sessions};
-use gband_core::layout::PaneId;
+use gband_core::layout::WindowId;
 use gband_protocol::{ClientMessage, ExecutableId, ServerMessage, SessionName, socket_path};
 use gband_server::ServerConfig;
 use gband_test_support::{TestServer, config, runtime_dir};
@@ -91,14 +91,14 @@ async fn mismatched_server_is_kept_when_replacing_is_off() {
     ));
     connection
         .send(&ClientMessage::Paste {
-            pane: PaneId(1),
+            window: WindowId(1),
             text: "exit".into(),
         })
         .await
         .unwrap();
     connection
         .send(&ClientMessage::Key {
-            pane: PaneId(1),
+            window: WindowId(1),
             key: gband_core::input::Key::plain(gband_core::input::KeyCode::Enter),
         })
         .await
@@ -138,7 +138,7 @@ fn requests_reach_a_running_server() {
     let sessions = list_sessions(&config, &transport).unwrap();
     assert_eq!(sessions.len(), 1);
     assert_eq!(sessions[0].name, SessionName::default());
-    assert_eq!((sessions[0].panes, sessions[0].clients), (1, 0));
+    assert_eq!((sessions[0].windows, sessions[0].clients), (1, 0));
 
     let nope = client_config("nope".parse().unwrap(), false);
     let message = format!("{:#}", kill_session(&nope, &transport).unwrap_err());

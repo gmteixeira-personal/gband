@@ -3,9 +3,9 @@ schema: spec-driven
 # Project context, shown to AI when creating artifacts.
 context: |
   Domain: gband is a terminal multiplexer inspired by the niri Wayland compositor.
-  Layout model: panes sit in columns on a strip that scrolls sideways without limit.
-  A new pane adds a column, and existing panes keep their size.
-  The view scrolls to follow focus. A column can stack several panes vertically.
+  Layout model: windows sit in columns on a strip that scrolls sideways without limit.
+  A new window adds a column, and existing windows keep their size.
+  The view scrolls to follow focus. A column can stack several windows vertically.
   Each band has its own strip, and bands stack vertically.
   When a behavior is unspecified, follow niri's behavior unless a spec says otherwise.
   Tech stack: Rust (stable toolchain, built with cargo).

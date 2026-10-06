@@ -187,9 +187,9 @@ async fn exit_then_close() {
     let scripted = start(
         "lua-exit-close",
         "local log = {}
-gband.on('PaneExited', function(ev) log[#log + 1] = 'exited ' .. ev.pane .. ' ' .. tostring(ev.code) end)
-gband.on('PaneClosed', function(ev)
-  log[#log + 1] = 'closed ' .. ev.pane
+gband.on('WindowExited', function(ev) log[#log + 1] = 'exited ' .. ev.window .. ' ' .. tostring(ev.code) end)
+gband.on('WindowClosed', function(ev)
+  log[#log + 1] = 'closed ' .. ev.window
   gband.emit('log', log)
 end)",
     )
@@ -212,12 +212,12 @@ end)",
 async fn handler_replaced() {
     let scripted = start(
         "lua-replaced",
-        "gband.on('PaneOpened', function() gband.emit('one') end)",
+        "gband.on('WindowOpened', function() gband.emit('one') end)",
     )
     .await;
     let mut client = scripted.attach().await;
     scripted.reload(
-        "gband.on('PaneOpened', function() gband.emit('two') end)
+        "gband.on('WindowOpened', function() gband.emit('two') end)
 gband.on('ConfigReloaded', function() gband.emit('reloaded') end)",
     );
     event(&mut client, "reloaded").await;
@@ -228,9 +228,9 @@ gband.on('ConfigReloaded', function() gband.emit('reloaded') end)",
     assert!(events(&client, "one").is_empty());
 }
 
-const AGENT: &str = "gband.on('PaneOpened', function(ev)
-  gband.pane_state(ev.session, ev.pane).agent = 'waiting'
-  gband.emit('hello', { pane = ev.pane })
+const AGENT: &str = "gband.on('WindowOpened', function(ev)
+  gband.window_state(ev.session, ev.window).agent = 'waiting'
+  gband.emit('hello', { window = ev.window })
 end)";
 
 #[tokio::test(flavor = "multi_thread")]
@@ -258,8 +258,8 @@ async fn attach_order_with_plugin_state() {
     assert_eq!(
         client.bridge,
         [
-            ServerMessage::PaneState {
-                pane: first,
+            ServerMessage::WindowState {
+                window: first,
                 key: "agent".to_owned(),
                 value: Some(text("waiting")),
             },
@@ -269,7 +269,7 @@ async fn attach_order_with_plugin_state() {
             }]),
             ServerMessage::Event {
                 name: "hello".to_owned(),
-                data: Value::Table(vec![(DataKey::string("pane"), Value::Int(1))]),
+                data: Value::Table(vec![(DataKey::string("window"), Value::Int(1))]),
                 queued: true,
                 time: match &client.bridge[2] {
                     ServerMessage::Event { time, .. } => *time,
@@ -290,7 +290,7 @@ async fn handler_error_shown() {
         &runtime_dir,
         "broken",
         "",
-        "gband.on('PaneOpened', function()\n  local a = 1\n  local b = 2\n  error('boom')\nend)",
+        "gband.on('WindowOpened', function()\n  local a = 1\n  local b = 2\n  error('boom')\nend)",
     );
     let scripted = start_in(runtime_dir, "").await;
     let mut client = scripted.attach().await;
@@ -307,12 +307,12 @@ async fn agent_prompt_detected() {
     let scripted = start(
         "lua-prompt",
         "local buffers = {}
-gband.on('PaneOutput', function(ev)
-  local buffer = (buffers[ev.pane] or '') .. ev.data
-  buffers[ev.pane] = buffer
+gband.on('WindowOutput', function(ev)
+  local buffer = (buffers[ev.window] or '') .. ev.data
+  buffers[ev.window] = buffer
   if buffer:find('\\nto proceed?', 1, true) then
     gband.emit('found', { buffer = buffer })
-    buffers[ev.pane] = ''
+    buffers[ev.window] = ''
   end
 end)",
     )
@@ -334,11 +334,11 @@ end)",
 async fn input_notice() {
     let scripted = start(
         "lua-input",
-        "gband.on('PaneInput', function(ev)
+        "gband.on('WindowInput', function(ev)
   local keys = {}
   for key in pairs(ev) do keys[#keys + 1] = key end
   table.sort(keys)
-  gband.emit('input', { pane = ev.pane, client = ev.client, keys = table.concat(keys, ',') })
+  gband.emit('input', { window = ev.window, client = ev.client, keys = table.concat(keys, ',') })
 end)",
     )
     .await;
@@ -350,9 +350,12 @@ end)",
         .wait_until(|client| events(client, "input").len() == 2)
         .await;
     for (data, _) in events(&client, "input") {
-        assert_eq!(field(&data, "pane"), Some(&Value::Int(i64::from(first.0))));
+        assert_eq!(
+            field(&data, "window"),
+            Some(&Value::Int(i64::from(first.0)))
+        );
         assert!(matches!(field(&data, "client"), Some(Value::Int(_))));
-        assert_eq!(field(&data, "keys"), Some(&text("client,pane,session")));
+        assert_eq!(field(&data, "keys"), Some(&text("client,session,window")));
     }
 }
 
@@ -360,9 +363,9 @@ end)",
 async fn close_from_a_handler() {
     let scripted = start(
         "lua-close",
-        "gband.on('PaneOutput', function(ev)
+        "gband.on('WindowOutput', function(ev)
   if ev.data:find('bye', 1, true) then
-    gband.action.close_pane({ session = ev.session, pane = ev.pane })
+    gband.action.close_window({ session = ev.session, window = ev.window })
   end
 end)",
     )
@@ -382,7 +385,7 @@ async fn open_without_stealing_focus() {
     let scripted = start(
         "lua-open",
         "gband.cmd.register('open', function(args, ctx)
-  gband.action.open_pane({ session = ctx.session, band = 1, after = args.after, program = 'sleep 100' })
+  gband.action.open_window({ session = ctx.session, band = 1, after = args.after, program = 'sleep 100' })
   return true
 end)",
     )
@@ -399,7 +402,9 @@ end)",
         call(&mut client, 1, "open", args).await,
         Ok(Value::Bool(true))
     );
-    client.wait_until(|client| client.panes().len() == 2).await;
+    client
+        .wait_until(|client| client.windows().len() == 2)
+        .await;
     client.pump(Duration::from_millis(300)).await;
     assert!(client.focus.is_empty(), "{:?}", client.focus);
 }
@@ -408,9 +413,9 @@ end)",
 async fn action_from_the_servers_lua() {
     let scripted = start(
         "lua-action",
-        "gband.on('PaneOpened', function(ev)
-  if ev.pane > 1 then
-    gband.action.grow_column_width({ session = ev.session, pane = ev.pane })
+        "gband.on('WindowOpened', function(ev)
+  if ev.window > 1 then
+    gband.action.grow_column_width({ session = ev.session, window = ev.window })
   end
 end)",
     )
@@ -423,7 +428,7 @@ end)",
             client.layout.bands()[0]
                 .columns
                 .iter()
-                .find(|column| column.panes.contains(&second))
+                .find(|column| column.windows.contains(&second))
                 .is_some_and(|column| {
                     u64::from(column.width.num) * u64::from(Proportion::ONE_HALF.den)
                         > u64::from(Proportion::ONE_HALF.num) * u64::from(column.width.den)
@@ -436,10 +441,10 @@ end)",
 async fn float_and_tile_from_the_servers_lua() {
     let scripted = start(
         "lua-floating",
-        "gband.on('PaneOpened', function(ev)
-  if ev.pane == 2 then
-    gband.action.toggle_pane_floating({ session = ev.session, pane = ev.pane })
-    gband.action.open_pane({ session = ev.session, band = ev.band, floating = true })
+        "gband.on('WindowOpened', function(ev)
+  if ev.window == 2 then
+    gband.action.toggle_window_floating({ session = ev.session, window = ev.window })
+    gband.action.open_window({ session = ev.session, band = ev.band, floating = true })
   end
 end)",
     )
@@ -453,19 +458,19 @@ end)",
     let floating: Vec<_> = client.layout.bands()[0]
         .floating
         .iter()
-        .map(|floating| floating.pane)
+        .map(|floating| floating.window)
         .collect();
     assert_eq!(floating[0], second);
     assert_eq!(client.layout.bands()[0].columns.len(), 1);
 }
 
 const COMMANDS: &str = "gband.cmd.register('focus', function(args, ctx)
-  ctx.focus(args.pane)
-  return args.pane
+  ctx.focus(args.window)
+  return args.window
 end)
 gband.cmd.register('boom', function() error('boom') end)
 gband.cmd.register('broadcast', function(args, ctx)
-  gband.emit('agent.waiting', { pane = 1 })
+  gband.emit('agent.waiting', { window = 1 })
   gband.emit('mine', {}, { session = ctx.session })
   return true
 end)";
@@ -477,10 +482,10 @@ async fn command_focuses_for_its_caller() {
     let mut other = scripted.attach().await;
     let first = caller.first();
     let second = caller.open_after(first).await;
-    other.wait_until(|client| client.panes().len() == 2).await;
+    other.wait_until(|client| client.windows().len() == 2).await;
     let focused_before = caller.focus.len();
     let args = Value::Table(vec![(
-        DataKey::string("pane"),
+        DataKey::string("window"),
         Value::Int(i64::from(first.0)),
     )]);
     assert_eq!(
@@ -534,7 +539,7 @@ async fn broadcast_and_one_session() {
         Ok(Value::Bool(true))
     );
     let data = event(&mut play, "agent.waiting").await;
-    assert_eq!(field(&data, "pane"), Some(&Value::Int(1)));
+    assert_eq!(field(&data, "window"), Some(&Value::Int(1)));
     event(&mut work, "agent.waiting").await;
     event(&mut work, "mine").await;
     play.pump(Duration::from_millis(300)).await;
@@ -549,9 +554,9 @@ async fn sessions_and_layout() {
   local session = gband.session(ctx.session)
   return {
     names = gband.sessions(),
-    panes = #session.bands[1].columns,
+    windows = #session.bands[1].columns,
     clients = #session.clients,
-    missing = gband.pane_state(ctx.session, 99) == nil,
+    missing = gband.window_state(ctx.session, 99) == nil,
   }
 end)",
     )
@@ -562,7 +567,7 @@ end)",
         field(&described, "names").map(list),
         Some(vec![text("default")])
     );
-    assert_eq!(field(&described, "panes"), Some(&Value::Int(1)));
+    assert_eq!(field(&described, "windows"), Some(&Value::Int(1)));
     assert_eq!(field(&described, "clients"), Some(&Value::Int(1)));
     assert_eq!(field(&described, "missing"), Some(&Value::Bool(true)));
 }

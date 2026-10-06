@@ -153,7 +153,7 @@ fn prepare(env: &mut TestEnv, setup: &Setup, socket: &Path) -> Result<(), String
         (SOCKET_VARIABLE, Some(socket.as_os_str().to_owned())),
         ("GBAND", None),
         ("GBAND_SESSION", None),
-        ("GBAND_PANE", None),
+        ("GBAND_WINDOW", None),
         ("GBAND_LOG", None),
     ];
     for (name, value) in set {

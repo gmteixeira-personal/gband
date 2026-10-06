@@ -50,11 +50,11 @@ None.
 - README.md
 - crates/client/
 - crates/core/
-- crates/harness/
+- crates/harness/src/
 - crates/lua/
 - crates/protocol/
 - crates/server/
-- crates/test-support/
+- crates/test-support/src/lib.rs
 - docs/plugins.md
 - docs/testing.md
 - examples/plugins/

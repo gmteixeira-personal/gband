@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use anyhow::{Context as _, Result, anyhow, bail};
 use gband_core::geometry::Size;
-use gband_core::layout::{PaneId, SessionAction};
+use gband_core::layout::{SessionAction, WindowId};
 use gband_protocol::{
     ClientMessage, Hello, HelloReply, MessageReader, MessageWriter, PROTOCOL_VERSION,
     ServerMessage, SessionName, decode, leading_version,
@@ -18,10 +18,10 @@ use tokio::sync::{mpsc, oneshot};
 use crate::channel::{Barrier, Settling};
 use crate::event::SessionEvent;
 use crate::hub::Hub;
-use crate::pane::{Contents, Input, Seen};
 use crate::registry::{Request, SessionHandle};
 use crate::scripting::{self, Taps};
 use crate::session::{Command, INITIAL_AREA, Reply, State};
+use crate::window::{Contents, Input, Seen};
 
 pub struct Context {
     pub registry: mpsc::UnboundedSender<Request>,
@@ -70,7 +70,7 @@ impl Drop for Attachment {
         });
         self.handle.command(Command::Shown {
             client: self.client,
-            panes: Vec::new(),
+            windows: Vec::new(),
         });
         self.handle.clients.fetch_sub(1, Ordering::AcqRel);
         self.handle.events.send(SessionEvent::ClientDetached {
@@ -93,7 +93,7 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Link<R, W> {
 #[derive(Default)]
 struct Sent {
     state: Option<Arc<State>>,
-    panes: HashMap<PaneId, (u64, Seen)>,
+    windows: HashMap<WindowId, (u64, Seen)>,
 }
 
 pub async fn serve(
@@ -298,14 +298,14 @@ fn dispatch(
 ) -> Result<bool> {
     while let Some(message) = reader.try_recv::<ClientMessage>()? {
         match message {
-            ClientMessage::Key { pane, key } => {
-                if forward(session, pane, Input::Key(key)) {
-                    context.taps.notice(&session.name, pane, client);
+            ClientMessage::Key { window, key } => {
+                if forward(session, window, Input::Key(key)) {
+                    context.taps.notice(&session.name, window, client);
                 }
             }
-            ClientMessage::Paste { pane, text } => {
-                if forward(session, pane, Input::Paste(text)) {
-                    context.taps.notice(&session.name, pane, client);
+            ClientMessage::Paste { window, text } => {
+                if forward(session, window, Input::Paste(text)) {
+                    context.taps.notice(&session.name, window, client);
                 }
             }
             ClientMessage::Command { call, name, args } => {
@@ -330,19 +330,19 @@ fn dispatch(
             }),
             ClientMessage::Action(action) => {
                 let reply =
-                    matches!(action, SessionAction::OpenPane { .. }).then(|| reply_tx.clone());
+                    matches!(action, SessionAction::OpenWindow { .. }).then(|| reply_tx.clone());
                 session.command(Command::Action {
                     client,
                     action,
                     reply,
                 });
             }
-            ClientMessage::Content { pane, output } => session.command(Command::Content {
+            ClientMessage::Content { window, output } => session.command(Command::Content {
                 client,
-                pane,
+                window,
                 output,
             }),
-            ClientMessage::Shown(panes) => session.command(Command::Shown { client, panes }),
+            ClientMessage::Shown(windows) => session.command(Command::Shown { client, windows }),
             ClientMessage::Detach => return Ok(true),
             ClientMessage::Attach { .. }
             | ClientMessage::ListSessions
@@ -354,8 +354,8 @@ fn dispatch(
 
 fn replied(reply: Reply) -> ServerMessage {
     match reply {
-        Reply::Focus(pane) => ServerMessage::Focus(pane),
-        Reply::Opened { request, pane } => ServerMessage::Opened { request, pane },
+        Reply::Focus(window) => ServerMessage::Focus(window),
+        Reply::Opened { request, window } => ServerMessage::Opened { request, window },
         Reply::Result { call, result } => ServerMessage::Result { call, result },
     }
 }
@@ -369,14 +369,14 @@ async fn deliver(
     send(writer, message).await
 }
 
-fn forward(session: &SessionHandle, pane: PaneId, input: Input) -> bool {
+fn forward(session: &SessionHandle, window: WindowId, input: Input) -> bool {
     let state = session.state.borrow();
-    let Some(entry) = state.panes.get(&pane) else {
-        tracing::debug!(pane = %pane, "input dropped for a pane not in the layout");
+    let Some(entry) = state.windows.get(&window) else {
+        tracing::debug!(window = %window, "input dropped for a window not in the layout");
         return false;
     };
     if entry.input.send(input).is_err() {
-        tracing::debug!(pane = %pane, "input dropped because the PTY writer has stopped");
+        tracing::debug!(window = %window, "input dropped because the PTY writer has stopped");
         return false;
     }
     true
@@ -404,30 +404,31 @@ async fn sync(
             settling,
         )
         .await?;
-        sent.panes.retain(|pane, _| state.panes.contains_key(pane));
+        sent.windows
+            .retain(|window, _| state.windows.contains_key(window));
         sent.state = Some(Arc::clone(&state));
     }
-    for pane in state.layout.panes() {
-        let Some(entry) = state.panes.get(&pane) else {
+    for window in state.layout.windows() {
+        let Some(entry) = state.windows.get(&window) else {
             continue;
         };
-        let generation = entry.pane.generation();
+        let generation = entry.window.generation();
         if sent
-            .panes
-            .get(&pane)
+            .windows
+            .get(&window)
             .is_some_and(|(last, _)| *last == generation)
         {
             continue;
         }
         let (generation, seen, contents) = entry
-            .pane
-            .catch_up(sent.panes.get(&pane).map(|(_, seen)| seen));
-        sent.panes.insert(pane, (generation, seen));
+            .window
+            .catch_up(sent.windows.get(&window).map(|(_, seen)| seen));
+        sent.windows.insert(window, (generation, seen));
         let message = match contents {
             Contents::Update(contents) if contents.is_empty() => continue,
-            Contents::Update(contents) => ServerMessage::Update { pane, contents },
+            Contents::Update(contents) => ServerMessage::Update { window, contents },
             Contents::Snapshot(size, contents) => ServerMessage::Snapshot {
-                pane,
+                window,
                 cols: size.cols,
                 rows: size.rows,
                 contents,

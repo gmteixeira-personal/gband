@@ -51,6 +51,9 @@ CAPABILITY_TERMS = {
         (r"\| float \|", "| floating |"),
         (r"\| pane \|", "| tiled |"),
     ],
+    "session-server": [
+        (r"without `GBAND_TEST_SOCKET`(?: or `GBAND_PANE`)?,", "without `GBAND_TEST_SOCKET` or `GBAND_PANE`,"),
+    ],
 }
 
 ALL_FLOATS = {"plugin-windows"}
@@ -74,6 +77,7 @@ PLUGIN_WINDOW_NAMES = [
     (r"`WindowTitle`", "`PluginWindowTitle`"),
     (r"`Window`", "`PluginWindow`"),
     (r"`window`", "`plugin_window`"),
+    (r'"Window(CursorLine|Border|Title)?"', '"PluginWindow\\1"'),
 ]
 
 BARE_PLUGIN_WINDOW = [
@@ -239,7 +243,12 @@ def rename_main():
 def check():
     for path in sorted(MAIN.glob("*/spec.md")):
         capability = path.parent.name
+        removed = False
         for number, line in enumerate(path.read_text().splitlines(), 1):
+            if line.startswith("### Requirement:"):
+                removed = line.startswith("### Requirement: Removed pane names")
+            if removed or not re.search(r"pane", line, re.IGNORECASE):
+                continue
             if rename(line, capability) != line:
                 print(f"{path.relative_to(ROOT)}:{number}: {line.strip()[:100]}")
 

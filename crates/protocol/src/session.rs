@@ -56,6 +56,6 @@ impl TryFrom<String> for SessionName {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionSummary {
     pub name: SessionName,
-    pub panes: u32,
+    pub windows: u32,
     pub clients: u32,
 }

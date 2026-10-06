@@ -252,7 +252,7 @@ mod tests {
         let (_watcher, rx) = watched(&dir);
         fs::write(
             modules.join("keys.lua"),
-            "gband.bind('alt+k', gband.action.focus_pane_up)",
+            "gband.bind('alt+k', gband.action.focus_window_up)",
         )
         .unwrap();
         let config = loop {

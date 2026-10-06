@@ -7,20 +7,20 @@ use gband_core::action::Action;
 use gband_core::geometry::Size;
 use gband_core::input::{Key, KeyCode, Modifiers};
 use gband_core::layout::{
-    BandId, Direction, Layout, LayoutOptions, PaneContent, PaneHeight, PaneId, Program, Proportion,
-    SessionAction, Step, Vertical, Weight,
+    BandId, Direction, Layout, LayoutOptions, Program, Proportion, SessionAction, Step, Vertical,
+    Weight, WindowContent, WindowHeight, WindowId,
 };
 use gband_core::view::ViewAction;
-use gband_lua::{BandState, Config, Dispatch, Outcome, PaneInput, ViewState};
+use gband_lua::{BandState, Config, Dispatch, Outcome, ViewState, WindowInput};
 use mlua::Table;
 
 const AREA: Size = Size::new(80, 24);
 
-fn opened(layout: &mut Layout, band: usize, after: Option<PaneId>) -> PaneId {
-    let pane = layout.allocate_pane();
+fn opened(layout: &mut Layout, band: usize, after: Option<WindowId>) -> WindowId {
+    let window = layout.allocate_window();
     let id = layout.bands()[band].id;
-    layout.open(pane, id, after, None, &LayoutOptions::default());
-    pane
+    layout.open(window, id, after, None, &LayoutOptions::default());
+    window
 }
 
 fn two_bands() -> Layout {
@@ -31,7 +31,7 @@ fn two_bands() -> Layout {
     layout
 }
 
-fn state(layout: Layout, band: u32, pane: Option<u32>, table: &str) -> ViewState {
+fn state(layout: Layout, band: u32, window: Option<u32>, table: &str) -> ViewState {
     let count = layout.bands().len() as u32;
     ViewState {
         table: table.to_owned(),
@@ -40,7 +40,7 @@ fn state(layout: Layout, band: u32, pane: Option<u32>, table: &str) -> ViewState
             index: 1,
             count,
         },
-        pane,
+        window,
         width: 80,
         layout: Arc::new(layout),
         area: AREA,
@@ -87,22 +87,22 @@ fn read_the_layout() {
     let options = LayoutOptions::default();
     let band = layout.bands()[0].id;
     let (p1, p2, p3) = (
-        layout.allocate_pane(),
-        layout.allocate_pane(),
-        layout.allocate_pane(),
+        layout.allocate_window(),
+        layout.allocate_window(),
+        layout.allocate_window(),
     );
     layout.open(p1, band, None, None, &options);
     layout.open(p2, band, Some(p1), Some(Proportion::ONE_THIRD), &options);
     layout.open(p3, band, Some(p2), None, &options);
     for action in [
         SessionAction::ConsumeOrExpel {
-            pane: p3,
+            window: p3,
             direction: Direction::Left,
         },
         SessionAction::ToggleFullWidth(p2),
         SessionAction::SetHeight {
-            pane: p2,
-            height: PaneHeight::Fixed(10),
+            window: p2,
+            height: WindowHeight::Fixed(10),
         },
     ] {
         layout.apply(action, AREA, &options);
@@ -120,8 +120,8 @@ fn read_the_layout() {
           parts[#parts + 1] = "band " .. band.id
           for _, column in ipairs(band.columns) do
             parts[#parts + 1] = string.format("%.4f %s", column.width, tostring(column.full_width))
-            for _, pane in ipairs(column.panes) do
-              parts[#parts + 1] = string.format("%d %s %s %s", pane.id, tostring(pane.rows), tostring(pane.weight), tostring(pane.window))
+            for _, window in ipairs(column.windows) do
+              parts[#parts + 1] = string.format("%d %s %s %s", window.id, tostring(window.rows), tostring(window.weight), tostring(window.plugin_window))
             end
           end
         end
@@ -157,8 +157,8 @@ fn read_the_view() {
     let (_scratch, config) = loaded_with("view", "", state(two_bands(), 1, Some(2), "prefix"));
     let view: Table = eval(&config, "return gband.view()");
     assert_eq!(view.get::<u32>("band").unwrap(), 1);
-    assert_eq!(view.get::<Option<u32>>("pane").unwrap(), Some(2));
-    assert_eq!(view.get::<Option<u32>>("window").unwrap(), None);
+    assert_eq!(view.get::<Option<u32>>("window").unwrap(), Some(2));
+    assert_eq!(view.get::<Option<u32>>("plugin_window").unwrap(), None);
     assert_eq!(view.get::<String>("table").unwrap(), "prefix");
     assert_eq!(view.get::<u16>("cols").unwrap(), 80);
     assert_eq!(view.get::<u16>("rows").unwrap(), 23);
@@ -169,13 +169,13 @@ fn read_the_view() {
 fn with_floating() -> Layout {
     let mut layout = two_bands();
     let options = LayoutOptions::default();
-    let floating = layout.allocate_pane();
+    let floating = layout.allocate_window();
     layout.open_floating(floating, BandId(1), None, AREA, &options);
-    let (pane, col, row) = (floating, 50, 3);
-    let height = PaneHeight::Fixed(10);
-    layout.apply(SessionAction::SetHeight { pane, height }, AREA, &options);
+    let (window, col, row) = (floating, 50, 3);
+    let height = WindowHeight::Fixed(10);
+    layout.apply(SessionAction::SetHeight { window, height }, AREA, &options);
     layout.apply(
-        SessionAction::SetPosition { pane, col, row },
+        SessionAction::SetPosition { window, col, row },
         AREA,
         &options,
     );
@@ -183,9 +183,9 @@ fn with_floating() -> Layout {
 }
 
 #[test]
-fn read_a_floating_pane() {
+fn read_a_floating_window() {
     let layout = with_floating();
-    assert_eq!(layout.floating(PaneId(4)).unwrap().col, 40);
+    assert_eq!(layout.floating(WindowId(4)).unwrap().col, 40);
     let (_scratch, config) = loaded_with("layout-floating", "", state(layout, 1, Some(1), "root"));
     let summary: String = eval(
         &config,
@@ -193,7 +193,7 @@ fn read_a_floating_pane() {
         local parts = {}
         for _, band in ipairs(gband.layout().bands) do
           for _, f in ipairs(band.floating) do
-            parts[#parts + 1] = string.format("%d %.1f %s %d %d %d %s", f.id, f.width, tostring(f.full_width), f.rows, f.col, f.row, tostring(f.window))
+            parts[#parts + 1] = string.format("%d %.1f %s %d %d %d %s", f.id, f.width, tostring(f.full_width), f.rows, f.col, f.row, tostring(f.plugin_window))
           end
           parts[#parts + 1] = "|"
         end
@@ -211,27 +211,27 @@ fn floating_focus() {
         state(with_floating(), 1, Some(4), "root"),
     );
     let view: Table = eval(&config, "return gband.view()");
-    assert_eq!(view.get::<Option<u32>>("pane").unwrap(), Some(4));
+    assert_eq!(view.get::<Option<u32>>("window").unwrap(), Some(4));
     assert!(view.get::<bool>("floating").unwrap());
 }
 
 #[test]
-fn open_a_floating_pane() {
+fn open_a_floating_window() {
     let floating = |band| {
-        session(SessionAction::OpenPane {
+        session(SessionAction::OpenWindow {
             band: BandId(band),
             after: None,
             width: None,
             floating: true,
             focus: true,
-            content: PaneContent::Program(None),
+            content: WindowContent::Program(None),
         })
     };
     assert_eq!(
         dispatched(
             "open-floating",
             state(two_bands(), 1, Some(1), "root"),
-            "gband.action.open_pane({ floating = true })"
+            "gband.action.open_window({ floating = true })"
         ),
         [floating(1)]
     );
@@ -239,7 +239,7 @@ fn open_a_floating_pane() {
         dispatched(
             "open-floating-band",
             state(two_bands(), 1, Some(1), "root"),
-            "gband.action.open_pane({ band = 2, floating = true })"
+            "gband.action.open_window({ band = 2, floating = true })"
         ),
         [floating(2)]
     );
@@ -247,11 +247,11 @@ fn open_a_floating_pane() {
         dispatched(
             "open-tiled",
             state(two_bands(), 1, Some(1), "root"),
-            "gband.action.open_pane({ after = 1, floating = false })"
+            "gband.action.open_window({ after = 1, floating = false })"
         ),
         [session(SessionAction::open(
             BandId(1),
-            Some(PaneId(1)),
+            Some(WindowId(1)),
             None
         ))]
     );
@@ -262,79 +262,79 @@ fn floating_with_after() {
     failed(
         "floating-after",
         state(two_bands(), 1, Some(1), "root"),
-        "gband.action.open_pane({ after = 1, floating = true })",
+        "gband.action.open_window({ after = 1, floating = true })",
         "after",
     );
     failed(
         "floating-not-boolean",
         state(two_bands(), 1, Some(1), "root"),
-        "gband.action.open_pane({ floating = 'yes' })",
+        "gband.action.open_window({ floating = 'yes' })",
         "floating",
     );
 }
 
 #[test]
-fn open_after_a_floating_pane() {
+fn open_after_a_floating_window() {
     failed(
         "open-after-floating",
         state(with_floating(), 1, Some(1), "root"),
-        "gband.action.open_pane({ after = 4 })",
+        "gband.action.open_window({ after = 4 })",
         "4",
     );
 }
 
 #[test]
-fn tile_a_named_pane_after_a_named_pane() {
+fn tile_a_named_window_after_a_named_window() {
     assert_eq!(
         dispatched(
             "tile-after",
             state(with_floating(), 1, Some(1), "root"),
-            "gband.action.toggle_pane_floating({ pane = 4, after = 1 })"
+            "gband.action.toggle_window_floating({ window = 4, after = 1 })"
         ),
         [session(SessionAction::ToggleFloating {
-            pane: PaneId(4),
-            after: Some(PaneId(1)),
+            window: WindowId(4),
+            after: Some(WindowId(1)),
         })]
     );
     assert_eq!(
         dispatched(
             "tile-default",
             state(with_floating(), 1, Some(1), "root"),
-            "gband.action.toggle_pane_floating({ pane = 4 })"
+            "gband.action.toggle_window_floating({ window = 4 })"
         ),
         [session(SessionAction::ToggleFloating {
-            pane: PaneId(4),
+            window: WindowId(4),
             after: None,
         })]
     );
 }
 
 #[test]
-fn tile_after_a_pane_of_another_band() {
+fn tile_after_a_window_of_another_band() {
     failed(
         "tile-other-band",
         state(with_floating(), 1, Some(1), "root"),
-        "gband.action.toggle_pane_floating({ pane = 4, after = 3 })",
+        "gband.action.toggle_window_floating({ window = 4, after = 3 })",
         "3",
     );
     failed(
-        "tile-without-pane",
+        "tile-without-window",
         state(with_floating(), 1, Some(1), "root"),
-        "gband.action.toggle_pane_floating({ after = 1 })",
-        "pane",
+        "gband.action.toggle_window_floating({ after = 1 })",
+        "window",
     );
 }
 
 #[test]
-fn place_a_floating_pane() {
+fn place_a_floating_window() {
     assert_eq!(
         dispatched(
             "set-position",
             state(with_floating(), 1, Some(1), "root"),
-            "gband.pane.set_position(4, { col = 10, row = 2 })"
+            "gband.window.set_position(4, { col = 10, row = 2 })"
         ),
         [session(SessionAction::SetPosition {
-            pane: PaneId(4),
+            window: WindowId(4),
             col: 10,
             row: 2,
         })]
@@ -346,31 +346,35 @@ fn set_position_errors() {
     for (name, code, mentions) in [
         (
             "tiled",
-            "gband.pane.set_position(1, { col = 0, row = 0 })",
-            "pane 1",
+            "gband.window.set_position(1, { col = 0, row = 0 })",
+            "window 1",
         ),
-        ("missing", "gband.pane.set_position(4, { col = 4 })", "row"),
+        (
+            "missing",
+            "gband.window.set_position(4, { col = 4 })",
+            "row",
+        ),
         (
             "unknown",
-            "gband.pane.set_position(4, { col = 4, row = 1, z = 2 })",
+            "gband.window.set_position(4, { col = 4, row = 1, z = 2 })",
             "col",
         ),
         (
             "negative",
-            "gband.pane.set_position(4, { col = -1, row = 1 })",
+            "gband.window.set_position(4, { col = -1, row = 1 })",
             "col",
         ),
         (
             "fraction",
-            "gband.pane.set_position(4, { col = 1.5, row = 1 })",
+            "gband.window.set_position(4, { col = 1.5, row = 1 })",
             "col",
         ),
         (
             "absent",
-            "gband.pane.set_position(9, { col = 1, row = 1 })",
+            "gband.window.set_position(9, { col = 1, row = 1 })",
             "9",
         ),
-        ("not-a-table", "gband.pane.set_position(4, 3)", "col"),
+        ("not-a-table", "gband.window.set_position(4, 3)", "col"),
     ] {
         failed(
             &format!("set-position-{name}"),
@@ -384,8 +388,8 @@ fn set_position_errors() {
 #[test]
 fn view_of_the_empty_band() {
     let (_scratch, config) = loaded_with("view-empty", "", state(two_bands(), 3, None, "root"));
-    let pane: Option<u32> = eval(&config, "return gband.view().pane");
-    assert_eq!(pane, None);
+    let window: Option<u32> = eval(&config, "return gband.view().window");
+    assert_eq!(window, None);
 }
 
 #[test]
@@ -401,7 +405,7 @@ fn state_as_of_the_call() {
     let (_scratch, config) = loaded_with("as-of", JOB, state(two_bands(), 1, Some(1), "root"));
     let outcome = run_job(
         &config,
-        "gband.action.focus_column_right()\nseen = gband.view().pane",
+        "gband.action.focus_column_right()\nseen = gband.view().window",
     );
     clean(&outcome);
     assert_eq!(global::<u32>(&config, "seen"), 1);
@@ -412,14 +416,14 @@ fn state_as_of_the_call() {
 }
 
 #[test]
-fn close_a_named_pane() {
+fn close_a_named_window() {
     assert_eq!(
         dispatched(
             "close-named",
             state(two_bands(), 1, Some(2), "root"),
-            "gband.action.close_pane({ pane = 1 })"
+            "gband.action.close_window({ window = 1 })"
         ),
-        [session(SessionAction::ClosePane(PaneId(1)))]
+        [session(SessionAction::CloseWindow(WindowId(1)))]
     );
 }
 
@@ -429,9 +433,9 @@ fn target_overrides_the_view() {
         dispatched(
             "target-overrides",
             state(two_bands(), 1, Some(2), "root"),
-            "gband.action.cycle_column_width({ pane = 1 })"
+            "gband.action.cycle_column_width({ window = 1 })"
         ),
-        [session(SessionAction::CycleWidth(PaneId(1)))]
+        [session(SessionAction::CycleWidth(WindowId(1)))]
     );
 }
 
@@ -441,104 +445,110 @@ fn target_on_the_empty_band() {
         dispatched(
             "target-empty",
             state(two_bands(), 3, None, "root"),
-            "gband.action.close_pane({ pane = 1 })"
+            "gband.action.close_window({ window = 1 })"
         ),
-        [session(SessionAction::ClosePane(PaneId(1)))]
+        [session(SessionAction::CloseWindow(WindowId(1)))]
     );
 }
 
 #[test]
-fn every_pane_action_takes_a_target() {
+fn every_window_action_takes_a_target() {
     let expected = [
-        ("close_pane", SessionAction::ClosePane(PaneId(1))),
+        ("close_window", SessionAction::CloseWindow(WindowId(1))),
         (
             "consume_or_expel_left",
             SessionAction::ConsumeOrExpel {
-                pane: PaneId(1),
+                window: WindowId(1),
                 direction: Direction::Left,
             },
         ),
         (
             "consume_or_expel_right",
             SessionAction::ConsumeOrExpel {
-                pane: PaneId(1),
+                window: WindowId(1),
                 direction: Direction::Right,
             },
         ),
-        ("cycle_column_width", SessionAction::CycleWidth(PaneId(1))),
+        ("cycle_column_width", SessionAction::CycleWidth(WindowId(1))),
         (
             "toggle_full_width",
-            SessionAction::ToggleFullWidth(PaneId(1)),
+            SessionAction::ToggleFullWidth(WindowId(1)),
         ),
         (
             "grow_column_width",
             SessionAction::StepWidth {
-                pane: PaneId(1),
+                window: WindowId(1),
                 step: Step::Grow,
             },
         ),
         (
             "shrink_column_width",
             SessionAction::StepWidth {
-                pane: PaneId(1),
+                window: WindowId(1),
                 step: Step::Shrink,
             },
         ),
         (
-            "grow_pane_height",
+            "grow_window_height",
             SessionAction::StepHeight {
-                pane: PaneId(1),
+                window: WindowId(1),
                 step: Step::Grow,
             },
         ),
         (
-            "shrink_pane_height",
+            "shrink_window_height",
             SessionAction::StepHeight {
-                pane: PaneId(1),
+                window: WindowId(1),
                 step: Step::Shrink,
             },
         ),
-        ("reset_pane_height", SessionAction::ResetHeight(PaneId(1))),
+        (
+            "reset_window_height",
+            SessionAction::ResetHeight(WindowId(1)),
+        ),
         (
             "move_column_left",
             SessionAction::MoveColumn {
-                pane: PaneId(1),
+                window: WindowId(1),
                 direction: Direction::Left,
             },
         ),
         (
             "move_column_right",
             SessionAction::MoveColumn {
-                pane: PaneId(1),
+                window: WindowId(1),
                 direction: Direction::Right,
             },
         ),
         (
-            "move_pane_down",
-            SessionAction::MovePane {
-                pane: PaneId(1),
+            "move_window_down",
+            SessionAction::MoveWindow {
+                window: WindowId(1),
                 direction: Vertical::Down,
             },
         ),
         (
-            "move_pane_up",
-            SessionAction::MovePane {
-                pane: PaneId(1),
+            "move_window_up",
+            SessionAction::MoveWindow {
+                window: WindowId(1),
                 direction: Vertical::Up,
             },
         ),
     ];
-    let (_scratch, config) =
-        loaded_with("pane-actions", JOB, state(two_bands(), 2, Some(3), "root"));
+    let (_scratch, config) = loaded_with(
+        "window-actions",
+        JOB,
+        state(two_bands(), 2, Some(3), "root"),
+    );
     for (name, action) in expected {
-        let outcome = run_job(&config, &format!("gband.action.{name}({{ pane = 1 }})"));
+        let outcome = run_job(&config, &format!("gband.action.{name}({{ window = 1 }})"));
         clean(&outcome);
         assert_eq!(outcome.dispatched, [session(action)], "{name}");
     }
 }
 
 #[test]
-fn open_pane_targets() {
+fn open_window_targets() {
     let (_scratch, config) =
         loaded_with("open-targets", JOB, state(two_bands(), 1, Some(1), "root"));
     for (code, band, after) in [
@@ -546,13 +556,13 @@ fn open_pane_targets() {
         ("{ after = 3 }", 2, Some(3)),
         ("{ band = 1, after = 1 }", 1, Some(1)),
     ] {
-        let outcome = run_job(&config, &format!("gband.action.open_pane({code})"));
+        let outcome = run_job(&config, &format!("gband.action.open_window({code})"));
         clean(&outcome);
         assert_eq!(
             outcome.dispatched,
             [session(SessionAction::open(
                 BandId(band),
-                after.map(PaneId),
+                after.map(WindowId),
                 None
             ))],
             "{code}"
@@ -561,16 +571,16 @@ fn open_pane_targets() {
 }
 
 #[test]
-fn send_prefix_to_a_named_pane() {
+fn send_prefix_to_a_named_window() {
     assert_eq!(
         dispatched(
             "prefix-target",
             state(two_bands(), 1, Some(2), "root"),
-            "gband.action.send_prefix({ pane = 1 })"
+            "gband.action.send_prefix({ window = 1 })"
         ),
         [Dispatch::Input {
-            pane: PaneId(1),
-            input: PaneInput::Key(Key::new(KeyCode::Char(' '), Modifiers::CTRL)),
+            window: WindowId(1),
+            input: WindowInput::Key(Key::new(KeyCode::Char(' '), Modifiers::CTRL)),
         }]
     );
 }
@@ -579,19 +589,19 @@ fn send_prefix_to_a_named_pane() {
 fn bad_targets_are_errors() {
     let view = || state(two_bands(), 1, Some(1), "root");
     for (index, (code, mentions)) in [
-        ("gband.action.close_pane({ pane = 99 })", "99"),
-        ("gband.action.close_pane(1)", "table"),
-        ("gband.action.close_pane({ band = 1 })", "band"),
-        ("gband.action.close_pane({})", "pane"),
-        ("gband.action.open_pane({ band = 9 })", "9"),
+        ("gband.action.close_window({ window = 99 })", "99"),
+        ("gband.action.close_window(1)", "table"),
+        ("gband.action.close_window({ band = 1 })", "band"),
+        ("gband.action.close_window({})", "window"),
+        ("gband.action.open_window({ band = 9 })", "9"),
         (
-            "gband.action.open_pane({ band = 1, after = 3 })",
+            "gband.action.open_window({ band = 1, after = 3 })",
             "not in band 1",
         ),
-        ("gband.action.open_pane({ pane = 1 })", "pane"),
-        ("gband.action.open_pane({})", "band"),
+        ("gband.action.open_window({ window = 1 })", "window"),
+        ("gband.action.open_window({})", "band"),
         (
-            "gband.action.focus_column_left({ pane = 1 })",
+            "gband.action.focus_column_left({ window = 1 })",
             "focus_column_left",
         ),
         ("gband.action.detach({})", "detach"),
@@ -604,10 +614,10 @@ fn bad_targets_are_errors() {
 }
 
 #[test]
-fn unknown_pane_is_an_error_at_the_line() {
-    let scratch = Scratch::new("unknown-pane");
+fn unknown_window_is_an_error_at_the_line() {
+    let scratch = Scratch::new("unknown-window");
     let path = scratch.write(
-        "\n\n\n\n\ngband.bind('alt+q', function() gband.action.close_pane({ pane = 99 }) end)\n",
+        "\n\n\n\n\ngband.bind('alt+q', function() gband.action.close_window({ window = 99 }) end)\n",
     );
     let config = scratch.loaded();
     clean(
@@ -627,7 +637,7 @@ fn unknown_pane_is_an_error_at_the_line() {
     let [error] = outcome.errors.as_slice() else {
         panic!("{:?}", outcome.errors);
     };
-    assert_error_at(error, &path, 6, "pane 99");
+    assert_error_at(error, &path, 6, "window 99");
 }
 
 #[test]
@@ -636,17 +646,17 @@ fn focus_and_view_by_number() {
         dispatched(
             "focus-view",
             state(two_bands(), 1, Some(1), "root"),
-            "gband.pane.focus(3)\ngband.band.view(2)"
+            "gband.window.focus(3)\ngband.band.view(2)"
         ),
         [
-            Dispatch::Action(Action::View(ViewAction::FocusPane(PaneId(3)))),
+            Dispatch::Action(Action::View(ViewAction::FocusWindow(WindowId(3)))),
             Dispatch::Action(Action::View(ViewAction::ViewBand(BandId(2)))),
         ]
     );
     failed(
         "focus-unknown",
         state(two_bands(), 1, Some(1), "root"),
-        "gband.pane.focus(9)",
+        "gband.window.focus(9)",
         "9",
     );
     failed(
@@ -663,22 +673,22 @@ fn exact_sizes() {
         dispatched(
             "sizes",
             state(two_bands(), 1, Some(1), "root"),
-            "gband.pane.set_width(1, 0.4)\n\
-             gband.pane.set_height(1, { rows = 8 })\n\
-             gband.pane.set_height(2, { weight = 1.5 })"
+            "gband.window.set_width(1, 0.4)\n\
+             gband.window.set_height(1, { rows = 8 })\n\
+             gband.window.set_height(2, { weight = 1.5 })"
         ),
         [
             session(SessionAction::SetWidth {
-                pane: PaneId(1),
+                window: WindowId(1),
                 width: Proportion::new(2, 5),
             }),
             session(SessionAction::SetHeight {
-                pane: PaneId(1),
-                height: PaneHeight::Fixed(8),
+                window: WindowId(1),
+                height: WindowHeight::Fixed(8),
             }),
             session(SessionAction::SetHeight {
-                pane: PaneId(2),
-                height: PaneHeight::Auto(Weight::new(3, 2)),
+                window: WindowId(2),
+                height: WindowHeight::Auto(Weight::new(3, 2)),
             }),
         ]
     );
@@ -687,17 +697,17 @@ fn exact_sizes() {
 #[test]
 fn bad_sizes_are_errors() {
     for (index, code) in [
-        "gband.pane.set_height(1, { rows = 8, weight = 1 })",
-        "gband.pane.set_height(1, {})",
-        "gband.pane.set_height(1, { rows = 0 })",
-        "gband.pane.set_height(1, { rows = 1.5 })",
-        "gband.pane.set_height(1, { weight = 0 })",
-        "gband.pane.set_height(1, { lines = 3 })",
-        "gband.pane.set_height(1, 8)",
-        "gband.pane.set_width(1, 0)",
-        "gband.pane.set_width(1, 10001)",
-        "gband.pane.set_width(1, 'half')",
-        "gband.pane.set_width(9, 0.5)",
+        "gband.window.set_height(1, { rows = 8, weight = 1 })",
+        "gband.window.set_height(1, {})",
+        "gband.window.set_height(1, { rows = 0 })",
+        "gband.window.set_height(1, { rows = 1.5 })",
+        "gband.window.set_height(1, { weight = 0 })",
+        "gband.window.set_height(1, { lines = 3 })",
+        "gband.window.set_height(1, 8)",
+        "gband.window.set_width(1, 0)",
+        "gband.window.set_width(1, 10001)",
+        "gband.window.set_width(1, 'half')",
+        "gband.window.set_width(9, 0.5)",
     ]
     .into_iter()
     .enumerate()
@@ -706,22 +716,22 @@ fn bad_sizes_are_errors() {
             &format!("bad-size-{index}"),
             state(two_bands(), 1, Some(1), "root"),
             code,
-            "gband.pane",
+            "gband.window",
         );
     }
 }
 
-fn keys(pane: u32, keys: &[Key]) -> Vec<Dispatch> {
+fn keys(window: u32, keys: &[Key]) -> Vec<Dispatch> {
     keys.iter()
         .map(|&key| Dispatch::Input {
-            pane: PaneId(pane),
-            input: PaneInput::Key(key),
+            window: WindowId(window),
+            input: WindowInput::Key(key),
         })
         .collect()
 }
 
 #[test]
-fn input_to_a_named_pane() {
+fn input_to_a_named_window() {
     let text: Vec<Key> = "echo hi"
         .chars()
         .map(|c| Key::plain(KeyCode::Char(c)))
@@ -731,7 +741,7 @@ fn input_to_a_named_pane() {
         dispatched(
             "send-text",
             state(two_bands(), 1, Some(2), "root"),
-            "gband.pane.send_text(1, 'echo hi\\n\\t')"
+            "gband.window.send_text(1, 'echo hi\\n\\t')"
         ),
         keys(1, &text)
     );
@@ -739,7 +749,7 @@ fn input_to_a_named_pane() {
         dispatched(
             "send-keys",
             state(two_bands(), 1, Some(2), "root"),
-            "gband.pane.send_keys(1, 'ctrl+c')\ngband.pane.send_keys(2, { 'ctrl+space', 'up' })"
+            "gband.window.send_keys(1, 'ctrl+c')\ngband.window.send_keys(2, { 'ctrl+space', 'up' })"
         ),
         [
             keys(1, &[key("ctrl+c")]),
@@ -751,11 +761,11 @@ fn input_to_a_named_pane() {
         dispatched(
             "paste",
             state(two_bands(), 1, Some(2), "root"),
-            "gband.pane.paste(1, 'a b')"
+            "gband.window.paste(1, 'a b')"
         ),
         [Dispatch::Input {
-            pane: PaneId(1),
-            input: PaneInput::Paste("a b".to_owned()),
+            window: WindowId(1),
+            input: WindowInput::Paste("a b".to_owned()),
         }]
     );
 }
@@ -763,11 +773,11 @@ fn input_to_a_named_pane() {
 #[test]
 fn bad_input_is_an_error() {
     for (index, (code, mentions)) in [
-        ("gband.pane.send_keys(1, 'ctrl+shift+1')", "ctrl+shift+1"),
-        ("gband.pane.send_keys(1, { 'a', 5 })", "key name"),
-        ("gband.pane.send_text(1, 'a\\27b')", "U+001B"),
-        ("gband.pane.send_text(9, 'a')", "9"),
-        ("gband.pane.paste(1, 5)", "string"),
+        ("gband.window.send_keys(1, 'ctrl+shift+1')", "ctrl+shift+1"),
+        ("gband.window.send_keys(1, { 'a', 5 })", "key name"),
+        ("gband.window.send_text(1, 'a\\27b')", "U+001B"),
+        ("gband.window.send_text(9, 'a')", "9"),
+        ("gband.window.paste(1, 5)", "string"),
     ]
     .into_iter()
     .enumerate()
@@ -787,14 +797,14 @@ fn dispatch_order_follows_the_calls() {
         dispatched(
             "order",
             state(two_bands(), 1, Some(1), "root"),
-            "gband.pane.set_width(1, 1/3)\ngband.action.cycle_column_width({ pane = 1 })"
+            "gband.window.set_width(1, 1/3)\ngband.action.cycle_column_width({ window = 1 })"
         ),
         [
             session(SessionAction::SetWidth {
-                pane: PaneId(1),
+                window: WindowId(1),
                 width: Proportion::ONE_THIRD,
             }),
-            session(SessionAction::CycleWidth(PaneId(1))),
+            session(SessionAction::CycleWidth(WindowId(1))),
         ]
     );
 }
@@ -805,21 +815,21 @@ fn set_position_keeps_the_dispatch_order() {
         dispatched(
             "order-position",
             state(with_floating(), 1, Some(1), "root"),
-            "gband.action.move_column_right({ pane = 4 })\ngband.pane.set_position(4, { col = 1, row = 1 })\ngband.action.toggle_pane_floating({ pane = 4, after = 1 })"
+            "gband.action.move_column_right({ window = 4 })\ngband.window.set_position(4, { col = 1, row = 1 })\ngband.action.toggle_window_floating({ window = 4, after = 1 })"
         ),
         [
             session(SessionAction::MoveColumn {
-                pane: PaneId(4),
+                window: WindowId(4),
                 direction: Direction::Right,
             }),
             session(SessionAction::SetPosition {
-                pane: PaneId(4),
+                window: WindowId(4),
                 col: 1,
                 row: 1,
             }),
             session(SessionAction::ToggleFloating {
-                pane: PaneId(4),
-                after: Some(PaneId(1)),
+                window: WindowId(4),
+                after: Some(WindowId(1)),
             }),
         ]
     );
@@ -828,34 +838,34 @@ fn set_position_keeps_the_dispatch_order() {
 #[test]
 fn set_position_while_loading() {
     let scratch = Scratch::new("position-loading");
-    let path = scratch.write("\ngband.pane.set_position(1, { col = 0, row = 0 })\n");
+    let path = scratch.write("\ngband.window.set_position(1, { col = 0, row = 0 })\n");
     let error = scratch.load().map(|_| ()).unwrap_err();
     assert_error_at(&error, &path, 2, "binding function");
 }
 
 #[test]
-fn pane_control_while_loading() {
-    let scratch = Scratch::new("pane-loading");
-    let path = scratch.write("\n\ngband.pane.focus(1)\n");
+fn window_control_while_loading() {
+    let scratch = Scratch::new("window-loading");
+    let path = scratch.write("\n\ngband.window.focus(1)\n");
     let error = scratch.load().map(|_| ()).unwrap_err();
     assert_error_at(&error, &path, 3, "binding function");
 }
 
 #[test]
-fn spawn_after_a_named_pane() {
+fn spawn_after_a_named_window() {
     assert_eq!(
         dispatched(
             "spawn-after",
             state(two_bands(), 1, Some(2), "root"),
             "gband.spawn({ cmd = 'fish', after = 1 })"
         ),
-        [session(SessionAction::OpenPane {
+        [session(SessionAction::OpenWindow {
             band: BandId(1),
-            after: Some(PaneId(1)),
+            after: Some(WindowId(1)),
             width: None,
             floating: false,
             focus: true,
-            content: PaneContent::Program(Some(Program::CommandLine("fish".to_owned()))),
+            content: WindowContent::Program(Some(Program::CommandLine("fish".to_owned()))),
         })]
     );
 }

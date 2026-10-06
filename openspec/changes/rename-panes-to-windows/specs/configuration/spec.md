@@ -190,7 +190,7 @@ A key list of more than two keys, two keys whose first is not `prefix`, an inval
 - **WHEN** a binding function calls `gband.spawn({ cmd = { "htop", "-d", "10" } })`
 - **THEN** a new window runs `htop` with the arguments `-d` and `10`
 
-#### Scenario: Spawn after a named pane
+#### Scenario: Spawn after a named window
 - **WHEN** band 1 holds columns with windows 1 and 2, window 2 is focused, and a binding function calls `gband.spawn({ cmd = "fish", after = 1 })`
 - **THEN** band 1 holds window 1's column, a new column running `fish`, and window 2's column, in that order
 

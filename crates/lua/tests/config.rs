@@ -188,9 +188,9 @@ fn defaults_reproduce_the_built_in_behaviour() {
         (char_key('i'), Action::View(ViewAction::BandUp)),
         (
             ("prefix", Chord::Key(Key::plain(KeyCode::Enter))),
-            Action::Session(SessionCommand::OpenPane),
+            Action::Session(SessionCommand::OpenWindow),
         ),
-        (char_key('q'), Action::Session(SessionCommand::ClosePane)),
+        (char_key('q'), Action::Session(SessionCommand::CloseWindow)),
         (
             char_key('['),
             Action::Session(SessionCommand::ConsumeOrExpel(Direction::Left)),
@@ -236,11 +236,11 @@ fn defaults_reproduce_the_built_in_behaviour() {
         ),
         (
             ctrl_key(KeyCode::Char('j')),
-            Action::Session(SessionCommand::MovePane(Vertical::Down)),
+            Action::Session(SessionCommand::MoveWindow(Vertical::Down)),
         ),
         (
             ctrl_key(KeyCode::Char('k')),
-            Action::Session(SessionCommand::MovePane(Vertical::Up)),
+            Action::Session(SessionCommand::MoveWindow(Vertical::Up)),
         ),
         (
             ctrl_key(KeyCode::Left),
@@ -252,11 +252,11 @@ fn defaults_reproduce_the_built_in_behaviour() {
         ),
         (
             ctrl_key(KeyCode::Down),
-            Action::Session(SessionCommand::MovePane(Vertical::Down)),
+            Action::Session(SessionCommand::MoveWindow(Vertical::Down)),
         ),
         (
             ctrl_key(KeyCode::Up),
-            Action::Session(SessionCommand::MovePane(Vertical::Up)),
+            Action::Session(SessionCommand::MoveWindow(Vertical::Up)),
         ),
         (char_key('D'), Action::Client(ClientAction::Detach)),
         (
@@ -313,27 +313,27 @@ fn every_action_is_named() {
     let mut expected = [
         "focus_column_left",
         "focus_column_right",
-        "focus_pane_down",
-        "focus_pane_up",
+        "focus_window_down",
+        "focus_window_up",
         "focus_band_down",
         "focus_band_up",
         "switch_focus_floating_tiled",
-        "open_pane",
-        "close_pane",
+        "open_window",
+        "close_window",
         "consume_or_expel_left",
         "consume_or_expel_right",
         "move_column_left",
         "move_column_right",
-        "move_pane_down",
-        "move_pane_up",
-        "toggle_pane_floating",
+        "move_window_down",
+        "move_window_up",
+        "toggle_window_floating",
         "cycle_column_width",
         "toggle_full_width",
         "grow_column_width",
         "shrink_column_width",
-        "grow_pane_height",
-        "shrink_pane_height",
-        "reset_pane_height",
+        "grow_window_height",
+        "shrink_window_height",
+        "reset_window_height",
         "detach",
         "send_prefix",
     ];
@@ -349,7 +349,7 @@ fn built_in_descriptions() {
         &config,
         "for _, action in ipairs(gband.action.list()) do if action.name == 'cycle_column_width' then return action.desc end end",
     );
-    assert_eq!(desc, "cycle the width of the pane's column");
+    assert_eq!(desc, "cycle the width of the window's column");
 }
 
 #[test]
@@ -368,7 +368,7 @@ fn name_and_action_agree() {
 fn toggle_floating_by_name() {
     let config = loaded(
         "toggle-floating",
-        "gband.bind('alt+v', gband.action.toggle_pane_floating)\ngband.bind('alt+s', gband.action.switch_focus_floating_tiled)",
+        "gband.bind('alt+v', gband.action.toggle_window_floating)\ngband.bind('alt+s', gband.action.switch_focus_floating_tiled)",
     );
     assert_eq!(
         action_of(&config, direct("alt+v")),
@@ -496,7 +496,7 @@ fn direct_binding() {
 fn default_prefix() {
     let config = loaded(
         "default-prefix",
-        "gband.bind('prefix q', gband.action.close_pane)",
+        "gband.bind('prefix q', gband.action.close_window)",
     );
     assert_eq!(config.options.prefix, key("ctrl+space"));
     assert_eq!(
@@ -504,7 +504,7 @@ fn default_prefix() {
         [(
             "prefix".to_owned(),
             Chord::Key(key("q")),
-            Action::Session(SessionCommand::ClosePane)
+            Action::Session(SessionCommand::CloseWindow)
         )]
     );
 }
@@ -523,7 +523,7 @@ fn override_a_default() {
     assert!(
         actions(&config)
             .iter()
-            .all(|(_, _, action)| *action != Action::Session(SessionCommand::ClosePane))
+            .all(|(_, _, action)| *action != Action::Session(SessionCommand::CloseWindow))
     );
 }
 
@@ -596,7 +596,7 @@ fn not_an_action() {
 
 #[test]
 fn action_during_evaluation() {
-    let (path, error) = failure("eval-action", "\n\n\n\n\n\ngband.action.close_pane()");
+    let (path, error) = failure("eval-action", "\n\n\n\n\n\ngband.action.close_window()");
     assert_failure_at(&error, &path, 7, "binding function");
 }
 

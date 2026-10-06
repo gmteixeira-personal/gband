@@ -29,7 +29,7 @@ Changing the returned table SHALL NOT change the layout. Calling `gband.layout()
 - **WHEN** line 4 of `user/init.lua` calls `gband.layout()`
 - **THEN** loading fails with an error at `user/init.lua` line 4
 
-#### Scenario: Floating pane
+#### Scenario: Floating window
 - **WHEN** the screen area is 80×24 and band 1 holds window 1 in a column and floating window 2 with `col` 50, `row` 3, width 1/2, full width off and `rows` 10, and a binding function calls `gband.layout()`
 - **THEN** its first band's `floating` is `{ { id = 2, width = 0.5, full_width = false, rows = 10, col = 40, row = 3 } }`
 
@@ -44,7 +44,7 @@ Changing the returned table SHALL NOT change the layout. Calling `gband.layout()
 
 Calling it while the configuration loads SHALL be an error at the line of the call.
 
-#### Scenario: Focused pane
+#### Scenario: Focused window
 - **WHEN** the client views band 1 with window 2 focused, its ribbon area is 80×23, and a binding in `prefix` calls `gband.view()`
 - **THEN** the result is `{ band = 1, window = 2, floating = false, table = "prefix", cols = 80, rows = 23 }`
 
@@ -83,7 +83,7 @@ A target passed to a view action or to `detach` SHALL be an error. Each of these
 
 Calling an action value with no target SHALL resolve it against the view, as the actions capability defines.
 
-#### Scenario: Close a named pane
+#### Scenario: Close a named window
 - **WHEN** windows 1 and 2 are open with window 2 focused and a binding function calls `gband.action.close_window({ window = 1 })`
 - **THEN** the client sends close window naming window 1
 - **AND** window 2 stays focused
@@ -97,7 +97,7 @@ Calling an action value with no target SHALL resolve it against the view, as the
 - **THEN** band 2 holds a new window running the user's shell
 - **AND** the client views band 2 with the new window focused
 
-#### Scenario: Unknown pane
+#### Scenario: Unknown window
 - **WHEN** line 6 of `user/init.lua` holds a binding function that calls `gband.action.close_window({ window = 99 })` and no window 99 exists, and the user presses its key
 - **THEN** the client shows an error at `user/init.lua` line 6 naming window 99
 - **AND** nothing is sent to the server
@@ -106,7 +106,7 @@ Calling an action value with no target SHALL resolve it against the view, as the
 - **WHEN** a binding function calls `gband.action.focus_column_left({ window = 1 })`
 - **THEN** the call raises an error and the view is unchanged
 
-#### Scenario: Open a floating pane
+#### Scenario: Open a floating window
 - **WHEN** the client views band 1 and a binding function calls `gband.action.open_window({ floating = true })`
 - **THEN** band 1's floating list ends with a new window running the user's shell
 - **AND** the client focuses it with the floating layer active
@@ -115,18 +115,18 @@ Calling an action value with no target SHALL resolve it against the view, as the
 - **WHEN** a binding function calls `gband.action.open_window({ after = 1, floating = true })`
 - **THEN** the call raises an error naming `after`
 
-#### Scenario: Tile a named pane after a named pane
+#### Scenario: Tile a named window after a named window
 - **WHEN** band 1 holds columns with windows 1 and 2 and floating window 3, and a binding function calls `gband.action.toggle_window_floating({ window = 3, after = 1 })`
 - **THEN** band 1 holds the columns of window 1, window 3 and window 2, in that order
 
-#### Scenario: Move a named pane
+#### Scenario: Move a named window
 - **WHEN** band 1 holds columns with windows 1 and 2, window 2 is focused, and a binding function calls `gband.action.move_column_right({ window = 1 })`
 - **THEN** band 1 holds the columns of window 2 and window 1, in that order, and window 2 stays focused
 
 ### Requirement: Focus and view by number
 `gband.window.focus(window)` SHALL dispatch a view action that focuses the named window, as the layout-view capability defines. `gband.band.view(band)` SHALL dispatch a view action that views the named band, as the layout-view capability defines. A number that names no window or band in the client's layout SHALL be an error at the line of the call.
 
-#### Scenario: Focus a pane in another band
+#### Scenario: Focus a window in another band
 - **WHEN** band 1 holds window 1, band 2 holds window 2, the client views band 1, and a binding function calls `gband.window.focus(2)`
 - **THEN** the client views band 2 with window 2 focused
 
@@ -158,7 +158,7 @@ A window number not in the client's layout, or an argument of the wrong type or 
 ### Requirement: Input to a named window
 `gband.window.send_keys(window, keys)` SHALL send each key, given as one key name or a list of key names as the configuration capability defines them, to the named window as a key press. `gband.window.send_text(window, text)` SHALL send each character of `text` to the named window as a key press of that character: a line feed or carriage return as Enter, and a tab as Tab. Any other control character SHALL be an error. `gband.window.paste(window, text)` SHALL send `text` to the named window as a paste. The server SHALL encode them as it encodes keys and pastes the user sends. These functions SHALL NOT change the active key table or run any binding. An invalid key name or a window number not in the client's layout SHALL be an error at the line of the call.
 
-#### Scenario: Run a command in another pane
+#### Scenario: Run a command in another window
 - **WHEN** windows 1 and 2 run shells, window 2 is focused, and a binding function calls `gband.window.send_text(1, "echo hi\n")`
 - **THEN** window 1 prints `hi`
 - **AND** window 2's screen is unchanged and window 2 stays focused
@@ -189,7 +189,7 @@ A window number not in the client's layout, or an argument of the wrong type or 
 ### Requirement: Place a floating window
 `gband.window.set_position(window, position)` SHALL dispatch set position naming the window, as the session-server capability defines it. The `position` argument SHALL be a table holding `col` and `row`, each an integer of at least 0. The box SHALL be placed as the floating-windows capability defines. A window number not in the client's layout, a window that is not floating in the client's layout, a missing or unknown field, or a value of the wrong type or out of range SHALL be an error at the line of the call.
 
-#### Scenario: Place a floating pane
+#### Scenario: Place a floating window
 - **WHEN** the screen area is 80×24, window 3 floats with a 40×12 box, and a binding function calls `gband.window.set_position(3, { col = 10, row = 2 })`
 - **THEN** window 3's box spans columns 10 to 49 and rows 2 to 13
 
@@ -197,7 +197,7 @@ A window number not in the client's layout, or an argument of the wrong type or 
 - **WHEN** the same binding function calls `gband.window.set_position(3, { col = 70, row = 2 })`
 - **THEN** window 3's box spans columns 40 to 79
 
-#### Scenario: Tiled pane
+#### Scenario: Tiled window
 - **WHEN** window 1 is tiled and a binding function calls `gband.window.set_position(1, { col = 0, row = 0 })`
 - **THEN** the call raises an error naming window 1
 

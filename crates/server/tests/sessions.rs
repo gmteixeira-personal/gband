@@ -9,8 +9,8 @@ use gband_protocol::{ClientMessage, ServerMessage, encode};
 
 const QUIET: Duration = Duration::from_millis(500);
 
-fn entry(name: &str, panes: u32, clients: u32) -> (String, u32, u32) {
-    (name.to_owned(), panes, clients)
+fn entry(name: &str, windows: u32, clients: u32) -> (String, u32, u32) {
+    (name.to_owned(), windows, clients)
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -58,7 +58,7 @@ async fn key_before_a_request_closes_the_connection() {
     let server = TestServer::start("key-first", &["/bin/sh"]).await;
     let (mut peer, _) = TestClient::accepted(&server.socket(), 80, 24).await;
     peer.send(&ClientMessage::Key {
-        pane: gband_core::layout::PaneId(1),
+        window: gband_core::layout::WindowId(1),
         key: Key::plain(KeyCode::Enter),
     })
     .await;
@@ -145,7 +145,7 @@ async fn killing_an_unknown_session_answers_no_such_session() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn opening_a_pane_sends_no_layout_to_another_session() {
+async fn opening_a_window_sends_no_layout_to_another_session() {
     let server = TestServer::start("layout-apart", &["/bin/sh"]).await;
     let mut play = server.attach_to("play", Path::new("/tmp"), 80, 24).await;
     let mut work = server.attach_to("work", Path::new("/tmp"), 80, 24).await;
@@ -155,7 +155,7 @@ async fn opening_a_pane_sends_no_layout_to_another_session() {
     let opened = work.open_after(first).await;
     assert!(play.pump(QUIET).await);
     assert_eq!(play.layout, before);
-    assert_eq!(play.panes().len(), 1);
+    assert_eq!(play.windows().len(), 1);
     assert!(work.layout.contains(opened));
 }
 
