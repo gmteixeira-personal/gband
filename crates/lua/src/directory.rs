@@ -74,30 +74,40 @@ pub fn defaults_file(dir: &Path, side: Side) -> PathBuf {
     dir.join("defaults").join(side.init_name())
 }
 
-pub fn prepare(dir: &Path) -> io::Result<()> {
-    fs::create_dir_all(dir.join("defaults"))?;
-    fs::create_dir_all(dir.join("user"))?;
-    write_defaults(dir, Side::Client)?;
-    write_defaults(dir, Side::Server)
+pub fn key_style_file(dir: &Path, style: &str) -> PathBuf {
+    dir.join("defaults")
+        .join("keystyle")
+        .join(format!("{style}.lua"))
 }
 
-fn write_defaults(dir: &Path, side: Side) -> io::Result<()> {
-    let defaults = defaults_file(dir, side);
-    let content = side.defaults();
-    match fs::read(&defaults) {
+pub fn prepare(dir: &Path) -> io::Result<()> {
+    fs::create_dir_all(dir.join("defaults").join("keystyle"))?;
+    fs::create_dir_all(dir.join("user"))?;
+    write_defaults(&defaults_file(dir, Side::Client), Side::Client.defaults())?;
+    for (style, content) in crate::KEY_STYLES {
+        write_defaults(&key_style_file(dir, style), content)?;
+    }
+    write_defaults(&defaults_file(dir, Side::Server), Side::Server.defaults())
+}
+
+fn write_defaults(defaults: &Path, content: &str) -> io::Result<()> {
+    match fs::read(defaults) {
         Ok(current) if current == content.as_bytes() => return Ok(()),
         Ok(_) => {}
         Err(error) if error.kind() == ErrorKind::NotFound => {}
         Err(error) => return Err(error),
     }
     static WRITES: AtomicU64 = AtomicU64::new(0);
-    let temporary = dir.join("defaults").join(format!(
-        ".{}.{}.{}",
-        side.init_name(),
+    let name = defaults
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let temporary = defaults.with_file_name(format!(
+        ".{name}.{}.{}",
         std::process::id(),
         WRITES.fetch_add(1, Ordering::Relaxed)
     ));
-    let written = fs::write(&temporary, content).and_then(|()| fs::rename(&temporary, &defaults));
+    let written = fs::write(&temporary, content).and_then(|()| fs::rename(&temporary, defaults));
     if written.is_err() {
         let _ = fs::remove_file(&temporary);
     }
@@ -215,7 +225,20 @@ mod tests {
                 side.defaults()
             );
         }
-        assert_eq!(entries(&dir.join("defaults")), ["init.lua", "server.lua"]);
+        for (style, content) in crate::KEY_STYLES {
+            assert_eq!(
+                fs::read_to_string(key_style_file(&dir, style)).unwrap(),
+                content
+            );
+        }
+        assert_eq!(
+            entries(&dir.join("defaults")),
+            ["init.lua", "keystyle", "server.lua"]
+        );
+        assert_eq!(
+            entries(&dir.join("defaults").join("keystyle")),
+            ["direct.lua", "modal.lua"]
+        );
         assert!(entries(&dir.join("user")).is_empty());
     }
 
@@ -234,8 +257,13 @@ mod tests {
         let scratch = Scratch::new("edited");
         let dir = scratch.dir();
         prepare(&dir).unwrap();
-        for side in [Side::Client, Side::Server] {
-            fs::write(defaults_file(&dir, side), "gband.set { prefix = 'ctrl+b' }").unwrap();
+        let edited = [
+            defaults_file(&dir, Side::Client),
+            key_style_file(&dir, "modal"),
+            defaults_file(&dir, Side::Server),
+        ];
+        for file in &edited {
+            fs::write(file, "gband.set { prefix = 'ctrl+b' }").unwrap();
         }
         prepare(&dir).unwrap();
         for side in [Side::Client, Side::Server] {
@@ -244,7 +272,18 @@ mod tests {
                 side.defaults()
             );
         }
-        assert_eq!(entries(&dir.join("defaults")), ["init.lua", "server.lua"]);
+        assert_eq!(
+            fs::read_to_string(key_style_file(&dir, "modal")).unwrap(),
+            crate::KEY_STYLES[0].1
+        );
+        assert_eq!(
+            entries(&dir.join("defaults")),
+            ["init.lua", "keystyle", "server.lua"]
+        );
+        assert_eq!(
+            entries(&dir.join("defaults").join("keystyle")),
+            ["direct.lua", "modal.lua"]
+        );
     }
 
     #[test]

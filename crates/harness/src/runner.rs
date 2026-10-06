@@ -716,12 +716,32 @@ fn start(_: &Lua, context: &Context, opts: Value) -> mlua::Result<MultiValue> {
         }
     }
     let time = time_arg(field("time")?, "`time` of g.start", Some(DEFAULT_TIME))?;
+    let keystyle = match field("keystyle")? {
+        Value::Nil => Some("modal".to_owned()),
+        Value::Boolean(false) => None,
+        Value::String(style) if matches!(style.as_bytes().as_ref(), b"modal" | b"direct") => {
+            Some(style.to_str()?.to_owned())
+        }
+        Value::String(style) => {
+            return Err(fail(format!(
+                "`keystyle` of g.start must be \"modal\", \"direct\" or false, found {:?}",
+                style.to_string_lossy()
+            )));
+        }
+        other => {
+            return Err(fail(format!(
+                "`keystyle` of g.start must be \"modal\", \"direct\" or false, found {}",
+                other.type_name()
+            )));
+        }
+    };
     context.slot().started = true;
     let setup = Setup {
         executable: context.run.executable.clone(),
         size,
         config: optional_text("config")?,
         server_config: optional_text("server_config")?,
+        keystyle,
         files,
         plugins,
         env,

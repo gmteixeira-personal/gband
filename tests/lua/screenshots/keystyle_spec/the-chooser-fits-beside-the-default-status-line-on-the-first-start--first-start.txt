@@ -1,0 +1,103 @@
+size 80x24 cursor 12:77 hidden
+ 0|band 1              ┌──────────────────────────────────────┐
+ 1|C-space navigation  │$                                     │
+ 2|                    │                                      │
+ 3|                    │                                      │
+ 4|                    │                                      │
+ 5|                    │                                      │
+ 6|                    │                                      │
+ 7|                    │                                      │
+ 8|                    │                                      │
+ 9|                    │                                      │
+10|                    │┌key style  enter choose  esc later─────────────────────┐
+11|                    ││modal   C-space enters a mode, keys repeat until Escape│
+12|                    ││direct  C-space then one key per action, back to typing│
+13|                    │└───────────────────────────────────────────────────────┘
+14|                    │                                      │
+15|                    │                                      │
+16|                    │                                      │
+17|                    │                                      │
+18|                    │                                      │
+19|                    │                                      │
+20|                    │                                      │
+21|                    │                                      │
+22|                    │                                      │
+23|1/1                 └──────────────────────────────────────┘
+--
+0:0-19 fg=#c0caf5 bg=#24283b
+0:20-59 bold
+1:0-6 fg=#7aa2f7 bg=#24283b bold
+1:7-19 fg=#c0caf5 bg=#24283b
+1:20 bold
+1:59 bold
+2:0-19 fg=#c0caf5 bg=#24283b
+2:20 bold
+2:59 bold
+3:0-19 fg=#c0caf5 bg=#24283b
+3:20 bold
+3:59 bold
+4:0-19 fg=#c0caf5 bg=#24283b
+4:20 bold
+4:59 bold
+5:0-19 fg=#c0caf5 bg=#24283b
+5:20 bold
+5:59 bold
+6:0-19 fg=#c0caf5 bg=#24283b
+6:20 bold
+6:59 bold
+7:0-19 fg=#c0caf5 bg=#24283b
+7:20 bold
+7:59 bold
+8:0-19 fg=#c0caf5 bg=#24283b
+8:20 bold
+8:59 bold
+9:0-19 fg=#c0caf5 bg=#24283b
+9:20 bold
+9:59 bold
+10:0-19 fg=#c0caf5 bg=#24283b
+10:20 bold
+10:21 fg=8
+10:22-55 fg=8 bold
+10:56-77 fg=8
+11:0-19 fg=#c0caf5 bg=#24283b
+11:20 bold
+11:21 fg=8
+11:22-76 inverse
+11:77 fg=8
+12:0-19 fg=#c0caf5 bg=#24283b
+12:20 bold
+12:21 fg=8
+12:77 fg=8
+13:0-19 fg=#c0caf5 bg=#24283b
+13:20 bold
+13:21-77 fg=8
+14:0-19 fg=#c0caf5 bg=#24283b
+14:20 bold
+14:59 bold
+15:0-19 fg=#c0caf5 bg=#24283b
+15:20 bold
+15:59 bold
+16:0-19 fg=#c0caf5 bg=#24283b
+16:20 bold
+16:59 bold
+17:0-19 fg=#c0caf5 bg=#24283b
+17:20 bold
+17:59 bold
+18:0-19 fg=#c0caf5 bg=#24283b
+18:20 bold
+18:59 bold
+19:0-19 fg=#c0caf5 bg=#24283b
+19:20 bold
+19:59 bold
+20:0-19 fg=#c0caf5 bg=#24283b
+20:20 bold
+20:59 bold
+21:0-19 fg=#c0caf5 bg=#24283b
+21:20 bold
+21:59 bold
+22:0-19 fg=#c0caf5 bg=#24283b
+22:20 bold
+22:59 bold
+23:0-2 fg=#9aa5ce bg=#24283b
+23:3-19 fg=#c0caf5 bg=#24283b
+23:20-59 bold

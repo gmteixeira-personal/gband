@@ -101,12 +101,16 @@ Call it once, before any other function of the handle.
 | `size` | the terminal size, `"<cols>x<rows>"` | `"80x24"` |
 | `config` | the contents of `user/init.lua` | none: the default configuration |
 | `server_config` | the contents of `user/server.lua` | none: the default server configuration |
+| `keystyle` | the key style saved in `user/keystyle.lua`: `"modal"`, `"direct"`, or `false` to save none | `"modal"` |
 | `files` | a table from paths relative to the configuration directory to contents, such as `{ ["user/lua/extra.lua"] = "..." }` | none |
 | `plugins` | a list of further plugin directories for this case, relative to the test file's directory | none |
 | `env` | environment variables to set, or to remove with `false` | none |
 | `time` | the frozen instant: Unix seconds, `"YYYY-MM-DD HH:MM:SS"` in UTC, or `false` for the real time | `"2025-01-01 12:00:00"` |
 
 A `config` replaces the default configuration, as `user/init.lua` does, so give the status line, its segments and the bindings the case needs.
+
+The key style is saved before `files` are written, so a case with the default configuration starts with no key style chooser open, and a `files` entry for `user/keystyle.lua` replaces it.
+Start with `keystyle = false` to see the chooser that a first start offers.
 
 Each case gets a new directory tree under the system's temporary directory, holding its own configuration, data, state and runtime directories and a working directory.
 The plugin under test, every `--plugin` and every `plugins` entry are linked into its plugins directory under their directory names.

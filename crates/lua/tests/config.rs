@@ -442,11 +442,83 @@ fn component_ids(config: &Config) -> Vec<String> {
     )
 }
 
+fn with_saved_style(name: &str, style: &str) -> (Scratch, Config) {
+    let scratch = Scratch::new(name);
+    scratch.user_file("keystyle.lua", &format!("return \"{style}\"\n"));
+    let config = scratch.loaded();
+    assert!(config.errors.is_empty(), "{:?}", config.errors);
+    (scratch, config)
+}
+
+fn prefix_keys(config: &Config) -> Vec<String> {
+    eval(
+        config,
+        "local keys = {} for _, entry in ipairs(gband.keymap.list('prefix')) do keys[#keys + 1] = entry.key end return keys",
+    )
+}
+
 #[test]
 fn every_default_binding_is_described() {
-    let config = gband_lua::defaults(gband_lua::Side::Client);
+    let (_scratch, direct) = with_saved_style("described-direct", "direct");
+    for (config, count) in [
+        (gband_lua::defaults(gband_lua::Side::Client), 38),
+        (direct, 36),
+    ] {
+        assert_described(&config, count);
+    }
+}
+
+#[test]
+fn direct_style_from_the_saved_choice() {
+    let (_scratch, config) = with_saved_style("saved-direct", "direct");
+    let label: String = eval(&config, "return gband.keymap.label('prefix')");
+    assert_eq!(label, "prefix");
+    assert!(config.modes.is_empty());
+    let modal = prefix_keys(&gband_lua::defaults(gband_lua::Side::Client));
+    let expected: Vec<String> = modal
+        .into_iter()
+        .filter(|key| key != "escape" && key != "enter")
+        .collect();
+    assert_eq!(prefix_keys(&config), expected);
+    assert_eq!(
+        action_of(&config, prefixed("n")),
+        Some(Action::Session(SessionCommand::OpenWindow))
+    );
+    assert_eq!(
+        binding(&config, ("prefix", Chord::Prefix)),
+        Some(Binding::Action(Action::Client(ClientAction::SendPrefix)))
+    );
+    assert_eq!(component_ids(&config).len(), 4);
+}
+
+#[test]
+fn no_binding_in_the_defaults_file() {
+    let scratch = Scratch::new("defaults-text");
+    prepare(&scratch.dir()).unwrap();
+    let text = fs::read_to_string(defaults_file(&scratch.dir(), gband_lua::Side::Client)).unwrap();
+    assert_eq!(text.matches("gband.keystyle.use()").count(), 1);
+    for call in ["gband.keymap.set", "gband.bind", "gband.keymap.mode"] {
+        assert!(!text.contains(call), "{call}");
+    }
+}
+
+#[test]
+fn copied_defaults_follow_the_saved_style() {
+    let (scratch, saved) = with_saved_style("copied-direct", "direct");
+    prepare(&scratch.dir()).unwrap();
+    let copy = fs::read_to_string(defaults_file(&scratch.dir(), gband_lua::Side::Client)).unwrap();
+    scratch.write(&copy);
+    let config = scratch.loaded();
+    assert!(config.errors.is_empty(), "{:?}", config.errors);
+    assert_eq!(config.options, saved.options);
+    assert_eq!(actions(&config), actions(&saved));
+    assert_eq!(bound_keys(&config), bound_keys(&saved));
+    assert_eq!(config.modes, saved.modes);
+}
+
+fn assert_described(config: &Config, count: usize) {
     let undescribed: Vec<String> = eval(
-        &config,
+        config,
         "local descs = {}
          for _, action in ipairs(gband.action.list()) do descs[action.name] = action.desc end
          local functions = {
@@ -465,8 +537,8 @@ fn every_default_binding_is_described() {
          return wrong",
     );
     assert!(undescribed.is_empty(), "{undescribed:?}");
-    let count: usize = eval(&config, "return #gband.keymap.list('prefix')");
-    assert_eq!(count, 38);
+    let listed: usize = eval(config, "return #gband.keymap.list('prefix')");
+    assert_eq!(listed, count);
 }
 
 #[test]

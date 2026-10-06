@@ -45,6 +45,10 @@ impl Scratch {
 
     fn load(&self, source: &str) -> Result<Config, ConfigError> {
         write(
+            &self.0.join("config").join("user").join("keystyle.lua"),
+            "return \"modal\"\n",
+        );
+        write(
             &gband_lua::user_file(&self.0.join("config"), gband_lua::Side::Client),
             source,
         );

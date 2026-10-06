@@ -33,6 +33,7 @@ pub struct Setup {
     pub size: Size,
     pub config: Option<String>,
     pub server_config: Option<String>,
+    pub keystyle: Option<String>,
     pub files: Vec<(String, String)>,
     pub plugins: Vec<PathBuf>,
     pub env: Vec<(OsString, Option<OsString>)>,
@@ -126,6 +127,12 @@ fn prepare(env: &mut TestEnv, setup: &Setup, socket: &Path) -> Result<(), String
     }
     let config = env.config_dir();
     fs::create_dir_all(config.join("user")).map_err(io("configuration directory"))?;
+    if let Some(style) = &setup.keystyle {
+        write_file(
+            &config.join("user").join("keystyle.lua"),
+            &format!("return \"{style}\"\n"),
+        )?;
+    }
     if let Some(source) = &setup.config {
         write_file(&env.user_lua(), source)?;
     }

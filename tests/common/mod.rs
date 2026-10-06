@@ -28,10 +28,26 @@ pub struct TestEnv(gband_harness::TestEnv);
 
 impl TestEnv {
     pub fn new(name: &str) -> Self {
+        let env = Self::without_key_style(name);
+        env.save_key_style("modal");
+        env
+    }
+
+    pub fn without_key_style(name: &str) -> Self {
         Self(gband_harness::TestEnv::new(
             scratch_root("gband-e2e", name),
             GBAND,
         ))
+    }
+
+    pub fn key_style_lua(&self) -> PathBuf {
+        self.config_dir().join("user").join("keystyle.lua")
+    }
+
+    pub fn save_key_style(&self, style: &str) {
+        let path = self.key_style_lua();
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, format!("return \"{style}\"\n")).unwrap();
     }
 }
 
