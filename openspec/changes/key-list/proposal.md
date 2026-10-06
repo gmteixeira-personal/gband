@@ -58,7 +58,8 @@ Out of scope:
 - README.md
 - crates/client/src/bindings.rs
 - crates/client/src/lib.rs
-- crates/client/tests/
+- crates/client/tests/actions.rs
+- crates/client/tests/plugin_windows.rs
 - crates/lua/src/bundled.rs
 - crates/lua/src/defaults.lua
 - crates/lua/src/runtime.rs
@@ -66,7 +67,12 @@ Out of scope:
 - crates/lua/src/runtime/gband/keylist.lua
 - crates/lua/src/runtime/gband/statusline/hints.lua
 - crates/lua/src/runtime/gband/win.lua
-- crates/lua/tests/
+- crates/lua/tests/config.rs
+- crates/lua/tests/key_hints.rs
+- crates/lua/tests/plugin_windows.rs
+- crates/lua/tests/plugins.rs
 - docs/plugins.md
-- tests/
+- tests/lua/keylist_spec.lua
+- tests/lua/screenshots/keylist_spec/
+- tests/lua_specs.rs
 - openspec/changes/key-list/
