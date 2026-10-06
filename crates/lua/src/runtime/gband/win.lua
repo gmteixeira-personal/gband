@@ -7,7 +7,7 @@ gband.hl.default("PluginWindowCursorLine", { reverse = true })
 
 local COMMON = {
   kind = true, lines = true, focus = true, cursorline = true,
-  keys = true, on_close = true, on_resize = true,
+  keys = true, on_input = true, on_close = true, on_resize = true,
 }
 local FLOATING = { row = true, col = true, width = true, height = true, border = true, title = true }
 local TILED = { band = true, after = true, column_width = true }
@@ -409,6 +409,7 @@ function api.open(opts)
     cursor = 1,
     cursorline = check_boolean(opts, "cursorline", false),
     keys = check_keys(opts),
+    on_input = check_function(opts, "on_input"),
     on_close = check_function(opts, "on_close"),
     on_resize = check_function(opts, "on_resize"),
   }
@@ -617,17 +618,26 @@ end
 
 local hooks = {}
 
-function hooks.key(id, name)
+local function hold(id)
+  if focused_float == id then
+    held = id
+  end
+end
+
+function hooks.key(id, name, text)
   local win = wins[id]
   if not win then
     return
   end
   local fn = win.keys[name]
   if fn then
-    if focused_float == id then
-      held = id
-    end
+    hold(id)
     host.call(win.owner, nil, fn, id)
+    return
+  end
+  if text and win.on_input then
+    hold(id)
+    callback(win, "on_input", text)
     return
   end
   if move(win, name) then
@@ -635,6 +645,14 @@ function hooks.key(id, name)
   end
   if (name == "escape" or name == "q") and win.kind == "floating" then
     close(win, true, true)
+  end
+end
+
+function hooks.paste(id, text)
+  local win = wins[id]
+  if win and win.on_input then
+    hold(id)
+    callback(win, "on_input", text)
   end
 end
 

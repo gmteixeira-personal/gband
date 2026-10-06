@@ -60,7 +60,7 @@ Keys typed in gband go to the focused window: this is interactive mode.
 The prefix key, Ctrl+Space, enters navigation mode, and the status line shows `navigation`.
 In navigation mode each key below acts and navigation mode stays active, so `l` `l` `l` moves three columns and `=` `=` widens the column twice.
 A key with no binding does nothing.
-Escape or Enter returns to interactive mode, and so do `n`, `?` and Ctrl+Space once they have acted:
+Escape or Enter returns to interactive mode, and so do `n`, `?`, `:` and Ctrl+Space once they have acted:
 
 | key | action |
 |---|---|
@@ -81,6 +81,7 @@ Escape or Enter returns to interactive mode, and so do `n`, `?` and Ctrl+Space o
 | Ctrl+`h`, Ctrl+`l`, or Ctrl with the left or right arrow | move the column, or the floating window, to the left or right |
 | Ctrl+`j`, Ctrl+`k`, or Ctrl with the down or up arrow | move the window, or the floating window, down or up |
 | `?` | list these keys, and run the one you choose; the list takes the keys that follow |
+| `:` | open the Lua prompt, which runs one line of Lua |
 | `D` | detach |
 | Escape, Enter | return to interactive mode |
 | Ctrl+Space | send Ctrl+Space to the window, and return to interactive mode |
@@ -302,6 +303,29 @@ A `user/init.lua` that replaces the defaults sets it up and binds it itself:
 gband.plugin("gband.keylist")
 gband.keymap.set("prefix", "?", gband.action["keylist.open"], { desc = "list the keys" })
 ```
+
+### Lua prompt
+
+Ctrl+Space then `:` opens a one-line box titled `lua` on the bottom rows of the windows, in the manner of Neovim's command line, and returns to interactive mode so the box takes what you type.
+It shows `:`, the text typed so far and a reversed cell as the cursor; a line too long for the box shows its end.
+Every character goes into the line, `j`, `k` and `q` included, and a paste does too, with each line break turned into a space.
+Backspace deletes the last character, and on an empty line closes the prompt; Ctrl+U clears the line.
+Enter closes the prompt and runs the line, and Escape closes it and runs nothing.
+
+The line runs as a binding function of `user/init.lua` would, so it can call `gband.action.*`, `gband.win.*`, `gband.keymap.enter` and the rest of the API a binding function can, such as `gband.action.focus_column_left()`.
+It runs with an instruction budget of its own: an endless loop stops only the line, and the prompt keeps working.
+A syntax error, a runtime error or a stop by the instruction limit is reported like any configuration error, as `prompt:1: <message>`, so the status line shows `error`.
+Return values are dropped; `gband.notify(tostring(value))` shows one.
+
+The prompt is a plugin bundled with gband, set up by the default configuration.
+A `user/init.lua` that replaces the defaults sets it up and binds it itself:
+
+```lua
+gband.plugin("gband.prompt")
+gband.keymap.set("prefix", ":", gband.action["prompt.open"], { desc = "run Lua" })
+```
+
+`gband.hl.set("PromptCursor", { ... })` styles the cursor, which is reversed by default.
 
 ### Status line
 

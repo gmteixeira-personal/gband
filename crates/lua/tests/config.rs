@@ -346,7 +346,10 @@ fn defaults_reproduce_the_built_in_behaviour() {
         &config,
         "local open = {} for _, a in ipairs(gband.action.list()) do if a.name:find('%.') then open[#open + 1] = a.name end end return open",
     );
-    assert_eq!(plugins, ["errors.clear", "errors.open", "keylist.open"]);
+    assert_eq!(
+        plugins,
+        ["errors.clear", "errors.open", "keylist.open", "prompt.open"]
+    );
     clean(&config.runtime.set_state(drawn(80)));
     let bars: Vec<String> = eval(
         &config,
@@ -463,7 +466,7 @@ fn every_default_binding_is_described() {
     );
     assert!(undescribed.is_empty(), "{undescribed:?}");
     let count: usize = eval(&config, "return #gband.keymap.list('prefix')");
-    assert_eq!(count, 37);
+    assert_eq!(count, 38);
 }
 
 #[test]
@@ -486,6 +489,27 @@ fn key_list_set_up_by_the_defaults() {
         "for _, entry in ipairs(gband.keymap.list('prefix')) do if entry.key == '?' then return entry.action end end",
     );
     assert_eq!(action, "keylist.open");
+}
+
+#[test]
+fn prompt_set_up_by_the_defaults() {
+    let config = gband_lua::defaults(gband_lua::Side::Client);
+    let keys: Vec<String> = eval(
+        &config,
+        "local keys = {} for _, entry in ipairs(gband.keymap.list('prefix')) do keys[#keys + 1] = entry.key end return keys",
+    );
+    let position = |key: &str| keys.iter().position(|bound| bound == key).unwrap();
+    assert_eq!(position(":"), position("?") + 1);
+    assert!(position(":") < position("D"));
+    let entry: Vec<String> = eval(
+        &config,
+        "for _, entry in ipairs(gband.keymap.list('prefix')) do if entry.key == ':' then return { entry.action, entry.desc } end end",
+    );
+    assert_eq!(entry, ["prompt.open", "run Lua"]);
+    assert!(eval::<bool>(
+        &config,
+        "return #gband.keymap.list('root') == 0"
+    ));
 }
 
 #[test]
@@ -529,10 +553,11 @@ fn every_action_is_named() {
         "keylist.open",
         "errors.open",
         "errors.clear",
+        "prompt.open",
     ];
     expected.sort();
     assert_eq!(names, expected);
-    assert_eq!(ACTIONS.len() + 3, expected.len());
+    assert_eq!(ACTIONS.len() + 4, expected.len());
 }
 
 #[test]

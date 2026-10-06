@@ -10,6 +10,7 @@ gband.opt.width_step = 1/10
 gband.opt.height_step = 1/10
 
 gband.plugin("gband.keylist")
+gband.plugin("gband.prompt")
 gband.plugin("gband.errors")
 
 local set = gband.keymap.set
@@ -53,6 +54,7 @@ set("prefix", "ctrl+right", action.move_column_right, { desc = "move the column 
 set("prefix", "ctrl+down", action.move_window_down, { desc = "move the window down" })
 set("prefix", "ctrl+up", action.move_window_up, { desc = "move the window up" })
 set("prefix", "?", action["keylist.open"], { desc = "list the keys" })
+set("prefix", ":", action["prompt.open"], { desc = "run Lua" })
 set("prefix", "D", action.detach, { desc = "detach" })
 set("prefix", "escape", interactive, { desc = "interactive mode" })
 set("prefix", "enter", interactive, { desc = "interactive mode" })

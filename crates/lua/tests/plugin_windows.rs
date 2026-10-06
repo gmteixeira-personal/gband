@@ -5,6 +5,7 @@ use std::sync::Arc;
 use common::*;
 use gband_core::action::Action;
 use gband_core::geometry::Size;
+use gband_core::input::{Key, KeyCode, Modifiers};
 use gband_core::layout::{Layout, LayoutOptions, Proportion, WindowId};
 use gband_core::view::ViewAction;
 use gband_lua::plugin_windows::{FloatingFrame, Frame, Run, TiledFrame};
@@ -166,6 +167,7 @@ fn bad_options_are_errors() {
         ("gband.win.open({ col = -1 })", "col"),
         ("gband.win.open({ lines = { 5 } })", "line 1"),
         ("gband.win.open({ colour = 1 })", "colour"),
+        ("gband.win.open({ on_input = 'text' })", "on_input"),
         ("gband.win.open({ kind = 'tiled', after = 9 })", "9"),
         (
             "gband.win.open({ kind = 'tiled', column_width = 0 })",
@@ -464,6 +466,143 @@ fn q_closes_a_float() {
     assert!(outcome.dispatched.is_empty());
     assert_eq!(client.global::<u32>("closed"), win);
     assert_eq!(client.frames(), [(win, None)]);
+}
+
+const RECORDER: &str = "typed = {}\n\
+     record = function(id, text) typed[#typed + 1] = { id, text } end\n";
+
+impl Client {
+    fn typed(&self) -> Vec<(u32, String)> {
+        self.eval::<Vec<Table>>("return typed")
+            .iter()
+            .map(|entry| (entry.get(1).unwrap(), entry.get(2).unwrap()))
+            .collect()
+    }
+
+    fn paste(&self, plugin_window: u32, text: &str) -> Outcome {
+        self.config.runtime.plugin_window_paste(plugin_window, text)
+    }
+}
+
+#[test]
+fn typed_characters_go_to_on_input() {
+    let client = Client::new("win-on-input", RECORDER);
+    client.run(&format!(
+        "win = gband.win.open({{ height = 12, lines = {}, on_input = record }})",
+        numbered(25)
+    ));
+    let win: u32 = client.global("win");
+    for pressed in [
+        key("j"),
+        key("q"),
+        Key::new(KeyCode::Char('A'), Modifiers::SHIFT),
+        key("space"),
+    ] {
+        let outcome = client.config.runtime.plugin_window_key(win, pressed);
+        clean(&outcome);
+        assert!(outcome.dispatched.is_empty());
+    }
+    let expected: Vec<(u32, String)> = ["j", "q", "A", " "]
+        .iter()
+        .map(|text| (win, (*text).to_owned()))
+        .collect();
+    assert_eq!(client.typed(), expected);
+    assert_eq!(client.eval::<Vec<u32>>("return gband.win.list()"), [win]);
+    assert_eq!(client.eval::<u32>("return gband.win.info(win).top"), 1);
+}
+
+#[test]
+fn keys_entry_wins_over_on_input() {
+    let client = Client::new("win-on-input-keys", RECORDER);
+    client.run(
+        "win = gband.win.open({ keys = { j = function() pressed = true end }, on_input = record })",
+    );
+    let win: u32 = client.global("win");
+    clean(&client.key(win, "j"));
+    assert!(client.global::<bool>("pressed"));
+    assert!(client.typed().is_empty());
+}
+
+#[test]
+fn keys_without_text_keep_their_defaults() {
+    let client = Client::new("win-on-input-defaults", RECORDER);
+    client.run(&format!(
+        "win = gband.win.open({{ height = 12, lines = {}, on_input = record }})",
+        numbered(25)
+    ));
+    let win: u32 = client.global("win");
+    clean(&client.key(win, "down"));
+    assert_eq!(client.eval::<u32>("return gband.win.info(win).top"), 2);
+    clean(&client.key(win, "escape"));
+    assert!(
+        client
+            .eval::<Vec<u32>>("return gband.win.list()")
+            .is_empty()
+    );
+    assert!(client.typed().is_empty());
+}
+
+#[test]
+fn ctrl_and_alt_keys_are_not_text() {
+    let client = Client::new("win-on-input-modifiers", RECORDER);
+    client.run("win = gband.win.open({ on_input = record })");
+    let win: u32 = client.global("win");
+    for name in ["ctrl+x", "alt+x"] {
+        let outcome = client.key(win, name);
+        clean(&outcome);
+        assert!(outcome.dispatched.is_empty());
+    }
+    assert!(client.typed().is_empty());
+}
+
+#[test]
+fn paste_goes_to_on_input() {
+    let client = Client::new("win-paste", RECORDER);
+    client.run("win = gband.win.open({ on_input = record })");
+    let win: u32 = client.global("win");
+    let outcome = client.paste(win, "a\nb");
+    clean(&outcome);
+    assert!(outcome.dispatched.is_empty());
+    assert_eq!(client.typed(), [(win, "a\nb".to_owned())]);
+}
+
+#[test]
+fn paste_without_on_input() {
+    let client = Client::new("win-paste-dropped", RECORDER);
+    client.run("win = gband.win.open({ lines = { 'a' } })");
+    let win: u32 = client.global("win");
+    let outcome = client.paste(win, "hello");
+    clean(&outcome);
+    assert!(outcome.dispatched.is_empty());
+    assert_eq!(client.eval::<Vec<u32>>("return gband.win.list()"), [win]);
+    assert!(client.typed().is_empty());
+}
+
+#[test]
+fn failing_input_handler_is_a_plugin_error() {
+    let scratch = Scratch::new("win-failing-input");
+    scratch.client_plugin("demo",
+        "gband.bind('alt+p', function() win = gband.win.open({ on_input = function(_, text) seen = text; error('broken') end }) end)",
+    );
+    let client = Client::loaded(scratch);
+    let chord = Chord::Key(key("alt+p"));
+    let Some((_, Binding::Callback(callback))) = client.config.keymap["root"]
+        .iter()
+        .find(|(bound, _)| *bound == chord)
+    else {
+        panic!("alt+p is not bound");
+    };
+    clean(&client.config.runtime.call(*callback));
+    let win: u32 = client.global("win");
+    let outcome = client.key(win, "a");
+    let [error] = outcome.errors.as_slice() else {
+        panic!("{:?}", outcome.errors);
+    };
+    assert_eq!(error.plugin.as_deref(), Some("demo"));
+    assert!(error.message.contains("broken"), "{error}");
+    assert_eq!(client.eval::<Vec<u32>>("return gband.win.list()"), [win]);
+    assert_eq!(client.key(win, "b").errors.len(), 1);
+    assert_eq!(client.global::<String>("seen"), "b");
 }
 
 #[test]

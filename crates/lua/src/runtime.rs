@@ -8,7 +8,7 @@ use std::sync::atomic::AtomicU32;
 use std::time::Instant;
 
 use gband_core::geometry::Size;
-use gband_core::input::Key;
+use gband_core::input::{Key, KeyCode};
 use gband_core::layout::WindowId;
 use gband_protocol::Value as Data;
 
@@ -107,7 +107,7 @@ pub(crate) fn install(
     let searchers: Table = lua.globals().get::<Table>("package")?.get("searchers")?;
     let insert: Function = lua.globals().get::<Table>("table")?.get("insert")?;
     insert.call::<()>((searchers, 2, lua.create_function(search)?))?;
-    bundled::install_searcher(lua, 3)?;
+    bundled::install_searcher(lua, 3, host.clone())?;
     if let Some(host) = host {
         let loaded: Table = lua.globals().get::<Table>("package")?.get("loaded")?;
         for (path, source) in bundled::API {
@@ -568,7 +568,14 @@ impl Runtime {
 
     pub fn plugin_window_key(&self, plugin_window: u32, key: Key) -> Outcome {
         self.within_callback(|lua| {
-            plugin_windows::call::<()>(lua, "key", (plugin_window, key_name(key))).map(|()| false)
+            plugin_windows::call::<()>(lua, "key", (plugin_window, key_name(key), typed(key)))
+                .map(|()| false)
+        })
+    }
+
+    pub fn plugin_window_paste(&self, plugin_window: u32, text: &str) -> Outcome {
+        self.within_callback(|lua| {
+            plugin_windows::call::<()>(lua, "paste", (plugin_window, text)).map(|()| false)
         })
     }
 
@@ -720,6 +727,15 @@ impl Runtime {
             errors,
             disabled,
         }
+    }
+}
+
+fn typed(key: Key) -> Option<String> {
+    match key.code {
+        KeyCode::Char(character) if !key.modifiers.ctrl && !key.modifiers.alt => {
+            Some(character.to_string())
+        }
+        _ => None,
     }
 }
 

@@ -45,6 +45,11 @@ fn bundled_error_list() {
 }
 
 #[test]
+fn bundled_lua_prompt() {
+    gband_test(root(), &["tests/lua/prompt_spec.lua"]);
+}
+
+#[test]
 fn looping_bands() {
     gband_test(root(), &["tests/lua/loop_bands_spec.lua"]);
 }

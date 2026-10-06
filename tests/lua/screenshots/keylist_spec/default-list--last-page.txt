@@ -4,11 +4,11 @@ size 80x24 cursor 17:78 hidden
  2|                    │                                      │
  3|                    │                                      │
  4|                    │┌navigation keys─────────────────────────────────────────┐
- 5|                    ││C-left   move the column or floating window to the left │
- 6|                    ││C-right  move the column or floating window to the right│
- 7|                    ││C-down   move the window down                           │
- 8|                    ││C-up     move the window up                             │
- 9|                    ││?        list the keys                                  │
+ 5|                    ││C-right  move the column or floating window to the right│
+ 6|                    ││C-down   move the window down                           │
+ 7|                    ││C-up     move the window up                             │
+ 8|                    ││?        list the keys                                  │
+ 9|                    ││:        run Lua                                        │
 10|                    ││D        detach                                         │
 11|                    ││esc      interactive mode                               │
 12|                    ││enter    interactive mode                               │
@@ -60,12 +60,12 @@ size 80x24 cursor 17:78 hidden
 8:20 bold
 8:21 fg=8
 8:22-30 fg=#7aa2f7 bold
+8:31-43 fg=#9aa5ce
 8:78 fg=8
 9:0-19 fg=#c0caf5 bg=#24283b
 9:20 bold
 9:21 fg=8
 9:22-30 fg=#7aa2f7 bold
-9:31-43 fg=#9aa5ce
 9:78 fg=8
 10:0-19 fg=#c0caf5 bg=#24283b
 10:20 bold

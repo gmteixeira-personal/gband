@@ -70,7 +70,7 @@ fn resolved(config: &Config, group: &str) -> Vec<String> {
     )
 }
 
-const PREFIX_HINTS: &str = "h left  l right  j down  k up  u band down  i band up  c center  n open a window  q close  [ stack left  ] stack right  r width  f full  - narrower  = wider  _ shorter  + taller  R reset height  v float  V layer  C-h move left  C-l move right  C-j move down  C-k move up  C-left move left  C-right move right  C-down move down  C-up move up  ? list the keys  D detach  esc interactive mode  enter interactive mode  left left  right right  down down  up up  C-space send the prefix key";
+const PREFIX_HINTS: &str = "h left  l right  j down  k up  u band down  i band up  c center  n open a window  q close  [ stack left  ] stack right  r width  f full  - narrower  = wider  _ shorter  + taller  R reset height  v float  V layer  C-h move left  C-l move right  C-j move down  C-k move up  C-left move left  C-right move right  C-down move down  C-up move up  ? list the keys  : run Lua  D detach  esc interactive mode  enter interactive mode  left left  right right  down down  up up  C-space send the prefix key";
 
 #[test]
 fn component_entry() {
@@ -236,11 +236,11 @@ fn prefix_table_with_the_defaults() {
         ]
     );
     let all: Vec<&str> = PREFIX_HINTS.split("  ").collect();
-    let detach = all.iter().position(|hint| *hint == "D detach").unwrap();
+    let prompt = all.iter().position(|hint| *hint == ": run Lua").unwrap();
     let hints = hints(&config, "prefix");
     assert_eq!(hints[..2], ["band 1", "navigation"]);
-    assert_eq!(hints[2..hints.len() - 1], all[..detach]);
-    assert_eq!(hints.last().unwrap(), "D detach …");
+    assert_eq!(hints[2..hints.len() - 1], all[..prompt]);
+    assert_eq!(hints.last().unwrap(), ": run Lua …");
     let (_scratch, wide) = defaults_with("prefix-wide", "{}");
     let hints = self::hints(&wide, "prefix");
     assert_eq!(hints[2..], all);
@@ -367,7 +367,8 @@ fn label_option_hides_an_action() {
         .iter()
         .position(|hint| hint == "? list the keys")
         .unwrap();
-    assert_eq!(hints[list + 1], "esc interactive mode");
+    assert_eq!(hints[list + 1], ": run Lua");
+    assert_eq!(hints[list + 2], "esc interactive mode");
     assert_eq!(hints.last().unwrap(), "C-space send the prefix key");
 }
 

@@ -311,6 +311,7 @@ mod tests {
         }
         for pressed in [
             char_key('?'),
+            char_key(':'),
             char_key('n'),
             Key::plain(KeyCode::Escape),
             Key::plain(KeyCode::Enter),
@@ -331,7 +332,7 @@ mod tests {
             .map(|(key, _, _)| key)
             .collect();
         let order = "h l j k u i c n q [ ] r f - = _ + R v V ctrl+h ctrl+l ctrl+j ctrl+k \
-            ctrl+left ctrl+right ctrl+down ctrl+up ? D escape enter left right down up prefix";
+            ctrl+left ctrl+right ctrl+down ctrl+up ? : D escape enter left right down up prefix";
         assert_eq!(keys, order.split_whitespace().collect::<Vec<_>>());
         assert!(keymap.table(ROOT).is_empty());
         assert_eq!(keymap.table(PREFIX).len(), keys.len());
@@ -357,7 +358,8 @@ mod tests {
                     assert!(matches!(binding, Binding::Callback(_)), "{chord:?} {key}");
                 }
                 None => {
-                    let registered = action.as_deref() == Some("keylist.open");
+                    let registered =
+                        matches!(action.as_deref(), Some("keylist.open" | "prompt.open"));
                     assert!(action.is_some(), "{key}");
                     assert!(
                         matches!(binding, Binding::Action(_)) != registered,

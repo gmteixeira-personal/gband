@@ -867,8 +867,13 @@ impl Controls {
     }
 
     pub fn paste(&mut self, display: &mut Display, text: String) -> Vec<Step> {
-        if display.focused_plugin_window().is_some() {
-            return Vec::new();
+        if let Some(plugin_window) = display.focused_plugin_window() {
+            return self.react(display, Vec::new(), |controls, display, steps| {
+                let released = controls.runtime.release_plugin_windows();
+                controls.apply(display, released, steps);
+                let outcome = controls.runtime.plugin_window_paste(plugin_window, &text);
+                controls.apply(display, outcome, steps);
+            });
         }
         display
             .focused()

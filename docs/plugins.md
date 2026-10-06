@@ -545,6 +545,7 @@ It is one of two kinds:
 | `focus` | both | boolean | `true` |
 | `cursorline` | both | boolean | `false` |
 | `keys` | both | key names to functions | none |
+| `on_input` | both | function of the number and a text | none |
 | `on_close`, `on_resize` | both | function | none |
 | `row`, `col` | floating | integer of at least 0, or `"center"` | `"center"` |
 | `width`, `height` | floating | integer of at least 1 | half the ribbon |
@@ -573,12 +574,20 @@ The focused plugin window is the focused floating plugin window, otherwise the p
 A newly opened floating plugin window with `focus` takes focus; moving focus or viewing another band leaves no floating plugin window focused.
 The exception is a focus change caused by the floating plugin window's own `keys` function: it stays focused until the next key press, whether the change happens at once or arrives later from the server, as an opened window's focus does.
 So a list can run actions on Enter and stay open for the next choice.
-While a plugin window is focused, every key the bindings leave unused goes to it and never to a program, and pastes are discarded.
-A key in `keys` runs its function with the plugin window's number.
-Without an entry, Up or `k` and Down or `j` move the cursor line or scroll, PageUp and PageDown scroll a page, Home and End show the first or last line, and `q` and Escape close a floating plugin window.
+While a plugin window is focused, every key the bindings leave unused goes to it and never to a program, and so does every paste.
+A key goes to the first of these that takes it:
+
+1. A key in `keys` runs its function with the plugin window's number.
+2. A key that types a character, a character key pressed without Ctrl and without Alt, runs `on_input` with the number and that character, when the plugin window has `on_input`. Shift+A gives `A` and the space bar a space.
+3. Up or `k` and Down or `j` move the cursor line or scroll, PageUp and PageDown scroll a page, Home and End show the first or last line, and `q` and Escape close a floating plugin window.
+
+Any other key is discarded.
+With `on_input` set, `j`, `k` and `q` are text and no longer scroll or close; Escape and the keys that type nothing keep their defaults.
+A paste runs `on_input` with the number and the pasted text exactly as pasted, line breaks and other control characters included, and is discarded by a plugin window without `on_input`.
 The `close_window` action, such as Ctrl+Space then `q`, closes the focused floating plugin window as `gband.win.close` does, running its `on_close` and sending nothing to the server, also on a band with no window; with no floating plugin window focused, it closes the focused window.
 A `close_window` dispatched with a target closes the window it names and leaves the floating plugin window open.
 
+The `keys` functions, `on_input`, `on_close` and `on_resize` run as callbacks of the plugin that opened the plugin window: an error in one is reported as that plugin's error, and the plugin window stays open.
 `on_close` runs once with the plugin window's number when the plugin window closes, but not when a reload closes it.
 `on_resize` runs with the number and the new columns and rows when the plugin window's content area changes size, including when a tiled plugin window's size first becomes known.
 A plugin window closes when its plugin is marked failed.
@@ -898,6 +907,42 @@ Escape and Ctrl+Space then `q` close the list too.
 
 The key list draws keys in `KeyListKey` and the description it cannot run in `KeyListMuted`; it defines them as defaults when its module is first required, and gives `StatusLineAccent` and `StatusLineMuted` their usual defaults so the links resolve without a status line.
 
+## The Lua prompt: `gband.prompt`
+
+gband also bundles the Lua prompt, module `gband.prompt`, plugin `prompt`.
+Its `setup` takes no options, and registers the action `prompt.open`, described as `run Lua`.
+The default configuration sets it up right after the key list, before its key bindings, and binds Ctrl+Space then `:` to it, right after `?`:
+
+```lua
+gband.plugin("gband.prompt")
+gband.keymap.set("prefix", ":", gband.action["prompt.open"], { desc = "run Lua" })
+```
+
+`prompt.open` enters `root` and opens a focused floating plugin window with a border, titled `lua`, 3 rows high and as wide as the ribbon, on the ribbon's last three rows from its first column, sized from `gband.view()` as it opens.
+Dispatching it while the prompt is open focuses that prompt, keeps its line and opens no second one.
+The window is a plain user of `gband.win`: it takes typed characters and pastes through `on_input`, and Enter, Backspace and Ctrl+U through `keys`.
+
+Its one line is `:`, the typed text, then one space in `PromptCursor` as the cursor.
+When that is wider than the content area, the fewest leading characters are left out that let the rest and the cursor fit, so the end of the line stays shown; the line is fitted again when the content area's width changes.
+
+| input | effect |
+|---|---|
+| a typed character | append it, `j`, `k`, `q` and space included |
+| a paste | append it, with each `\r\n` and every other control character turned into one space |
+| Backspace | remove the last character; on an empty line, close the prompt and run nothing |
+| Ctrl+U | clear the line |
+| Escape | close the prompt and run nothing |
+| Enter | close the prompt, then run the line |
+
+Enter closes the prompt before the line runs, so a line that fails leaves no prompt behind, and a floating plugin window the line opens takes focus.
+An empty line runs nothing.
+A line runs as Lua source text, never a binary chunk, compiled as chunk `@prompt`, inside the Enter callback, so its actions and other dispatches take effect when the callback returns, in order, as a binding function's do.
+It belongs to no plugin, as code of `user/init.lua` does, although the plugin `prompt` runs it, and it has an instruction budget of its own: a line that exceeds it stops alone, and `prompt` is not marked failed.
+A syntax error, a runtime error and a stop by the instruction limit are each reported as a configuration error read `prompt:1: <message>`, such as `prompt:1: instruction limit exceeded`; what the line dispatched before the error stands.
+Return values are dropped.
+
+The prompt gives `PromptCursor` the default `{ reverse = true }` when its module is first required.
+
 ## Highlight groups: `gband.hl`
 
 A highlight group is a named style.
@@ -946,6 +991,7 @@ The status line defines these groups, as defaults:
 
 The hints segment adds `KeyHintKey`, `{ link = "StatusLineAccent" }`, and `KeyHintLabel`, `{ link = "StatusLineSegment" }`, when its module is first required.
 The key list adds `KeyListKey`, `{ link = "StatusLineAccent" }`, and `KeyListMuted`, `{ link = "StatusLineMuted" }`, the same way.
+The Lua prompt adds `PromptCursor`, `{ reverse = true }`, which draws its cursor cell.
 
 The plugin window API defines these groups, as defaults:
 
