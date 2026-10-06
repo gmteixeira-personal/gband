@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Colorscheme files
-A colorscheme named `name` SHALL be the file `colors/<name>.lua` in the first runtimepath entry that holds one. When no entry holds one, it SHALL be the colorscheme of that name bundled with gband, if any. A colorscheme name SHALL begin with an ASCII letter or digit and hold only ASCII letters, digits, `_` and `-`. gband SHALL bundle the themes "Bundled themes" lists, and no colorscheme named `default`.
+A colorscheme named `name` SHALL be the file `colors/<name>.lua` in the first runtimepath entry that holds one. When no entry holds one, it SHALL be the colorscheme of that name bundled with gband, if any. A colorscheme name SHALL begin with an ASCII letter or digit and hold only ASCII letters, digits, `_` and `-`. gband SHALL bundle the themes "Bundled themes" lists.
 
 A colorscheme file SHALL be Lua that runs with the whole `gband` API available. It sets groups with `gband.hl.set` and the terminal palette with `gband.palette.set`. Code it runs SHALL belong to no plugin.
 
@@ -23,16 +23,26 @@ A colorscheme file SHALL be Lua that runs with the whole `gband` API available. 
 
 #### Scenario: Default sets the sidebar groups
 - **WHEN** no theme is saved, no file calls `gband.colorscheme`, and a binding function calls `gband.hl.get` for `SidebarMode`, `SidebarBand`, `SidebarBandActive` and `SidebarError`
-- **THEN** each call returns the setting the `gruvbox` theme gives the group
+- **THEN** each call returns the default setting the sidebar plugin gives the group, since the `default` colorscheme sets none of them
 
-#### Scenario: No default colorscheme
-- **WHEN** no runtimepath entry holds `colors/default.lua` and a binding function calls `gband.colorscheme("default")`
-- **THEN** it returns `false` and an error naming `colors/default` is reported
+#### Scenario: Bars on the terminal's background
+- **WHEN** no theme is saved, and no file calls `gband.colorscheme` or sets `Bar`
+- **THEN** `gband.hl.get("Bar")` holds no field and `Bar` resolves to no field
+
+#### Scenario: Default sets nothing
+- **WHEN** no theme is saved, the default configuration is in use, and a binding function calls `gband.hl.get` for `SidebarMode` and `WindowBorderFocused`
+- **THEN** the calls return `{ bold = true }` and `{ fg = "#b1b9f9", bold = true }`, the default settings of the sidebar plugin and the client
+- **AND** `gband.palette.get()` returns an empty table
+
+#### Scenario: Back to the defaults
+- **WHEN** the active colorscheme is `gruvbox`, no runtimepath entry holds `colors/default.lua`, and a binding function calls `gband.colorscheme("default")`
+- **THEN** it returns `true` and `gband.colorscheme()` returns `default`
+- **AND** no group has an explicit setting, and `gband.palette.get()` returns an empty table
 
 ### Requirement: Switch colorscheme
 `gband.colorscheme(name)` SHALL load the colorscheme `name`. It SHALL first remove every group's explicit setting, keeping the default settings, and empty the terminal palette, and then run the file. `gband.colorscheme()`, with no argument, SHALL return the name of the active colorscheme. `gband.colorscheme` SHALL be callable while the configuration loads and in any callback.
 
-When loading starts, before the init file runs, the client SHALL load the start theme, as `gband.colorscheme` loads a colorscheme. The start theme SHALL be the theme `gband.settings.theme()` returns, as the settings capability defines. When it returns nil, or loading the saved theme fails, the start theme SHALL be `gruvbox`, loaded in the same way. A failure of the saved theme SHALL be reported as any failed colorscheme is. The init file MAY load another colorscheme, which then replaces the start theme.
+When loading starts, before the init file runs, the client SHALL load the start theme, as `gband.colorscheme` loads a colorscheme. The start theme SHALL be the theme `gband.settings.theme()` returns, as the settings capability defines. When it returns nil, or loading the saved theme fails, the start theme SHALL be `default`, loaded in the same way. A failure of the saved theme SHALL be reported as any failed colorscheme is. The init file MAY load another colorscheme, which then replaces the start theme.
 
 Loading SHALL be atomic. When the file runs to completion, its name SHALL become the active colorscheme, and `gband.colorscheme` SHALL return `true`. When the colorscheme cannot be found, has an invalid name, or its file raises an error or exceeds the instruction limit the plugins capability defines, every group's explicit setting and the terminal palette SHALL be restored to what they were before the call. The active colorscheme SHALL stay as it was, and `gband.colorscheme` SHALL return `false`. The failure SHALL be reported as a plugin error, preceded by `colors/<name>` in place of a plugin name. It SHALL NOT fail the load, and it SHALL NOT disable any plugin.
 
@@ -44,7 +54,7 @@ After the configuration has loaded, each call that loads a colorscheme SHALL emi
 - **AND** `gband.colorscheme()` returns `"dusk"`
 
 #### Scenario: Palette replaced
-- **WHEN** the start theme `gruvbox` is active and `user/init.lua` calls `gband.colorscheme("dusk")`, whose file sets no palette
+- **WHEN** `user/theme.lua` holds `return "gruvbox"` and `user/init.lua` calls `gband.colorscheme("dusk")`, whose file sets no palette
 - **THEN** `gband.palette.get()` returns an empty table
 
 #### Scenario: User settings after the colorscheme
@@ -61,7 +71,7 @@ After the configuration has loaded, each call that loads a colorscheme SHALL emi
 
 #### Scenario: Default at start
 - **WHEN** no theme is saved and no file calls `gband.colorscheme`
-- **THEN** `gband.colorscheme()` returns `"gruvbox"`
+- **THEN** `gband.colorscheme()` returns `"default"`
 
 #### Scenario: Saved theme at start
 - **WHEN** `user/theme.lua` holds `return "nord"` and `user/init.lua` binds only `alt+h`
@@ -73,11 +83,11 @@ After the configuration has loaded, each call that loads a colorscheme SHALL emi
 
 #### Scenario: Saved theme missing
 - **WHEN** `user/theme.lua` holds `return "absent"` and a client attaches
-- **THEN** `gband.colorscheme()` returns `"gruvbox"`
+- **THEN** `gband.colorscheme()` returns `"default"`
 - **AND** an error naming `colors/absent` is reported
 
 #### Scenario: Failing colorscheme
-- **WHEN** `SidebarMode` is set by the active colorscheme `gruvbox`, and line 3 of `user/colors/broken.lua` sets `SidebarMode` to `{ fg = 1 }`, line 4 calls `gband.palette.set({})` and line 5 raises `boom`, and `user/init.lua` calls `gband.colorscheme("broken")` and then binds `alt+h`
+- **WHEN** `user/theme.lua` holds `return "gruvbox"`, so `SidebarMode` is set by the active colorscheme `gruvbox`, and line 3 of `user/colors/broken.lua` sets `SidebarMode` to `{ fg = 1 }`, line 4 calls `gband.palette.set({})` and line 5 raises `boom`, and `user/init.lua` calls `gband.colorscheme("broken")` and then binds `alt+h`
 - **THEN** loading succeeds and Alt+H is bound
 - **AND** `SidebarMode` resolves as `gruvbox` set it, `gband.palette.get()` returns the palette `gruvbox` set, and `gband.colorscheme()` returns `"gruvbox"`
 - **AND** an error `colors/broken: <path>/user/colors/broken.lua:5: boom` is reported
@@ -88,16 +98,18 @@ After the configuration has loaded, each call that loads a colorscheme SHALL emi
 
 #### Scenario: Switch at run time
 - **WHEN** a `ColorschemeChanged` handler is registered and a binding function calls `gband.colorscheme("dusk")`
-- **THEN** the handler runs once with `name` `dusk` and `previous` `gruvbox`
+- **THEN** the handler runs once with `name` `dusk` and `previous` `default`
 
 ## ADDED Requirements
 
 ### Requirement: Bundled themes
-gband SHALL bundle these colorschemes, called themes, in this order: `terminal`, `catppuccin-latte`, `catppuccin-frappe`, `catppuccin-macchiato`, `catppuccin-mocha`, `tokyo-night`, `dracula`, `nord`, `gruvbox`, `one-dark`, `solarized`, `kanagawa`, `rose-pine` and `vesper`. It SHALL also bundle `catppuccin`, which sets exactly what `catppuccin-mocha` sets.
+gband SHALL bundle these colorschemes, called themes, in this order: `default`, `terminal`, `catppuccin-latte`, `catppuccin-frappe`, `catppuccin-macchiato`, `catppuccin-mocha`, `tokyo-night`, `dracula`, `nord`, `gruvbox`, `one-dark`, `solarized`, `kanagawa`, `rose-pine` and `vesper`. It SHALL also bundle `catppuccin`, which sets exactly what `catppuccin-mocha` sets.
 
-Each theme SHALL give an explicit setting to every one of these theme groups: `Bar`, `SidebarMode`, `SidebarBand`, `SidebarBandActive`, `SidebarError`, `KeyListKey`, `KeyListMuted`, `PluginWindow`, `PluginWindowBorder`, `PluginWindowTitle`, `PluginWindowCursorLine`, `PromptCursor`, `SettingsLabel`, `WindowBorder`, `WindowBorderFocused` and `ErrorBanner`. The viewed band's label, a focused window's border and the cursor line SHALL each be told apart from their unfocused or unselected peers by color or by attribute.
+`default` SHALL set no group and no field of the terminal palette. Loading it SHALL leave every group with only its default setting, as the highlights capability defines, and the terminal palette empty.
 
-Every theme except `terminal` SHALL set every field of the terminal palette, from the default foreground, default background and 16 ANSI colors that the theme's authors publish for terminals. `solarized` SHALL use Solarized's dark background, `rose-pine` the main variant, `kanagawa` the wave variant, and `tokyo-night` the night variant. Its groups MAY use hex colors.
+Each theme other than `default` SHALL give an explicit setting to every one of these theme groups: `Bar`, `SidebarMode`, `SidebarBand`, `SidebarBandActive`, `SidebarError`, `KeyListKey`, `KeyListMuted`, `PluginWindow`, `PluginWindowBorder`, `PluginWindowTitle`, `PluginWindowCursorLine`, `PromptCursor`, `SettingsLabel`, `WindowBorder`, `WindowBorderFocused` and `ErrorBanner`. The viewed band's label, a focused window's border and the cursor line SHALL each be told apart from their unfocused or unselected peers by color or by attribute.
+
+Every theme except `default` and `terminal` SHALL set every field of the terminal palette, from the default foreground, default background and 16 ANSI colors that the theme's authors publish for terminals. `solarized` SHALL use Solarized's dark background, `rose-pine` the main variant, `kanagawa` the wave variant, and `tokyo-night` the night variant. Its groups MAY use hex colors.
 
 `terminal` SHALL set no field of the terminal palette. Its groups SHALL use only the 16 named colors, the palette indexes 0 to 15, and the attributes, so the host terminal's own palette decides every color it draws.
 
@@ -106,7 +118,7 @@ Every theme except `terminal` SHALL set every field of the terminal palette, fro
 - **THEN** it returns `bg` `#282828`, `fg` `#ebdbb2`, `red` `#cc241d` and `bright_red` `#fb4934`
 
 #### Scenario: Every theme sets every theme group
-- **WHEN** each bundled theme in turn is loaded with an empty `user/init.lua`
+- **WHEN** each bundled theme other than `default` in turn is loaded with an empty `user/init.lua`
 - **THEN** `gband.hl.get` returns a table for every theme group
 
 #### Scenario: Terminal theme uses the host palette
