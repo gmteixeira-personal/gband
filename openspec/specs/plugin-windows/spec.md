@@ -330,6 +330,8 @@ A change of any group's resolved style SHALL redraw every plugin window whose dr
 ### Requirement: Mouse in plugin windows
 `gband.win.open(opts)` SHALL also take the optional field `on_mouse`, a function, for both kinds, with no default. A value of another type SHALL be an error at the line of the call.
 
+In this requirement, a wheel step over a plugin window means one that runs no binding and that the cooldown does not discard, as the mouse capability's "Mouse names in key tables" defines. A wheel step that runs a binding SHALL reach neither the plugin window's defaults nor `on_mouse`.
+
 A plugin window without `on_mouse` SHALL take the mouse capability's interactive mode defaults: a left press moves the cursor line to the line under the pointer with `cursorline` on, and a wheel step up or down acts as Up or Down would, whether or not the plugin window is focused, in any key table or mode.
 
 A plugin window with `on_mouse` SHALL take none of those defaults. The client SHALL run `on_mouse` for every press on the plugin window whose mouse name `root` does not bind while `root` is active, for the release and every motion with a button held that follow such a press, and for every wheel step over the plugin window in any key table or mode, with the plugin window's number and a table holding:
@@ -351,6 +353,10 @@ A press SHALL still focus the plugin window before `on_mouse` runs. `on_mouse` S
 #### Scenario: Wheel scrolls without on_mouse
 - **WHEN** an unfocused floating plugin window without `cursorline` or `on_mouse` shows lines 1 to 10 of 25, and the user turns the wheel down over it
 - **THEN** it shows lines 2 to 11 and focus does not change
+
+#### Scenario: Bound wheel step over a plugin window
+- **WHEN** the default configuration is in use, two bands hold windows, the first is viewed, and the user turns the wheel down with Alt held over a floating plugin window with `on_mouse`
+- **THEN** the second band is viewed and `on_mouse` does not run
 
 #### Scenario: Invalid on_mouse
 - **WHEN** a binding function calls `gband.win.open({ on_mouse = 3 })`
