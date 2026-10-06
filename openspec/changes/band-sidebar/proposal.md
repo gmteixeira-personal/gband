@@ -47,7 +47,7 @@ Out of scope:
 - `error-list`: the floating window size and the clear scenario follow the sidebar.
 - `key-style`: presets leave the sidebar to the default configuration. The direct style, chooser and first start scenarios read the sidebar's mode letter or the 79-column ribbon.
 - `lua-prompt`: the prompt's size follows the 79-column ribbon, entering a mode is read from the sidebar, and the prompt hint scenario is removed.
-- Renamed requirements: OpenSpec keeps every scenario name of a modified requirement, so the eight requirements whose scenarios named the status line, in client-attach, configuration, key-list, key-style and plugin-testing, are removed and added back under new names, as design.md lists. settings-themes and window-names are updated to target the new names.
+- Renamed requirements: OpenSpec keeps every scenario name of a modified requirement, so the eight requirements whose scenarios named the status line, in client-attach, configuration, key-list, key-style and plugin-testing, are removed and added back under new names, as design.md lists. settings-themes, window-names and alt-mouse are updated to target the new names.
 
 ## Impact
 
@@ -71,6 +71,7 @@ Out of scope:
 
 ### Expected Files
 - openspec/changes/band-sidebar/
+- openspec/changes/alt-mouse/specs/configuration/spec.md
 - openspec/changes/settings-themes/specs/
 - openspec/changes/window-names/specs/configuration/spec.md
 - openspec/changes/window-names/tasks.md
