@@ -200,7 +200,7 @@ A binding to an action SHALL dispatch it. A binding to a Lua function SHALL run 
 #### Scenario: Open the key list
 - **WHEN** no `user/init.lua` exists and the user presses Ctrl+Space then `?`
 - **THEN** a floating plugin window titled `navigation keys` lists the prefix bindings and has focus
-- **AND** `root` is active, so a following `j` moves the list's cursor line
+- **AND** `root` is active, so a following Down moves the list's cursor line
 
 #### Scenario: Float the focused window
 - **WHEN** the client's 80×24 terminal sets the screen area, the status line is off, the only window sits in a column of width 1/2, and the user presses Ctrl+Space then `v`

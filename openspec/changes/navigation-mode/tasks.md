@@ -28,7 +28,7 @@
 ## 5. Bundled Lua modules
 
 - [ ] 5.1 Make `crates/lua/src/runtime/gband/statusline/mode.lua` render `gband.keymap.label(ctx.table)`; verify `crates/lua/tests/statusline.rs` shows `navigation` after Ctrl+Space with the defaults, and `RESIZE` for a labelled user mode
-- [ ] 5.2 Make `crates/lua/src/runtime/gband/statusline/hints.lua` label the root prefix hint with `gband.keymap.label("prefix")`; verify `crates/lua/tests/key_hints.rs` shows `C-space navigation` with the defaults, `C-space prefix` without a mode, and the navigation hints' start and end strings of the key-hints scenarios at 520 columns
+- [ ] 5.2 Make `crates/lua/src/runtime/gband/statusline/hints.lua` label the root prefix hint with `gband.keymap.label("prefix")`; verify `crates/lua/tests/key_hints.rs` shows `C-space navigation` with the defaults, `C-space prefix` without a mode, the navigation hints' start and end strings of the key-hints scenarios at 520 columns, and, in `label_option_hides_an_action`, the "Label option hides an action" scenario hiding `detach` with `{ labels = { detach = false } }`
 - [ ] 5.3 In `crates/lua/src/runtime/gband/keylist.lua`, enter `root` when the list opens and when `keylist.open` focuses an open list, title it `gband.keymap.label("prefix") .. " keys"`, run Enter through `gband.keymap.run("prefix", key)`, and mute only the `keylist.open` line; update `tests/lua/keylist_spec.lua` for the title, the muting, running `n` from the list, opening it again from navigation mode, and the list keeping focus, open windows with `n` where it uses the defaults, and regenerate its screenshots under `tests/lua/screenshots/keylist_spec/`; verify `cargo test --test lua_specs bundled_key_list`
 
 ## 6. Existing tests and end-to-end coverage
