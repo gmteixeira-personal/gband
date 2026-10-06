@@ -104,6 +104,7 @@ A binding to a function SHALL be labelled by its `desc`, and SHALL be left out w
 | `focus_window_up` | `up` |
 | `focus_band_down` | `band down` |
 | `focus_band_up` | `band up` |
+| `center_column` | `center` |
 | `open_window` | `new` |
 | `close_window` | `close` |
 | `consume_or_expel_left` | `stack left` |
@@ -127,6 +128,10 @@ A binding to a function SHALL be labelled by its `desc`, and SHALL be left out w
 #### Scenario: Default description gives the short label
 - **WHEN** the default configuration binds `prefix r` to `cycle_column_width` with the action's description
 - **THEN** its hint shows `r width`
+
+#### Scenario: Center label
+- **WHEN** the default configuration binds `prefix c` to `center_column` with the action's description
+- **THEN** its hint shows `c center`
 
 #### Scenario: Own description
 - **WHEN** `user/init.lua` binds `prefix g` to `gband.action.focus_column_left` with description `go west`

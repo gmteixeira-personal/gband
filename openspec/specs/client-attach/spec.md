@@ -309,6 +309,7 @@ With no configuration file, the bindings SHALL be those the default configuratio
 | `k` | `prefix k` | focus the window above | view |
 | `u` | `prefix u` | view the band below | view |
 | `i` | `prefix i` | view the band above | view |
+| `c` | `prefix c` | center the focused column, or the focused floating window | view |
 | Enter | `prefix enter` | open a window right of the focused window's column | session |
 | `q` | `prefix q` | close the focused window | session |
 | `[` | `prefix [` | consume or expel the focused window to the left | session |
@@ -334,7 +335,7 @@ With no configuration file, the bindings SHALL be those the default configuratio
 | Ctrl+Space | `prefix prefix` | send the prefix key to the focused window | client |
 | any other key | — | discard both keys | — |
 
-A binding to an action SHALL dispatch it. A binding to a Lua function SHALL run the function, as the configuration capability defines. A view action SHALL change this client's view as the layout-view capability defines, and SHALL send nothing to the server. A session action SHALL be sent to the server as an action naming the focused window, resolved as the actions capability defines. Open window SHALL name the viewed band and the tiled window this client focused most recently there, or no window when there is none. Any other session action, and sending the prefix key, SHALL do nothing when no window is focused. A character key SHALL match a binding by its character, Ctrl and Alt, so a `D` matches whether or not the terminal reports Shift with it.
+A binding to an action SHALL dispatch it. A binding to a Lua function SHALL run the function, as the configuration capability defines. A view action SHALL change this client's view as the layout-view capability defines, and SHALL send nothing to the server, except `center_column` on the floating layer, which sends the placing the layout-view capability defines. A session action SHALL be sent to the server as an action naming the focused window, resolved as the actions capability defines. Open window SHALL name the viewed band and the tiled window this client focused most recently there, or no window when there is none. Any other session action, and sending the prefix key, SHALL do nothing when no window is focused. A character key SHALL match a binding by its character, Ctrl and Alt, so a `D` matches whether or not the terminal reports Shift with it.
 
 #### Scenario: Detach
 - **WHEN** the user presses Ctrl+Space then Shift+D
@@ -384,6 +385,11 @@ A binding to an action SHALL dispatch it. A binding to a Lua function SHALL run 
 #### Scenario: Grow the window's height
 - **WHEN** the client's 80×25 terminal, whose status line takes one row, sets the screen area, a column holds two windows with automatic heights with the top one focused, and the user presses Ctrl+Space then `+`
 - **THEN** the top tile is 14 rows high and the bottom tile is 10 rows high
+
+#### Scenario: Center the column
+- **WHEN** the client's terminal is 80 columns wide, the only window sits in a column 40 cells wide at strip position 0, and the user presses Ctrl+Space then `c`
+- **THEN** the tile is drawn from the terminal's column 20
+- **AND** the 20 columns left of it are drawn empty
 
 #### Scenario: Direct binding acts without the prefix
 - **WHEN** `user/init.lua` binds `alt+h` to `gband.action.focus_column_left`, the second of two windows is focused, and the user presses Alt+H

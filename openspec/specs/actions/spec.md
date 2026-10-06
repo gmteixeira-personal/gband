@@ -14,11 +14,17 @@ Every action SHALL be exactly one of three kinds:
 | session | the server, which applies it to the shared layout | open, close, consume or expel a window, change a column's width |
 | client | the client alone, outside the view | detach, send the prefix key to the focused window |
 
+One view action sends a message: `center_column`, while the floating layer is active, sends the placing of the focused floating window, as the layout-view capability's "Center the focused column" defines.
+
 A key binding SHALL name exactly one action or one Lua function. Pressing a key bound to an action SHALL have the same effect as dispatching that action from any other source.
 
 #### Scenario: Every binding names an action
 - **WHEN** the bindings of the default configuration are listed
 - **THEN** every entry names one view, session or client action
+
+#### Scenario: Center column on the floating layer
+- **WHEN** a client focuses a floating window whose box is not centred and dispatches `center_column`
+- **THEN** the client sends the placing of that window and changes no camera
 
 #### Scenario: Action from another source
 - **WHEN** a test dispatches the close-window session action to a client whose focused window is the second of two
@@ -70,6 +76,7 @@ Every built-in action SHALL have one Lua name, under which `gband.action` holds 
 | `focus_window_up` | focus the window above | view |
 | `focus_band_down` | view the band below | view |
 | `focus_band_up` | view the band above | view |
+| `center_column` | center the focused column | view |
 | `switch_focus_floating_tiled` | switch focus between floating and tiled windows | view |
 | `open_window` | open a window running the user's shell | session |
 | `close_window` | close the window | session |
