@@ -11,7 +11,7 @@ navigation-mode makes the leader enter a mode where layout keys repeat until Esc
 - **`gband.keystyle`**, a new client API:
   - `gband.keystyle.use(style)`, while the configuration loads, makes the bindings of `"modal"` or `"direct"` and returns the style's name. With no argument it uses the saved style, or modal when none is saved. It runs once per load. A user's own `init.lua` can call it.
   - `gband.keystyle.saved()` returns the saved style, or nil.
-  - `gband.keystyle.choose()`, in a callback, returns to `root` and opens the key style chooser: a floating plugin window with one line per style and a cursor line. j, k and the arrow keys move. Enter saves the style. Escape and `q` close it and save nothing. Users can call it again later, for example from the `:` Lua prompt.
+  - `gband.keystyle.choose()`, in a callback, returns to `root` and opens the key style chooser: a floating plugin window with one line per style and a cursor line. It is never wider than the ribbon area, and fits beside the default status line on an 80-column terminal. j, k and the arrow keys move. Enter saves the style. Escape and `q` close it and save nothing. Users can call it again later, for example from the `:` Lua prompt.
 - **Saved choice**: `user/keystyle.lua` holds `return "direct"` or `return "modal"`.
   - Saving replaces the file in one step. Its name ends in `.lua`, so saving reloads the configuration, which applies the new style.
   - Nothing ever writes `user/init.lua`.

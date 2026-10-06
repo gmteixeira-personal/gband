@@ -249,7 +249,7 @@ A binding to an action SHALL dispatch it. A binding to a Lua function SHALL run 
 - **THEN** the focused window receives `:` and no prompt opens
 
 #### Scenario: Float the focused window
-- **WHEN** the client's 80×24 terminal sets the screen area, the status line is off, the only window sits in a column of width 1/2, and the user presses Ctrl+Space then `v`
+- **WHEN** the client's 80×24 terminal sets the screen area, the client has no bar, the only window sits in a column of width 1/2, and the user presses Ctrl+Space then `v`
 - **THEN** the window is drawn in a box spanning columns 20 to 59 and rows 2 to 21, and stays focused
 
 #### Scenario: Switch to the tiled layer and back
@@ -267,5 +267,5 @@ A binding to an action SHALL dispatch it. A binding to a Lua function SHALL run 
 - **THEN** the column holds P2 above P1, and P1 stays focused
 
 #### Scenario: Move a floating window
-- **WHEN** the client's 80×24 terminal sets the screen area, a floating window is focused with its box starting at column 20, and the user presses Ctrl+Space then Ctrl+L
+- **WHEN** the client's 80×24 terminal sets the screen area, the client has no bar, a floating window is focused with its box starting at column 20, and the user presses Ctrl+Space then Ctrl+L
 - **THEN** the box is drawn from column 28

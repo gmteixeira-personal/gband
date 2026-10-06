@@ -10,7 +10,7 @@ See proposal.md for the motivation. This change starts after navigation-mode and
 - Bundled modules in `bundled::MODULES`, `gband.errors` among them, load through `require` and receive no host table. The modules in `bundled::API` receive it. `gband/statusline.lua` is one of them, and also returns the plugin table that `require("gband.statusline")` gives. `host.call(owner, label, fn, ...)` runs `fn` through `guard::isolated`: a fresh instruction budget, the given owner, and an error reported without failing the caller. With no label, a stop by the limit marks the owner failed, and no owner means no plugin is marked.
 - `gband.keylist` and `gband.errors` open plugin windows that take typed keys, and each enters `root` itself when it opens.
 
-The deltas are written against the specs as navigation-mode and sidebars-borders-steps leave them. The client-attach delta copies "Key bindings" as navigation-mode leaves it. The plugin-windows delta copies "Open a plugin window" with sidebars-borders-steps' border table, and the configuration delta copies "Defaults use the public API" with its `gband.errors` and `gband.statusline` setups. sidebars-borders-steps' side bar makes three scenarios of the client-attach requirements this change copies false without modifying them, so the copies restate them: "Height excludes the status line" takes a left bar and prints 22 rows, "Grow the window's height" starts from an 80×24 terminal, and "Center the column" names a client with no bar.
+The deltas are written against the specs as navigation-mode and sidebars-borders-steps leave them. The client-attach delta copies "Send input" and "Key bindings" as sidebars-borders-steps leaves them, with the scenarios its side bar restates. The plugin-windows delta copies "Open a plugin window" with sidebars-borders-steps' border table, and the configuration delta copies "Defaults use the public API" with its `gband.errors` and `gband.statusline` setups.
 
 ## Goals / Non-Goals
 
@@ -77,7 +77,7 @@ The line is `{ ":" .. shown, { text = " ", hl = "PromptCursor" } }`. `shown` dro
 - [Bundled modules get the host table] → It is gband's own code. A module that overrides a bundled one from the runtimepath loads through the runtimepath searcher and gets no host.
 - [A line that calls a plugin's registered action that loops forever marks that plugin failed] → This is the plugins capability's rule for that plugin's own callback. The prompt is unaffected.
 - [The prompt does not follow a ribbon area that grows while it is open, as when the status line narrows] → It is open for one line. Opening it again places it anew.
-- [sidebars-borders-steps also modifies "Open a plugin window" and "Defaults use the public API", and changes what scenarios of "Send input" and "Key bindings" describe] → It is a declared dependency, so it archives first, and this change's copies hold its text and the restated scenarios.
+- [sidebars-borders-steps also modifies "Send input", "Key bindings", "Open a plugin window" and "Defaults use the public API"] → It is a declared dependency, so it archives first, and this change's copies hold its text.
 - [An error from a line stays shown until a reload or a newer error] → This is how every callback error behaves today.
 
 ## Migration Plan

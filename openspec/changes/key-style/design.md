@@ -64,6 +64,10 @@ Alternative considered: *a flag in the Rust client that remembers the offer.* It
 ### The chooser is a plain floating plugin window
 `choose()` calls `gband.keymap.enter("root")`, then `gband.win.open` with a border, a title, `cursorline = true`, two lines, and `keys = { enter = pick }`. The prefix key is shown with the key form from key-list's `gband.keyform`. j, k, the arrow keys, Escape and `q` keep the plugin window defaults, so dismissing saves nothing. `pick` reads `gband.win.info(win).cursor`, closes the chooser, then saves. The reload that follows within a second applies the style. The module keeps the open chooser's number and focuses it when `choose()` runs again. The window belongs to the plugin of the code that called `choose()`, which is none for the defaults' handler.
 
+The default status line leaves an 80-column terminal a ribbon area 60 columns wide, so the chooser must fit in 60 columns. `choose()` opens it with `width = math.min(longest + 2, gband.view().cols)`, and the two texts are short enough that with `C-space` each line is 55 cells and the chooser 57 columns wide. A longer prefix key or a narrower ribbon area cuts the lines at the content area's edge, after the style names, as plugin windows cut any long line.
+
+Alternative considered: *wrap each description onto a line of its own under the style's name.* A style would then take two lines, and the cursor line, j, k and `pick` all work one line per style.
+
 ### Copies of the presets in `defaults/keystyle/`
 `directory.rs` writes the two preset texts to `defaults/keystyle/modal.lua` and `direct.lua` with the same write-if-different, rename-into-place rule as `defaults/init.lua`. A copied `defaults/init.lua` holds only `gband.keystyle.use()`. A user who wants to edit the bindings copies a preset's body instead. Nothing loads these copies.
 
@@ -71,7 +75,7 @@ Alternative considered: *a flag in the Rust client that remembers the offer.* It
 `tests/common/mod.rs` writes `user/keystyle.lua` with `return "modal"` when it creates a `TestEnv`, and offers a constructor that writes none, for the first-run and offer tests. `crates/harness/src/case.rs` does the same from the `keystyle` start option, before it writes `files`. `runner.rs` parses the option. Existing cases and screenshots that use the default configuration then stay as they are.
 
 ### Order with other changes
-The deltas are written against the specs as navigation-mode, sidebars-borders-steps, clear-errors and lua-prompt leave them. "Key bindings" and lua-prompt's "Default setup" are copied as lua-prompt leaves them. "Defaults use the public API" holds sidebars-borders-steps' `gband.errors` and `gband.statusline`, and lua-prompt's `:` scenario. "Side guard" holds sidebars-borders-steps' `bar` and `errors` and clear-errors' `clear_errors`. sidebars-borders-steps removes `statusline_position` without modifying plugin-testing, so the copy of "Case environment" restates the scenario "Configuration of the case" with a status line set up on the right.
+The deltas are written against the specs as navigation-mode, sidebars-borders-steps, clear-errors and lua-prompt leave them. "Key bindings" and lua-prompt's "Default setup" are copied as lua-prompt leaves them. "Defaults use the public API" holds sidebars-borders-steps' `gband.errors` and `gband.statusline`, and lua-prompt's `:` scenario. "Side guard" holds sidebars-borders-steps' `bar` and `errors` and clear-errors' `clear_errors`. "Case environment" is copied as sidebars-borders-steps leaves it, with "Configuration of the case" setting the status line up on the right.
 
 ## Risks / Trade-offs
 

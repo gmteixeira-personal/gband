@@ -37,9 +37,15 @@
   - the error item `error`, reported through `host.error_item`.
 
   Verify every scenario of the status-line delta in `crates/lua/tests/statusline.rs`.
-- [ ] 4.3 Move `crates/lua/src/runtime/gband/statusline/band.lua`, `mode.lua`, `position.lua` and `clock.lua` to top and bottom alignment. Make `hints.lua` align to the top and wrap its hints into lines within `width` and `height`. Verify "Reorder a segment" and "Clock" in `crates/lua/tests/statusline.rs`, and "Component entry", "Prefix table with the defaults", "Some hints left out", "All hints fit", "Nothing fits" and "No rows left" in `crates/lua/tests/key_hints.rs`.
+- [ ] 4.3 Move `crates/lua/src/runtime/gband/statusline/band.lua`, `mode.lua`, `position.lua` and `clock.lua` to top and bottom alignment. Make `hints.lua` align to the top and wrap its hints into lines within `width` and `height`. Verify "Reorder a segment" and "Clock" in `crates/lua/tests/statusline.rs`, and "Component entry", "Prefix table with the defaults", "Some hints left out", "All hints fit", "Nothing fits", "No rows left" and "Registered action" in `crates/lua/tests/key_hints.rs`.
 - [ ] 4.4 Draw the banner in `crates/client/src/render.rs` and `crates/client/src/lib.rs` only when an error is reported and no error item is drawn. Verify "Plugin error on the banner" and "Banner without a status line" in `crates/client/tests/statusline.rs`.
 - [ ] 4.5 Rewrite `crates/client/tests/statusline.rs` and `tests/statusline.rs` for the side-bar status line. Verify "Default placement", "Right side", "Terminal too short", "Turning the status line off" and "Default segments" pass.
+- [ ] 4.6 Move the other tests off the removed options and the bottom-row status line:
+  - drop `statusline_position` from `crates/client/tests/plugin_windows.rs`, `tests/floating.rs`, `tests/plugin_testing.rs` and `tests/lua/keylist_spec.lua`, leaving `gband.statusline` out where they turned the status line off;
+  - make the "configuration of the case" case in `tests/plugin_testing.rs` set up the status line with `side = "right"` and find it on the last 20 columns, as "Configuration of the case" reads;
+  - move the tile columns, `tput` sizes and bottom-row reads of `tests/attach.rs`, `tests/config.rs` and `tests/plugin_runtime.rs` to the 20-column left bar, with errors read as the error item and the agent count read from the bar, and "Height excludes the status line", "Grow the window's height", "Center the column", "Float the focused window" and "Move a floating window" as they now read.
+
+  Verify that `rg 'statusline_(position|height|separator)' tests crates examples` finds only cases that check the options are refused, and that `cargo test --test attach --test config --test floating --test plugin_runtime --test plugin_testing --test plugin_windows` passes.
 
 ## 5. Error list
 
@@ -62,6 +68,12 @@
 
   Verify `rg 'statusline_(position|height|separator)|align = "(left|right)"' README.md docs` prints nothing.
 - [ ] 6.2 Move `examples/plugins/agent-status/client.lua` and `examples/plugins/window/lua/window/init.lua` to top or bottom alignment. Verify both load in `crates/lua/tests/plugins.rs` or with their existing example tests.
+- [ ] 6.3 Following `.claude/skills/gband-test/SKILL.md`, move the screen tests to the side-bar status line:
+  - set up `gband.statusline` in the cases of `tests/lua/statusline_spec.lua` and `examples/plugins/window/tests/window_spec.lua` that draw segments;
+  - read the waiting count from the bar in `examples/plugins/agent-status/tests/agent_status_spec.lua`;
+  - update the default-configuration cases of `tests/lua/keylist_spec.lua` and `tests/lua/loop_bands_spec.lua` for the 60-column ribbon.
+
+  Rewrite the references under `tests/lua/screenshots/statusline_spec/`, `tests/lua/screenshots/keylist_spec/`, `examples/plugins/agent-status/tests/screenshots/agent_status_spec/`, `examples/plugins/hello/tests/screenshots/hello_spec/` and `examples/plugins/window/tests/screenshots/window_spec/` with `--update`, and read each one. Verify `cargo test --test lua_specs` passes.
 
 ## 7. Gate
 
