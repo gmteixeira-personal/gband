@@ -123,7 +123,14 @@ async fn old_environment_variable_is_not_set() {
 async fn argument_list_program_runs_without_a_shell() {
     let server = TestServer::start("prog-argv", &["/bin/sh"]).await;
     let mut client = server.attach(80, 24).await;
-    let argv = ["printf", "%s-%s", "a", "b"].map(str::to_owned).to_vec();
+    let argv = [
+        "awk",
+        r#"BEGIN { printf "%s-%s", ARGV[1], ARGV[2]; getline line < "-" }"#,
+        "a",
+        "b",
+    ]
+    .map(str::to_owned)
+    .to_vec();
     let window = open_running(&mut client, Program::Argv(argv)).await;
     client.wait_for_window_text(window, "a-b").await;
 }
@@ -146,4 +153,23 @@ async fn program_that_cannot_start_leaves_the_layout() {
     assert!(client.focus.is_empty());
     client.type_line("echo still-serving").await;
     client.wait_for_text("still-serving\n").await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn window_closed_before_its_focus() {
+    let server = TestServer::start("prog-closed-focus", &["/bin/sh"]).await;
+    let mut client = server.attach(80, 24).await;
+    let first = client.first();
+    let band = client.layout.bands()[0].id;
+    for _ in 0..30 {
+        client
+            .act(SessionAction::open(
+                band,
+                Some(first),
+                Some(Program::Argv(vec!["true".to_owned()])),
+            ))
+            .await;
+        assert!(client.pump(Duration::from_millis(100)).await);
+    }
+    assert_eq!(client.windows(), vec![first]);
 }

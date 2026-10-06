@@ -40,6 +40,16 @@ The `Barrier::Flush` branch syncs before draining replies, then drains them thro
 
 A test in `crates/server/tests/programs.rs` opens a window running `true` with focus, 30 times in a row, pumping messages for 100 ms after each. The test client's `apply` already panics on a focus for a window it holds no snapshot of, which covers both a focus before the layout and a focus after a layout without the window. Each round ends with the layout holding only the first window. Before the fix, the test is checked to fail at least once in 20 runs, so it is known to catch the race.
 
+### Keep the argument list test's window open
+
+The focus fix does not by itself stop `argument_list_program_runs_without_a_shell` failing. When `printf` exits before the connection syncs, the server now drops the focus, and the test's `open_running` waits for it until it times out: 4 of 46 runs of the `programs` binary did. When the program exits before any layout holding it reaches the client, the client never receives its output at all, so no change to the waiting can make the test reliable.
+
+The test runs `awk` with `BEGIN { printf "%s-%s", ARGV[1], ARGV[2]; getline line < "-" }`, `a` and `b` instead. It is still an argument list that no shell expands, it prints `a-b`, and it stays open reading its PTY until the session ends.
+
+*Alternative:* `yes a-b`, which also stays open. Rejected: it writes without end, loading the server's emulator for the whole test.
+
+*Alternative:* keep a window open after its program exits. Rejected: that changes the window lifecycle for a test's sake.
+
 ## Risks / Trade-offs
 
 - [A client that relied on a focus for a window that closed at once] → no such client: the real client already ignores it, and the window is gone.
