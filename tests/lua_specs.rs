@@ -35,6 +35,11 @@ fn bundled_status_line_segments() {
 }
 
 #[test]
+fn bundled_key_list() {
+    gband_test(root(), &["tests/lua/keylist_spec.lua"]);
+}
+
+#[test]
 fn example_plugin_agent_status() {
     gband_test(&root().join("examples/plugins/agent-status"), &[]);
 }

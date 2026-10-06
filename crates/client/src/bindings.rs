@@ -112,6 +112,33 @@ mod tests {
         Keymap::new(config.options.prefix, config.keymap)
     }
 
+    fn default_prefix_actions() -> Vec<(String, Option<String>)> {
+        let config = gband_lua::defaults(gband_lua::Side::Client);
+        let names: Vec<String> = config
+            .runtime
+            .lua()
+            .load("local names = {} for _, action in ipairs(gband.action.list()) do names[#names + 1] = action.name end return names")
+            .eval()
+            .unwrap();
+        let entries: Vec<mlua::Table> = config
+            .runtime
+            .lua()
+            .load("return gband.keymap.list('prefix')")
+            .eval()
+            .unwrap();
+        entries
+            .into_iter()
+            .map(|entry| {
+                let action: Option<String> = entry.get("action").unwrap();
+                assert!(
+                    action.as_ref().is_some_and(|action| names.contains(action)),
+                    "{action:?}"
+                );
+                (entry.get("key").unwrap(), action)
+            })
+            .collect()
+    }
+
     fn configured(source: &str) -> Keymap {
         static NEXT: AtomicUsize = AtomicUsize::new(0);
         let dir = std::env::temp_dir().join(format!(
@@ -231,18 +258,38 @@ mod tests {
             assert_eq!(after_prefix(&keymap, ctrl(KeyCode::Char(c))), action, "{c}");
             assert_eq!(after_prefix(&keymap, ctrl(arrow)), action, "{arrow:?}");
         }
+        let mut leader = Leader::default();
+        leader.handle(&keymap, keymap.prefix);
+        assert!(matches!(
+            leader.handle(&keymap, char_key('?')),
+            Command::Run(Binding::Callback(_))
+        ));
+        let registered: Vec<(String, Option<String>)> = default_prefix_actions()
+            .into_iter()
+            .filter(|(_, action)| action.as_deref() == Some("keylist.open"))
+            .collect();
+        assert_eq!(
+            registered,
+            [("?".to_owned(), Some("keylist.open".to_owned()))]
+        );
         assert!(keymap.table(ROOT).is_empty());
         assert_eq!(
             keymap.table(PREFIX).len(),
-            expected.len() + 2 + 2 + 2 * moves.len()
+            expected.len() + 2 + 2 + 2 * moves.len() + 1
         );
     }
 
     #[test]
     fn every_default_binding_names_an_action() {
         let keymap = defaults();
-        for (chord, binding) in keymap.table(PREFIX) {
-            assert!(matches!(binding, Binding::Action(_)), "{chord:?}");
+        let actions = default_prefix_actions();
+        assert_eq!(actions.len(), keymap.table(PREFIX).len());
+        for ((chord, binding), (key, action)) in keymap.table(PREFIX).iter().zip(&actions) {
+            let registered = action.as_deref() == Some("keylist.open");
+            assert!(
+                matches!(binding, Binding::Action(_)) != registered,
+                "{chord:?} {key}"
+            );
         }
     }
 

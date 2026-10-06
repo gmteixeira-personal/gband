@@ -13,7 +13,9 @@ pub(crate) const API: [(&str, &str); 4] = [
     ("win.lua", include_str!("runtime/gband/win.lua")),
 ];
 
-const MODULES: [(&str, &str); 5] = [
+const MODULES: [(&str, &str); 7] = [
+    ("keyform.lua", include_str!("runtime/gband/keyform.lua")),
+    ("keylist.lua", include_str!("runtime/gband/keylist.lua")),
     (
         "statusline/band.lua",
         include_str!("runtime/gband/statusline/band.lua"),

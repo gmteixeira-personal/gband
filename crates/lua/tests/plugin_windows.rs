@@ -397,6 +397,19 @@ fn escape_closes_a_float() {
 }
 
 #[test]
+fn q_closes_a_float() {
+    let client = Client::new("win-q", "");
+    client.run("win = gband.win.open({ on_close = function(id) closed = id end })");
+    let win: u32 = client.global("win");
+    client.frames();
+    let outcome = client.key(win, "q");
+    clean(&outcome);
+    assert!(outcome.dispatched.is_empty());
+    assert_eq!(client.global::<u32>("closed"), win);
+    assert_eq!(client.frames(), [(win, None)]);
+}
+
+#[test]
 fn failing_key_function_is_a_plugin_error() {
     let scratch = Scratch::new("win-failing-key");
     scratch.client_plugin("demo",

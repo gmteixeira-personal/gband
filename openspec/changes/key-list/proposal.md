@@ -5,7 +5,7 @@ A user who forgets a key has only the status line's hints, which a narrow termin
 ## What Changes
 
 - **Key list plugin**: a bundled client plugin, `gband.keylist`, set up by the default configuration. It registers the action `keylist.open`, which the default configuration binds to Ctrl+Space then `?`. The action opens a focused floating plugin window titled `prefix keys`, sized to fit its lines within the ribbon area and at most 15 rows high, with the cursor line on. When the key list is already open, the action focuses it and opens no second one.
-  - Each line shows a binding of the `prefix` table, in the order `gband.keymap.list` returns them: its key in the hints segment's short form, such as `C-space`, then its description, or its action's name when it has no description.
+  - Each line shows a binding of the `prefix` table, in the order `gband.keymap.list` returns them: its key in the hints segment's short form, such as `C-space`, then its description, or its action's description or name when it has none.
   - j, k and the arrow keys move the cursor line, as the plugin window defaults already do.
   - Enter runs the selected binding's action against the focused window behind the list, and keeps the list open and focused. A floating plugin window that the action opens takes focus. A binding to a function has no action the list can run, so its line is drawn muted and Enter does nothing on it. Enter on the list's own line does nothing.
   - `q` and Escape close the list.
@@ -30,6 +30,7 @@ Out of scope:
 - `plugin-windows`: `q` is a default key that closes a focused floating plugin window; Ctrl+Space then `q` closes it rather than the window behind it.
 - `configuration`: the default configuration sets up `gband.keylist` before its bindings and binds `prefix ?`.
 - `client-attach`: the default key table gains `?`, and `q` closes the focused floating plugin window when one is focused, otherwise the focused window.
+- `plugins`: the modules bundled with gband, which `require` falls back to, gain `gband.keylist` and `gband.keyform`.
 
 ## Impact
 
@@ -57,7 +58,8 @@ Out of scope:
 - README.md
 - crates/client/src/bindings.rs
 - crates/client/src/lib.rs
-- crates/client/tests/
+- crates/client/tests/actions.rs
+- crates/client/tests/plugin_windows.rs
 - crates/lua/src/bundled.rs
 - crates/lua/src/defaults.lua
 - crates/lua/src/runtime.rs
@@ -65,7 +67,12 @@ Out of scope:
 - crates/lua/src/runtime/gband/keylist.lua
 - crates/lua/src/runtime/gband/statusline/hints.lua
 - crates/lua/src/runtime/gband/win.lua
-- crates/lua/tests/
+- crates/lua/tests/config.rs
+- crates/lua/tests/key_hints.rs
+- crates/lua/tests/plugin_windows.rs
+- crates/lua/tests/plugins.rs
 - docs/plugins.md
-- tests/
+- tests/lua/keylist_spec.lua
+- tests/lua/screenshots/keylist_spec/
+- tests/lua_specs.rs
 - openspec/changes/key-list/

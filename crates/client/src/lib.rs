@@ -790,7 +790,9 @@ impl Controls {
                         Action::Client(ClientAction::SendKey(key)),
                     )),
                 },
-                Command::Run(Binding::Action(action)) => steps.push(dispatch(display, action)),
+                Command::Run(Binding::Action(action)) => {
+                    controls.run_action(display, action, steps)
+                }
                 Command::Run(Binding::Callback(callback)) => {
                     let outcome = controls.runtime.call(callback);
                     controls.apply(display, outcome, steps);
@@ -993,10 +995,21 @@ impl Controls {
         }
     }
 
+    fn run_action(&mut self, display: &mut Display, action: Action, steps: &mut Vec<Step>) {
+        if matches!(action, Action::Session(SessionCommand::CloseWindow)) {
+            let (closed, outcome) = self.runtime.close_focused_plugin_window();
+            self.apply(display, outcome, steps);
+            if closed {
+                return;
+            }
+        }
+        steps.push(dispatch(display, action));
+    }
+
     fn apply(&mut self, display: &mut Display, outcome: Ran, steps: &mut Vec<Step>) {
         for entry in outcome.dispatched {
             match entry {
-                Dispatch::Action(action) => steps.push(dispatch(display, action)),
+                Dispatch::Action(action) => self.run_action(display, action, steps),
                 Dispatch::Spawn(program) => steps.push(spawn(display, program)),
                 Dispatch::Enter(table) => self.leader.enter(table),
                 Dispatch::Session(SessionAction::ToggleFloating {

@@ -260,6 +260,12 @@ fn new_actions_resolve_against_the_view() {
             None
         )))
     );
+    assert_eq!(
+        sent(&mut display, SessionCommand::CloseWindow),
+        Step::Send(ClientMessage::Action(SessionAction::CloseWindow(
+            windows[1]
+        )))
+    );
 }
 
 fn key(name: &str) -> Key {

@@ -5,6 +5,8 @@ gband.opt.statusline_height = 1
 gband.opt.statusline_separator = " │ "
 gband.opt.notify_style = "osc9"
 
+gband.plugin("gband.keylist")
+
 local set = gband.keymap.set
 local action = gband.action
 
@@ -36,6 +38,7 @@ set("prefix", "ctrl+left", action.move_column_left, { desc = "move the column or
 set("prefix", "ctrl+right", action.move_column_right, { desc = "move the column or floating window to the right" })
 set("prefix", "ctrl+down", action.move_window_down, { desc = "move the window down" })
 set("prefix", "ctrl+up", action.move_window_up, { desc = "move the window up" })
+set("prefix", "?", action["keylist.open"], { desc = "list the keys" })
 set("prefix", "D", action.detach, { desc = "detach" })
 set("prefix", "prefix", action.send_prefix, { desc = "send the prefix key to the focused window" })
 

@@ -49,7 +49,7 @@ fn resolved(config: &Config, group: &str) -> Vec<String> {
     )
 }
 
-const PREFIX_HINTS: &str = "h left  l right  j down  k up  u band down  i band up  c center  enter new  q close  [ stack left  ] stack right  r width  f full  - narrower  = wider  _ shorter  + taller  R reset height  v float  V layer  C-h move left  C-l move right  C-j move down  C-k move up  C-left move left  C-right move right  C-down move down  C-up move up  D detach  C-space send prefix";
+const PREFIX_HINTS: &str = "h left  l right  j down  k up  u band down  i band up  c center  enter new  q close  [ stack left  ] stack right  r width  f full  - narrower  = wider  _ shorter  + taller  R reset height  v float  V layer  C-h move left  C-l move right  C-j move down  C-k move up  C-left move left  C-right move right  C-down move down  C-up move up  ? list the keys  D detach  C-space send prefix";
 
 #[test]
 fn component_entry() {
