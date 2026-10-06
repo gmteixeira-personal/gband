@@ -7,6 +7,7 @@ use mlua::{Function, Lua, MultiValue, Table, Value};
 use crate::Side;
 use crate::actions::ACTIONS;
 use crate::error::{ConfigError, caller};
+use crate::removed;
 
 pub(crate) const CLIENT_ONLY: [&str; 17] = [
     "bind",
@@ -142,6 +143,13 @@ pub(crate) fn guard(lua: &Lua, gband: &Table, side: Side) -> mlua::Result<()> {
                         return Ok(Value::Nil);
                     };
                     let key = key.to_string_lossy();
+                    let qualified = match prefix {
+                        "gband." => format!("{prefix}{key}"),
+                        _ => key.clone(),
+                    };
+                    if let Some(error) = removed::raise(lua, &qualified) {
+                        return Err(error);
+                    }
                     if !names.contains(&key.as_str()) {
                         return Ok(Value::Nil);
                     }
@@ -159,14 +167,15 @@ pub(crate) fn guard(lua: &Lua, gband: &Table, side: Side) -> mlua::Result<()> {
         Ok::<_, mlua::Error>(meta)
     };
     gband.set_metatable(Some(foreign(other_only(side).to_vec(), "gband.", "API")?))?;
-    if side == Side::Server {
-        let actions: Table = gband.get("action")?;
-        let names = ACTIONS
+    let actions: Table = gband.get("action")?;
+    let names = match side {
+        Side::Server => ACTIONS
             .iter()
             .filter(|action| is_client_action(action.action))
             .map(|action| action.name)
-            .collect();
-        actions.set_metatable(Some(foreign(names, "gband.action.", "action")?))?;
-    }
+            .collect(),
+        _ => Vec::new(),
+    };
+    actions.set_metatable(Some(foreign(names, "gband.action.", "action")?))?;
     Ok(())
 }

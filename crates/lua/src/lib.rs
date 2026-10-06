@@ -15,6 +15,7 @@ pub mod keys;
 mod options;
 mod owner;
 pub mod plugin_windows;
+pub mod removed;
 mod runtime;
 pub mod server;
 mod sides;

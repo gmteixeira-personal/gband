@@ -17,7 +17,7 @@
 
 ## 4. Removed names
 
-- [ ] 4.1 Add one table that maps each removed Lua name to its replacement, as the lua-control "Removed pane names" requirement lists them, and consult it where `gband` and `gband.action` resolve a field, where `gband.on` and `redraw_on` parse an event name, where an action target's fields are checked, where `gband.win.open` checks `kind`, and where the hints segment reads `labels`. Add a test for each scenario of that requirement. Verify that `cargo test -p gband-lua --locked` passes and that a `user/init.lua` binding `gband.action.close_pane` fails to load with an error at its line naming `close_window`
+- [x] 4.1 Add one table that maps each removed Lua name to its replacement, as the lua-control "Removed pane names" requirement lists them, and consult it where `gband` and `gband.action` resolve a field, where `gband.on` and `redraw_on` parse an event name, where an action target's fields are checked, where `gband.win.open` checks `kind`, and where the hints segment reads `labels`. Add a test for each scenario of that requirement. Verify that `cargo test -p gband-lua --locked` passes and that a `user/init.lua` binding `gband.action.close_pane` fails to load with an error at its line naming `close_window`
 
 ## 5. Samples and docs
 

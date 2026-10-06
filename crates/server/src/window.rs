@@ -209,6 +209,7 @@ pub fn spawn(
     command.env("GBAND_SESSION", session.as_str());
     command.env("GBAND_WINDOW", id.to_string());
     command.env_remove(SOCKET_VARIABLE);
+    command.env_remove(gband_lua::removed::VARIABLE);
     command.cwd(cwd);
     let mut child = pair
         .slave

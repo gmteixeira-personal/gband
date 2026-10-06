@@ -157,6 +157,7 @@ local function invalid(opts)
       if type(name) ~= "string" or (type(text) ~= "string" and text ~= false) then
         return "`labels` must be a table from action names to strings or false"
       end
+      local _ = gband.action[name]
     end
   end
 end

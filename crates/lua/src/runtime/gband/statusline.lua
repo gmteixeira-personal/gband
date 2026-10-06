@@ -100,7 +100,7 @@ local function validate(spec)
         return nil, "`redraw_on` must be a list of event names"
       end
       if not EVENTS[name] then
-        return nil, "unknown event `" .. name .. "` in `redraw_on`"
+        return nil, host.removed(name) or "unknown event `" .. name .. "` in `redraw_on`"
       end
       redraw_on[name] = true
     end

@@ -9,7 +9,7 @@ use crate::api;
 use crate::callbacks::{self, CallbackId};
 use crate::error::ConfigError;
 use crate::runtime::side;
-use crate::{server, ui, value};
+use crate::{removed, server, ui, value};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Event {
@@ -222,7 +222,7 @@ fn known(lua: &Lua, event: &str) -> Result<(), String> {
             side.name()
         ));
     }
-    Err(format!("unknown event `{event}`"))
+    Err(removed::message(event).unwrap_or_else(|| format!("unknown event `{event}`")))
 }
 
 fn on(lua: &Lua, (event, function, opts): (Value, Value, Value)) -> mlua::Result<()> {

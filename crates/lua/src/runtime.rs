@@ -22,6 +22,7 @@ use crate::guard::{self, Failure};
 use crate::keys::key_name;
 use crate::owner::{self, Owners};
 use crate::plugin_windows::{self, Frame};
+use crate::removed;
 use crate::server::{self, Caller, Host};
 use crate::ui::{self, StatusLine, ViewState};
 use crate::version::{Requirement, Version};
@@ -90,6 +91,7 @@ pub(crate) fn install(
             bridge::install(lua, &gband)?;
             let host = ui::install(lua, &gband)?;
             plugin_windows::install(lua, &host)?;
+            removed::install(lua, &host)?;
             Some(host)
         }
         Side::Server => {

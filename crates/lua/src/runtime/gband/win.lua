@@ -374,6 +374,10 @@ function api.open(opts)
     error("gband.win.open expects a table of options", 2)
   end
   local kind = opts.kind or "floating"
+  local removed = type(kind) == "string" and host.removed('kind = "' .. kind .. '"')
+  if removed then
+    error(removed, 2)
+  end
   if kind ~= "floating" and kind ~= "tiled" then
     error("`kind` must be \"floating\" or \"tiled\"", 2)
   end

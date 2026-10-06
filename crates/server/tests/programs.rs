@@ -100,6 +100,26 @@ async fn command_line_program_runs_in_the_user_shell() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn old_environment_variable_is_not_set() {
+    let server = TestServer::start("prog-old-variable", &["/bin/sh"]).await;
+    let mut client = server.attach(80, 24).await;
+    let window = open_running(
+        &mut client,
+        Program::CommandLine("echo \"[$GBAND_PANE] $GBAND_WINDOW\"; sleep 5".to_owned()),
+    )
+    .await;
+    let expected = format!("[] {window}");
+    client
+        .wait_for_window(window, |screen| {
+            screen
+                .contents()
+                .lines()
+                .any(|line| line.trim() == expected)
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn argument_list_program_runs_without_a_shell() {
     let server = TestServer::start("prog-argv", &["/bin/sh"]).await;
     let mut client = server.attach(80, 24).await;

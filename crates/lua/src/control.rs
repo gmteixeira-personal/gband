@@ -12,6 +12,7 @@ use crate::error::ConfigError;
 use crate::keys::parse_key;
 use crate::options::{self, Width};
 use crate::plugin_windows;
+use crate::removed;
 use crate::runtime::is_loading;
 use crate::ui::{self, is_control};
 
@@ -203,10 +204,9 @@ fn fields(target: &Table, allowed: &[&str], action: &str) -> Result<(), String> 
         let known =
             matches!(&name, Value::String(text) if allowed.iter().any(|field| *text == *field));
         if !known {
-            return Err(format!(
-                "the target of `{action}` takes no field `{}`",
-                field_name(&name)
-            ));
+            let name = field_name(&name);
+            return Err(removed::message(&name)
+                .unwrap_or_else(|| format!("the target of `{action}` takes no field `{name}`")));
         }
     }
     Ok(())

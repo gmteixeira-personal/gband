@@ -227,10 +227,9 @@ fn session_target(name: &str, command: SessionCommand, target: &Value) -> Result
         let (field, _) = pair.map_err(|error| error.to_string())?;
         let known = matches!(&field, Value::String(text) if allowed.iter().any(|allowed| *text == *allowed));
         if !known {
-            return Err(format!(
-                "the target of `{name}` takes no field `{}`",
-                crate::control::field_name(&field)
-            ));
+            let field = crate::control::field_name(&field);
+            return Err(crate::removed::message(&field)
+                .unwrap_or_else(|| format!("the target of `{name}` takes no field `{field}`")));
         }
     }
     let get = |field: &str| {
