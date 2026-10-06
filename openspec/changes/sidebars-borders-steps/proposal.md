@@ -51,9 +51,9 @@ Out of scope:
 
 ### Modified Capabilities
 - `status-line`: the status line is a side bar added by the bundled `gband.statusline` plugin. Components are laid out vertically and may return several lines. The context gains `total_height` and `height`. The error item shows `error`.
-- `key-hints`: the hints segment aligns to the top and wraps its hints into lines at the available width and height.
+- `key-hints`: the hints segment aligns to the top and wraps its hints into lines at the available width and height, so a hint label scenario that shows hints on one line asks for a segment wide enough for them.
 - `configuration`: the status line options are removed and the border and step options are added. The client keeps an error list, read with `gband.errors()`. The default configuration sets up `gband.errors` and `gband.statusline`.
-- `client-attach`: the reported size is always the terminal size. The ribbon area is what the bars leave, and tiles keep their sizes inside it. Tiles and floating windows are drawn with the client's border options.
+- `client-attach`: the reported size is always the terminal size. The ribbon area is what the bars leave, and tiles keep their sizes inside it. Tiles and floating windows are drawn with the client's border options. Scenarios of sending input and of the key bindings that counted the status line's row, or named screen columns with the default status line, follow the left bar.
 - `actions`: grow and shrink are sent with the client's step, or a target's.
 - `lua-control`: grow and shrink action targets accept `step`.
 - `layout`: growing and shrinking a column's width or a window's height use the step the request names.
@@ -62,6 +62,7 @@ Out of scope:
 - `server-runtime`: the server's grow and shrink action targets accept `step`, with the same ranges as the client's.
 - `plugins`: `bar` and `errors` are client-only fields of `gband`.
 - `wire-protocol`: grow and shrink actions carry a step, and the protocol version goes up by one.
+- `plugin-testing`: the case environment's configuration scenario sets up the status line on the right instead of setting `statusline_position`.
 
 ## Impact
 
@@ -70,7 +71,7 @@ Out of scope:
 - Client: `placement.rs` places side bars instead of a status line; `lib.rs` reports the terminal size and offsets the ribbon area from the left; `render.rs` draws bars and draws borders from sides and characters; grow and shrink requests carry steps.
 - Core, protocol and server: step amounts in the grow and shrink actions, the protocol version, and the server applying the received step.
 - Docs and examples: `README.md`, `docs/plugins.md` and the example plugins move to side bars, vertical alignment, the error list, borders and steps.
-- Tests: Lua, client and end-to-end status line tests move to the side-bar status line.
+- Tests: Lua, client and end-to-end status line tests move to the side-bar status line. Tests that set the removed options, read the status line on the bottom row, or name screen columns of the default configuration move too, and so do the Lua screen tests and the example plugins' tests and screenshots.
 
 ## Coordination
 
@@ -111,13 +112,29 @@ Out of scope:
 - crates/client/src/placement.rs
 - crates/client/src/render.rs
 - crates/client/tests/actions.rs
+- crates/client/tests/plugin_windows.rs
 - crates/client/tests/bars.rs
 - crates/client/tests/render.rs
 - crates/client/tests/statusline.rs
 - crates/client/tests/snapshots/
 - tests/statusline.rs
 - tests/plugin_windows.rs
+- tests/attach.rs
+- tests/config.rs
+- tests/floating.rs
+- tests/plugin_runtime.rs
+- tests/plugin_testing.rs
+- tests/lua/statusline_spec.lua
+- tests/lua/screenshots/statusline_spec/
+- tests/lua/keylist_spec.lua
+- tests/lua/screenshots/keylist_spec/
+- tests/lua/loop_bands_spec.lua
 - README.md
 - docs/plugins.md
 - examples/plugins/agent-status/client.lua
+- examples/plugins/agent-status/tests/agent_status_spec.lua
+- examples/plugins/agent-status/tests/screenshots/agent_status_spec/a-prompt-marks-the-window-waiting.txt
+- examples/plugins/hello/tests/screenshots/hello_spec/greet-opens-a-window-that-prints-the-greeting.txt
 - examples/plugins/window/lua/window/init.lua
+- examples/plugins/window/tests/window_spec.lua
+- examples/plugins/window/tests/screenshots/window_spec/

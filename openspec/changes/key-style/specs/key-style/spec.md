@@ -135,10 +135,10 @@ The chooser SHALL have a border, the title `key style  enter choose  esc later`,
 
 | line | style | text |
 |---|---|---|
-| 1 | `modal` | `modal`, padded with spaces to 8 cells, then `<prefix> enters navigation mode, where keys repeat until Escape` |
-| 2 | `direct` | `direct`, padded with spaces to 8 cells, then `<prefix> then one key per action, then back to typing` |
+| 1 | `modal` | `modal`, padded with spaces to 8 cells, then `<prefix> enters a mode, keys repeat until Escape` |
+| 2 | `direct` | `direct`, padded with spaces to 8 cells, then `<prefix> then one key per action, back to typing` |
 
-`<prefix>` SHALL be the key the `prefix` option names, in the form the key-hints capability's "Key form" defines, such as `C-space`. The cursor line SHALL start on the line of the saved style, or on the first line when none is saved. The chooser's width SHALL be its longest line plus 2 for the border, and its height 4, each at most the ribbon area's. It SHALL be centered in the ribbon area.
+`<prefix>` SHALL be the key the `prefix` option names, in the form the key-hints capability's "Key form" defines, such as `C-space`. The cursor line SHALL start on the line of the saved style, or on the first line when none is saved. The chooser's width SHALL be the smaller of its longest line plus 2 for the border and the ribbon area's width. Its height SHALL be the smaller of 4 and the ribbon area's height. It SHALL be centered in the ribbon area. A line wider than the content area SHALL be cut at the content area's edge, as the plugin-windows capability defines, so each line still starts with its style's name.
 
 j, k and the arrow keys SHALL move the cursor line, as the plugin-windows capability's defaults do. Enter SHALL save the style of the cursor line, as "Saved key style" defines, and close the chooser. Escape and `q` SHALL close the chooser and save nothing, as the plugin-windows capability defines for a floating plugin window with no `keys` entry for them. The style in use SHALL then stay until the configuration next loads.
 
@@ -146,8 +146,18 @@ When `gband.config_dir` is nil, or the file cannot be written, Enter SHALL close
 
 #### Scenario: Chooser opens
 - **WHEN** no style is saved and a binding function calls `gband.keystyle.choose()`
-- **THEN** a focused floating plugin window titled `key style  enter choose  esc later` shows `modal   C-space enters navigation mode, where keys repeat until Escape` on its first line, with the cursor line there
-- **AND** its second line shows `direct  C-space then one key per action, then back to typing`
+- **THEN** a focused floating plugin window titled `key style  enter choose  esc later` shows `modal   C-space enters a mode, keys repeat until Escape` on its first line, with the cursor line there
+- **AND** its second line shows `direct  C-space then one key per action, back to typing`
+
+#### Scenario: Chooser beside the default status line
+- **WHEN** no style is saved, the default configuration is in use on an 80×24 terminal, and the chooser opens
+- **THEN** the chooser is 57 columns wide and 4 rows high, and spans columns 1 to 57 and rows 10 to 13 of the 60-column ribbon area
+- **AND** neither line is cut
+
+#### Scenario: Chooser in a narrow ribbon area
+- **WHEN** the ribbon area is 40 columns wide and the chooser opens
+- **THEN** the chooser is 40 columns wide
+- **AND** its lines are cut to 38 cells, starting with `modal` and `direct`
 
 #### Scenario: Cursor on the saved style
 - **WHEN** `user/keystyle.lua` holds `return "direct"` and the chooser opens
