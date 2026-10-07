@@ -21,6 +21,7 @@ Every bundled Lua file uses only the public API, and each process writes a copy 
 - **Every primitive taught**: every field of the client's `gband.core`, at every depth, is named as `gband.core.<field>` in some chapter.
 - **Chapter directories**: a chapter that shows code of its own, such as the reader's prelude in the last chapter, has a runnable directory under `examples/internals/`. Its `lua` blocks and `screen` blocks are checked as the scripting tutorial's are, and the suite runs `gband test` in it.
 - **Links**: the README's Scripting section, the section "The prelude and the API modules" of `docs/plugins.md`, and the scripting tutorial's index link to the internals tutorial's index.
+- **Licensing**: every file under `docs/` is licensed under the MIT License, the internals tutorial included. `LICENSE-MIT` lists `docs/` in place of `docs/tutorial/`, and the README's License section says so.
 
 Out of scope:
 - Rewriting or reordering bundled Lua for teaching. The tutorial follows the files as they are.
@@ -46,6 +47,7 @@ None.
 - `crates/lua/tests/tutorial.rs`: the checks for quotes, whole-file coverage of the covered files, file naming and `gband.core` coverage. The chapter, `lua` block and `screen` block checks are generalized to cover `docs/internals/` and `examples/internals/`.
 - `tests/lua_specs.rs`: the `tutorial` test also discovers `examples/internals/`.
 - `README.md`, `docs/plugins.md` and `docs/tutorial/README.md`: links to the internals tutorial.
+- `LICENSE-MIT` and the README's License section: `docs/` as a whole is MIT.
 - No change to the executable, the bundled Lua, the Lua API, the protocol or the harness, and no new dependency.
 - Every later change that edits a covered file, from `crates/lua/src/runtime/gband/`, `crates/lua/src/defaults.lua` or `crates/lua/src/defaults_server.lua`, must revise the internals tutorial in the same change. Its Expected Files lists only the chapter files that quote the files it edits, never the directory `docs/internals/`, so that such changes can still run side by side.
 

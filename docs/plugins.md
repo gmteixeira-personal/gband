@@ -1246,6 +1246,7 @@ To change one, copy it from `defaults/lua/gband/` of the configuration directory
 A copy of `prelude.lua` decides which API modules load at all.
 A replaced module owns what it installs: a broken `user/lua/gband/win.lua` fails the load, and gband keeps the last configuration that loaded.
 The files under `defaults/` are copies for reading; editing them changes nothing, and each process writes them again as it starts.
+[The internals tutorial](internals/README.md) reads the prelude, every API module and every bundled plugin line by line.
 
 Three API modules return a table of exports that other modules use, described below.
 A copy that replaces one of them must keep its exports, with the same meaning, because the other modules require them.

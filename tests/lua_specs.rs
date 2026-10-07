@@ -128,8 +128,11 @@ fn tutorial_directories() -> Vec<PathBuf> {
         found.sort();
         found
     };
+    let chapters = ["examples/tutorial", "examples/internals"]
+        .into_iter()
+        .flat_map(|tutorial| subdirectories(&root().join(tutorial)));
     let mut directories = Vec::new();
-    for chapter in subdirectories(&root().join("examples/tutorial")) {
+    for chapter in chapters {
         let plugins = subdirectories(&chapter.join("plugins"));
         directories.push(chapter);
         directories.extend(
@@ -148,6 +151,12 @@ fn tutorial() {
         directories
             .iter()
             .any(|directory| directory.ends_with("examples/tutorial/00-setup")),
+        "{directories:?}"
+    );
+    assert!(
+        directories
+            .iter()
+            .any(|directory| directory.ends_with("examples/internals/12-own-prelude")),
         "{directories:?}"
     );
     let failures: Vec<String> = thread::scope(|scope| {
