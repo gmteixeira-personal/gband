@@ -185,7 +185,7 @@ With the modal key style, the bindings SHALL be: Ctrl+Space as the prefix, no bi
 | `u` | `prefix u` | view the band below | view | |
 | `i` | `prefix i` | view the band above | view | |
 | `c` | `prefix c` | center the focused column, or the focused floating window | view | |
-| `n` | `prefix n` | open a window right of the focused window's column, then return to interactive mode | session | `open a window` |
+| `n` | `prefix n` | open a window right of the focused window's column, then return to interactive mode unless the `I on new` setting is off, as the settings capability defines | session | `open a window` |
 | `q` | `prefix q` | close the focused floating plugin window when one is focused, otherwise the focused window | session | |
 | `[` | `prefix [` | consume or expel the focused window to the left | session | |
 | `]` | `prefix ]` | consume or expel the focused window to the right | session | |
@@ -277,6 +277,11 @@ Where a scenario of this requirement names no key style, the modal key style is 
 - **THEN** a second tile with a shell prompt appears right of the first
 - **AND** the new window is focused and `root` is active, so `echo $GBAND_WINDOW` runs in it
 
+#### Scenario: Open a window and stay in navigation mode
+- **WHEN** `user/interactive_on_new.lua` holds `return false`, no `user/init.lua` exists, one window is focused, and the user presses Ctrl+Space, `n`, then `h`
+- **THEN** a second tile with a shell prompt appears right of the first and is focused after `n`
+- **AND** the status line's mode segment shows `navigation` after `n`, and `h` focuses the first window without reaching either window
+
 #### Scenario: Close the focused window
 - **WHEN** two windows are open with the second focused and the user presses Ctrl+Space then `q`
 - **THEN** the second tile disappears and the first window is focused
@@ -333,6 +338,10 @@ Where a scenario of this requirement names no key style, the modal key style is 
 - **WHEN** the direct key style is saved, no `user/init.lua` exists, one window is focused, and the user presses Ctrl+Space then `n`
 - **THEN** a second tile with a shell prompt appears right of the first
 - **AND** the new window is focused and `root` is active
+
+#### Scenario: Direct key style ignores the setting
+- **WHEN** the direct key style is saved, `user/interactive_on_new.lua` holds `return false`, no `user/init.lua` exists, one window is focused, and the user presses Ctrl+Space then `n`
+- **THEN** the new window is focused and `root` is active
 
 #### Scenario: Enter after the prefix with the direct key style
 - **WHEN** the direct key style is saved, no `user/init.lua` exists, one window is open, and the user presses Ctrl+Space then Enter

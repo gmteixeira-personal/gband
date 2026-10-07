@@ -52,6 +52,34 @@ The default configuration SHALL set up the sidebar plugin when `gband.settings.s
 - **WHEN** `user/sidebar.lua` holds `return "off"` and a callback calls `gband.settings.sidebar()`
 - **THEN** the call returns nil and the default configuration draws the sidebar
 
+### Requirement: Saved I on new
+The saved `I on new` setting SHALL live in the file `user/interactive_on_new.lua` of the configuration directory. Saving it SHALL write `return true` or `return false`, followed by a newline, to that file, creating or replacing it in one step, so no process reads it half written.
+
+`gband.settings.interactive_on_new()` SHALL evaluate `user/interactive_on_new.lua` as "Saved theme" defines for `user/theme.lua`. It SHALL return the chunk's value when that value is a boolean, and nil in every case where `gband.settings.theme()` returns nil. It SHALL raise no error and report none. It SHALL be callable while the configuration loads and in any callback. Loading SHALL evaluate `user/interactive_on_new.lua` only in this way, never as a configuration file, a plugin file or a module.
+
+The setting is on unless `gband.settings.interactive_on_new()` returns `false`. The modal key style's `n` binding SHALL read the setting once, while the configuration loads. When the setting is on, the binding SHALL return to interactive mode after it opens a window. When it is off, the binding SHALL open the window and leave navigation mode active, as the client-attach capability defines. The direct key style SHALL NOT read the setting.
+
+#### Scenario: Saved file
+- **WHEN** the settings window saves `I on new` as off
+- **THEN** `user/interactive_on_new.lua` holds `return false` and a newline
+
+#### Scenario: Nothing saved
+- **WHEN** no `user/interactive_on_new.lua` exists and a callback calls `gband.settings.interactive_on_new()`
+- **THEN** the call returns nil
+- **AND** with the modal style, Ctrl+Space then `n` leaves `root` active
+
+#### Scenario: Unknown saved value
+- **WHEN** `user/interactive_on_new.lua` holds `return "off"` and a callback calls `gband.settings.interactive_on_new()`
+- **THEN** the call returns nil and no error is reported
+
+#### Scenario: Broken file is not a configuration error
+- **WHEN** `user/interactive_on_new.lua` holds `error("boom")` and a client attaches
+- **THEN** loading succeeds with no error and the modal style's `n` returns to interactive mode
+
+#### Scenario: Own configuration with the modal preset
+- **WHEN** `user/init.lua` calls only `gband.keystyle.use("modal")`, `user/interactive_on_new.lua` holds `return false`, and the user presses Ctrl+Space then `n`
+- **THEN** a new window is focused and navigation mode stays active
+
 ### Requirement: Theme names
 `gband.settings.themes()` SHALL return a new list of colorscheme names. The bundled themes SHALL come first, in the order the colorschemes capability's "Bundled themes" lists them, without the alias `catppuccin`. Every other colorscheme that `gband.colorscheme` can find SHALL follow, sorted by byte value: each valid colorscheme name `n` for which a runtimepath entry holds a file `colors/<n>.lua`. A name SHALL appear once, so a runtimepath file that shadows a bundled theme keeps the bundled theme's place. It SHALL be callable while the configuration loads and in any callback.
 
@@ -74,20 +102,28 @@ The settings window SHALL have a border, the title `settings`, and its cursor li
 | 1 | `theme` | the name `gband.colorscheme()` returns |
 | 2 | `sidebar` | `off` when `gband.settings.sidebar()` returns `false`, `on` otherwise |
 | 3 | `keys` | the style `gband.keystyle.saved()` returns, or `modal` when it returns nil |
+| 4 | `I on new` | `off` when `gband.settings.interactive_on_new()` returns `false`, `on` otherwise |
 
-The cursor line SHALL start on the first line, except as "Reopen after a save" defines. The window's width SHALL be the smaller of 31 and the ribbon area's width. Its height SHALL be the smaller of 5 and the ribbon area's height. It SHALL be centered in the ribbon area, rounding the left and top offsets down. A line wider than the content area SHALL be cut at the content area's edge, as the plugin-windows capability defines.
+The fourth line SHALL be present only when the third line shows `modal`. When the third line shows `direct`, the window SHALL hold the first three lines only.
+
+The cursor line SHALL start on the first line, except as "Reopen after a save" defines. The window's width SHALL be the smaller of 31 and the ribbon area's width. Its height SHALL be the smaller of the number of its lines plus 2 and the ribbon area's height. It SHALL be centered in the ribbon area, rounding the left and top offsets down. A line wider than the content area SHALL be cut at the content area's edge, as the plugin-windows capability defines.
 
 #### Scenario: Window opens
 - **WHEN** no setting is saved, the active colorscheme is `default`, and a binding function calls `gband.settings.open()`
-- **THEN** a focused floating plugin window titled `settings` shows `theme    default`, `sidebar  on` and `keys     modal`, with the cursor line on the first line
+- **THEN** a focused floating plugin window titled `settings` shows `theme    default`, `sidebar  on`, `keys     modal` and `I on new on`, with the cursor line on the first line
 
 #### Scenario: Window beside the default sidebar
-- **WHEN** the default configuration is in use on an 80×24 terminal and the settings window opens
-- **THEN** the window is 31 columns wide and 5 rows high, and spans columns 24 to 54 and rows 9 to 13 of the 79-column ribbon area
+- **WHEN** the default configuration is in use with the modal style on an 80×24 terminal and the settings window opens
+- **THEN** the window is 31 columns wide and 6 rows high, and spans columns 24 to 54 and rows 9 to 14 of the 79-column ribbon area
+
+#### Scenario: Window with the direct style
+- **WHEN** `user/keystyle.lua` holds `return "direct"`, the default configuration is in use on an 80×24 terminal, and the settings window opens
+- **THEN** the window holds three lines, the last showing `keys     direct`
+- **AND** it is 31 columns wide and 5 rows high, and spans columns 24 to 54 and rows 9 to 13 of the 79-column ribbon area
 
 #### Scenario: Saved values shown
-- **WHEN** `user/sidebar.lua` holds `return false`, `user/keystyle.lua` holds `return "direct"`, and the settings window opens
-- **THEN** its second line shows `sidebar  off` and its third line shows `keys     direct`
+- **WHEN** `user/sidebar.lua` holds `return false`, `user/interactive_on_new.lua` holds `return false`, and the settings window opens
+- **THEN** its second line shows `sidebar  off` and its fourth line shows `I on new off`
 
 #### Scenario: Opened from navigation mode
 - **WHEN** the modal style is in use and the user presses Ctrl+Space then `s`
@@ -117,6 +153,8 @@ On the `sidebar` line, Enter, `h`, `l`, Left and Right SHALL save the other valu
 
 On the `keys` line, Enter, `h`, `l`, Left and Right SHALL save the other key style, `direct` when the line shows `modal` and `modal` when it shows `direct`, as the key-style capability's "Saved key style" defines.
 
+On the `I on new` line, Enter, `h`, `l`, Left and Right SHALL save the other value, as "Saved I on new" defines: `false` when the line shows `on`, and `true` when it shows `off`.
+
 When `gband.config_dir` is nil, or a file cannot be written, the key SHALL save nothing and the settings window SHALL stay open. The key SHALL raise an error naming the file, such as `user/sidebar.lua`, and the reason, which the client reports as the configuration capability defines for an error in a callback. The setting in use SHALL stay.
 
 #### Scenario: Turn the sidebar off
@@ -127,7 +165,16 @@ When `gband.config_dir` is nil, or a file cannot be written, the key SHALL save 
 #### Scenario: Switch the key style
 - **WHEN** no `user/init.lua` exists, the modal style is saved, the settings window is open on its third line, and the user presses `l`
 - **THEN** `user/keystyle.lua` holds `return "direct"`
-- **AND** within a second the configuration reloads with the direct style's bindings
+- **AND** within a second the configuration reloads with the direct style's bindings, and the reopened settings window holds three lines
+
+#### Scenario: Turn I on new off
+- **WHEN** no `user/init.lua` exists, the modal style is in use, the settings window is open on its fourth line, and the user presses Enter
+- **THEN** `user/interactive_on_new.lua` holds `return false`
+- **AND** after the reload the settings window is open on its fourth line showing `I on new off`, and Ctrl+Space then `n` leaves navigation mode active
+
+#### Scenario: Turn I on new back on
+- **WHEN** `user/interactive_on_new.lua` holds `return false`, the settings window is open on its fourth line, and the user presses `h`
+- **THEN** `user/interactive_on_new.lua` holds `return true`
 
 #### Scenario: Next theme
 - **WHEN** the active colorscheme is `gruvbox`, the settings window is open on its first line, and the user presses `l`
