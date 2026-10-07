@@ -67,7 +67,7 @@ The client SHALL emit these events, and no other built-in events:
 | `BandChanged` | `band`, `previous`: band numbers | the viewed band differs from before a server message, a dispatched action or a resize was handled |
 | `WindowOpened` | `window`, `band` | a layout holds a window the client's previous layout did not |
 | `WindowClosed` | `window`, `band`: the band the window was in | the client's previous layout held a window a new layout does not |
-| `LayoutChanged` | empty | a layout the client receives differs from the client's previous layout in its bands, columns, windows, widths or floating windows and their boxes |
+| `LayoutChanged` | empty | a layout the client receives differs from the client's previous layout in the size of its screen area, the `cols` and `rows` that `gband.layout()` reports, or in its bands, columns, windows, widths or floating windows and their boxes |
 | `TerminalResized` | `cols`, `rows` | the client's terminal changes size |
 | `ConfigReloaded` | empty | a reload succeeded and the new configuration is in use, to the handlers of the new configuration |
 | `KeyTableChanged` | `table`, `previous`: key table names | the active key table changes, as the client-attach capability defines |
@@ -129,6 +129,16 @@ The first layout after attaching SHALL emit no `WindowOpened` and no `LayoutChan
 #### Scenario: Floating box moved
 - **WHEN** a floating window's box moves one step right and the client receives the new layout
 - **THEN** `LayoutChanged` runs once
+
+#### Scenario: Another client changes the screen area
+- **WHEN** two clients with no bars are attached to one session, the screen area is 80×24, and the second client's terminal is resized to 100×30
+- **THEN** the first client's `LayoutChanged` runs once, and `gband.layout()` in its handler reports `cols` 100 and `rows` 30
+- **AND** the first client's `TerminalResized` does not run
+
+#### Scenario: Own resize changes the screen area
+- **WHEN** a client with no bars is the only client attached, the screen area is 80×24, and its terminal is resized to 100×30
+- **THEN** `TerminalResized` runs once with `cols` 100 and `rows` 30
+- **AND** `LayoutChanged` runs once, after the client receives the layout whose screen area is 100×30
 
 #### Scenario: Click event
 - **WHEN** a handler of `MousePressed` is registered and the user clicks content column 4 and row 2 of window 1 with the left button

@@ -285,7 +285,7 @@ The server SHALL own the session's layout, as the layout capability defines it, 
 | consume or expel | as the layout capability defines, left or right |
 | move column | move the named window's column, or its floating box, left or right, as the layout capability defines |
 | move window | move the named window, or its floating box, down or up, as the layout capability defines |
-| toggle floating | float the named tiled window, or tile the named floating window after the tiled window the action names, as the floating-windows capability defines |
+| toggle floating | float the named tiled window, or tile the named floating window after the tiled window the action names, as the floating-windows capability defines; when the action names a layer, move the window only when it is in the other layer |
 | set position | place the named floating window at the column and row the action names, as the floating-windows capability defines |
 | move to place | move the named tiled window to the place beside or inside the reference window's column that the action names, as the layout capability's "Move a window to a place" defines |
 | cycle width | cycle the width of the named window's column or floating box |
@@ -299,6 +299,8 @@ The server SHALL own the session's layout, as the layout capability defines it, 
 | set height | set the height of the named window to the rows or the weight the action names |
 
 Set position naming a tiled window SHALL leave the layout unchanged.
+
+Toggle floating SHALL name either no layer, the floating layer or the tiled layer. Naming no layer SHALL toggle the window. Naming the floating layer SHALL be a request to float the window, and naming the tiled layer a request to tile it, as the floating-windows capability's "Float a window" and "Tile a window" define. The server SHALL apply each request to the layout it holds when the request's turn comes, not to the layout the sender held. Requests from several clients and from the server's Lua for one window SHALL therefore leave the window in the layer the last of them names.
 
 After placing an opened window whose action asks for focus, the server SHALL send the client that asked for it, after the layout that holds the window, a message telling it to focus that window. The server SHALL send that message only while the latest layout it has sent that client holds the window. When the window has left the layout before the message is sent, as when its program exits at once, the server SHALL send no focus message for it, so a client is never told to focus a window that the last layout it received does not hold. A window opened by the server's Lua SHALL NOT change any client's focus. When the program of a new window cannot be started, the server SHALL record the reason in its log and leave the layout unchanged.
 
@@ -339,6 +341,19 @@ After placing an opened window whose action asks for focus, the server SHALL sen
 #### Scenario: Float a window for every client
 - **WHEN** two clients are attached and the first asks to toggle floating on tiled window 2
 - **THEN** both clients receive a layout in which window 2 is in its band's floating list
+
+#### Scenario: Two clients float the same window
+- **WHEN** the screen area is 80×24, the default column width is 1/2, two clients are attached, window 3 is alone in a column of band 1, and each client sends toggle floating naming window 3 and the floating layer
+- **THEN** both clients receive a layout in which band 1's floating list holds window 3 once, with width 1/2, `rows` 20, `col` 20 and `row` 2
+- **AND** no column of band 1 holds window 3
+
+#### Scenario: Two clients toggle the same window
+- **WHEN** two clients are attached, window 3 is alone in a column of band 1, and each client sends toggle floating naming window 3 and no layer
+- **THEN** both clients receive a layout in which window 3 is in a column of band 1 and band 1 holds no floating window
+
+#### Scenario: Last request wins
+- **WHEN** two clients are attached, window 3 is in band 1's floating list, the first client sends toggle floating naming window 3 and the tiled layer, and the second client then sends toggle floating naming window 3 and the floating layer
+- **THEN** both clients receive a layout in which window 3 is in band 1's floating list
 
 #### Scenario: Open a floating window with focus
 - **WHEN** a client asks to open a floating window that asks for focus

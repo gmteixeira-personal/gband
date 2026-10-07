@@ -80,6 +80,8 @@ A built-in session action value SHALL accept one optional table, its target. A t
 
 For `toggle_window_floating`, the target SHALL hold `window`, and optionally `after`, a tiled window of the same band. Tiling a floating window SHALL then place it after `after`. Without `after`, it SHALL be placed after the tiled window this client focused most recently in that band, when it is still tiled there, and as the band's first column otherwise. `after` on a window that is tiled SHALL be ignored.
 
+The target of `toggle_window_floating` MAY also hold `floating`, a boolean. With `floating = true`, the action SHALL float `window` when it is tiled, and SHALL change nothing when it already floats. With `floating = false`, the action SHALL tile `window` when it floats, placed as the previous paragraph defines, and SHALL change nothing when it is already tiled. Without `floating`, the action SHALL toggle `window`. The client SHALL send the action with the layer that `floating` names, whatever layer its own layout shows `window` in. The server SHALL decide whether the window moves, as the session-server capability's "Session actions" defines, so a request that another client's request has already satisfied SHALL change nothing.
+
 The target of `grow_column_width`, `shrink_column_width`, `grow_window_height` and `shrink_window_height` MAY also hold `step`: a number greater than 0 and at most 10000 for the two width actions, and greater than 0 and at most 1 for the two height actions, read as the configuration capability reads a step. The action SHALL then use that step, as the actions capability defines. A target of these actions that holds `step` and no `window` SHALL name the window the view resolves.
 
 `send_prefix` SHALL accept a target holding `window`, and send the prefix key to that window.
@@ -92,6 +94,7 @@ A target passed to a view action, or to a client action other than `send_prefix`
 - A `step` out of its range.
 - A window or band number not in the client's layout.
 - An `after` window not in `band`, or a floating `after` window for `open_window` or `gband.spawn`, or, for `toggle_window_floating`, an `after` that is not a tiled window of `window`'s band.
+- For `toggle_window_floating`, a target without `window`, a `floating` that is not a boolean, or `after` together with `floating = true`.
 - For `drag_resize_window`, a target without `edges`, an `edges` that is not a list of strings, an empty list, a name that is not an edge name, a name given twice, both `"left"` and `"right"`, or both `"top"` and `"bottom"`.
 
 A call that raises one of these errors SHALL dispatch nothing.
@@ -133,6 +136,36 @@ Calling an action value with no target SHALL resolve it against the view, as the
 #### Scenario: Tile a named window after a named window
 - **WHEN** band 1 holds columns with windows 1 and 2 and floating window 3, and a binding function calls `gband.action.toggle_window_floating({ window = 3, after = 1 })`
 - **THEN** band 1 holds the columns of window 1, window 3 and window 2, in that order
+
+#### Scenario: Float a window that already floats
+- **WHEN** band 1 holds a column with window 1 and floating window 3 with `col` 5, `row` 3, width 1/3 and `rows` 10, and a binding function calls `gband.action.toggle_window_floating({ window = 3, floating = true })`
+- **THEN** the client sends toggle floating naming window 3 and the floating layer
+- **AND** window 3 stays in band 1's floating list with `col` 5, `row` 3, width 1/3 and `rows` 10
+
+#### Scenario: Float twice in one callback
+- **WHEN** band 1 holds columns with windows 1 and 2, and a binding function calls `gband.action.toggle_window_floating({ window = 2, floating = true })` twice
+- **THEN** band 1 holds the column of window 1 and one floating window, window 2
+
+#### Scenario: Tile a named window with floating false
+- **WHEN** band 1 holds columns with windows 1 and 2 and floating window 3, and a binding function calls `gband.action.toggle_window_floating({ window = 3, after = 1, floating = false })`
+- **THEN** band 1 holds the columns of window 1, window 3 and window 2, in that order
+
+#### Scenario: Tile a window that is already tiled
+- **WHEN** band 1 holds columns with windows 1 and 2, and a binding function calls `gband.action.toggle_window_floating({ window = 2, floating = false })`
+- **THEN** band 1 holds the columns of window 1 and window 2, in that order, and no floating window
+
+#### Scenario: Floating that is not a boolean
+- **WHEN** line 7 of `user/init.lua` holds a binding function that calls `gband.action.toggle_window_floating({ window = 3, floating = "yes" })`, window 3 is open, and the user presses its key
+- **THEN** the client shows an error at `user/init.lua` line 7 naming `floating`
+- **AND** nothing is sent to the server
+
+#### Scenario: Float with after
+- **WHEN** band 1 holds columns with windows 1 and 2, and a binding function calls `gband.action.toggle_window_floating({ window = 2, after = 1, floating = true })`
+- **THEN** the call raises an error naming `after`, and nothing is dispatched
+
+#### Scenario: Floating without a window
+- **WHEN** a binding function calls `gband.action.toggle_window_floating({ floating = true })`
+- **THEN** the call raises an error naming `window`, and nothing is dispatched
 
 #### Scenario: Move a named window
 - **WHEN** band 1 holds columns with windows 1 and 2, window 2 is focused, and a binding function calls `gband.action.move_column_right({ window = 1 })`
