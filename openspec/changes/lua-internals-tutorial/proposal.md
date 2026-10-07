@@ -47,7 +47,7 @@ None.
 - `tests/lua_specs.rs`: the `tutorial` test also discovers `examples/internals/`.
 - `README.md`, `docs/plugins.md` and `docs/tutorial/README.md`: links to the internals tutorial.
 - No change to the executable, the bundled Lua, the Lua API, the protocol or the harness, and no new dependency.
-- Every later change that edits a covered file, from `crates/lua/src/runtime/gband/`, `crates/lua/src/defaults.lua` or `crates/lua/src/defaults_server.lua`, must revise the internals tutorial in the same change.
+- Every later change that edits a covered file, from `crates/lua/src/runtime/gband/`, `crates/lua/src/defaults.lua` or `crates/lua/src/defaults_server.lua`, must revise the internals tutorial in the same change. Its Expected Files lists only the chapter files that quote the files it edits, never the directory `docs/internals/`, so that such changes can still run side by side.
 
 ## Coordination
 
