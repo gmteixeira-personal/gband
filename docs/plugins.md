@@ -34,7 +34,7 @@ The sides talk through plain data only: the server emits events and publishes wi
 No code ever crosses the connection, as "Trust" below describes.
 
 `gband.side` is `"client"` in a client and `"server"` in the server, and `"test"` in a test file that [`gband test`](testing.md) runs.
-`gband.api_version` is `1` on both.
+`gband.api_version` is `2` on both.
 
 ## Where gband looks
 
@@ -102,7 +102,7 @@ The tables are copies.
 Each load runs in a new Lua state.
 In a client:
 
-1. gband sets `gband.side` to `"client"` and `gband.api_version` to `1`.
+1. gband sets `gband.side` to `"client"` and `gband.api_version` to `2`.
 2. gband installs the client's `gband` API, then requires `gband.prelude`, which installs the API modules, their built-in highlight groups and their providers, and loads the start theme: the saved theme, or `default`, as "Themes" describes.
 3. gband runs the init file: `user/init.lua` when it exists, the default client configuration otherwise.
 4. gband runs every manifest, in runtimepath order.
@@ -110,7 +110,7 @@ In a client:
 
 In the server:
 
-1. gband sets `gband.side` to `"server"` and `gband.api_version` to `1`.
+1. gband sets `gband.side` to `"server"` and `gband.api_version` to `2`.
 2. gband installs the server's `gband` API.
 3. gband runs the init file: `user/server.lua` when it exists, the default server configuration otherwise.
 4. gband runs every manifest, in runtimepath order.
@@ -148,7 +148,7 @@ In the server, `gband.action` holds the session actions only; reading a view or 
 A plugin that takes options exports a module with a `setup` function:
 
 ```lua
-local M = { name = "hello", api = 1 }
+local M = { name = "hello", api = 2 }
 
 function M.setup(opts)
   gband.action.register("greet", function()
@@ -438,6 +438,8 @@ The mouse fields are:
 - `window`: the window under the pointer, or the window of a tiled plugin window, else nil.
 - `plugin_window`: the plugin window under the pointer, else nil.
 - `content_col`, `content_row`: the cell inside the window's border, nil on the border.
+- `box_col`, `box_row`: for the targets `"window"` and `"plugin_window"`, the cell inside the target's box, border included, from 0 at the box's top-left cell, else nil. A box the screen cuts counts from its real top-left cell.
+- `box_width`, `box_height`: for those targets, the size of the box as drawn, border included, else nil.
 - `table`: the key table active when the event arrived.
 
 The mouse events only report: the click, drag or wheel step still reaches the window, plugin window or gesture that takes it.
@@ -491,7 +493,7 @@ gband.keymap.set("prefix", "m", function() gband.keymap.enter("move") end, { des
 `leftmouse`, `middlemouse` and `rightmouse`, with `ctrl`, `alt` and `shift`, bind a press of a mouse button in a key table, as a key binds.
 `wheelup`, `wheeldown`, `wheelleft` and `wheelright` bind one step of the wheel the same way.
 They cannot be the `prefix` option or a key of a plugin window's `keys`.
-A press matches the active table: in `root`, a bound mouse name replaces the interactive defaults, which focus, forward to a program, select or paste.
+A press matches the active table: in `root`, a binding that takes the press replaces the interactive defaults, which focus, forward to a program, select or paste.
 In a mode or a key sequence it behaves as a key does.
 A wheel step that no binding of the active table takes goes to the window under the pointer, as it always did, and leaves the active table as it was, so a stray wheel step after the prefix key does not end the sequence.
 While a drag gesture runs, every wheel step goes to the window under the pointer.
@@ -516,6 +518,24 @@ gband.keymap.set("root", "ctrl+leftmouse", function(e)
     gband.action.drag_window()
   end
 end, { desc = "move the window under the pointer" })
+```
+
+A function bound to a mouse name, or a registered action bound to one, declines the press or wheel step when it returns `false`.
+The event then takes what it would take if the table did not bind the name: the interactive defaults in `root`, a discard in a mode or a key sequence, and the window or plugin window under the pointer for a wheel step.
+Any other return value, nil included, takes the event, and so does a built-in action, a function that raises an error and a function whose plugin has failed.
+The actions the function dispatched run first and the fallback after them, so a table the function enters with `gband.keymap.enter` is active after the event.
+A declined press starts no gesture, so a drag action the function dispatched does nothing, and its drags and release go where they would go with no binding.
+A declined wheel step starts no cooldown and keeps a key sequence active.
+An earlier binding of the same table that matches the event does not run in its place.
+A key binding's return value is still ignored.
+
+```lua
+gband.keymap.set("root", "leftmouse", function(e)
+  if e.content_col ~= nil then
+    return false
+  end
+  gband.action.drag_window()
+end, { desc = "move a window by its border" })
 ```
 
 Bindings are made only while the configuration loads.
@@ -711,15 +731,16 @@ The `keys` functions, `on_input`, `on_close` and `on_resize` run as callbacks of
 A plugin window closes when its plugin is marked failed.
 
 Without `on_mouse`, a left click on a plugin window with `cursorline` moves the cursor line to the line under the pointer, and the wheel acts as Down and Up do, in any mode and whether or not the plugin window has focus.
-A wheel step that runs a binding, such as Alt with the wheel in the default configuration, reaches neither these defaults nor `on_mouse`.
+A wheel step that a binding takes, such as Alt with the wheel in the default configuration, reaches neither these defaults nor `on_mouse`.
 With `on_mouse`, those defaults are off.
-`on_mouse` runs for a press on the plugin window that no `root` binding takes, for that press's drags and release, and for each wheel step over it in any mode that runs no binding, with the plugin window's number and a table:
+`on_mouse` runs for a press on the plugin window that no `root` binding takes, a press its `root` binding declines included, for that press's drags and release, and for each wheel step over it in any mode that no binding takes, a declined one included, with the plugin window's number and a table:
 
 - `kind`: `"press"`, `"release"`, `"drag"` or `"scroll"`.
 - `button`: `"left"`, `"middle"` or `"right"`, except for `"scroll"`.
 - `direction`: `"up"`, `"down"`, `"left"` or `"right"`, for `"scroll"`.
 - `content_col`, `content_row`: the cell inside the border, from 0, nil on the border.
 - `line`: the line shown at `content_row`, from 1, nil past the last line.
+- `box_col`, `box_row`, `box_width`, `box_height`: the cell inside the plugin window's box, border included, from 0, and the box's size as drawn, all nil when the pointer is off the plugin window.
 - `ctrl`, `alt`, `shift`: the modifiers held.
 
 A press focuses the plugin window first, and `on_mouse` runs as a callback of the plugin that opened it.
@@ -792,7 +813,7 @@ A plugin module adds its bar in `setup` and draws into it from its handlers.
 The [window sample](../examples/plugins/window) shows the focused window in a bar 12 columns wide on the right, whose id is the plugin's name, `window`:
 
 ```lua
-local M = { name = "window", api = 1 }
+local M = { name = "window", api = 2 }
 
 function M.setup(opts)
   gband.hl.default("WindowSegment", { link = "SidebarMode" })
@@ -1390,7 +1411,7 @@ The windows provider's functions, each called when the event it names happens:
 | function | called |
 |---|---|
 | `key(id, name, text)` | a key reaches the focused plugin window `id`: `name` is its canonical name, and `text` the character it types, or nil |
-| `mouse(id, event)` | a mouse event reaches the plugin window `id`: `event` holds `kind` (`"press"`, `"release"`, `"drag"` or `"scroll"`), `button` or `direction`, `content_col` and `content_row` or nil on the border, and `ctrl`, `alt` and `shift` |
+| `mouse(id, event)` | a mouse event reaches the plugin window `id`: `event` holds `kind` (`"press"`, `"release"`, `"drag"` or `"scroll"`), `button` or `direction`, `content_col` and `content_row` or nil on the border, `box_col`, `box_row`, `box_width` and `box_height` or nil off the plugin window, and `ctrl`, `alt` and `shift` |
 | `paste(id, text)` | text is pasted into the focused plugin window `id` |
 | `set_box(id, col, row, width, height)` | the mouse moved or resized the floating plugin window `id` |
 | `raise(id)` | a press on the plugin window `id` focuses it |
@@ -1672,6 +1693,7 @@ What changed in each version:
 | version | changes |
 |---|---|
 | 1 | the first version; nothing changed |
+| 2 | a function bound to a mouse name that returns `false` declines the press or wheel step, which then takes what it would take with no binding, where version 1 let it replace the default |
 
 ## Still to come
 

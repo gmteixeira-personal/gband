@@ -52,7 +52,7 @@ Everything else moves into the module, `lua/marks/init.lua`.
 A plugin module is a table with a `setup` function, an optional `name`, and `api`, the version of gband's Lua API it was written for:
 
 ```lua
-local M = { name = "marks", api = 1 }
+local M = { name = "marks", api = 2 }
 
 local marks = {}
 local letters

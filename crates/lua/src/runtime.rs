@@ -31,7 +31,7 @@ use crate::{
     keymap, options, sides, user_dir, value,
 };
 
-pub const API_VERSION: i64 = 1;
+pub const API_VERSION: i64 = 2;
 
 pub(crate) fn side(lua: &Lua) -> Side {
     *lua.app_data_ref::<Side>()
@@ -540,6 +540,29 @@ pub struct Outcome {
     pub dispatched: Vec<Dispatch>,
     pub errors: Vec<ConfigError>,
     pub disabled: bool,
+    pub declined: bool,
+}
+
+enum Ending {
+    Returned,
+    Disabled,
+    Declined,
+}
+
+impl<R> From<&Ran<R>> for Ending {
+    fn from(ran: &Ran<R>) -> Self {
+        match ran {
+            Ran::Disabled => Ending::Disabled,
+            Ran::Returned(_) | Ran::Failed(_) => Ending::Returned,
+        }
+    }
+}
+
+fn declining(ran: Ran<Value>) -> Ending {
+    match ran {
+        Ran::Returned(Value::Boolean(false)) => Ending::Declined,
+        ran => Ending::from(&ran),
+    }
 }
 
 pub struct Runtime {
@@ -552,12 +575,7 @@ impl Runtime {
     }
 
     pub fn call(&self, callback: CallbackId) -> Outcome {
-        self.within_callback(|lua| {
-            Ok(matches!(
-                callbacks::run::<()>(lua, callback, ())?,
-                Ran::Disabled
-            ))
-        })
+        self.within_callback(|lua| Ok(Ending::from(&callbacks::run::<()>(lua, callback, ())?)))
     }
 
     pub fn call_pressed(
@@ -568,10 +586,7 @@ impl Runtime {
     ) -> Outcome {
         self.within_callback(|lua| {
             let payload = pointer.pressed(lua, button)?;
-            Ok(matches!(
-                callbacks::run::<()>(lua, callback, payload)?,
-                Ran::Disabled
-            ))
+            Ok(declining(callbacks::run(lua, callback, payload)?))
         })
     }
 
@@ -583,10 +598,7 @@ impl Runtime {
     ) -> Outcome {
         self.within_callback(|lua| {
             let payload = pointer.scrolled(lua, direction)?;
-            Ok(matches!(
-                callbacks::run::<()>(lua, callback, payload)?,
-                Ran::Disabled
-            ))
+            Ok(declining(callbacks::run(lua, callback, payload)?))
         })
     }
 
@@ -594,16 +606,16 @@ impl Runtime {
         self.within_callback(|lua| {
             events::emit_event(lua, event)?;
             ui::after_event(lua, Some(event.name()))?;
-            Ok(false)
+            Ok(Ending::Returned)
         })
     }
 
     pub fn set_state(&self, state: ViewState) -> Outcome {
-        self.within_callback(|lua| ui::set_state(lua, state).map(|()| false))
+        self.within_callback(|lua| ui::set_state(lua, state).map(|()| Ending::Returned))
     }
 
     pub fn refresh_plugins(&self) -> Outcome {
-        self.within_callback(|lua| ui::after_event(lua, None).map(|()| false))
+        self.within_callback(|lua| ui::after_event(lua, None).map(|()| Ending::Returned))
     }
 
     pub fn next_timer(&self) -> Option<Instant> {
@@ -611,20 +623,21 @@ impl Runtime {
     }
 
     pub fn fire_timers(&self, now: Instant) -> Outcome {
-        self.within_callback(|lua| ui::fire_timers(lua, now).map(|()| false))
+        self.within_callback(|lua| ui::fire_timers(lua, now).map(|()| Ending::Returned))
     }
 
     pub fn plugin_window_key(&self, plugin_window: u32, key: Key) -> Outcome {
         self.within_callback(|lua| {
             plugin_windows::call::<()>(lua, "key", (plugin_window, key_name(key), typed(key)))
-                .map(|()| false)
+                .map(|()| Ending::Returned)
         })
     }
 
     pub fn plugin_window_mouse(&self, plugin_window: u32, mouse: &PluginMouse) -> Outcome {
         self.within_callback(|lua| {
             let event = mouse.to_lua(lua)?;
-            plugin_windows::call::<()>(lua, "mouse", (plugin_window, event)).map(|()| false)
+            plugin_windows::call::<()>(lua, "mouse", (plugin_window, event))
+                .map(|()| Ending::Returned)
         })
     }
 
@@ -641,23 +654,26 @@ impl Runtime {
                     placed.height,
                 ),
             )
-            .map(|()| false)
+            .map(|()| Ending::Returned)
         })
     }
 
     pub fn raise_plugin_window(&self, plugin_window: u32) -> Outcome {
         self.within_callback(|lua| {
-            plugin_windows::call::<()>(lua, "raise", plugin_window).map(|()| false)
+            plugin_windows::call::<()>(lua, "raise", plugin_window).map(|()| Ending::Returned)
         })
     }
 
     pub fn unfocus_plugin_windows(&self) -> Outcome {
-        self.within_callback(|lua| plugin_windows::call::<()>(lua, "unfocus", ()).map(|()| false))
+        self.within_callback(|lua| {
+            plugin_windows::call::<()>(lua, "unfocus", ()).map(|()| Ending::Returned)
+        })
     }
 
     pub fn plugin_window_paste(&self, plugin_window: u32, text: &str) -> Outcome {
         self.within_callback(|lua| {
-            plugin_windows::call::<()>(lua, "paste", (plugin_window, text)).map(|()| false)
+            plugin_windows::call::<()>(lua, "paste", (plugin_window, text))
+                .map(|()| Ending::Returned)
         })
     }
 
@@ -668,20 +684,21 @@ impl Runtime {
                 "opened",
                 (plugin_window, window.map(|window| window.0)),
             )
-            .map(|()| false)
+            .map(|()| Ending::Returned)
         })
     }
 
     pub fn window_resized(&self, plugin_window: u32, size: Size) -> Outcome {
         self.within_callback(|lua| {
             plugin_windows::call::<()>(lua, "window_resized", (plugin_window, size.cols, size.rows))
-                .map(|()| false)
+                .map(|()| Ending::Returned)
         })
     }
 
     pub fn window_closed(&self, plugin_window: u32) -> Outcome {
         self.within_callback(|lua| {
-            plugin_windows::call::<()>(lua, "window_closed", plugin_window).map(|()| false)
+            plugin_windows::call::<()>(lua, "window_closed", plugin_window)
+                .map(|()| Ending::Returned)
         })
     }
 
@@ -689,13 +706,15 @@ impl Runtime {
         let mut closed = false;
         let outcome = self.within_callback(|lua| {
             closed = plugin_windows::call::<bool>(lua, "close_focused", ())?;
-            Ok(false)
+            Ok(Ending::Returned)
         });
         (closed, outcome)
     }
 
     pub fn release_plugin_windows(&self) -> Outcome {
-        self.within_callback(|lua| plugin_windows::call::<()>(lua, "release", ()).map(|()| false))
+        self.within_callback(|lua| {
+            plugin_windows::call::<()>(lua, "release", ()).map(|()| Ending::Returned)
+        })
     }
 
     pub fn take_frames(&self) -> Vec<(u32, Option<Frame>)> {
@@ -711,7 +730,7 @@ impl Runtime {
     }
 
     pub fn open_settings(&self, line: u32) -> Outcome {
-        self.within_callback(|lua| ui::open_settings(lua, line).map(|()| false))
+        self.within_callback(|lua| ui::open_settings(lua, line).map(|()| Ending::Returned))
     }
 
     pub fn take_palette(&self) -> Option<ui::Palette> {
@@ -740,7 +759,7 @@ impl Runtime {
     pub fn emit_server(&self, event: &server::Event) -> Outcome {
         self.within_callback(|lua| {
             events::emit_server(lua, event)?;
-            Ok(false)
+            Ok(Ending::Returned)
         })
     }
 
@@ -757,7 +776,7 @@ impl Runtime {
         let mut answer = Err(format!("the command `{name}` did not run"));
         let outcome = self.within_callback(|lua| {
             answer = commands::invoke(lua, name, &args, caller)?;
-            Ok(false)
+            Ok(Ending::Returned)
         });
         (answer, outcome)
     }
@@ -783,13 +802,13 @@ impl Runtime {
                     .collect(),
                 Err(failure) => Err(failure.error.to_string()),
             };
-            Ok(false)
+            Ok(Ending::Returned)
         });
         (answer, outcome)
     }
 
     pub fn answer(&self, call: u64, result: Result<Data, String>) -> Outcome {
-        self.within_callback(|lua| bridge::answer(lua, call, result).map(|()| false))
+        self.within_callback(|lua| bridge::answer(lua, call, result).map(|()| Ending::Returned))
     }
 
     pub fn active_table(&self) -> String {
@@ -800,33 +819,31 @@ impl Runtime {
         keymap::set_active(&self.lua, table);
     }
 
-    fn within_callback(&self, run: impl FnOnce(&Lua) -> mlua::Result<bool>) -> Outcome {
+    fn within_callback(&self, run: impl FnOnce(&Lua) -> mlua::Result<Ending>) -> Outcome {
         let lua = &self.lua;
         lua.app_data_mut::<Queue>()
             .expect("the queue is installed with the runtime")
             .0 = Some(Vec::new());
-        let result = run(lua).and_then(|disabled| match side(lua) {
+        let result = run(lua).and_then(|ending| match side(lua) {
             Side::Client => plugin_windows::flush(lua)
                 .and_then(|()| crate::bars::flush(lua))
-                .map(|()| disabled),
-            Side::Server | Side::Test => Ok(disabled),
+                .map(|()| ending),
+            Side::Server | Side::Test => Ok(ending),
         });
         let dispatched = lua
             .app_data_mut::<Queue>()
             .and_then(|mut queue| queue.0.take())
             .unwrap_or_default();
         let mut errors = guard::drain(lua);
-        let disabled = match result {
-            Ok(disabled) => disabled,
-            Err(error) => {
-                errors.push(ConfigError::from_lua(&error, &guard::sources(lua)));
-                false
-            }
-        };
+        let ending = result.unwrap_or_else(|error| {
+            errors.push(ConfigError::from_lua(&error, &guard::sources(lua)));
+            Ending::Returned
+        });
         Outcome {
             dispatched,
             errors,
-            disabled,
+            disabled: matches!(ending, Ending::Disabled),
+            declined: matches!(ending, Ending::Declined),
         }
     }
 }

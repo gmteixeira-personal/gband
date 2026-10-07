@@ -1,4 +1,4 @@
-local M = { name = "window", api = 1 }
+local M = { name = "window", api = 2 }
 
 function M.setup(opts)
   gband.hl.default("WindowSegment", { link = "SidebarMode" })

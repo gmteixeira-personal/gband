@@ -144,6 +144,7 @@ function hooks.mouse(id, event)
 ```
 
 The client reports where a mouse event landed inside the content, as `content_row`, counted from 0, or nil on the border.
+The event also carries `box_col`, `box_row`, `box_width` and `box_height`, the cell and size of the plugin window's box with its border, nil when the pointer is off the plugin window.
 `mouse` adds `line`, the line of the window's text under the pointer, when there is one, so that a plugin need not know how far the window has scrolled.
 
 ```lua defaults/lua/gband/win.lua

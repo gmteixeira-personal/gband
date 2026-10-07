@@ -123,8 +123,24 @@ gband.keymap.set("root", "ctrl+rightmouse", function(event)
 end, { desc = "mark the window under the pointer" })
 ```
 
-A mouse binding in `root` replaces what the click would otherwise do, so pick a combination you do not use in programs.
+A mouse binding in `root` replaces what the click would otherwise do, unless its function returns `false`, so pick a combination you do not use in programs.
 [Mouse names](../plugins.md#mouse-names) lists the names and the event's fields.
+
+### Passing a click on
+
+A function that returns `false` passes the click on, and the click does what it would do with no binding: in `root`, it focuses the window and selects text or reaches the program.
+The event's `box_row` is the row inside the window's box, 0 on its top border.
+Mark a window by clicking its top border with Ctrl and the left button, and leave every other Ctrl click as it was:
+
+```lua
+gband.keymap.set("root", "ctrl+leftmouse", function(event)
+  if event.target == "window" and event.box_row == 0 then
+    toggle(event.window)
+    return
+  end
+  return false
+end, { desc = "mark the window by its top border" })
+```
 
 ## The whole file
 

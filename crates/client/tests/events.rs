@@ -5,10 +5,12 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use gband_client::animation::Animations;
-use gband_client::{Controls, Display, Step};
+use gband_client::{Controls, Display, Step, dispatch};
+use gband_core::action::Action;
 use gband_core::geometry::Size;
 use gband_core::input::{Key, Modifiers, MouseButton, MouseEvent, MouseKind, WheelDirection};
 use gband_core::layout::{Direction, Layout, LayoutOptions, Proportion, SessionAction, WindowId};
+use gband_core::view::ViewAction;
 use gband_lua::keys::parse_key;
 use gband_lua::{Config, ConfigError, DEFAULTS, LoadOptions, Locations};
 use gband_protocol::{ClientMessage, ServerMessage};
@@ -590,6 +592,13 @@ end
 ";
 
 impl Client {
+    fn pressed(&self) -> Vec<String> {
+        self.log()
+            .into_iter()
+            .filter(|line| line.starts_with("MousePressed"))
+            .collect()
+    }
+
     fn mouse(&mut self, kind: MouseKind, col: u16, row: u16) -> Vec<Step> {
         let event = MouseEvent::new(kind, col, row, Modifiers::NONE);
         self.controls
@@ -608,11 +617,90 @@ fn click_event() {
     assert_eq!(
         log[0],
         format!(
-            "MousePressed alt=false,button=left,col=5,content_col=4,content_row=2,ctrl=false,row=3,shift=false,table=root,target=window,window={}",
+            "MousePressed alt=false,box_col=5,box_height=24,box_row=3,box_width=40,button=left,col=5,content_col=4,content_row=2,ctrl=false,row=3,shift=false,table=root,target=window,window={}",
             windows[0].0
         )
     );
     assert_eq!(log.len(), 1, "{log:?}");
+}
+
+#[test]
+fn box_cell_on_a_border() {
+    let (_scratch, mut client) = recording("mouse-box-border", MOUSE);
+    let (layout, windows) = layout_of(2);
+    client.receive([shown(&layout)]);
+    client.clear();
+    client.mouse(MouseKind::Press(MouseButton::Left), 79, 0);
+    assert_eq!(
+        client.pressed(),
+        [format!(
+            "MousePressed alt=false,box_col=39,box_height=24,box_row=0,box_width=40,button=left,col=79,ctrl=false,row=0,shift=false,table=root,target=window,window={}",
+            windows[1].0
+        )]
+    );
+}
+
+#[test]
+fn box_cell_of_a_cut_tile() {
+    let (_scratch, mut client) = recording("mouse-box-cut", MOUSE);
+    let mut layout = Layout::new();
+    let band = layout.bands()[0].id;
+    let first = layout.allocate_window();
+    layout.open(
+        first,
+        band,
+        None,
+        Some(Proportion::ONE_HALF),
+        &LayoutOptions::default(),
+    );
+    let second = layout.allocate_window();
+    layout.open(
+        second,
+        band,
+        Some(first),
+        Some(Proportion::new(5, 8)),
+        &LayoutOptions::default(),
+    );
+    client.receive([shown(&layout)]);
+    dispatch(&mut client.display, Action::View(ViewAction::FocusRight));
+    assert_eq!(client.display.camera(), Some(10));
+    client.clear();
+    client.mouse(MouseKind::Press(MouseButton::Left), 0, 5);
+    assert_eq!(
+        client.pressed(),
+        [format!(
+            "MousePressed alt=false,box_col=10,box_height=24,box_row=5,box_width=40,button=left,col=0,content_col=9,content_row=4,ctrl=false,row=5,shift=false,table=root,target=window,window={}",
+            first.0
+        )]
+    );
+}
+
+#[test]
+fn box_cell_of_a_floating_plugin_window() {
+    let (_scratch, mut client) = recording(
+        "mouse-box-plugin",
+        &format!(
+            "{MOUSE}gband.bind('alt+o', function() win = gband.win.open({{ col = 5, row = 3, width = 20, height = 10, focus = false }}) end)"
+        ),
+    );
+    let (layout, _) = layout_of(1);
+    client.receive([shown(&layout)]);
+    client.press("alt+o");
+    let win: u32 = client
+        .controls
+        .runtime()
+        .lua()
+        .globals()
+        .get("win")
+        .unwrap();
+    client.clear();
+    client.mouse(MouseKind::Press(MouseButton::Left), 5, 12);
+    assert_eq!(
+        client.pressed(),
+        [format!(
+            "MousePressed alt=false,box_col=0,box_height=10,box_row=9,box_width=20,button=left,col=5,ctrl=false,plugin_window={win},row=12,shift=false,table=root,target=plugin_window"
+        )]
+    );
 }
 
 #[test]

@@ -109,7 +109,7 @@ end
 
 return {
   name = "errors",
-  api = 1,
+  api = 2,
   setup = function(opts)
     if type(opts) ~= "table" then
       error("the options of `errors` must be a table", 2)

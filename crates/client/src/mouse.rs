@@ -3,18 +3,20 @@ use std::time::{Duration, Instant};
 use gband_core::action::{Action, ClientAction};
 use gband_core::geometry::{MIN_COLUMN_WIDTH, Size, WindowBox};
 use gband_core::input::{
-    Modifiers, MouseButton, MouseEvent, MouseKey, MouseKind, MouseTracking, WheelDirection,
+    MouseButton, MouseEvent, MouseKey, MouseKind, MouseTracking, WheelDirection,
 };
 use gband_core::layout::{BandId, Proportion, SessionAction, TargetPlace, WindowHeight, WindowId};
 use gband_core::view::{View, ViewAction};
 use gband_emulator::Emulator;
 use gband_lua::plugin_windows::{PluginBox, PluginMouse, PluginMouseKind};
-use gband_lua::{Binding, Event, Pointer as LuaPointer, PointerTarget, clipboard_sequence};
+use gband_lua::{
+    Binding, BoxCell, Event, Pointer as LuaPointer, PointerTarget, clipboard_sequence,
+};
 use gband_protocol::ClientMessage;
 use ratatui::layout::{Position, Rect};
 
 use crate::animation::{DrawnTile, FRAME, Hold};
-use crate::bindings::{MouseCommand, WheelCommand};
+use crate::bindings::{MouseCommand, Unbound, WheelCommand};
 use crate::render::{Region, RegionKind, Selected};
 use crate::{Controls, Display, Step};
 
@@ -53,6 +55,23 @@ pub struct Hit {
     pub target: Target,
     pub region: Option<Region>,
     pub content: Option<(u16, u16)>,
+}
+
+impl Hit {
+    fn boxed(&self, col: u16, row: u16) -> Option<BoxCell> {
+        let region = self.region.filter(|_| {
+            matches!(
+                self.target,
+                Target::Window(_) | Target::DrawnPlugin { .. } | Target::PluginFloat(_)
+            )
+        })?;
+        Some(BoxCell {
+            col: (i64::from(col) - region.x) as u16,
+            row: (i64::from(row) - region.y) as u16,
+            width: region.width,
+            height: region.height,
+        })
+    }
 }
 
 pub fn hit(
@@ -442,6 +461,7 @@ fn payload(hit: &Hit, event: MouseEvent, table: &str) -> LuaPointer {
         window: hit.target.window(),
         plugin_window: hit.target.plugin_window(),
         content: hit.content,
+        boxed: hit.boxed(event.col, event.row),
         table: table.to_owned(),
     }
 }
@@ -571,14 +591,16 @@ impl Controls {
         display: &mut Display,
         plugin_window: u32,
         kind: PluginMouseKind,
-        content: Option<(u16, u16)>,
-        modifiers: Modifiers,
+        hit: &Hit,
+        event: MouseEvent,
         steps: &mut Vec<Step>,
     ) {
+        let on_it = hit.target.plugin_window() == Some(plugin_window);
         let mouse = PluginMouse {
             kind,
-            content,
-            modifiers,
+            content: hit.content.filter(|_| on_it),
+            boxed: hit.boxed(event.col, event.row).filter(|_| on_it),
+            modifiers: event.modifiers,
         };
         let outcome = self.runtime.plugin_window_mouse(plugin_window, &mouse);
         self.apply(display, outcome, steps);
@@ -603,17 +625,28 @@ impl Controls {
             {
                 return;
             }
-            if let WheelCommand::Run(binding) = self.leader.handle_wheel(&self.keymap, key) {
-                display.pointer.wheel_binding = Some((key, now));
-                match binding {
-                    Binding::Action(action) => self.run_action(display, action, steps),
+            if let WheelCommand::Run { binding, ends } = self.leader.handle_wheel(&self.keymap, key)
+            {
+                let declined = match binding {
+                    Binding::Action(action) => {
+                        self.take_wheel_step(display, key, now, ends);
+                        self.run_action(display, action, steps);
+                        false
+                    }
                     Binding::Callback(callback) => {
                         let pointer = payload(hit, event, &table);
                         let outcome = self.runtime.call_scrolled(callback, direction, &pointer);
+                        let declined = outcome.declined;
+                        if !declined {
+                            self.take_wheel_step(display, key, now, ends);
+                        }
                         self.apply(display, outcome, steps);
+                        declined
                     }
+                };
+                if !declined {
+                    return;
                 }
-                return;
             }
         }
         match hit.target {
@@ -635,11 +668,18 @@ impl Controls {
                     display,
                     plugin_window,
                     PluginMouseKind::Scroll(direction),
-                    hit.content,
-                    event.modifiers,
+                    hit,
+                    event,
                     steps,
                 ),
             Target::Ribbon | Target::Outside => {}
+        }
+    }
+
+    fn take_wheel_step(&mut self, display: &mut Display, key: MouseKey, now: Instant, ends: bool) {
+        display.pointer.wheel_binding = Some((key, now));
+        if ends {
+            self.leader.reset();
         }
     }
 
@@ -686,7 +726,7 @@ impl Controls {
         }
         let key = MouseKey::new(button, event.modifiers);
         match self.leader.handle_mouse(&self.keymap, key) {
-            MouseCommand::Run(binding) => {
+            MouseCommand::Run { binding, unbound } => {
                 display.pointer.held = Held::Ignored;
                 self.pressing = Some(Pressing {
                     hit: *hit,
@@ -698,6 +738,17 @@ impl Controls {
                     Binding::Callback(callback) => {
                         let pointer = payload(hit, event, table);
                         let outcome = self.runtime.call_pressed(callback, button, &pointer);
+                        if outcome.declined {
+                            self.pressing = None;
+                            self.apply(display, outcome, steps);
+                            match unbound {
+                                Unbound::Default => {
+                                    self.press_default(display, hit, event, button, steps);
+                                }
+                                Unbound::Discard => display.pointer.held = Held::Ignored,
+                            }
+                            return;
+                        }
                         self.apply(display, outcome, steps);
                     }
                 }
@@ -755,8 +806,8 @@ impl Controls {
                     display,
                     plugin_window,
                     PluginMouseKind::Press(button),
-                    hit.content,
-                    event.modifiers,
+                    hit,
+                    event,
                     steps,
                 );
                 display.pointer.held = Held::Plugin(plugin_window);
@@ -794,15 +845,12 @@ impl Controls {
             }
             Held::Plugin(plugin_window) => {
                 if let Some(button) = button {
-                    let content = hit
-                        .content
-                        .filter(|_| hit.target.plugin_window() == Some(plugin_window));
                     self.plugin_mouse(
                         display,
                         plugin_window,
                         PluginMouseKind::Drag(button),
-                        content,
-                        event.modifiers,
+                        hit,
+                        event,
                         steps,
                     );
                 }
@@ -853,19 +901,14 @@ impl Controls {
                 }
             }
             Held::Select => Self::copy(display, steps),
-            Held::Plugin(plugin_window) => {
-                let content = hit
-                    .content
-                    .filter(|_| hit.target.plugin_window() == Some(plugin_window));
-                self.plugin_mouse(
-                    display,
-                    plugin_window,
-                    PluginMouseKind::Release(button),
-                    content,
-                    event.modifiers,
-                    steps,
-                );
-            }
+            Held::Plugin(plugin_window) => self.plugin_mouse(
+                display,
+                plugin_window,
+                PluginMouseKind::Release(button),
+                hit,
+                event,
+                steps,
+            ),
             Held::Free | Held::Ignored => {}
         }
     }

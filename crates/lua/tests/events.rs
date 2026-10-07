@@ -5,7 +5,7 @@ use gband_core::action::Action;
 use gband_core::input::{Modifiers, MouseButton, WheelDirection};
 use gband_core::layout::{BandId, WindowId};
 use gband_core::view::ViewAction;
-use gband_lua::{Binding, Config, Dispatch, Event, Pointer, PointerTarget};
+use gband_lua::{Binding, BoxCell, CallbackId, Config, Dispatch, Event, Pointer, PointerTarget};
 
 fn focus(window: u32, previous: u32) -> Event {
     Event::FocusChanged {
@@ -316,6 +316,12 @@ fn pointer(target: PointerTarget) -> Pointer {
         window: Some(WindowId(1)),
         plugin_window: None,
         content: Some((4, 2)),
+        boxed: Some(BoxCell {
+            col: 5,
+            row: 3,
+            width: 40,
+            height: 24,
+        }),
         table: "root".to_owned(),
     }
 }
@@ -330,6 +336,7 @@ fn mouse_event_payloads() {
     let ribbon = Pointer {
         window: None,
         content: None,
+        boxed: None,
         modifiers: Modifiers::NONE,
         ..pointer(PointerTarget::Ribbon)
     };
@@ -356,18 +363,19 @@ fn mouse_event_payloads() {
     ] {
         clean(&config.runtime.emit(&event));
     }
+    let boxed = "box_col=5,box_height=24,box_row=3,box_width=40";
     let cells = "col=45,content_col=4,content_row=2,ctrl=true";
     assert_eq!(
         log(&config),
         [
             format!(
-                "alt=false,button=left,{cells},row=3,shift=false,table=root,target=window,window=1"
+                "alt=false,{boxed},button=left,{cells},row=3,shift=false,table=root,target=window,window=1"
             ),
             format!(
-                "alt=false,button=right,{cells},row=3,shift=false,table=root,target=window,window=1"
+                "alt=false,{boxed},button=right,{cells},row=3,shift=false,table=root,target=window,window=1"
             ),
             format!(
-                "alt=false,button=middle,{cells},plugin_window=7,row=3,shift=false,table=root,target=plugin_window,window=1"
+                "alt=false,{boxed},button=middle,{cells},plugin_window=7,row=3,shift=false,table=root,target=plugin_window,window=1"
             ),
             "alt=false,col=45,ctrl=false,direction=up,row=3,shift=false,table=root,target=ribbon"
                 .to_owned(),
@@ -401,7 +409,74 @@ fn mouse_binding_function_receives_the_payload() {
     assert_eq!(
         log(&config),
         [
-            "alt=false,button=left,col=12,content_col=4,content_row=2,ctrl=true,row=3,shift=false,table=prefix,target=window,window=1"
+            "alt=false,box_col=5,box_height=24,box_row=3,box_width=40,button=left,col=12,content_col=4,content_row=2,ctrl=true,row=3,shift=false,table=prefix,target=window,window=1"
         ]
+    );
+}
+
+fn mouse_callback(config: &Config, table: &str) -> CallbackId {
+    match config.keymap[table].first().map(|(_, binding)| *binding) {
+        Some(Binding::Callback(callback)) => callback,
+        other => panic!("{table} is bound to {other:?}"),
+    }
+}
+
+#[test]
+fn only_false_declines() {
+    let scratch = Scratch::new("declines");
+    scratch.plugin_file(
+        "broken",
+        "lua/broken/init.lua",
+        "return { setup = function()
+  gband.keymap.set('broken', 'leftmouse', function() return false end)
+  error('setup failed')
+end }",
+    );
+    scratch.write(
+        "gband.plugin('broken')
+gband.action.register('pass', function() return false end)
+gband.keymap.set('action', 'leftmouse', gband.action.pass)
+for name, body in pairs({
+  bare = 'return false',
+  pair = 'return false, 1',
+  nothing = 'return',
+  explicit_nil = 'return nil',
+  zero = 'return 0',
+  word = 'return \"false\"',
+  raises = 'error(\"no\")',
+}) do
+  gband.keymap.set(name, 'leftmouse', load(body))
+end",
+    );
+    let config = scratch.loaded();
+    let at = pointer(PointerTarget::Window);
+    for (table, declined) in [
+        ("bare", true),
+        ("pair", true),
+        ("action", true),
+        ("nothing", false),
+        ("explicit_nil", false),
+        ("zero", false),
+        ("word", false),
+        ("raises", false),
+        ("broken", false),
+    ] {
+        let callback = mouse_callback(&config, table);
+        let pressed = config
+            .runtime
+            .call_pressed(callback, MouseButton::Left, &at);
+        assert_eq!(pressed.declined, declined, "{table} pressed");
+        let scrolled = config
+            .runtime
+            .call_scrolled(callback, WheelDirection::Down, &at);
+        assert_eq!(scrolled.declined, declined, "{table} scrolled");
+        assert!(!config.runtime.call(callback).declined, "{table} called");
+    }
+    let broken = mouse_callback(&config, "broken");
+    assert!(
+        config
+            .runtime
+            .call_pressed(broken, MouseButton::Left, &at)
+            .disabled
     );
 }

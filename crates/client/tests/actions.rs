@@ -839,6 +839,304 @@ fn mouse_binding_in_root_replaces_the_default() {
     assert!(messages(&steps).is_empty(), "{steps:?}");
 }
 
+impl Mouse {
+    fn click(&mut self, button: MouseButton, cell: (u16, u16)) -> Vec<Step> {
+        let mut steps = self.event(MouseKind::Press(button), cell.0, cell.1, Modifiers::NONE);
+        steps.extend(self.event(MouseKind::Release(button), cell.0, cell.1, Modifiers::NONE));
+        steps
+    }
+
+    fn copy_ls(&mut self, window: WindowId) {
+        self.display.apply(ServerMessage::Snapshot {
+            window,
+            cols: 38,
+            rows: 22,
+            contents: b"ls".to_vec(),
+        });
+        self.drag(MouseButton::Left, (1, 1), (2, 1));
+        assert_eq!(self.display.copy_buffer(), "ls");
+    }
+}
+
+fn pasted(steps: &[Step]) -> Vec<(WindowId, &str)> {
+    steps
+        .iter()
+        .filter_map(|step| match step {
+            Step::Send(ClientMessage::Paste { window, text }) => Some((*window, text.as_str())),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn declined_click_reaches_the_program() {
+    let (layout, windows) = columns_of(2, None);
+    let mut mouse = Mouse::new(
+        "declined-click",
+        "gband.bind('leftmouse', function() calls = (calls or 0) + 1 return false end)",
+        layout,
+    );
+    mouse.report_mouse(windows[1]);
+    let steps = mouse.click(MouseButton::Left, (45, 3));
+    assert_eq!(mouse.global::<i64>("calls"), 1);
+    assert_eq!(mouse.display.focused(), Some(windows[1]));
+    assert_eq!(
+        mouse_messages(&steps),
+        [
+            (
+                windows[1],
+                MouseEvent::new(MouseKind::Press(MouseButton::Left), 4, 2, Modifiers::NONE)
+            ),
+            (
+                windows[1],
+                MouseEvent::new(MouseKind::Release(MouseButton::Left), 4, 2, Modifiers::NONE)
+            ),
+        ]
+    );
+}
+
+#[test]
+fn border_taken_content_declined() {
+    let (layout, windows) = columns_of(2, None);
+    let mut mouse = Mouse::new(
+        "declined-content",
+        "gband.bind('rightmouse', function(e)
+  if e.content_col ~= nil then return false end
+  calls = (calls or 0) + 1
+end)",
+        layout,
+    );
+    mouse.copy_ls(windows[0]);
+    let steps = mouse.click(MouseButton::Right, (50, 0));
+    assert_eq!(mouse.global::<i64>("calls"), 1);
+    assert_eq!(mouse.display.focused(), Some(windows[0]));
+    assert!(messages(&steps).is_empty(), "{steps:?}");
+    let steps = mouse.click(MouseButton::Right, (45, 3));
+    assert_eq!(mouse.global::<i64>("calls"), 1);
+    assert_eq!(mouse.display.focused(), Some(windows[1]));
+    assert_eq!(pasted(&steps), [(windows[1], "ls")]);
+}
+
+#[test]
+fn declined_right_click_pastes() {
+    let (layout, windows) = columns_of(2, None);
+    let mut mouse = Mouse::new(
+        "declined-paste",
+        "gband.bind('rightmouse', function() return false end)",
+        layout,
+    );
+    mouse.copy_ls(windows[0]);
+    let steps = mouse.click(MouseButton::Right, (45, 3));
+    assert_eq!(mouse.display.focused(), Some(windows[1]));
+    assert_eq!(pasted(&steps), [(windows[1], "ls")]);
+}
+
+#[test]
+fn actions_of_a_declining_function_stand() {
+    let (layout, windows) = columns_of(2, None);
+    let mut mouse = Mouse::new(
+        "declined-actions",
+        &format!(
+            "{NAVIGATION}gband.bind('leftmouse', function() gband.keymap.enter('prefix') return false end)"
+        ),
+        layout,
+    );
+    mouse.event(MouseKind::Press(MouseButton::Left), 45, 3, Modifiers::NONE);
+    mouse.event(motion(MouseButton::Left), 47, 3, Modifiers::NONE);
+    assert_eq!(mouse.display.focused(), Some(windows[1]));
+    let selected = mouse.display.selection().unwrap();
+    assert_eq!(
+        (selected.window, selected.start, selected.end),
+        (windows[1], (4, 2), (6, 2))
+    );
+    assert_eq!(mouse.controls.active_table(), "prefix");
+}
+
+#[test]
+fn declined_in_a_mode() {
+    let (layout, windows) = columns_of(2, None);
+    let mut mouse = Mouse::new(
+        "declined-mode",
+        &format!(
+            "{NAVIGATION}gband.keymap.set('prefix', 'leftmouse', function() return false end)"
+        ),
+        layout,
+    );
+    mouse.report_mouse(windows[1]);
+    mouse.key("ctrl+space");
+    let steps = mouse.click(MouseButton::Left, (45, 3));
+    assert_eq!(mouse.display.focused(), Some(windows[0]));
+    assert!(messages(&steps).is_empty(), "{steps:?}");
+    assert_eq!(mouse.controls.active_table(), "prefix");
+}
+
+#[test]
+fn declined_press_ends_the_sequence() {
+    let (layout, windows) = columns_of(2, None);
+    let mut mouse = Mouse::new(
+        "declined-sequence",
+        "gband.keymap.set('prefix', 'leftmouse', function() return false end)",
+        layout,
+    );
+    mouse.key("ctrl+space");
+    assert_eq!(mouse.controls.active_table(), "prefix");
+    let steps = mouse.click(MouseButton::Left, (45, 3));
+    assert!(messages(&steps).is_empty(), "{steps:?}");
+    assert_eq!(mouse.display.focused(), Some(windows[0]));
+    assert_eq!(
+        mouse.key("h"),
+        [Step::Send(ClientMessage::Key {
+            window: windows[0],
+            key: key("h"),
+        })]
+    );
+}
+
+#[test]
+fn declining_skips_an_earlier_binding() {
+    let (layout, windows) = columns_of(2, None);
+    let mut mouse = Mouse::new(
+        "declined-earlier",
+        "gband.opt.mouse_mod = 'alt'
+gband.keymap.set('root', 'alt+leftmouse', gband.action.drag_window)
+gband.keymap.set('root', 'mod+leftmouse', function() return false end)",
+        layout,
+    );
+    let steps = mouse.drag_with(MouseButton::Left, (45, 3), (50, 3), Modifiers::ALT);
+    assert_eq!(mouse.display.focused(), Some(windows[1]));
+    assert!(sent(&steps).is_empty(), "{steps:?}");
+    let selected = mouse.display.selection().unwrap();
+    assert_eq!(
+        (selected.window, selected.start, selected.end),
+        (windows[1], (4, 2), (9, 2))
+    );
+}
+
+#[test]
+fn error_takes_the_press() {
+    let (layout, windows) = columns_of(2, None);
+    let mut mouse = Mouse::new(
+        "declined-error",
+        "gband.bind('leftmouse', function() error('broken') end)",
+        layout,
+    );
+    mouse.report_mouse(windows[1]);
+    let steps = mouse.click(MouseButton::Left, (45, 3));
+    assert!(mouse.display.banner().unwrap().ends_with("broken"));
+    assert_eq!(mouse.display.focused(), Some(windows[0]));
+    assert!(messages(&steps).is_empty(), "{steps:?}");
+}
+
+#[test]
+fn declining_function_starts_no_gesture() {
+    let (mut layout, windows) = columns_of(2, None);
+    float(&mut layout, windows[1], Proportion::ONE_HALF, 12, 10, 4);
+    let mut mouse = Mouse::new(
+        "declined-gesture",
+        &format!(
+            "{NAVIGATION}gband.keymap.set('prefix', 'leftmouse', function() gband.action.drag_window() return false end)"
+        ),
+        layout,
+    );
+    mouse.key("ctrl+space");
+    let steps = mouse.drag(MouseButton::Left, (20, 6), (25, 6));
+    assert!(messages(&steps).is_empty(), "{steps:?}");
+    assert_eq!(mouse.controls.active_table(), "prefix");
+}
+
+#[test]
+fn declined_press_in_root_reaches_the_program() {
+    let (mut layout, windows) = columns_of(2, None);
+    float(&mut layout, windows[1], Proportion::ONE_HALF, 12, 10, 4);
+    let mut mouse = Mouse::new(
+        "declined-root-drag",
+        "gband.bind('leftmouse', function() gband.action.drag_window() return false end)",
+        layout,
+    );
+    mouse.display.apply(ServerMessage::Snapshot {
+        window: windows[1],
+        cols: 38,
+        rows: 10,
+        contents: b"\x1b[?1002h\x1b[?1006h".to_vec(),
+    });
+    let steps = mouse.drag(MouseButton::Left, (13, 6), (17, 6));
+    assert!(sent(&steps).is_empty(), "{steps:?}");
+    let left = MouseButton::Left;
+    assert_eq!(
+        mouse_messages(&steps),
+        [
+            (
+                windows[1],
+                MouseEvent::new(MouseKind::Press(left), 2, 1, Modifiers::NONE)
+            ),
+            (
+                windows[1],
+                MouseEvent::new(motion(left), 6, 1, Modifiers::NONE)
+            ),
+            (
+                windows[1],
+                MouseEvent::new(MouseKind::Release(left), 6, 1, Modifiers::NONE)
+            ),
+        ]
+    );
+}
+
+#[test]
+fn key_binding_returns_false() {
+    let (layout, _) = columns_of(2, None);
+    let mut mouse = Mouse::new(
+        "key-returns-false",
+        "gband.bind('alt+x', function() calls = (calls or 0) + 1 return false end)",
+        layout,
+    );
+    let steps = mouse.key("alt+x");
+    assert_eq!(mouse.global::<i64>("calls"), 1);
+    assert!(messages(&steps).is_empty(), "{steps:?}");
+}
+
+#[test]
+fn mouse_binding_declines() {
+    let (layout, windows) = columns_of(2, None);
+    let mut mouse = Mouse::new(
+        "mouse-declines",
+        "gband.bind('leftmouse', function() calls = (calls or 0) + 1 return false end)",
+        layout,
+    );
+    mouse.click(MouseButton::Left, (45, 3));
+    assert_eq!(mouse.global::<i64>("calls"), 1);
+    assert_eq!(mouse.display.focused(), Some(windows[1]));
+}
+
+#[test]
+fn registered_action_declines() {
+    let (layout, windows) = columns_of(2, None);
+    let mut mouse = Mouse::new(
+        "action-declines",
+        "gband.action.register('pass', function(e) got = e.button return false end)
+gband.keymap.set('root', 'leftmouse', gband.action.pass)",
+        layout,
+    );
+    mouse.click(MouseButton::Left, (45, 3));
+    assert_eq!(mouse.global::<String>("got"), "left");
+    assert_eq!(mouse.display.focused(), Some(windows[1]));
+}
+
+#[test]
+fn return_value_through_keymap_run() {
+    let (layout, windows) = columns_of(2, None);
+    let mut mouse = Mouse::new(
+        "declines-through-run",
+        "gband.bind('leftmouse', function(...) args = select('#', ...) return false end)
+gband.bind('alt+r', function() ran = gband.keymap.run('root', 'leftmouse') end)",
+        layout,
+    );
+    let steps = mouse.key("alt+r");
+    assert_eq!(mouse.global::<i64>("args"), 0);
+    assert!(mouse.global::<bool>("ran"));
+    assert_eq!(mouse.display.focused(), Some(windows[0]));
+    assert!(messages(&steps).is_empty(), "{steps:?}");
+}
+
 #[test]
 fn unbound_mouse_name_in_a_mode_is_discarded() {
     let (layout, windows) = columns_of(2, None);
@@ -1527,6 +1825,75 @@ fn unbound_wheel_step_keeps_the_sequence() {
 }
 
 #[test]
+fn declined_wheel_step_keeps_the_sequence() {
+    let (layout, windows) = columns_of(2, None);
+    let mut mouse = Mouse::new(
+        "wheel-declined-sequence",
+        "gband.keystyle.use('direct')\ngband.keymap.set('prefix', 'wheeldown', function() return false end)",
+        layout,
+    );
+    mouse.report_mouse(windows[0]);
+    mouse.key("ctrl+space");
+    mouse.key("l");
+    assert_eq!(mouse.display.focused(), Some(windows[1]));
+    mouse.key("ctrl+space");
+    let steps = mouse.wheel(WheelDirection::Down, (5, 5), Modifiers::NONE);
+    assert_eq!(
+        mouse_messages(&steps),
+        [(
+            windows[0],
+            MouseEvent::new(
+                MouseKind::Wheel(WheelDirection::Down),
+                4,
+                4,
+                Modifiers::NONE
+            )
+        )]
+    );
+    assert_eq!(mouse.controls.active_table(), "prefix");
+    mouse.key("h");
+    assert_eq!(mouse.display.focused(), Some(windows[0]));
+}
+
+#[test]
+fn declined_wheel_step_starts_no_cooldown() {
+    let (layout, _) = three_bands();
+    let mut mouse = Mouse::new(
+        "wheel-declined-cooldown",
+        "gband.keymap.set('root', 'alt+wheeldown', function()
+  calls = (calls or 0) + 1
+  if calls == 1 then return false end
+  gband.action.focus_band_down()
+end)",
+        layout,
+    );
+    mouse.wheel(WheelDirection::Down, (5, 5), Modifiers::ALT);
+    mouse.wheel(WheelDirection::Down, (5, 5), Modifiers::ALT);
+    assert_eq!(mouse.global::<i64>("calls"), 2);
+    assert_eq!(mouse.viewed(), mouse.band(1));
+}
+
+#[test]
+fn declined_wheel_step_reaches_the_program() {
+    let (layout, windows) = two_bands(1, None);
+    let mut mouse = Mouse::new(
+        "wheel-declined-program",
+        "gband.keymap.set('root', 'alt+wheeldown', function() return false end)",
+        layout,
+    );
+    mouse.report_mouse(windows[0]);
+    let steps = mouse.wheel(WheelDirection::Down, (1, 1), Modifiers::ALT);
+    assert_eq!(
+        mouse_messages(&steps),
+        [(
+            windows[0],
+            MouseEvent::new(MouseKind::Wheel(WheelDirection::Down), 0, 0, Modifiers::ALT)
+        )]
+    );
+    assert_eq!(mouse.viewed(), mouse.band(0));
+}
+
+#[test]
 fn wheel_during_a_gesture() {
     let (mut layout, windows) = two_bands(2, None);
     float(&mut layout, windows[1], Proportion::ONE_HALF, 12, 10, 4);
@@ -1616,6 +1983,104 @@ fn bound_wheel_step_over_a_plugin_window() {
     mouse.wheel(WheelDirection::Down, cell, Modifiers::ALT);
     assert_eq!(mouse.viewed(), mouse.band(1));
     assert_eq!(mouse.global::<Option<String>>("got"), None);
+}
+
+const RECORD_MOUSE: &str = "log = {}
+function record(_, e)
+  local keys = {}
+  for _, k in ipairs({ 'kind', 'button', 'content_col', 'box_col', 'box_row', 'box_width', 'box_height' }) do
+    keys[#keys + 1] = k .. '=' .. tostring(e[k])
+  end
+  log[#log + 1] = table.concat(keys, ',')
+end
+";
+
+#[test]
+fn declined_press_reaches_on_mouse() {
+    let (layout, _) = columns_of(1, None);
+    let mut mouse = Mouse::new(
+        "declined-on-mouse",
+        &format!(
+            "{RECORD_MOUSE}gband.bind('leftmouse', function() return false end)
+gband.bind('alt+o', function() win = gband.win.open({{ lines = {{ 'a', 'b', 'c' }}, focus = false, on_mouse = function(id, e) record(id, e) end }}) end)"
+        ),
+        layout,
+    );
+    mouse.key("alt+o");
+    let id: u32 = mouse.global("win");
+    assert!(!mouse.eval::<bool>(&format!("return gband.win.info({id}).focused")));
+    let (col, row) = mouse.plugin_float(id);
+    mouse.click(MouseButton::Left, (col, row + 2));
+    assert!(mouse.eval::<bool>(&format!("return gband.win.info({id}).focused")));
+    let kinds: Vec<String> = mouse
+        .global::<Vec<String>>("log")
+        .iter()
+        .map(|line| line.split(',').take(2).collect::<Vec<_>>().join(","))
+        .collect();
+    assert_eq!(
+        kinds,
+        ["kind=press,button=left", "kind=release,button=left"]
+    );
+}
+
+#[test]
+fn declined_wheel_step_scrolls_a_plugin_window() {
+    let (layout, _) = columns_of(1, None);
+    let mut mouse = Mouse::new(
+        "declined-wheel-plugin",
+        "gband.bind('wheeldown', function() return false end)
+gband.bind('alt+o', function() local lines = {} for i = 1, 25 do lines[i] = tostring(i) end win = gband.win.open({ lines = lines, height = 12, focus = false }) end)",
+        layout,
+    );
+    mouse.key("alt+o");
+    let id: u32 = mouse.global("win");
+    let cell = mouse.plugin_float(id);
+    mouse.wheel(WheelDirection::Down, cell, Modifiers::NONE);
+    assert_eq!(
+        mouse.eval::<i64>(&format!("return gband.win.info({id}).top")),
+        2
+    );
+    assert!(!mouse.eval::<bool>(&format!("return gband.win.info({id}).focused")));
+}
+
+#[test]
+fn box_cell_on_the_plugin_window_border() {
+    let (layout, _) = columns_of(1, None);
+    let mut mouse = Mouse::new(
+        "plugin-box-border",
+        &format!(
+            "{RECORD_MOUSE}gband.bind('alt+o', function() win = gband.win.open({{ col = 5, row = 3, width = 20, height = 10, on_mouse = record }}) end)"
+        ),
+        layout,
+    );
+    mouse.key("alt+o");
+    mouse.event(MouseKind::Press(MouseButton::Left), 24, 3, Modifiers::NONE);
+    assert_eq!(
+        mouse.global::<Vec<String>>("log"),
+        ["kind=press,button=left,content_col=nil,box_col=19,box_row=0,box_width=20,box_height=10"]
+    );
+}
+
+#[test]
+fn drag_off_the_plugin_window() {
+    let (layout, _) = columns_of(1, None);
+    let mut mouse = Mouse::new(
+        "plugin-drag-off",
+        &format!(
+            "{RECORD_MOUSE}gband.bind('alt+o', function() win = gband.win.open({{ col = 5, row = 3, width = 20, height = 10, on_mouse = record }}) end)"
+        ),
+        layout,
+    );
+    mouse.key("alt+o");
+    mouse.event(MouseKind::Press(MouseButton::Left), 10, 6, Modifiers::NONE);
+    mouse.event(motion(MouseButton::Left), 40, 6, Modifiers::NONE);
+    assert_eq!(
+        mouse.global::<Vec<String>>("log"),
+        [
+            "kind=press,button=left,content_col=4,box_col=5,box_row=3,box_width=20,box_height=10",
+            "kind=drag,button=left,content_col=nil,box_col=nil,box_row=nil,box_width=nil,box_height=nil",
+        ]
+    );
 }
 
 #[test]
