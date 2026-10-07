@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use common::*;
 
-const LABELS: [&str; 3] = ["theme    ", "sidebar  ", "keys     "];
+const LABELS: [&str; 4] = ["theme    ", "sidebar  ", "keys     ", "I on new "];
 
 fn position(screen: &Grid, text: &str) -> Option<(u16, u16)> {
     screen
@@ -30,7 +30,9 @@ fn line_text(screen: &Grid, label: &str) -> Option<String> {
 }
 
 fn settings_open(screen: &Grid) -> bool {
-    LABELS.iter().all(|label| position(screen, label).is_some())
+    LABELS[..3]
+        .iter()
+        .all(|label| position(screen, label).is_some())
 }
 
 fn look(screen: &Grid, label: &str) -> Option<String> {
@@ -40,11 +42,53 @@ fn look(screen: &Grid, label: &str) -> Option<String> {
 }
 
 fn cursor_line(screen: &Grid) -> Option<usize> {
+    if !settings_open(screen) {
+        return None;
+    }
     let looks: Vec<String> = LABELS
         .iter()
-        .map(|label| look(screen, label))
-        .collect::<Option<_>>()?;
-    (0..3).find(|&index| looks.iter().filter(|other| **other == looks[index]).count() == 1)
+        .map_while(|label| look(screen, label))
+        .collect();
+    (0..looks.len())
+        .find(|&index| looks.iter().filter(|other| **other == looks[index]).count() == 1)
+}
+
+fn navigation(screen: &Grid) -> bool {
+    sidebar_mode(screen) == "N"
+}
+
+fn focused_shows(screen: &Grid, label: &str) -> bool {
+    focused_lines(screen).iter().any(|line| line == label)
+}
+
+fn untouched_prompt(screen: &Grid) -> bool {
+    focused_lines(screen)
+        .iter()
+        .rfind(|line| !line.is_empty())
+        .is_some_and(|line| line.ends_with('$'))
+}
+
+fn save_interactive_on_new(env: &TestEnv, value: bool) {
+    fs::write(
+        env.config_dir().join("user").join("interactive_on_new.lua"),
+        format!("return {value}\n"),
+    )
+    .unwrap();
+}
+
+fn labelled(env: &TestEnv) -> Attached {
+    let mut client = Attached::start(env, 80, 24);
+    client.wait_for_prompt();
+    client.run("clear; echo W1");
+    client.wait_for_line("W1");
+    client
+}
+
+fn new_window(client: &mut Attached) {
+    client.send(b"\x00n");
+    client.wait_for("a second focused window", |screen| {
+        tiles(screen).len() == 2 && untouched_prompt(screen) && !focused_shows(screen, "W1")
+    });
 }
 
 fn sidebar(screen: &Grid, row: usize) -> String {
@@ -209,6 +253,7 @@ fn switch_the_key_style() {
         user_file(&env, "keystyle.lua").as_deref(),
         Some("return \"direct\"\n")
     );
+    assert!(position(&client.screen(), LABELS[3]).is_none());
     escape(&mut client);
     client.send(b"\x00");
     thread::sleep(Duration::from_millis(100));
@@ -331,4 +376,75 @@ fn cannot_save() {
     let log = env.log_text("client");
     assert!(log.contains("user/sidebar.lua"), "{log}");
     assert!(user_file(&env, "sidebar.lua").is_none());
+}
+
+#[test]
+fn turn_interactive_on_new_off() {
+    let env = TestEnv::new("settings-interactive-off");
+    let mut client = opened(&env);
+    press(&mut client, b"jjj", 3);
+    let before = reloads(&env);
+    client.send(b"\r");
+    reopened(&client, &env, before, 3, "I on new off");
+    assert_eq!(
+        user_file(&env, "interactive_on_new.lua").as_deref(),
+        Some("return false\n")
+    );
+    escape(&mut client);
+    new_window(&mut client);
+    client.wait_for("navigation mode after the new window", navigation);
+}
+
+#[test]
+fn turn_interactive_on_new_back_on() {
+    let env = TestEnv::new("settings-interactive-on");
+    save_interactive_on_new(&env, false);
+    let mut client = opened(&env);
+    press(&mut client, b"jjj", 3);
+    let before = reloads(&env);
+    client.send(b"h");
+    reopened(&client, &env, before, 3, "I on new on");
+    assert_eq!(
+        user_file(&env, "interactive_on_new.lua").as_deref(),
+        Some("return true\n")
+    );
+}
+
+#[test]
+fn open_a_window_and_stay_in_navigation_mode() {
+    let env = TestEnv::new("settings-interactive-navigation");
+    save_interactive_on_new(&env, false);
+    let mut client = labelled(&env);
+    new_window(&mut client);
+    client.wait_for("navigation mode after the new window", navigation);
+    client.send(b"h");
+    client.wait_for("the first window focused in navigation mode", |screen| {
+        focused_shows(screen, "W1") && navigation(screen)
+    });
+    assert!(untouched_prompt(&client.screen()), "{}", client.contents());
+}
+
+#[test]
+fn direct_key_style_ignores_the_setting() {
+    let env = TestEnv::new("settings-interactive-direct");
+    env.save_key_style("direct");
+    save_interactive_on_new(&env, false);
+    let mut client = labelled(&env);
+    new_window(&mut client);
+    client.run("echo direct-root");
+    client.wait_for_line("direct-root");
+}
+
+#[test]
+fn own_configuration_with_the_modal_preset() {
+    let env = TestEnv::new("settings-interactive-own");
+    env.write_config("gband.keystyle.use(\"modal\")\n");
+    save_interactive_on_new(&env, false);
+    let mut client = labelled(&env);
+    new_window(&mut client);
+    client.send(b"h");
+    client.wait_for("the first window focused", |screen| {
+        focused_shows(screen, "W1")
+    });
+    assert!(untouched_prompt(&client.screen()), "{}", client.contents());
 }

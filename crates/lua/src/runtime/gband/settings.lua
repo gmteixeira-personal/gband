@@ -5,12 +5,12 @@ gband.hl.default("SettingsLabel", { dim = true })
 local NAME = "^[A-Za-z0-9][A-Za-z0-9_-]*$"
 local LABEL_WIDTH = 9
 local WIDTH = 31
-local HEIGHT = 5
-local THEME, SIDEBAR, KEYS = 1, 2, 3
-local LABELS = { "theme", "sidebar", "keys" }
+local THEME, SIDEBAR, KEYS, INTERACTIVE_ON_NEW = 1, 2, 3, 4
+local LABELS = { "theme", "sidebar", "keys", "I on new" }
 local THEME_FILE = "user/theme.lua"
 local SIDEBAR_FILE = "user/sidebar.lua"
 local KEYSTYLE_FILE = "user/keystyle.lua"
+local INTERACTIVE_ON_NEW_FILE = "user/interactive_on_new.lua"
 local MOVES = {
   j = 1, down = 1, k = -1, up = -1,
   pagedown = "page", pageup = "page", home = "first", ["end"] = "last",
@@ -70,10 +70,16 @@ local function theme()
   return read(THEME_FILE, is_name)
 end
 
+local function is_boolean(value)
+  return type(value) == "boolean"
+end
+
 local function sidebar()
-  return read(SIDEBAR_FILE, function(value)
-    return type(value) == "boolean"
-  end)
+  return read(SIDEBAR_FILE, is_boolean)
+end
+
+local function interactive_on_new()
+  return read(INTERACTIVE_ON_NEW_FILE, is_boolean)
 end
 
 local function themes()
@@ -129,11 +135,15 @@ local function lines()
     sidebar() == false and "off" or "on",
     key_style(),
   }
+  if values[KEYS] == "modal" then
+    values[INTERACTIVE_ON_NEW] = interactive_on_new() == false and "off" or "on"
+  end
   local out = {}
-  for index, label in ipairs(LABELS) do
+  for index, value in ipairs(values) do
+    local label = LABELS[index]
     out[index] = {
       { text = label .. string.rep(" ", LABEL_WIDTH - #label), hl = "SettingsLabel" },
-      values[index],
+      value,
     }
   end
   return out
@@ -186,6 +196,11 @@ local function toggle_keys()
   save(KEYS, KEYSTYLE_FILE, 'return "' .. next_style .. '"\n')
 end
 
+local function toggle_interactive_on_new()
+  local next_value = interactive_on_new() == false and "true" or "false"
+  save(INTERACTIVE_ON_NEW, INTERACTIVE_ON_NEW_FILE, "return " .. next_value .. "\n")
+end
+
 local function change(direction)
   return function(win)
     local line = gband.win.info(win).cursor
@@ -195,6 +210,8 @@ local function change(direction)
       toggle_sidebar()
     elseif line == KEYS then
       toggle_keys()
+    elseif line == INTERACTIVE_ON_NEW then
+      toggle_interactive_on_new()
     end
   end
 end
@@ -209,6 +226,8 @@ local function enter(win)
     toggle_sidebar()
   elseif line == KEYS then
     toggle_keys()
+  elseif line == INTERACTIVE_ON_NEW then
+    toggle_interactive_on_new()
   end
 end
 
@@ -318,11 +337,12 @@ local function show(line)
   if is_open(window) then
     gband.win.focus(window)
   else
+    local content = lines()
     window = gband.win.open({
       title = "settings",
       width = WIDTH,
-      height = HEIGHT,
-      lines = lines(),
+      height = #content + 2,
+      lines = content,
       cursorline = true,
       keys = {
         enter = enter,
@@ -354,5 +374,6 @@ gband.settings = {
   end,
   theme = theme,
   sidebar = sidebar,
+  interactive_on_new = interactive_on_new,
   themes = themes,
 }

@@ -899,6 +899,7 @@ The prompt gives `PromptCursor` the default `{ reverse = true }` when its module
 gband bundles two key style presets, the modules `gband.keystyle.modal` and `gband.keystyle.direct`.
 Each is a file of plain top-level calls, as a `user/init.lua` is: it sets up `gband.keylist` and `gband.prompt`, whose actions it binds, then makes its bindings in `prefix`, and binds nothing in `root`.
 The modal preset declares `prefix` a mode labelled `navigation` and binds Escape and Enter to return to interactive mode.
+Its `n` opens a window and returns to interactive mode unless `gband.settings.interactive_on_new()` returned `false` when the preset loaded.
 The direct preset declares no mode, so each key after the prefix key acts once; it binds `n` to `open_window` and the prefix key to `send_prefix` directly.
 Both bind Ctrl+Space then `s` to `gband.settings.open`, described `settings`, right after `:`.
 gband writes copies of both to `defaults/keystyle/` for you to read; loading never reads the copies.
@@ -928,26 +929,28 @@ The settings window's `keys` line saves it, as "Settings" describes.
 | `gband.settings.open()` | enters `root` and opens the settings window, or focuses it when it is open |
 | `gband.settings.theme()` | the theme saved in `user/theme.lua`, or nil |
 | `gband.settings.sidebar()` | the sidebar setting saved in `user/sidebar.lua`, `true` or `false`, or nil |
+| `gband.settings.interactive_on_new()` | the `I on new` setting saved in `user/interactive_on_new.lua`, `true` or `false`, or nil |
 | `gband.settings.themes()` | a new list of the names the theme list shows |
 
-`theme` and `sidebar` read their file as `gband.keystyle.saved()` reads `user/keystyle.lua`, and return its value when it is a valid colorscheme name or a boolean.
+`theme`, `sidebar` and `interactive_on_new` read their file as `gband.keystyle.saved()` reads `user/keystyle.lua`, and return its value when it is a valid colorscheme name or a boolean.
 They return nil when `gband.config_dir` is nil, and when the file is missing, does not compile, raises an error or returns anything else; they report nothing.
-Neither file is ever run as configuration, a plugin file or a module.
+None of these files is ever run as configuration, a plugin file or a module.
 `themes` lists the bundled themes first, in the order "Themes" gives, without the alias `catppuccin`, then every other name for which a runtimepath entry holds `colors/<name>.lua`, in byte order.
 A name appears once, so a `user/colors/nord.lua` keeps `nord`'s place.
-These three are callable while the configuration loads and in any callback.
+These four are callable while the configuration loads and in any callback.
 
 `open` is callable wherever an action value is, and calling it while the configuration loads is an error.
 Called while the theme list is open, it closes the list as Escape does and focuses the settings window.
 
-The settings window is a floating plugin window with a border, titled `settings`, 31 columns wide and 5 rows high, at most the ribbon's size, centred in the ribbon, with its cursor line on its first line.
-It holds three lines, each a label in `SettingsLabel` padded to 9 cells, then the value:
+The settings window is a floating plugin window with a border, titled `settings`, 31 columns wide and as high as its lines plus its border, at most the ribbon's size, centred in the ribbon, with its cursor line on its first line.
+It holds these lines, each a label in `SettingsLabel` padded to 9 cells, then the value; the `I on new` line only while the `keys` line shows `modal`:
 
 | line | value | Enter | `h`, Left, `l`, Right |
 |---|---|---|---|
 | `theme` | the name `gband.colorscheme()` returns | opens the theme list | `l` and Right load the theme after the active one in `themes()`, `h` and Left the one before, and save it |
 | `sidebar` | `off` when `sidebar()` returns `false`, `on` otherwise | saves the other value | the same as Enter |
 | `keys` | the style `gband.keystyle.saved()` returns, or `modal` | saves the other style | the same as Enter |
+| `I on new` | `off` when `interactive_on_new()` returns `false`, `on` otherwise | saves the other value | the same as Enter |
 
 The `theme` line wraps at both ends of the list, and an active colorscheme missing from it steps to the first or the last theme.
 A theme that fails to load is reported, as "Colorschemes" describes, and not saved.
@@ -960,13 +963,14 @@ Enter saves the line's theme and closes the list; when that theme failed to load
 Escape and `q` load again the colorscheme that was active when the list opened, save nothing and close the list.
 Closing the list focuses the settings window.
 
-Saving writes `return "<name>"`, `return true` or `return false`, or `return "<style>"`, and a newline, to a temporary file in `user/`, and renames it over `user/theme.lua`, `user/sidebar.lua` or `user/keystyle.lua`.
+Saving writes `return "<name>"`, `return true` or `return false`, or `return "<style>"`, and a newline, to a temporary file in `user/`, and renames it over `user/theme.lua`, `user/sidebar.lua`, `user/keystyle.lua` or `user/interactive_on_new.lua`.
 That reloads the configuration, as any saved `.lua` file under `user/` does.
 The client keeps the line the setting belongs to across that reload, and when the load succeeds it opens the settings window again with its cursor line there, whatever configuration file is in use.
 When there is no configuration directory or the write fails, the key raises an error naming the file and the reason, the settings window stays open, and the setting in use stays.
 
 The saved theme applies to every configuration, since it loads before the init file.
-The sidebar and the key style apply where a configuration asks for them: the default configuration sets up `gband.sidebar` unless `sidebar()` returns `false`, and calls `gband.keystyle.use()` with no argument.
+The sidebar, the key style and `I on new` apply where a configuration asks for them: the default configuration sets up `gband.sidebar` unless `sidebar()` returns `false`, and calls `gband.keystyle.use()` with no argument, whose modal preset reads `interactive_on_new()`.
+A `user/init.lua` with its own `n` binding can read `interactive_on_new()` to follow the setting.
 A `user/init.lua` that sets up the sidebar or binds its own keys keeps its choice, and the settings window then only saves the setting.
 
 On `Attached`, the default configuration opens the settings window when `gband.config_dir` is set and `theme()`, `sidebar()` and `gband.keystyle.saved()` all return nil.

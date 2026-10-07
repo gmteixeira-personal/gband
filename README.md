@@ -62,7 +62,7 @@ The prefix key, Ctrl+Space, gives the keys below their gband meaning, in one of 
 - **modal**: Ctrl+Space enters navigation mode, and the sidebar shows `N`.
   Each key below acts and navigation mode stays active, so `l` `l` `l` moves three columns and `=` `=` widens the column twice.
   A key with no binding does nothing.
-  Escape or Enter returns to interactive mode, and so do `n`, `?`, `:`, `s` and Ctrl+Space once they have acted.
+  Escape or Enter returns to interactive mode, and so do `?`, `:`, `s` and Ctrl+Space once they have acted, and `n` unless the settings window's `I on new` is `off`.
 - **direct**: Ctrl+Space then one key acts once, and the keys that follow reach the window again, as in tmux.
   Ctrl+Space `l` `l` moves one column and types `l`.
   Escape, Enter and any other key with no binding after Ctrl+Space are discarded.
@@ -77,7 +77,7 @@ Both styles bind the same keys after Ctrl+Space:
 | `j`, `k`, or the down or up arrow | focus the window below or above |
 | `u`, `i` | view the band below or above |
 | `c` | center the focused column in the view, or the focused floating window on the screen |
-| `n` | open a window running your shell; modal returns to interactive mode |
+| `n` | open a window running your shell; modal returns to interactive mode unless `I on new` is `off` |
 | `q` | close the window, or the key list or another floating plugin window when it has focus |
 | `[`, `]` | move the window into or out of the column to the left or right |
 | `r` | cycle the column's width through the presets |
@@ -103,17 +103,18 @@ After Ctrl+Space and a layout key, what you type no longer reaches the window un
 ### Settings
 
 Ctrl+Space then `s` opens the settings window, a box titled `settings` over the windows, and returns to interactive mode so the box takes the keys that follow.
-It has three lines:
+It has these lines:
 
 | line | shows |
 |---|---|
 | `theme` | the active theme |
 | `sidebar` | `on` or `off` |
 | `keys` | the key style, `modal` or `direct` |
+| `I on new` | `on` or `off`: whether `n` in navigation mode returns to interactive mode; shown with the modal key style only |
 
 `j`, `k` and the up and down arrows move between the lines.
 On `theme`, `l` or Right loads the next theme and `h` or Left the one before, and Enter opens the theme list.
-On `sidebar` and `keys`, Enter, `h`, `l`, Left and Right switch to the other value.
+On `sidebar`, `keys` and `I on new`, Enter, `h`, `l`, Left and Right switch to the other value.
 Escape or `q` closes the box and saves nothing.
 
 Each change is saved at once.
@@ -194,9 +195,9 @@ gband creates the directory when it starts, with two folders in it:
   Edits to them have no effect.
 - `user/` holds your configuration.
   gband creates it empty.
-  The settings window saves each setting in a file of its own: `user/theme.lua` holds `return "<theme>"`, `user/sidebar.lua` holds `return true` or `return false`, and `user/keystyle.lua` holds `return "modal"` or `return "direct"`.
+  The settings window saves each setting in a file of its own: `user/theme.lua` holds `return "<theme>"`, `user/sidebar.lua` and `user/interactive_on_new.lua` hold `return true` or `return false`, and `user/keystyle.lua` holds `return "modal"` or `return "direct"`.
   gband only reads a value from these files and never runs them as configuration, and nothing writes `user/init.lua`.
-  Delete all three to be offered the settings window again.
+  Delete `user/theme.lua`, `user/sidebar.lua` and `user/keystyle.lua` to be offered the settings window again.
 
 The configuration has two files, one per process:
 
@@ -219,8 +220,9 @@ The copy binds its keys with `gband.keystyle.use()`, which makes the bindings of
 To edit the bindings themselves, copy a style's bindings from `defaults/keystyle/` into `user/init.lua` in place of the `gband.keystyle.use()` call.
 
 The saved theme loads before `user/init.lua` runs, so it applies to your file too, unless your file calls `gband.colorscheme` itself.
-The settings window's `sidebar` and `keys` lines apply only where your file asks for them, as the copy does: it sets up the sidebar unless `gband.settings.sidebar()` returns `false`, and calls `gband.keystyle.use()` with no argument.
+The settings window's `sidebar`, `keys` and `I on new` lines apply only where your file asks for them, as the copy does: it sets up the sidebar unless `gband.settings.sidebar()` returns `false`, and calls `gband.keystyle.use()` with no argument, whose modal `n` returns to interactive mode unless `gband.settings.interactive_on_new()` returns `false`.
 A file that sets up the sidebar or binds its own keys keeps its choice, and the settings window then only saves the setting.
+An `n` binding of your own can read `gband.settings.interactive_on_new()` to follow the `I on new` line.
 
 Without `user/init.lua`, the defaults apply.
 Saving `user/init.lua`, or any other `.lua` file under `user/`, reloads the configuration while gband runs, and deleting `user/init.lua` returns to the defaults.

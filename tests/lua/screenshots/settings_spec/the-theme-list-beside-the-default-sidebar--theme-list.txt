@@ -12,8 +12,8 @@ size 80x24 cursor 19:51 hidden
 10| │                       │the│tokyo-night         │    │
 11| │                       │sid│dracula             │    │
 12| │                       │key│nord                │    │
-13| │                       └───│gruvbox             │────┘
-14| │                           │one-dark            │
+13| │                       │I o│gruvbox             │    │
+14| │                       └───│one-dark            │────┘
 15| │                           │solarized           │
 16| │                           │kanagawa            │
 17| │                           │rose-pine           │
@@ -96,12 +96,14 @@ size 80x24 cursor 19:51 hidden
 13:1 fg=4 bold
 13:25-29 fg=8 bg=0
 13:30-49 fg=7 bg=0
-13:50-55 fg=8 bg=0
+13:50 fg=8 bg=0
+13:51-54 fg=7 bg=0
+13:55 fg=8 bg=0
 14:0 bg=0
 14:1 fg=4 bold
-14:29 fg=8 bg=0
+14:25-29 fg=8 bg=0
 14:30-49 fg=7 bg=0
-14:50 fg=8 bg=0
+14:50-55 fg=8 bg=0
 15:0 bg=0
 15:1 fg=4 bold
 15:29 fg=8 bg=0

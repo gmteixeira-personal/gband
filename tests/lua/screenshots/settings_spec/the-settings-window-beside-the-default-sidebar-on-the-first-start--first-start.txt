@@ -12,8 +12,8 @@ size 80x24 cursor 11:55 hidden
 10| │                       │theme    default             │
 11| │                       │sidebar  on                  │
 12| │                       │keys     modal               │
-13| │                       └─────────────────────────────┘
-14| │                                     │
+13| │                       │I on new on                  │
+14| │                       └─────────────────────────────┘
 15| │                                     │
 16| │                                     │
 17| │                                     │
@@ -62,9 +62,11 @@ size 80x24 cursor 11:55 hidden
 12:26-34 dim
 12:55 fg=8
 13:1 fg=#b1b9f9 bold
-13:25-55 fg=8
+13:25 fg=8
+13:26-34 dim
+13:55 fg=8
 14:1 fg=#b1b9f9 bold
-14:39 fg=#b1b9f9 bold
+14:25-55 fg=8
 15:1 fg=#b1b9f9 bold
 15:39 fg=#b1b9f9 bold
 16:1 fg=#b1b9f9 bold
