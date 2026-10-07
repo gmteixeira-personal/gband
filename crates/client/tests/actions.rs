@@ -203,6 +203,7 @@ fn new_actions_resolve_against_the_view() {
         SessionAction::ToggleFloating {
             window: windows[1],
             after: None,
+            floating: None,
         },
         Size::new(80, 24),
         &LayoutOptions::default(),
@@ -241,6 +242,7 @@ fn new_actions_resolve_against_the_view() {
         Step::Send(ClientMessage::Action(SessionAction::ToggleFloating {
             window: windows[1],
             after: Some(windows[0]),
+            floating: None,
         }))
     );
     assert_eq!(
@@ -335,6 +337,7 @@ fn center_column_on_a_floating_window_sends_its_centred_position() {
         SessionAction::ToggleFloating {
             window: floating,
             after: None,
+            floating: None,
         },
         SessionAction::SetPosition {
             window: floating,
@@ -704,6 +707,7 @@ fn float(layout: &mut Layout, window: WindowId, width: Proportion, rows: u16, co
         SessionAction::ToggleFloating {
             window,
             after: None,
+            floating: None,
         },
         SessionAction::SetWidth { window, width },
         SessionAction::SetHeight {
@@ -2240,4 +2244,79 @@ fn unbound_wheel_step_scrolls_a_plugin_window() {
         2
     );
     assert_eq!(mouse.viewed(), mouse.band(0));
+}
+
+fn toggle(window: WindowId, after: Option<WindowId>, floating: Option<bool>) -> SessionAction {
+    SessionAction::ToggleFloating {
+        window,
+        after,
+        floating,
+    }
+}
+
+#[test]
+fn float_twice_in_one_callback() {
+    let (layout, windows) = columns_of(2, None);
+    let id = windows[1].0;
+    let mut mouse = Mouse::new(
+        "float-twice",
+        &format!(
+            "gband.bind('alt+f', function()
+  gband.action.toggle_window_floating({{ window = {id}, floating = true }})
+  gband.action.toggle_window_floating({{ window = {id}, floating = true }})
+end)"
+        ),
+        layout,
+    );
+    let steps = mouse.key("alt+f");
+    let float = toggle(windows[1], None, Some(true));
+    assert_eq!(sent(&steps), [float.clone(), float]);
+    mouse.apply(&steps);
+    let band = &mouse.layout.bands()[0];
+    assert_eq!(
+        band.floating
+            .iter()
+            .map(|floating| floating.window)
+            .collect::<Vec<_>>(),
+        [windows[1]]
+    );
+    assert_eq!(band.columns.len(), 1);
+    assert_eq!(band.columns[0].windows, [windows[0]]);
+}
+
+#[test]
+fn float_a_window_that_already_floats() {
+    let (mut layout, windows) = columns_of(2, None);
+    float(&mut layout, windows[1], Proportion::ONE_THIRD, 10, 5, 3);
+    let id = windows[1].0;
+    let mut mouse = Mouse::new(
+        "float-floating",
+        &format!(
+            "gband.bind('alt+f', function() gband.action.toggle_window_floating({{ window = {id}, floating = true }}) end)"
+        ),
+        layout,
+    );
+    let steps = mouse.key("alt+f");
+    assert_eq!(sent(&steps), [toggle(windows[1], None, Some(true))]);
+}
+
+#[test]
+fn tile_with_floating_false_fills_after() {
+    let (mut layout, windows) = columns_of(3, None);
+    float(&mut layout, windows[2], Proportion::ONE_THIRD, 10, 5, 3);
+    let id = windows[2].0;
+    let mut mouse = Mouse::new(
+        "tile-floating-false",
+        &format!(
+            "gband.bind('alt+t', function() gband.action.toggle_window_floating({{ window = {id}, floating = false }}) end)"
+        ),
+        layout,
+    );
+    mouse.click(MouseButton::Left, (45, 3));
+    assert_eq!(mouse.display.focused(), Some(windows[1]));
+    let steps = mouse.key("alt+t");
+    assert_eq!(
+        sent(&steps),
+        [toggle(windows[2], Some(windows[1]), Some(false))]
+    );
 }

@@ -417,6 +417,7 @@ fn floating_a_window_reports_its_box() {
             SessionAction::ToggleFloating {
                 window: p2,
                 after: None,
+                floating: None,
             }
         ),
         [LayoutEvent::WindowFloated {
@@ -444,6 +445,7 @@ fn moving_a_floating_window_reports_its_new_box() {
         SessionAction::ToggleFloating {
             window,
             after: None,
+            floating: None,
         },
     );
     let mut moved = *layout.floating(window).unwrap();
@@ -467,6 +469,7 @@ fn tiling_a_window_reports_its_column() {
         SessionAction::ToggleFloating {
             window: b,
             after: None,
+            floating: None,
         },
     );
     let width = Proportion::ONE_THIRD;
@@ -476,7 +479,8 @@ fn tiling_a_window_reports_its_column() {
             &mut layout,
             SessionAction::ToggleFloating {
                 window: b,
-                after: Some(a)
+                after: Some(a),
+                floating: None,
             }
         ),
         [LayoutEvent::WindowTiled {
@@ -487,6 +491,19 @@ fn tiling_a_window_reports_its_column() {
             full_width: false,
         }]
     );
+}
+
+#[test]
+fn naming_the_own_layer_reports_nothing() {
+    let (mut layout, [a, b, c]) = row_of_three();
+    let float = |window, floating| SessionAction::ToggleFloating {
+        window,
+        after: Some(a),
+        floating: Some(floating),
+    };
+    assert!(apply(&mut layout, float(b, false)).is_empty());
+    apply(&mut layout, float(c, true));
+    assert!(apply(&mut layout, float(c, true)).is_empty());
 }
 
 #[test]

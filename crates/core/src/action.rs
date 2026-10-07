@@ -71,6 +71,7 @@ impl SessionCommand {
             SessionCommand::ToggleFloating => SessionAction::ToggleFloating {
                 window,
                 after: None,
+                floating: None,
             },
 
             SessionCommand::CloseWindow => SessionAction::CloseWindow(window),

@@ -480,6 +480,7 @@ fn toggle(layout: &mut Layout, window: WindowId) {
         SessionAction::ToggleFloating {
             window,
             after: None,
+            floating: None,
         },
         AREA,
         &LayoutOptions::default(),
@@ -850,6 +851,7 @@ fn floating_box_follows_the_pointer_at_once() {
         SessionAction::ToggleFloating {
             window: floating,
             after: None,
+            floating: None,
         },
         SessionAction::SetWidth {
             window: floating,

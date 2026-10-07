@@ -85,6 +85,7 @@ end, { desc = "close the marked windows" })
 The marks of the closed windows stay in the table for now; chapter 04 forgets them.
 [Action targets](../plugins.md#action-targets) lists which actions take a target and what else they take.
 `drag_resize_window` takes a different target, `edges`, naming the edges a mouse drag moves, and [Action targets](../plugins.md#action-targets) describes it.
+`toggle_window_floating` also takes `floating`, which floats the window when `true` and tiles it when `false`, and leaves a window already in that layer as it is.
 
 ## Starting a program
 

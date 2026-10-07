@@ -1062,7 +1062,7 @@ fn guide_examples() -> Vec<String> {
 #[test]
 fn guide_examples_run() {
     let examples = guide_examples();
-    assert_eq!(examples.len(), 5);
+    assert_eq!(examples.len(), 6);
     for (index, example) in examples.iter().enumerate() {
         let scratch = Scratch::new(&format!("win-guide-{index}"));
         scratch.write(example);
@@ -1084,13 +1084,17 @@ fn guide_examples_run() {
                 layout: Arc::new(layout),
                 ..state()
             }));
-            for (_, binding) in &config.keymap["prefix"] {
+            for (_, binding) in config.keymap.get("prefix").into_iter().flatten() {
                 let Binding::Callback(callback) = binding else {
                     continue;
                 };
                 let outcome = config.runtime.call(*callback);
                 clean(&outcome);
             }
+            clean(&config.runtime.emit(&Event::WindowOpened {
+                window: second,
+                band,
+            }));
         }
     }
 }

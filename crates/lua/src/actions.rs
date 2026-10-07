@@ -253,7 +253,7 @@ fn session_target(name: &str, command: SessionCommand, target: &Value) -> Result
     let opening = command == SessionCommand::OpenWindow;
     let allowed: &[&str] = match command {
         SessionCommand::OpenWindow => &["session", "band", "after", "program", "floating"],
-        SessionCommand::ToggleFloating => &["session", "window", "after"],
+        SessionCommand::ToggleFloating => &["session", "window", "after", "floating"],
         SessionCommand::StepWidth { .. } | SessionCommand::StepHeight { .. } => {
             &["session", "window", "step"]
         }
@@ -295,12 +295,10 @@ fn session_target(name: &str, command: SessionCommand, target: &Value) -> Result
             }),
         }
     };
-    let action = if opening {
-        let band = BandId(number("band", true)?.expect("required"));
-        let after = number("after", false)?.map(WindowId);
+    let layer = |after: Option<WindowId>| -> Result<Option<bool>, String> {
         let floating = match get("floating")? {
-            Value::Nil => false,
-            Value::Boolean(floating) => floating,
+            Value::Nil => None,
+            Value::Boolean(floating) => Some(floating),
             other => {
                 return Err(format!(
                     "the `floating` of `{name}` must be a boolean, found {}",
@@ -308,11 +306,17 @@ fn session_target(name: &str, command: SessionCommand, target: &Value) -> Result
                 ));
             }
         };
-        if floating && after.is_some() {
+        if floating == Some(true) && after.is_some() {
             return Err(format!(
                 "the target of `{name}` cannot hold `after` with `floating = true`"
             ));
         }
+        Ok(floating)
+    };
+    let action = if opening {
+        let band = BandId(number("band", true)?.expect("required"));
+        let after = number("after", false)?.map(WindowId);
+        let floating = layer(after)?.unwrap_or(false);
         let program = match get("program")? {
             Value::Nil => None,
             Value::String(line) => Some(gband_core::layout::Program::CommandLine(
@@ -342,9 +346,13 @@ fn session_target(name: &str, command: SessionCommand, target: &Value) -> Result
             content: WindowContent::Program(program),
         }
     } else if command == SessionCommand::ToggleFloating {
+        let window = WindowId(number("window", true)?.expect("required"));
+        let after = number("after", false)?.map(WindowId);
+        let floating = layer(after)?;
         SessionAction::ToggleFloating {
-            window: WindowId(number("window", true)?.expect("required")),
-            after: number("after", false)?.map(WindowId),
+            window,
+            after,
+            floating,
         }
     } else {
         let window = WindowId(number("window", true)?.expect("required"));

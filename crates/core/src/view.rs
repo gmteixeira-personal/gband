@@ -214,6 +214,7 @@ impl View {
             SessionCommand::ToggleFloating => Some(SessionAction::ToggleFloating {
                 window: self.focused()?,
                 after: tiled,
+                floating: None,
             }),
             command => command.on_window(self.focused()?),
         }

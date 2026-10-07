@@ -569,6 +569,7 @@ fn floating_at(fixture: &mut Fixture, window: WindowId, col: u16, row: u16, view
         SessionAction::ToggleFloating {
             window,
             after: None,
+            floating: None,
         },
         SessionAction::SetWidth {
             window,
@@ -1301,6 +1302,7 @@ fn title_on_a_floating_window() {
         SessionAction::ToggleFloating {
             window: windows[0],
             after: None,
+            floating: None,
         },
         80,
     );

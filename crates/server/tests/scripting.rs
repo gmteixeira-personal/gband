@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use gband_core::input::{Key, KeyCode};
-use gband_core::layout::Proportion;
+use gband_core::layout::{Proportion, WindowId};
 use gband_lua::{LoadOptions, Locations, Side};
 use gband_protocol::{
     ClientMessage, Key as DataKey, Requirement, ServerMessage, SessionName, Value,
@@ -503,6 +503,75 @@ end)",
         .collect();
     assert_eq!(floating[0], second);
     assert_eq!(client.layout.bands()[0].columns.len(), 1);
+}
+
+async fn first_grown(client: &mut TestClient, first: WindowId) {
+    client
+        .wait_until(|client| {
+            client.layout.bands()[0]
+                .columns
+                .iter()
+                .find(|column| column.windows.contains(&first))
+                .is_some_and(|column| column.width != Proportion::ONE_HALF)
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn two_handlers_float_one_window() {
+    let scripted = start(
+        "lua-float-twice",
+        "for _ = 1, 2 do
+  gband.on('WindowOpened', function(ev)
+    if ev.window == 2 then
+      gband.action.toggle_window_floating({ session = ev.session, window = ev.window, floating = true })
+    end
+  end)
+end
+gband.on('WindowOpened', function(ev)
+  if ev.window == 2 then
+    gband.action.grow_column_width({ session = ev.session, window = 1 })
+  end
+end)",
+    )
+    .await;
+    let mut client = scripted.attach().await;
+    let first = client.first();
+    let second = client.open_after(first).await;
+    first_grown(&mut client, first).await;
+    let floating: Vec<_> = client.layout.bands()[0]
+        .floating
+        .iter()
+        .map(|floating| floating.window)
+        .collect();
+    assert_eq!(floating, [second]);
+    assert!(client.layout.locate(second).is_none());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn tile_a_tiled_window_from_the_server() {
+    let scripted = start(
+        "lua-tile-tiled",
+        "gband.on('WindowOpened', function(ev)
+  if ev.window == 2 then
+    gband.action.toggle_window_floating({ session = ev.session, window = ev.window, floating = false })
+    gband.action.grow_column_width({ session = ev.session, window = 1 })
+  end
+end)",
+    )
+    .await;
+    let mut client = scripted.attach().await;
+    let first = client.first();
+    let second = client.open_after(first).await;
+    first_grown(&mut client, first).await;
+    let band = &client.layout.bands()[0];
+    assert!(band.floating.is_empty());
+    let columns: Vec<_> = band
+        .columns
+        .iter()
+        .map(|column| column.windows.clone())
+        .collect();
+    assert_eq!(columns, [vec![first], vec![second]]);
 }
 
 const COMMANDS: &str = "gband.cmd.register('focus', function(args, ctx)

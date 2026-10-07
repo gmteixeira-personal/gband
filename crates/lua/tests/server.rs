@@ -498,6 +498,7 @@ fn floating_window_in_the_structure() {
         SessionAction::ToggleFloating {
             window,
             after: None,
+            floating: None,
         },
         AREA,
         &options,
@@ -531,6 +532,8 @@ fn floating_targets() {
            gband.action.open_window({ session = ev.session, band = 1, floating = true })
            gband.action.toggle_window_floating({ session = ev.session, window = 3, after = ev.window })
            gband.action.toggle_window_floating({ session = ev.session, window = 3 })
+           gband.action.toggle_window_floating({ session = ev.session, window = 3, floating = true })
+           gband.action.toggle_window_floating({ session = ev.session, window = 3, after = ev.window, floating = false })
            gband.action.move_window_up({ session = ev.session, window = 3 })
          end)",
         Arc::new(Fake::default()),
@@ -555,10 +558,22 @@ fn floating_targets() {
             targeted(SessionAction::ToggleFloating {
                 window: WindowId(3),
                 after: Some(WindowId(1)),
+                floating: None,
             }),
             targeted(SessionAction::ToggleFloating {
                 window: WindowId(3),
                 after: None,
+                floating: None,
+            }),
+            targeted(SessionAction::ToggleFloating {
+                window: WindowId(3),
+                after: None,
+                floating: Some(true),
+            }),
+            targeted(SessionAction::ToggleFloating {
+                window: WindowId(3),
+                after: Some(WindowId(1)),
+                floating: Some(false),
             }),
             targeted(SessionAction::MoveWindow {
                 window: WindowId(3),
@@ -639,6 +654,14 @@ fn invalid_action_targets() {
         (
             "gband.action.close_window({ session = 'w', window = 1, after = 2 })",
             "`after`",
+        ),
+        (
+            "gband.action.toggle_window_floating({ session = 'w', window = 3, after = 1, floating = true })",
+            "`after`",
+        ),
+        (
+            "gband.action.toggle_window_floating({ session = 'w', window = 3, floating = 1 })",
+            "`floating`",
         ),
     ] {
         let (outcome, _) = failed_handler(&format!(
