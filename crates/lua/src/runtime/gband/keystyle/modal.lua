@@ -17,9 +17,13 @@ set("prefix", "k", action.focus_window_up, { desc = "focus the window above" })
 set("prefix", "u", action.focus_band_down, { desc = "view the band below" })
 set("prefix", "i", action.focus_band_up, { desc = "view the band above" })
 set("prefix", "c", action.center_column, { desc = "center the focused column" })
+local interactive_on_new = gband.settings.interactive_on_new() ~= false
+
 set("prefix", "n", function()
   action.open_window()
-  interactive()
+  if interactive_on_new then
+    interactive()
+  end
 end, { desc = "open a window" })
 set("prefix", "q", action.close_window, { desc = "close the window" })
 set("prefix", "[", action.consume_or_expel_left, { desc = "consume or expel the window to the left" })
