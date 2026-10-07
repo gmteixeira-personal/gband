@@ -23,7 +23,7 @@ Every message in either direction SHALL be sent as one frame. A frame is a 4-byt
 - **AND** it keeps serving its other clients
 
 ### Requirement: Handshake
-The first frame a client sends SHALL be a hello. The hello's payload SHALL begin with the client's protocol version, encoded the same way in every protocol version, followed by the client's terminal size. The first frame the server sends SHALL answer it. The server SHALL decode the leading version on its own, and compare it with its own version before it decodes anything that follows it. When the versions differ, the answer SHALL reject the client and carry the server's protocol version, whatever bytes follow the version, and the server SHALL then close the connection. When the versions are equal and the rest of the hello decodes, the answer SHALL accept the client and carry the server's protocol version. The leading version and the answer SHALL keep the same encoding in every later protocol version, so that two versions can always detect each other. The fields after the leading version MAY change in a later protocol version. The current protocol version SHALL be 9.
+The first frame a client sends SHALL be a hello. The hello's payload SHALL begin with the client's protocol version, encoded the same way in every protocol version, followed by the client's terminal size. The first frame the server sends SHALL answer it. The server SHALL decode the leading version on its own, and compare it with its own version before it decodes anything that follows it. When the versions differ, the answer SHALL reject the client and carry the server's protocol version, whatever bytes follow the version, and the server SHALL then close the connection. When the versions are equal and the rest of the hello decodes, the answer SHALL accept the client and carry the server's protocol version. The leading version and the answer SHALL keep the same encoding in every later protocol version, so that two versions can always detect each other. The fields after the leading version MAY change in a later protocol version. The current protocol version SHALL be 10.
 
 #### Scenario: Matching versions
 - **WHEN** a version 2 client sends its hello to a version 2 server
@@ -71,6 +71,10 @@ The first frame a client sends SHALL be a hello. The hello's payload SHALL begin
 - **WHEN** a client speaking protocol version 8 sends its hello to a server speaking version 9
 - **THEN** the server rejects it with version 9 and closes the connection
 
+#### Scenario: Version 9 client meets a version 10 server
+- **WHEN** a client speaking protocol version 9 sends its hello to a server speaking version 10
+- **THEN** the server rejects it with version 10 and closes the connection
+
 ### Requirement: Client messages
 After an attach request, a client SHALL send only these messages:
 
@@ -84,9 +88,10 @@ After an attach request, a client SHALL send only these messages:
 | content | a window identifier, and terminal output for the drawn window's screen, as the session-server capability defines |
 | command | a call number chosen by the client, a server command's full name, and its arguments as a plain data value |
 | mouse | a window identifier, a mouse event kind, press, release, motion or wheel, its button or wheel direction, its content cell, and its Shift, Alt and Ctrl modifiers, as the input-encoding capability defines them |
+| rename | a window identifier, and the window's new manual name, or nothing to clear it |
 | detach | nothing |
 
-Window and band identifiers SHALL name windows and bands of the client's session. The server SHALL ignore a window identifier in a shown message that names no window of the client's session. The open window action SHALL name a band, optionally the window whose column the new column follows, optionally the new column's width, whether the window floats, whether the client asks to focus the new window, and what the window holds: either a program, which is optionally named as a command line or as an argument list, or plugin content with a request number. Every other action SHALL name a window. Consume or expel and move column SHALL also name their direction, left or right. Move window SHALL also name its direction, down or up. Toggle floating SHALL also name optionally the tiled window to tile after. Set position SHALL also name a column and a row. Set width SHALL also name a width. Set height SHALL also name either a number of rows or a weight. Grow and shrink of a width and of a height SHALL also name a step. Move to place SHALL also name a reference window and a place: a new column left of the reference window's column, a new column right of it, above the reference window, or below it. A width, a weight and a step SHALL each be a fraction in lowest terms. A client SHALL NOT reuse a call number while its call is unanswered. A client that detaches SHALL send detach, then close the connection.
+Window and band identifiers SHALL name windows and bands of the client's session. The server SHALL ignore a window identifier in a shown message that names no window of the client's session. The open window action SHALL name a band, optionally the window whose column the new column follows, optionally the new column's width, whether the window floats, whether the client asks to focus the new window, and what the window holds: either a program, which is optionally named as a command line or as an argument list, or plugin content with a request number. Every other action SHALL name a window. Consume or expel and move column SHALL also name their direction, left or right. Move window SHALL also name its direction, down or up. Toggle floating SHALL also name optionally the tiled window to tile after. Set position SHALL also name a column and a row. Set width SHALL also name a width. Set height SHALL also name either a number of rows or a weight. Grow and shrink of a width and of a height SHALL also name a step. Move to place SHALL also name a reference window and a place: a new column left of the reference window's column, a new column right of it, above the reference window, or below it. A rename SHALL name a window that runs a program. A width, a weight and a step SHALL each be a fraction in lowest terms. A client SHALL NOT reuse a call number while its call is unanswered. A client that detaches SHALL send detach, then close the connection.
 
 #### Scenario: Detach message
 - **WHEN** a client sends detach
@@ -149,6 +154,10 @@ Window and band identifiers SHALL name windows and bands of the client's session
 - **WHEN** a client sends mouse naming window 2, a press of the left button at content column 4 and row 2, with Ctrl
 - **THEN** the server decodes the same window, kind, button, cell and modifiers
 
+#### Scenario: Rename round trip
+- **WHEN** a client sends rename naming window 2 and `logs`, and rename naming window 3 and nothing
+- **THEN** the server decodes rename naming window 2 and `logs`, and rename naming window 3 and nothing
+
 #### Scenario: Move to place round trip
 - **WHEN** a client sends move to place naming window 3, the reference window 5 and the place right of its column
 - **THEN** the server decodes the same windows and place
@@ -170,11 +179,12 @@ After the handshake, a server SHALL send only these messages:
 | no such session | nothing; the server hosts no session of the name a kill request named |
 | event | an event's name, its data as a plain data value, whether it was queued, and its emission time in milliseconds since the Unix epoch |
 | window state | a window identifier, a key, and the key's new value as a plain data value, or nothing when the key was removed |
+| window name | a window identifier, the window's automatic name, and its manual name, or nothing when it has none |
 | result | a call number from a command message, and either the command's result as a plain data value or an error message |
 | requirements | for each plugin the server requires in the client, its name and its requirement |
 | server error | the text of a configuration or plugin error of the server's Lua |
 
-The server SHALL send info exactly once, as its first message after accepting the hello, before any answer to a request. An executable's identity SHALL be the device and inode of the file the process was started from, taken when the process starts, so that replacing the file on disk, as a rebuild does, gives a new identity. The layout, snapshot, update, focus, opened, exited and window state messages SHALL concern only the session the client attached to, and the result messages only the client's own calls. After the layout and the snapshots of an attach, the server SHALL send, in this order, a window state message for each key of each window state of the session, one requirements message, the latest server error if any, and the queued events for the client; and only then any later message.
+The server SHALL send info exactly once, as its first message after accepting the hello, before any answer to a request. An executable's identity SHALL be the device and inode of the file the process was started from, taken when the process starts, so that replacing the file on disk, as a rebuild does, gives a new identity. The layout, snapshot, update, focus, opened, exited, window state and window name messages SHALL concern only the session the client attached to, and the result messages only the client's own calls. After the layout and the snapshots of an attach, the server SHALL send, in this order, a window name message for each window that runs a program, a window state message for each key of each window state of the session, one requirements message, the latest server error if any, and the queued events for the client; and only then any later message.
 
 A client SHALL keep one grid per window. It SHALL build a window's grid by replacing it with a new empty grid of the snapshot's size on every snapshot of that window, then feeding the snapshot's output into it, and by feeding each update's output for that window into its current grid. It SHALL discard the grid of a window that the latest layout does not hold.
 
@@ -214,6 +224,14 @@ A client SHALL keep one grid per window. It SHALL build a window's grid by repla
 #### Scenario: Attach order with plugin state
 - **WHEN** window 1's state holds `agent`, the server loaded a plugin requiring `agent-status >= 0.1` in the client, one event is queued, and a client attaches
 - **THEN** after the snapshots the client receives a window state message for window 1, then requirements, then the queued event
+
+#### Scenario: Window name round trip
+- **WHEN** a window name message naming window 4, the automatic name `vim` and the manual name `notes` is framed and decoded
+- **THEN** the decoded message equals the original
+
+#### Scenario: Attach order with window names
+- **WHEN** windows 1 and 2 run programs, window 1's state holds `agent`, and a client attaches
+- **THEN** after the snapshots the client receives a window name message for window 1 and one for window 2, then the window state message for window 1
 
 #### Scenario: Result round trip
 - **WHEN** a result message for call 7 holding the error `unknown command absent` is framed and decoded

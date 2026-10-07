@@ -208,6 +208,7 @@ With the modal key style, the bindings SHALL be: Ctrl+Space as the prefix, no bi
 | Ctrl+Up | `prefix ctrl+up` | move the focused window, or its floating box, up | session | |
 | `?` | `prefix ?` | open the key list, as the key-list capability defines, which returns to interactive mode | client | |
 | `:` | `prefix :` | open the Lua prompt, as the lua-prompt capability defines, which returns to interactive mode | client | |
+| `N` | `prefix N` | rename the focused window, as the window-names capability's "Rename prompt" defines, which returns to interactive mode | client | |
 | `s` | `prefix s` | open the settings window, as the settings capability defines, which returns to interactive mode | client | `settings` |
 | `D` | `prefix D` | detach | client | |
 | Escape | `prefix escape` | return to interactive mode | — | `interactive mode` |
@@ -399,6 +400,15 @@ Where a scenario of this requirement names no key style, the modal key style is 
 - **WHEN** no `user/init.lua` exists and the user presses Ctrl+Space then `:`
 - **THEN** a floating plugin window titled `lua` shows `:` and has focus
 - **AND** `root` is active, so a following `j` is typed into the prompt and does not focus the window below
+
+#### Scenario: Rename the focused window
+- **WHEN** no `user/init.lua` exists and the user presses Ctrl+Space then Shift+N
+- **THEN** a floating plugin window titled `rename` has focus
+- **AND** `root` is active, so a following `j` is typed into the prompt and does not focus the window below
+
+#### Scenario: Rename with the direct key style
+- **WHEN** the direct key style is saved, no `user/init.lua` exists, and the user presses Ctrl+Space then Shift+N
+- **THEN** a floating plugin window titled `rename` has focus and `root` is active
 
 #### Scenario: Open the settings window
 - **WHEN** no `user/init.lua` exists and the user presses Ctrl+Space then `s`

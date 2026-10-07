@@ -103,10 +103,15 @@ The default key bindings and the declaration of the `navigation` mode SHALL exis
 - **AND** it comes right after the entry for `?` and before the entry for `D`
 - **AND** `gband.keymap.list("root")` holds no entry
 
+#### Scenario: Rename bound by the defaults
+- **WHEN** the default configuration is evaluated alone and `gband.keymap.list("prefix")` is read
+- **THEN** the entry for `N` has the action `prompt.rename` and the description `rename the window`
+- **AND** it comes right after the entry for `:` and before the entry for `D`
+
 #### Scenario: Settings bound by the defaults
 - **WHEN** the default configuration is evaluated alone and `gband.keymap.list("prefix")` is read
 - **THEN** the entry for `s` has the description `settings`
-- **AND** it comes right after the entry for `:` and before the entry for `D`
+- **AND** it comes right after the entry for `N` and before the entry for `D`
 
 #### Scenario: Sidebar left out by the saved setting
 - **WHEN** `user/sidebar.lua` holds `return false`, no `user/init.lua` exists, and a client attaches
@@ -411,6 +416,7 @@ Every option SHALL have a name, a type, a declared default and a description, an
 | `prefix` | one key, as "Key names" defines | `"ctrl+space"` |
 | `center_focused_column` | `"never"`, `"always"` or `"on-overflow"` | `"never"` |
 | `loop_bands` | a boolean | `true` |
+| `window_titles` | a boolean: whether windows show their names on their top borders, as the window-names capability defines | `true` |
 | `notify_style` | `"osc9"`, `"osc777"`, `"bell"` or `"none"` | `"osc9"` |
 | `tile_border_sides` | a list of side names, as the borders capability defines them | `{ "top", "right", "bottom", "left" }` |
 | `tile_border_chars` | a character set, as the borders capability defines it | `"rounded"` |
@@ -432,7 +438,7 @@ A process SHALL know only the options of its own side, and options declared in i
 
 `gband.set` SHALL take one table of options. Each call SHALL change only the options the table names, and a later call SHALL override an earlier one. An unknown option name, a value of the wrong type, a value out of range or an unknown camera policy given to `gband.set` SHALL be a configuration error naming the option.
 
-Reading `gband.opt.<name>` SHALL return the option's current value: a key name for `prefix`, a number for a width or a step, a list of numbers in ascending order for `width_presets`, a string for `center_focused_column` and `notify_style`, a list of side names in the held order for `tile_border_sides` and `floating_border_sides`, the name or a new list of the eight strings for `tile_border_chars`, `focused_tile_border_chars`, `floating_border_chars` and `focused_floating_border_chars`, a boolean for `loop_bands`, and the value as set for a declared option. Assigning `gband.opt.<name>` SHALL set the option. A value that the option's type rejects SHALL be reported as a configuration error at the line of the assignment, SHALL NOT fail the load, and SHALL set the option to its declared default. An assignment to a name no option declares SHALL be held until an option of that name is declared later in the same load, and then validated; one still undeclared when loading finishes SHALL be reported as a configuration error at the line of the assignment, and SHALL NOT fail the load. The error for a built-in option of the other side SHALL name the side that owns it.
+Reading `gband.opt.<name>` SHALL return the option's current value: a key name for `prefix`, a number for a width or a step, a list of numbers in ascending order for `width_presets`, a string for `center_focused_column` and `notify_style`, a list of side names in the held order for `tile_border_sides` and `floating_border_sides`, the name or a new list of the eight strings for `tile_border_chars`, `focused_tile_border_chars`, `floating_border_chars` and `focused_floating_border_chars`, a boolean for `loop_bands` and `window_titles`, and the value as set for a declared option. Assigning `gband.opt.<name>` SHALL set the option. A value that the option's type rejects SHALL be reported as a configuration error at the line of the assignment, SHALL NOT fail the load, and SHALL set the option to its declared default. An assignment to a name no option declares SHALL be held until an option of that name is declared later in the same load, and then validated; one still undeclared when loading finishes SHALL be reported as a configuration error at the line of the assignment, and SHALL NOT fail the load. The error for a built-in option of the other side SHALL name the side that owns it.
 
 `gband.opt.declare(name, spec)` SHALL declare an option under its full name, as the plugins capability defines, and return that full name. `spec.type` SHALL be `"boolean"`, `"integer"`, `"number"` or `"string"`. `spec.values`, optional, SHALL list the only values allowed. `spec.default` SHALL be a valid value, and `spec.desc` an optional description. Declaring a name already declared, an unknown type, or an invalid default SHALL be an error at the line of the call. `gband.opt.list()` SHALL return one table per option of its side, built-in and declared, in ascending byte order of names, each holding `name`, `type`, `default`, `value` and `desc`.
 
@@ -533,6 +539,14 @@ Options SHALL be set and declared only while the configuration loads. Setting or
 - **WHEN** line 2 of `user/init.lua` sets `gband.opt.focused_tile_border_chars = "heavy"`
 - **THEN** loading succeeds with `focused_tile_border_chars` set to `"rounded"`
 - **AND** an error at `user/init.lua` line 2 naming `focused_tile_border_chars` is reported
+
+#### Scenario: Window titles off
+- **WHEN** `user/init.lua` calls `gband.set({ window_titles = false })` and then reads `gband.opt.window_titles`
+- **THEN** it reads `false`
+
+#### Scenario: Window titles of the wrong type
+- **WHEN** line 2 of `user/init.lua` calls `gband.set({ window_titles = "no" })`
+- **THEN** a configuration error at `user/init.lua` line 2 names `window_titles`
 
 ### Requirement: Reporting configuration errors
 A configuration error SHALL be reported as the file's path, a colon, the line, a colon and a message. The line SHALL be the line of a syntax error, the line where a runtime error was raised, or the line of the call or assignment that received the invalid value. A plugin error SHALL be reported the same way, preceded by the plugin's name, a colon and a space. Each process SHALL record every configuration error and plugin error of its own Lua in its log. The client SHALL also report the errors of the server's Lua that the server sends it, as the server-runtime capability defines, preceded by `server: `, and the plugin requirement errors of the plugin-bridge capability. The client SHALL keep its error list: every error it has reported since the list was last emptied, oldest first. A load with none of its own SHALL empty the list, and so SHALL clearing the errors. `gband.errors()` SHALL return a new list of the error list's texts, oldest first. The client SHALL show the latest error until the list is emptied. While the sidebar's error marker is drawn, as the sidebar capability defines, the client SHALL show the error's text only through the error list. While no error marker is drawn, the client SHALL show it as a banner on the bottom row of the ribbon area, over the ribbon and cut to the ribbon area's width. Neither SHALL change the size the client reports.
