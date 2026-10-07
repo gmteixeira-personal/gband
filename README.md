@@ -416,11 +416,12 @@ The actions in `gband.action`:
 | `detach` | detach the client |
 | `send_prefix` | send the prefix key to the focused window |
 | `drag_window` | when bound to a mouse button, move the window with the mouse |
-| `drag_resize_window` | when bound to a mouse button, resize the window with the mouse |
+| `drag_resize_window` | when bound to a mouse button, resize the window with the mouse; a target's `edges` names the edges it moves |
 | `drag_band` | when bound to a mouse button, slide the band or switch bands with the mouse |
 
 `gband.action.list()` lists every action with its description.
-A target table names the window an action acts on, and the four grow and shrink actions also take a `step`, so one binding can resize by another amount than the options give:
+A target table names the window an action acts on, and the target of `drag_resize_window` names in `edges` the edges a drag moves.
+The four grow and shrink actions also take a `step`, so one binding can resize by another amount than the options give:
 
 ```lua
 gband.bind("prefix W", function()

@@ -169,7 +169,7 @@ pub const ACTIONS: [BuiltinAction; 29] = [
     ),
     builtin(
         "drag_resize_window",
-        Action::Client(ClientAction::DragResize),
+        Action::Client(ClientAction::DragResize(None)),
         "resize the window with the mouse",
     ),
     builtin(

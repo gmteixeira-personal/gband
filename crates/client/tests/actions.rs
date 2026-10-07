@@ -1405,6 +1405,144 @@ fn left_edge_of_a_tile_moves_the_camera() {
     assert_eq!(mouse.display.camera(), Some(4));
 }
 
+fn resizing_by(name: &str, edges: &str, layout: Layout) -> Mouse {
+    let mut mouse = Mouse::new(
+        name,
+        &format!(
+            "{NAVIGATION}gband.keymap.set('prefix', 'rightmouse', function() gband.action.drag_resize_window({{ edges = {{ {edges} }} }}) end)"
+        ),
+        layout,
+    );
+    mouse.key("ctrl+space");
+    mouse
+}
+
+#[test]
+fn named_bottom_edge_pressed_near_a_corner() {
+    let (mut layout, windows) = columns_of(2, None);
+    float(&mut layout, windows[1], Proportion::new(3, 8), 12, 10, 4);
+    let mut mouse = resizing_by("named-bottom", "'bottom'", layout);
+    let steps = mouse.drag(MouseButton::Right, (12, 15), (8, 18));
+    assert_eq!(
+        sent(&steps),
+        [SessionAction::SetHeight {
+            window: windows[1],
+            height: WindowHeight::Fixed(15)
+        }]
+    );
+    mouse.apply(&steps);
+    let placed = gband_core::geometry::placed(mouse.layout.floating(windows[1]).unwrap(), AREA);
+    assert_eq!(
+        (placed.x, placed.y, placed.width, placed.height),
+        (10, 4, 30, 15)
+    );
+}
+
+#[test]
+fn named_corner() {
+    let (mut layout, windows) = columns_of(2, None);
+    float(&mut layout, windows[1], Proportion::new(3, 8), 12, 10, 4);
+    let mut mouse = resizing_by("named-corner", "'left', 'top'", layout);
+    let steps = mouse.drag(MouseButton::Right, (11, 4), (6, 2));
+    mouse.apply(&steps);
+    let placed = gband_core::geometry::placed(mouse.layout.floating(windows[1]).unwrap(), AREA);
+    assert_eq!(
+        (placed.x, placed.y, placed.width, placed.height),
+        (5, 2, 35, 14)
+    );
+}
+
+#[test]
+fn named_edge_pressed_away_from_it() {
+    let (layout, windows) = columns_of(2, None);
+    let mut mouse = resizing_by("named-away", "'right'", layout);
+    assert_eq!(mouse.display.camera(), Some(0));
+    let steps = mouse.drag(MouseButton::Right, (5, 12), (13, 12));
+    assert_eq!(
+        sent(&steps),
+        [SessionAction::SetWidth {
+            window: windows[0],
+            width: Proportion::new(3, 5)
+        }]
+    );
+    assert_eq!(mouse.display.camera(), Some(0));
+}
+
+#[test]
+fn named_left_edge_of_a_tile_moves_the_camera() {
+    let (layout, windows) = columns_of(3, None);
+    let mut mouse = resizing_by("named-left-tile", "'left'", layout);
+    assert_eq!(mouse.display.camera(), Some(0));
+    let steps = mouse.drag(MouseButton::Right, (75, 12), (71, 12));
+    assert_eq!(
+        sent(&steps),
+        [SessionAction::SetWidth {
+            window: windows[1],
+            width: Proportion::new(11, 20)
+        }]
+    );
+    assert_eq!(mouse.display.camera(), Some(4));
+}
+
+#[test]
+fn named_top_edge_of_a_columns_first_window() {
+    let (mut layout, windows) = columns_of(2, None);
+    layout.apply(
+        SessionAction::ConsumeOrExpel {
+            window: windows[1],
+            direction: Direction::Left,
+        },
+        AREA,
+        &LayoutOptions::default(),
+    );
+    let mut mouse = resizing_by("named-top-first", "'top'", layout);
+    let steps = mouse.drag(MouseButton::Right, (20, 6), (20, 2));
+    assert_eq!(
+        sent(&steps),
+        [SessionAction::SetHeight {
+            window: windows[0],
+            height: WindowHeight::Fixed(16)
+        }]
+    );
+    mouse.apply(&steps);
+    let placed: Vec<(u16, u16)> = tiles(&mouse.layout.bands()[0], AREA)
+        .iter()
+        .map(|tile| (tile.y, tile.height))
+        .collect();
+    assert_eq!(placed, [(0, 16), (16, 8)]);
+}
+
+#[test]
+fn named_edges_from_a_key() {
+    let (mut layout, windows) = columns_of(2, None);
+    float(&mut layout, windows[1], Proportion::ONE_HALF, 12, 10, 4);
+    let mut mouse = Mouse::new(
+        "named-key",
+        &format!(
+            "{NAVIGATION}gband.keymap.set('prefix', 'r', function() gband.action.drag_resize_window({{ edges = {{ 'right' }} }}) end)"
+        ),
+        layout,
+    );
+    mouse.key("ctrl+space");
+    let steps = mouse.key("r");
+    assert!(messages(&steps).is_empty(), "{steps:?}");
+    assert_eq!(mouse.display.banner(), None);
+    let steps = mouse.event(MouseKind::Motion(None), 30, 8, Modifiers::NONE);
+    assert!(messages(&steps).is_empty(), "{steps:?}");
+}
+
+#[test]
+fn opposite_edges_send_nothing() {
+    let (mut layout, windows) = columns_of(2, None);
+    float(&mut layout, windows[1], Proportion::ONE_HALF, 12, 10, 4);
+    let mut mouse = resizing_by("named-opposite", "'left', 'right'", layout);
+    let steps = mouse.drag(MouseButton::Right, (20, 6), (25, 9));
+    assert!(messages(&steps).is_empty(), "{steps:?}");
+    let banner = mouse.display.banner().unwrap();
+    assert!(banner.contains(":3: "), "{banner}");
+    assert!(banner.contains("`left` and `right`"), "{banner}");
+}
+
 #[test]
 fn slide_the_band_and_settle() {
     let (layout, windows) = columns_of(4, None);

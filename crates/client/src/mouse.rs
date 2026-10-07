@@ -1,5 +1,6 @@
 use std::time::{Duration, Instant};
 
+pub use gband_core::action::Edges;
 use gband_core::action::{Action, ClientAction};
 use gband_core::geometry::{MIN_COLUMN_WIDTH, Size, WindowBox};
 use gband_core::input::{
@@ -114,14 +115,6 @@ pub fn hit(
         region: Some(*region),
         content: region.content_cell(col, row),
     }
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct Edges {
-    pub left: bool,
-    pub right: bool,
-    pub top: bool,
-    pub bottom: bool,
 }
 
 pub fn pick_edges(x: u16, y: u16, width: u16, height: u16) -> Edges {
@@ -942,14 +935,16 @@ impl Controls {
         let Pressing { hit, button, cell } = pressing;
         let travel = display.view.as_ref().map_or(0, View::travel);
         let region = hit.region;
-        let edges = region.map_or_else(Edges::default, |region| {
-            pick_edges(
+        let edges = match (kind, region) {
+            (ClientAction::DragResize(Some(edges)), _) => edges,
+            (_, None) => Edges::default(),
+            (_, Some(region)) => pick_edges(
                 (i64::from(cell.0) - region.x).clamp(0, i64::from(u16::MAX)) as u16,
                 (i64::from(cell.1) - region.y).clamp(0, i64::from(u16::MAX)) as u16,
                 region.width,
                 region.height,
-            )
-        });
+            ),
+        };
         let ribbon = display.ribbon;
         let plugin_box = |region: Region| PluginBox {
             col: (region.x - i64::from(ribbon.x)).max(0) as u16,
@@ -962,7 +957,7 @@ impl Controls {
                 Some(Motion::Slide { travel, axis: None })
             }
             (
-                ClientAction::DragWindow | ClientAction::DragResize,
+                ClientAction::DragWindow | ClientAction::DragResize(_),
                 Target::PluginFloat(plugin_window),
                 Some(region),
             ) => {
@@ -985,7 +980,7 @@ impl Controls {
                     }
                 })
             }
-            (ClientAction::DragWindow | ClientAction::DragResize, target, Some(region)) => {
+            (ClientAction::DragWindow | ClientAction::DragResize(_), target, Some(region)) => {
                 match target.window() {
                     Some(window) => {
                         self.focus_clicked(display, window, steps);

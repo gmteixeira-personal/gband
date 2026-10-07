@@ -84,6 +84,7 @@ end, { desc = "close the marked windows" })
 
 The marks of the closed windows stay in the table for now; chapter 04 forgets them.
 [Action targets](../plugins.md#action-targets) lists which actions take a target and what else they take.
+`drag_resize_window` takes a different target, `edges`, naming the edges a mouse drag moves, and [Action targets](../plugins.md#action-targets) describes it.
 
 ## Starting a program
 

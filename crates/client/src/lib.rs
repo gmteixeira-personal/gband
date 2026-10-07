@@ -346,14 +346,14 @@ impl Display {
                     lifted: false,
                 })
             }
-            (ClientAction::DragResize, RegionKind::Floating) => Some(Motion::Resize {
+            (ClientAction::DragResize(_), RegionKind::Floating) => Some(Motion::Resize {
                 target: Resized::Floating {
                     window,
                     origin: self.floating_box(window)?,
                 },
                 edges,
             }),
-            (ClientAction::DragResize, RegionKind::Tile { .. } | RegionKind::Lifted) => {
+            (ClientAction::DragResize(_), RegionKind::Tile { .. } | RegionKind::Lifted) => {
                 Some(Motion::Resize {
                     target: Resized::Tile {
                         window,
@@ -1564,7 +1564,8 @@ impl Controls {
 
     fn run_action(&mut self, display: &mut Display, action: Action, steps: &mut Vec<Step>) {
         if let Action::Client(
-            kind @ (ClientAction::DragWindow | ClientAction::DragResize | ClientAction::DragBand),
+            kind
+            @ (ClientAction::DragWindow | ClientAction::DragResize(_) | ClientAction::DragBand),
         ) = action
         {
             if let Some(pressing) = self.pressing.take() {
@@ -1705,7 +1706,7 @@ pub fn dispatch(display: &mut Display, action: Action) -> Step {
             .and_then(|prefix| display.key_to_focused(prefix)),
         Action::Client(ClientAction::SendKey(key)) => display.key_to_focused(key),
         Action::Client(
-            ClientAction::DragWindow | ClientAction::DragResize | ClientAction::DragBand,
+            ClientAction::DragWindow | ClientAction::DragResize(_) | ClientAction::DragBand,
         ) => None,
     };
     message.map_or(Step::Nothing, Step::Send)

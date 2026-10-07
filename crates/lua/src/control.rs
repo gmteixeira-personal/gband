@@ -1,4 +1,4 @@
-use gband_core::action::{Action, ClientAction, SessionCommand, Steps};
+use gband_core::action::{Action, ClientAction, Edges, SessionCommand, Steps};
 use gband_core::geometry::placed;
 use gband_core::input::{Key, KeyCode};
 use gband_core::layout::{
@@ -276,6 +276,52 @@ fn window_target(lua: &Lua, target: &Table, action: &str) -> Result<WindowId, St
     window(lua, &value)
 }
 
+fn edges_target(target: &Table, name: &str) -> Result<Dispatch, String> {
+    fields(target, &["edges"], name)?;
+    let names = match get(target, "edges")? {
+        Value::Nil => return Err(format!("the target of `{name}` must name `edges`")),
+        Value::Table(list) => api::list_of_strings(&list),
+        _ => None,
+    }
+    .ok_or_else(|| format!("the `edges` of `{name}` must be a list of edge names"))?;
+    if names.is_empty() {
+        return Err(format!(
+            "the `edges` of `{name}` must name at least one edge"
+        ));
+    }
+    let mut edges = Edges::default();
+    for edge in &names {
+        let slot = match edge.as_str() {
+            "left" => &mut edges.left,
+            "right" => &mut edges.right,
+            "top" => &mut edges.top,
+            "bottom" => &mut edges.bottom,
+            other => {
+                return Err(format!(
+                    "the `edges` of `{name}` holds `{other}`, which is not `left`, `right`, `top` or `bottom`"
+                ));
+            }
+        };
+        if *slot {
+            return Err(format!("the `edges` of `{name}` names `{edge}` twice"));
+        }
+        *slot = true;
+    }
+    if edges.left && edges.right {
+        return Err(format!(
+            "the `edges` of `{name}` cannot name both `left` and `right`"
+        ));
+    }
+    if edges.top && edges.bottom {
+        return Err(format!(
+            "the `edges` of `{name}` cannot name both `top` and `bottom`"
+        ));
+    }
+    Ok(Dispatch::Action(Action::Client(ClientAction::DragResize(
+        Some(edges),
+    ))))
+}
+
 pub(crate) fn targeted(
     lua: &Lua,
     name: &str,
@@ -284,7 +330,7 @@ pub(crate) fn targeted(
 ) -> Result<Dispatch, String> {
     let takes_target = matches!(
         action,
-        Action::Session(_) | Action::Client(ClientAction::SendPrefix)
+        Action::Session(_) | Action::Client(ClientAction::SendPrefix | ClientAction::DragResize(_))
     );
     if !takes_target {
         return Err(format!("`{name}` takes no target"));
@@ -310,6 +356,7 @@ pub(crate) fn targeted(
                 .expect("every command but open window names a window");
             Ok(Dispatch::Session(action))
         }
+        Action::Client(ClientAction::DragResize(_)) => edges_target(target, name),
         _ => {
             let window = window_target(lua, target, name)?;
             Ok(Dispatch::Input {
