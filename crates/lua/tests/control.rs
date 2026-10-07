@@ -3,7 +3,7 @@ mod common;
 use std::sync::Arc;
 
 use common::*;
-use gband_core::action::{Action, SessionCommand};
+use gband_core::action::{Action, ClientAction, Edges, SessionCommand};
 use gband_core::geometry::Size;
 use gband_core::input::{Key, KeyCode, Modifiers};
 use gband_core::layout::{
@@ -593,6 +593,44 @@ fn send_prefix_to_a_named_window() {
 }
 
 #[test]
+fn resize_by_named_edges() {
+    let view = || state(two_bands(), 1, Some(1), "root");
+    let resize = |edges| {
+        [Dispatch::Action(Action::Client(ClientAction::DragResize(
+            Some(edges),
+        )))]
+    };
+    assert_eq!(
+        dispatched(
+            "edges-bottom",
+            view(),
+            "gband.action.drag_resize_window({ edges = { 'bottom' } })"
+        ),
+        resize(Edges {
+            bottom: true,
+            ..Edges::default()
+        })
+    );
+    let corner = resize(Edges {
+        left: true,
+        top: true,
+        ..Edges::default()
+    });
+    for (index, code) in [
+        "gband.action.drag_resize_window({ edges = { 'top', 'left' } })",
+        "gband.action.drag_resize_window({ edges = { 'left', 'top' } })",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        assert_eq!(
+            dispatched(&format!("edges-corner-{index}"), view(), code),
+            corner
+        );
+    }
+}
+
+#[test]
 fn grow_by_a_given_step() {
     let view = || state(two_bands(), 1, Some(1), "root");
     assert_eq!(
@@ -711,6 +749,42 @@ fn bad_targets_are_errors() {
             "focus_column_left",
         ),
         ("gband.action.detach({})", "detach"),
+        ("gband.action.drag_resize_window({ edges = {} })", "`edges`"),
+        (
+            "gband.action.drag_resize_window({ edges = { 'middle' } })",
+            "middle",
+        ),
+        (
+            "gband.action.drag_resize_window({ edges = { 'top', 'top' } })",
+            "`top` twice",
+        ),
+        (
+            "gband.action.drag_resize_window({ edges = { 'left', 'right' } })",
+            "`left` and `right`",
+        ),
+        (
+            "gband.action.drag_resize_window({ edges = { 'top', 'bottom' } })",
+            "`top` and `bottom`",
+        ),
+        (
+            "gband.action.drag_resize_window({ edges = 'left' })",
+            "list of edge names",
+        ),
+        (
+            "gband.action.drag_resize_window({ edges = { left = true } })",
+            "list of edge names",
+        ),
+        ("gband.action.drag_resize_window({})", "`edges`"),
+        (
+            "gband.action.drag_resize_window({ edges = { 'top' }, window = 1 })",
+            "window",
+        ),
+        ("gband.action.drag_resize_window(1)", "table"),
+        (
+            "gband.action.drag_window({ edges = { 'left' } })",
+            "drag_window",
+        ),
+        ("gband.action.drag_band({ edges = { 'top' } })", "drag_band"),
     ]
     .into_iter()
     .enumerate()
@@ -744,6 +818,33 @@ fn unknown_window_is_an_error_at_the_line() {
         panic!("{:?}", outcome.errors);
     };
     assert_error_at(error, &path, 6, "window 99");
+}
+
+#[test]
+fn opposite_edges_are_an_error_at_the_line() {
+    let scratch = Scratch::new("opposite-edges");
+    let path = scratch.write(
+        "\n\n\n\ngband.bind('alt+r', function() gband.action.drag_resize_window({ edges = { 'left', 'right' } }) end)\n",
+    );
+    let config = scratch.loaded();
+    clean(
+        &config
+            .runtime
+            .set_state(state(two_bands(), 1, Some(1), "root")),
+    );
+    let chord = gband_lua::Chord::Key(key("alt+r"));
+    let Some((_, gband_lua::Binding::Callback(callback))) = config.keymap["root"]
+        .iter()
+        .find(|(bound, _)| *bound == chord)
+    else {
+        panic!("alt+r is not bound to a function");
+    };
+    let outcome = config.runtime.call(*callback);
+    assert!(outcome.dispatched.is_empty());
+    let [error] = outcome.errors.as_slice() else {
+        panic!("{:?}", outcome.errors);
+    };
+    assert_error_at(error, &path, 5, "`left` and `right`");
 }
 
 #[test]

@@ -132,6 +132,32 @@ t.case("resize a floating plugin window", function(g)
   t.eq(g.client("return sizes"), { "32x12", "34x12" })
 end)
 
+t.case("resize a floating plugin window by a named edge", function(g)
+  g.start({
+    size = "80x24",
+    config = NAVIGATION .. [[
+      gband.keymap.set("prefix", "rightmouse", function()
+        gband.action.drag_resize_window({ edges = { "right" } })
+      end)
+    ]],
+  })
+  local win = g.client([[
+    sizes = {}
+    return gband.win.open({ width = 30, height = 12, col = 10, row = 3,
+      on_resize = function(_, cols, rows) sizes[#sizes + 1] = cols .. "x" .. rows end })
+  ]])
+  g.keys("ctrl+space")
+  g.settle()
+  g.mouse("press", "right", 38, 13)
+  g.mouse("drag", "right", 42, 15)
+  g.mouse("drag", "right", 44, 15)
+  g.mouse("release", "right", 44, 15)
+  g.settle()
+  local info = g.client("return gband.win.info(...)", win)
+  t.eq({ info.col, info.row, info.width, info.height }, { 10, 3, 36, 12 })
+  t.eq(g.client("return sizes"), { "32x10", "34x10" })
+end)
+
 t.case("click a plugin window line", function(g)
   g.start({ size = "80x24", config = "" })
   local win = g.client([[

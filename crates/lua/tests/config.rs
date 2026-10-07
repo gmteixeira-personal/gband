@@ -221,7 +221,7 @@ fn defaults_reproduce_the_built_in_behaviour() {
             ),
             (
                 mouse(table, MouseButton::Right.into(), true),
-                Action::Client(ClientAction::DragResize),
+                Action::Client(ClientAction::DragResize(None)),
             ),
             (
                 mouse(table, MouseButton::Middle.into(), true),
@@ -348,7 +348,7 @@ fn defaults_reproduce_the_built_in_behaviour() {
         ),
         (
             mouse("prefix", MouseButton::Right.into(), false),
-            Action::Client(ClientAction::DragResize),
+            Action::Client(ClientAction::DragResize(None)),
         ),
         (
             mouse("prefix", MouseButton::Middle.into(), false),

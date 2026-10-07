@@ -508,6 +508,7 @@ When two bindings of one table match the same mouse event, such as `mod+leftmous
 
 A function bound to a button runs with one argument, the `MousePressed` payload, and a function bound to a wheel name with the `MouseScrolled` payload.
 The drag actions `drag_window`, `drag_resize_window` and `drag_band` start a gesture when a mouse press runs them, from its binding or a function it calls, and do nothing at any other time.
+`drag_resize_window` moves the edges nearest the press, by thirds of the box, or the edges its target names, as [Action targets](#action-targets) describes.
 Both key styles bind them to `mod+leftmouse`, `mod+rightmouse` and `mod+middlemouse` in `root` and in `prefix`, and to `leftmouse`, `rightmouse` and `middlemouse` in `prefix`, and bind `mod+wheeldown` and `mod+wheelup` to `focus_band_down` and `focus_band_up` in both tables.
 With no binding, Ctrl and Alt held together select text over a program that asked for the mouse, and Alt alone reaches the program.
 `drag_band`, and `drag_window` pressed on empty ribbon, slide the band sideways or switch bands vertically, whichever axis the drag starts on, and never both in one drag.
@@ -624,7 +625,20 @@ A floating window is tiled again as a new column after `after`, or, without it, 
 `send_prefix` takes `window` and sends the prefix key to it.
 `gband.spawn` takes `band` and `after` beside `cmd`.
 
-A target on a view action or on `detach`, a field the action does not take, a `step` out of its range, or a window or band not in the layout is an error at the line of the call.
+`drag_resize_window` takes `edges`, a list of the edges the drag moves: `"left"`, `"right"`, `"top"` and `"bottom"`, in any order.
+The list names one edge or two, and never both of a pair: not `left` with `right`, and not `top` with `bottom`.
+The drag then moves exactly those edges, wherever in the window the press lies; without a target it picks the edges nearest the press.
+It still acts only when a mouse press runs it, and does nothing from a key.
+
+```lua
+gband.keymap.set("prefix", "rightmouse", function()
+  gband.action.drag_resize_window({ edges = { "bottom" } })
+end, { desc = "resize the window from its bottom edge" })
+```
+
+A target on a view action or on `detach`, `drag_window` or `drag_band`, a field the action does not take, a `step` out of its range, or a window or band not in the layout is an error at the line of the call.
+So is an `edges` that is missing, not a list of edge names, empty, or that names an edge twice or both edges of a pair.
+A call that raises one of these errors dispatches nothing.
 
 ```lua
 gband.keymap.set("prefix", "N", function()

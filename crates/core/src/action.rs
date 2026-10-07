@@ -101,6 +101,14 @@ pub enum ClientAction {
     SendPrefix,
     SendKey(Key),
     DragWindow,
-    DragResize,
+    DragResize(Option<Edges>),
     DragBand,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Edges {
+    pub left: bool,
+    pub right: bool,
+    pub top: bool,
+    pub bottom: bool,
 }

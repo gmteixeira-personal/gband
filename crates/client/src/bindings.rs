@@ -472,7 +472,7 @@ mod tests {
     fn assert_mouse_rows(keymap: &Keymap) {
         let drags = [
             (MouseButton::Left, ClientAction::DragWindow),
-            (MouseButton::Right, ClientAction::DragResize),
+            (MouseButton::Right, ClientAction::DragResize(None)),
             (MouseButton::Middle, ClientAction::DragBand),
         ];
         let wheels = [
@@ -684,7 +684,7 @@ gband.keymap.set('root', 'mod+leftmouse', gband.action.drag_resize_window)",
         );
         assert_eq!(
             Leader::default().handle_mouse(&keymap, alt_left),
-            drag(ClientAction::DragResize)
+            drag(ClientAction::DragResize(None))
         );
     }
 
@@ -723,7 +723,7 @@ gband.keymap.set('prefix', 'alt+leftmouse', function() end)",
         assert_eq!(
             leader.handle_mouse(&keymap, mouse(MouseButton::Right, Modifiers::ALT)),
             MouseCommand::Run {
-                binding: Binding::Action(Action::Client(ClientAction::DragResize)),
+                binding: Binding::Action(Action::Client(ClientAction::DragResize(None))),
                 unbound: Unbound::Discard
             }
         );

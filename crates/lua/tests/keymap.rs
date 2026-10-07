@@ -85,7 +85,7 @@ entry = gband.keymap.list('root')[1]",
                 key: MouseKey::new(MouseButton::Right, Modifiers::NONE),
                 uses_mod: true,
             },
-            Binding::Action(Action::Client(ClientAction::DragResize))
+            Binding::Action(Action::Client(ClientAction::DragResize(None)))
         )]
     );
     let key: String = eval(&config, "return entry.key");
