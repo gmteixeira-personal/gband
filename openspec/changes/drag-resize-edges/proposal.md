@@ -52,6 +52,7 @@ None.
 - crates/lua/tests/config.rs
 - crates/lua/tests/control.rs
 - crates/lua/tests/keymap.rs
+- crates/lua/tests/plugin_windows.rs
 - docs/plugins.md
 - docs/tutorial/02-actions.md
 - tests/lua/mouse_spec.lua
