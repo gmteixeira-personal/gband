@@ -213,6 +213,7 @@ gband embeds a Lua runtime in the client and in the server.
 Configuration and automation are Lua scripts, so key bindings, layout behavior and custom commands are code you can change.
 Plugins add actions, commands, key bindings, bars, plugin windows and colorschemes; see [Plugins](#plugins).
 The Lua prompt, Ctrl+Space then `:`, runs one line of Lua while gband runs.
+[The scripting tutorial](docs/tutorial/README.md) builds a plugin step by step from an empty `user/init.lua`, with runnable files for every chapter.
 
 Much of gband is itself written in Lua:
 

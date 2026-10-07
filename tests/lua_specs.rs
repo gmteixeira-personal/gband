@@ -1,5 +1,6 @@
-use std::path::Path;
-use std::process::Command;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Output};
+use std::thread;
 
 const GBAND: &str = env!("CARGO_BIN_EXE_gband");
 const BUNDLED_COPIES: &str = gband_harness::runner::BUNDLED_COPIES;
@@ -8,32 +9,42 @@ fn gband_test(directory: &Path, args: &[&str]) {
     run(directory, args, false);
 }
 
-fn run(directory: &Path, args: &[&str], copies: bool) {
+fn command(directory: &Path, args: &[&str], copies: bool) -> Command {
     let mut command = Command::new(GBAND);
     if copies {
         command.env(BUNDLED_COPIES, "1");
     } else {
         command.env_remove(BUNDLED_COPIES);
     }
-    let output = command
+    command
         .arg("test")
         .args(args)
         .current_dir(directory)
         .env_remove("GBAND")
         .env_remove("GBAND_SESSION")
         .env_remove("GBAND_WINDOW")
-        .env_remove("GBAND_TEST_SOCKET")
-        .output()
-        .unwrap();
-    assert!(
-        output.status.success(),
-        "gband test {} in {} exited with {:?}\n{}{}",
-        args.join(" "),
-        directory.display(),
-        output.status.code(),
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
+        .env_remove("GBAND_TEST_SOCKET");
+    command
+}
+
+fn failure(directory: &Path, args: &[&str], output: &Output) -> Option<String> {
+    (!output.status.success()).then(|| {
+        format!(
+            "gband test {} in {} exited with {:?}\n{}{}",
+            args.join(" "),
+            directory.display(),
+            output.status.code(),
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        )
+    })
+}
+
+fn run(directory: &Path, args: &[&str], copies: bool) {
+    let output = command(directory, args, copies).output().unwrap();
+    if let Some(failure) = failure(directory, args, &output) {
+        panic!("{failure}");
+    }
 }
 
 fn root() -> &'static Path {
@@ -103,6 +114,57 @@ fn example_plugin_hello() {
 #[test]
 fn example_plugin_window() {
     gband_test(&root().join("examples/plugins/window"), &[]);
+}
+
+fn tutorial_directories() -> Vec<PathBuf> {
+    let subdirectories = |directory: &Path| -> Vec<PathBuf> {
+        let Ok(entries) = std::fs::read_dir(directory) else {
+            return Vec::new();
+        };
+        let mut found: Vec<PathBuf> = entries
+            .map(|entry| entry.unwrap().path())
+            .filter(|path| path.is_dir())
+            .collect();
+        found.sort();
+        found
+    };
+    let mut directories = Vec::new();
+    for chapter in subdirectories(&root().join("examples/tutorial")) {
+        let plugins = subdirectories(&chapter.join("plugins"));
+        directories.push(chapter);
+        directories.extend(
+            plugins
+                .into_iter()
+                .filter(|plugin| plugin.join("tests").is_dir()),
+        );
+    }
+    directories
+}
+
+#[test]
+fn tutorial() {
+    let directories = tutorial_directories();
+    assert!(
+        directories
+            .iter()
+            .any(|directory| directory.ends_with("examples/tutorial/00-setup")),
+        "{directories:?}"
+    );
+    let failures: Vec<String> = thread::scope(|scope| {
+        let runs: Vec<_> = directories
+            .iter()
+            .map(|directory| {
+                scope.spawn(move || {
+                    let output = command(directory, &[], false).output().unwrap();
+                    failure(directory, &[], &output)
+                })
+            })
+            .collect();
+        runs.into_iter()
+            .filter_map(|run| run.join().unwrap())
+            .collect()
+    });
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
 #[test]

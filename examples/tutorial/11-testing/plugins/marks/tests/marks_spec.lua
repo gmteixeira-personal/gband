@@ -1,0 +1,50 @@
+local t = require("gband.test")
+
+local CONFIG = [[
+gband.plugin("gband.sidebar")
+gband.plugin("marks")
+gband.keymap.set("prefix", "m", gband.action["marks.mark"])
+gband.keymap.set("prefix", "M", gband.action["marks.list"])
+gband.keymap.set("prefix", "n", gband.action.open_window)
+gband.keymap.set("prefix", "h", gband.action.focus_column_left)
+]]
+
+local function start(g)
+  g.start({ size = "40x8", config = CONFIG, env = { SHELL = "/bin/cat" } })
+end
+
+t.case("marks the focused window", function(g)
+  start(g)
+  g.keys("ctrl+space m")
+  g.settle()
+  t.eq(g.server([=[return gband.window_state("default", 1)["marks.letter"]]=]), "a")
+  t.match(g.screen().row(0), "^Ia")
+  g.expect_screenshot("marked")
+end)
+
+t.case("lists the marks in letter order", function(g)
+  start(g)
+  g.keys("ctrl+space n")
+  g.settle()
+  g.keys("ctrl+space m ctrl+space h ctrl+space m ctrl+space M")
+  g.settle()
+  t.eq(g.client("return #gband.win.list()"), 1)
+  g.expect_screenshot("two marks")
+end)
+
+t.case("shows a mark the server sets", function(g)
+  start(g)
+  g.server([=[gband.window_state("default", 1)["marks.letter"] = "b"]=])
+  g.settle()
+  t.match(g.screen().row(0), "^Ib")
+end)
+
+t.case("the command marks any window", function(g)
+  start(g)
+  g.keys("ctrl+space n")
+  g.settle()
+  t.eq(g.client([[return gband.cmd.run("marks.mark", { window = 1 })]]), true)
+  g.settle()
+  t.eq(g.client([=[return gband.window_state(1)["marks.letter"]]=]), "a")
+  t.eq(g.client("return gband.view().window"), 2)
+end)

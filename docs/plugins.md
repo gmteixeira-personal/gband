@@ -4,6 +4,9 @@ A gband plugin is a directory of Lua files.
 gband finds it on the runtimepath, reads its manifest, runs the file of its side, and lets your configuration set it up.
 Plugins can add actions, commands, options, key bindings, event handlers, side bars, plugin windows, highlight groups and colorschemes in the client, and event handlers, shared window state, events and commands in the server.
 
+This guide is the reference.
+To learn the API by building a plugin step by step, start with [the scripting tutorial](tutorial/README.md).
+
 This guide uses the names that the README's [Vocabulary](../README.md#vocabulary) defines: a band is a circular row of columns, a column holds windows stacked vertically, and the ribbon is the part of the terminal that the bars leave, where the viewed band is drawn.
 
 Much of gband is itself written with this API, to serve as examples.
