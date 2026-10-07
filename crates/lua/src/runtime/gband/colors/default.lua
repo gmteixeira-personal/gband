@@ -1,6 +1,0 @@
-gband.hl.set("SidebarMode", { fg = "#7aa2f7", bold = true })
-gband.hl.set("SidebarBand", { fg = "#565f89" })
-gband.hl.set("SidebarBandActive", { fg = "#c0caf5", bold = true })
-gband.hl.set("SidebarError", { fg = "#f7768e", bold = true })
-gband.hl.set("KeyListKey", { fg = "#7aa2f7", bold = true })
-gband.hl.set("KeyListMuted", { fg = "#9aa5ce" })

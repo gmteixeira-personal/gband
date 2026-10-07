@@ -5,7 +5,7 @@ use gband_core::layout::{BandId, Layout, WindowId};
 use gband_core::view::{Scene, View};
 use gband_emulator::{Emulator, Grid};
 use gband_lua::plugin_windows::{FloatingFrame, Run};
-use gband_lua::{Bar, Border, Sides};
+use gband_lua::{Bar, Border, BorderChars, ClientStyles, Palette, Sides};
 use ratatui::Frame;
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Position, Rect};
@@ -15,10 +15,6 @@ use tui_term::widget::{Cursor, PseudoTerminal, Screen};
 
 use crate::animation::{Drawn, DrawnTile};
 use crate::color::ColorSupport;
-
-pub const FOCUSED_BORDER: Style = Style::new().add_modifier(Modifier::BOLD);
-pub const UNFOCUSED_BORDER: Style = Style::new().add_modifier(Modifier::DIM);
-pub const BANNER: Style = Style::new().fg(Color::Red).add_modifier(Modifier::REVERSED);
 
 pub struct Shown<'a> {
     pub bar: &'a Bar,
@@ -121,6 +117,10 @@ pub struct Ribbon<'a> {
     pub region: Rect,
     pub tile_border: &'a Border,
     pub floating_border: &'a Border,
+    pub focused_tile_chars: &'a BorderChars,
+    pub focused_floating_chars: &'a BorderChars,
+    pub styles: ClientStyles,
+    pub palette: Palette,
     pub floats: Vec<(u32, &'a FloatingFrame)>,
     pub float_focused: bool,
     pub colors: ColorSupport,
@@ -138,10 +138,65 @@ pub fn draw_frame(frame: &mut Frame<'_>, ribbon: &Ribbon<'_>) {
         draw_bar(frame.buffer_mut(), shown, ribbon.colors);
     }
     if let Some(banner) = ribbon.banner {
-        draw_banner(frame.buffer_mut(), ribbon.region, banner);
+        draw_banner(
+            frame.buffer_mut(),
+            ribbon.region,
+            banner,
+            ribbon.colors.style(&ribbon.styles.banner),
+        );
     }
+    apply_palette(frame.buffer_mut(), &ribbon.palette, ribbon.colors);
     if let Some(cursor) = cursor.filter(|_| !ribbon.float_focused) {
         frame.set_cursor_position(cursor);
+    }
+}
+
+fn palette_index(color: Color) -> Option<usize> {
+    Some(match color {
+        Color::Indexed(index) if index < 16 => usize::from(index),
+        Color::Black => 0,
+        Color::Red => 1,
+        Color::Green => 2,
+        Color::Yellow => 3,
+        Color::Blue => 4,
+        Color::Magenta => 5,
+        Color::Cyan => 6,
+        Color::Gray => 7,
+        Color::DarkGray => 8,
+        Color::LightRed => 9,
+        Color::LightGreen => 10,
+        Color::LightYellow => 11,
+        Color::LightBlue => 12,
+        Color::LightMagenta => 13,
+        Color::LightCyan => 14,
+        Color::White => 15,
+        _ => return None,
+    })
+}
+
+fn mapped(
+    color: Color,
+    default: Option<gband_lua::Rgb>,
+    palette: &Palette,
+) -> Option<gband_lua::Rgb> {
+    match color {
+        Color::Reset => default,
+        color => palette_index(color).and_then(|index| palette.colors[index]),
+    }
+}
+
+pub fn apply_palette(buffer: &mut Buffer, palette: &Palette, colors: ColorSupport) {
+    if palette.is_empty() {
+        return;
+    }
+    let drawn = |(r, g, b)| colors.color(gband_lua::Color::Rgb(r, g, b));
+    for cell in &mut buffer.content {
+        if let Some(rgb) = mapped(cell.fg, palette.fg, palette) {
+            cell.fg = drawn(rgb);
+        }
+        if let Some(rgb) = mapped(cell.bg, palette.bg, palette) {
+            cell.bg = drawn(rgb);
+        }
     }
 }
 
@@ -289,16 +344,16 @@ pub fn draw_border(buffer: &mut Buffer, area: Rect, border: &Border, style: Styl
     );
 }
 
-fn draw_banner(buffer: &mut Buffer, region: Rect, text: &str) {
+fn draw_banner(buffer: &mut Buffer, region: Rect, text: &str, style: Style) {
     let area = region.intersection(buffer.area);
     let Some(row) = area.bottom().checked_sub(1).filter(|_| area.height > 0) else {
         return;
     };
     let line = Rect::new(area.x, row, area.width, 1);
     Clear.render(line, buffer);
-    buffer.set_style(line, BANNER);
+    buffer.set_style(line, style);
     let first_line = text.lines().next().unwrap_or_default();
-    buffer.set_stringn(area.x, row, first_line, usize::from(area.width), BANNER);
+    buffer.set_stringn(area.x, row, first_line, usize::from(area.width), style);
 }
 
 struct Layer {
@@ -313,7 +368,13 @@ fn layers(ribbon: &Ribbon<'_>, target: Rect) -> Vec<Layer> {
     let focused = ribbon.view.focused();
     let lifted = ribbon.overlay.lifted;
     let mut layers = Vec::new();
-    let mut layer = |kind, window, band, tile: DrawnTile, placement: Placement, border: &Border| {
+    let mut layer = |kind,
+                     window,
+                     band,
+                     tile: DrawnTile,
+                     placement: Placement,
+                     (border, focused_chars): (&Border, &BorderChars)| {
+        let focused = focused == Some(window);
         let clip = &placement.clip;
         let x = i64::from(target.x) + placement.left;
         let y = i64::from(target.y) + placement.top;
@@ -337,8 +398,15 @@ fn layers(ribbon: &Ribbon<'_>, target: Rect) -> Vec<Layer> {
             },
             tile,
             placement,
-            border: border.clone(),
-            focused: focused == Some(window),
+            border: Border {
+                sides: border.sides,
+                chars: if focused {
+                    focused_chars.clone()
+                } else {
+                    border.chars.clone()
+                },
+            },
+            focused,
         });
     };
     for drawn in &ribbon.drawn.bands {
@@ -371,7 +439,7 @@ fn layers(ribbon: &Ribbon<'_>, target: Rect) -> Vec<Layer> {
                 Some(drawn.band),
                 drawn_tile,
                 placement,
-                ribbon.tile_border,
+                (ribbon.tile_border, ribbon.focused_tile_chars),
             );
         }
     }
@@ -389,7 +457,7 @@ fn layers(ribbon: &Ribbon<'_>, target: Rect) -> Vec<Layer> {
                 Some(ribbon.view.band()),
                 tile,
                 placement,
-                ribbon.tile_border,
+                (ribbon.tile_border, ribbon.focused_tile_chars),
             );
         }
     }
@@ -417,7 +485,7 @@ fn layers(ribbon: &Ribbon<'_>, target: Rect) -> Vec<Layer> {
             Some(ribbon.view.band()),
             tile,
             placement,
-            ribbon.floating_border,
+            (ribbon.floating_border, ribbon.focused_floating_chars),
         );
     }
     layers
@@ -484,13 +552,18 @@ pub fn render(ribbon: &Ribbon<'_>, buffer: &mut Buffer) -> Option<Position> {
             .overlay
             .selection
             .filter(|selected| selected.window == window);
+        let style = if focused {
+            &ribbon.styles.border_focused
+        } else {
+            &ribbon.styles.border
+        };
         paint(
             buffer,
             target,
             &tile,
             &placement,
             grid,
-            (&border, focused),
+            (&border, ribbon.colors.style(style)),
             selection,
         );
         if focused && region.kind != RegionKind::Lifted && ribbon.drawn.settled {
@@ -509,13 +582,13 @@ fn draw_outline(ribbon: &Ribbon<'_>, buffer: &mut Buffer, target: Rect) {
     };
     let sides = Border {
         sides: Sides::ALL,
-        chars: ribbon.tile_border.chars.clone(),
+        chars: ribbon.focused_tile_chars.clone(),
     };
     draw_border(
         buffer,
         outline.intersection(target),
         &sides,
-        Style::reset().patch(FOCUSED_BORDER),
+        Style::reset().patch(ribbon.colors.style(&ribbon.styles.border_focused)),
     );
 }
 
@@ -531,7 +604,7 @@ fn paint(
     tile: &DrawnTile,
     placement: &Placement,
     grid: Option<&Grid>,
-    border: (&Border, bool),
+    border: (&Border, Style),
     selection: Option<Selected>,
 ) {
     let (scratch, shift) = draw_tile(tile, grid, border, &placement.clip);
@@ -648,7 +721,7 @@ impl<S: Screen> Screen for Shifted<'_, S> {
 fn draw_tile(
     tile: &DrawnTile,
     grid: Option<&Grid>,
-    (border, focused): (&Border, bool),
+    (border, style): (&Border, Style),
     clip: &Clip,
 ) -> (Buffer, Shift) {
     let cut_left = u16::from(clip.start > 0);
@@ -666,11 +739,6 @@ fn draw_tile(
         clip.bottom - clip.top + cut_top + cut_bottom,
     );
     let mut scratch = Buffer::empty(area);
-    let style = if focused {
-        FOCUSED_BORDER
-    } else {
-        UNFOCUSED_BORDER
-    };
     draw_border(&mut scratch, area, border, style);
     let inner = interior(area);
     if let Some(grid) = grid {
@@ -705,4 +773,100 @@ fn cursor_position(
         return None;
     }
     Some(Position::new(target.x + x as u16, target.y + y as u16))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn gruvbox() -> Palette {
+        let mut palette = Palette {
+            fg: Some((0xeb, 0xdb, 0xb2)),
+            bg: Some((0x28, 0x28, 0x28)),
+            ..Palette::default()
+        };
+        palette.colors[1] = Some((0xcc, 0x24, 0x1d));
+        palette
+    }
+
+    fn cell(buffer: &mut Buffer, fg: Color, bg: Color) {
+        buffer[(0, 0)].set_symbol("x").set_fg(fg).set_bg(bg);
+    }
+
+    fn colors(buffer: &Buffer, x: u16) -> (Color, Color) {
+        let cell = &buffer[(x, 0)];
+        (cell.fg, cell.bg)
+    }
+
+    #[test]
+    fn program_color_mapped() {
+        let mut buffer = Buffer::empty(Rect::new(0, 0, 2, 1));
+        cell(&mut buffer, Color::Indexed(1), Color::Reset);
+        apply_palette(&mut buffer, &gruvbox(), ColorSupport::TrueColor);
+        assert_eq!(
+            colors(&buffer, 0),
+            (Color::Rgb(0xcc, 0x24, 0x1d), Color::Rgb(0x28, 0x28, 0x28))
+        );
+    }
+
+    #[test]
+    fn named_ratatui_color_mapped() {
+        let mut buffer = Buffer::empty(Rect::new(0, 0, 1, 1));
+        cell(&mut buffer, Color::Red, Color::Reset);
+        apply_palette(&mut buffer, &gruvbox(), ColorSupport::TrueColor);
+        assert_eq!(colors(&buffer, 0).0, Color::Rgb(0xcc, 0x24, 0x1d));
+    }
+
+    #[test]
+    fn empty_ribbon_takes_the_background() {
+        let mut buffer = Buffer::empty(Rect::new(0, 0, 2, 1));
+        apply_palette(&mut buffer, &gruvbox(), ColorSupport::TrueColor);
+        assert_eq!(
+            colors(&buffer, 1),
+            (Color::Rgb(0xeb, 0xdb, 0xb2), Color::Rgb(0x28, 0x28, 0x28))
+        );
+    }
+
+    #[test]
+    fn mapped_color_without_24_bit_color() {
+        let mut buffer = Buffer::empty(Rect::new(0, 0, 1, 1));
+        cell(&mut buffer, Color::Indexed(1), Color::Reset);
+        apply_palette(&mut buffer, &gruvbox(), ColorSupport::Indexed);
+        assert_eq!(colors(&buffer, 0).0, Color::Indexed(160));
+    }
+
+    #[test]
+    fn colors_beyond_the_sixteen_unchanged() {
+        let mut buffer = Buffer::empty(Rect::new(0, 0, 1, 1));
+        cell(&mut buffer, Color::Indexed(208), Color::Rgb(1, 2, 3));
+        apply_palette(&mut buffer, &gruvbox(), ColorSupport::TrueColor);
+        assert_eq!(
+            colors(&buffer, 0),
+            (Color::Indexed(208), Color::Rgb(1, 2, 3))
+        );
+    }
+
+    #[test]
+    fn unset_fields_unchanged() {
+        let mut buffer = Buffer::empty(Rect::new(0, 0, 1, 1));
+        cell(&mut buffer, Color::Indexed(2), Color::Reset);
+        let only_bg = Palette {
+            bg: Some((0x10, 0x10, 0x10)),
+            ..Palette::default()
+        };
+        apply_palette(&mut buffer, &only_bg, ColorSupport::TrueColor);
+        assert_eq!(
+            colors(&buffer, 0),
+            (Color::Indexed(2), Color::Rgb(0x10, 0x10, 0x10))
+        );
+    }
+
+    #[test]
+    fn empty_palette_leaves_the_buffer_equal() {
+        let mut buffer = Buffer::empty(Rect::new(0, 0, 2, 1));
+        cell(&mut buffer, Color::Indexed(1), Color::Reset);
+        let before = buffer.clone();
+        apply_palette(&mut buffer, &Palette::default(), ColorSupport::TrueColor);
+        assert_eq!(buffer, before);
+    }
 }

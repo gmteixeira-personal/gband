@@ -31,7 +31,7 @@ t.case("links its group to the sidebar mode", function(g)
   g.start({ size = "60x4", config = CONFIG })
   local cell = g.screen().cell(0, 55)
   t.eq(cell.char, "1")
-  t.eq(cell.fg, "#7aa2f7")
+  t.eq(cell.fg, 4)
   t.eq(cell.bold, true)
 end)
 

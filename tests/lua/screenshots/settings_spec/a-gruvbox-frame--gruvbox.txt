@@ -1,0 +1,143 @@
+size 80x24 cursor 3:4 shown
+ 0|I╭─────────────────────────────────────╮
+ 1| │$ printf '\033[31m%s\033[0m\n' red   │
+ 2|1│red                                  │
+ 3|2│$                                    │
+ 4| │                                     │
+ 5| │                                     │
+ 6| │                                     │
+ 7| │                                     │
+ 8| │                                     │
+ 9| │                                     │
+10| │                                     │
+11| │                                     │
+12| │                                     │
+13| │                                     │
+14| │                                     │
+15| │                                     │
+16| │                                     │
+17| │                                     │
+18| │                                     │
+19| │                                     │
+20| │                                     │
+21| │                                     │
+22| │                                     │
+23| ╰─────────────────────────────────────╯
+--
+0:0 fg=#fabd2f bg=#3c3836 bold
+0:1-39 fg=#fabd2f bg=#282828 bold
+0:40-79 fg=#ebdbb2 bg=#282828
+1:0 fg=#ebdbb2 bg=#3c3836
+1:1 fg=#fabd2f bg=#282828 bold
+1:2-38 fg=#ebdbb2 bg=#282828
+1:39 fg=#fabd2f bg=#282828 bold
+1:40-79 fg=#ebdbb2 bg=#282828
+2:0 fg=#ebdbb2 bg=#3c3836 bold
+2:1 fg=#fabd2f bg=#282828 bold
+2:2-4 fg=#cc241d bg=#282828
+2:5-38 fg=#ebdbb2 bg=#282828
+2:39 fg=#fabd2f bg=#282828 bold
+2:40-79 fg=#ebdbb2 bg=#282828
+3:0 fg=#928374 bg=#3c3836
+3:1 fg=#fabd2f bg=#282828 bold
+3:2-38 fg=#ebdbb2 bg=#282828
+3:39 fg=#fabd2f bg=#282828 bold
+3:40-79 fg=#ebdbb2 bg=#282828
+4:0 fg=#ebdbb2 bg=#3c3836
+4:1 fg=#fabd2f bg=#282828 bold
+4:2-38 fg=#ebdbb2 bg=#282828
+4:39 fg=#fabd2f bg=#282828 bold
+4:40-79 fg=#ebdbb2 bg=#282828
+5:0 fg=#ebdbb2 bg=#3c3836
+5:1 fg=#fabd2f bg=#282828 bold
+5:2-38 fg=#ebdbb2 bg=#282828
+5:39 fg=#fabd2f bg=#282828 bold
+5:40-79 fg=#ebdbb2 bg=#282828
+6:0 fg=#ebdbb2 bg=#3c3836
+6:1 fg=#fabd2f bg=#282828 bold
+6:2-38 fg=#ebdbb2 bg=#282828
+6:39 fg=#fabd2f bg=#282828 bold
+6:40-79 fg=#ebdbb2 bg=#282828
+7:0 fg=#ebdbb2 bg=#3c3836
+7:1 fg=#fabd2f bg=#282828 bold
+7:2-38 fg=#ebdbb2 bg=#282828
+7:39 fg=#fabd2f bg=#282828 bold
+7:40-79 fg=#ebdbb2 bg=#282828
+8:0 fg=#ebdbb2 bg=#3c3836
+8:1 fg=#fabd2f bg=#282828 bold
+8:2-38 fg=#ebdbb2 bg=#282828
+8:39 fg=#fabd2f bg=#282828 bold
+8:40-79 fg=#ebdbb2 bg=#282828
+9:0 fg=#ebdbb2 bg=#3c3836
+9:1 fg=#fabd2f bg=#282828 bold
+9:2-38 fg=#ebdbb2 bg=#282828
+9:39 fg=#fabd2f bg=#282828 bold
+9:40-79 fg=#ebdbb2 bg=#282828
+10:0 fg=#ebdbb2 bg=#3c3836
+10:1 fg=#fabd2f bg=#282828 bold
+10:2-38 fg=#ebdbb2 bg=#282828
+10:39 fg=#fabd2f bg=#282828 bold
+10:40-79 fg=#ebdbb2 bg=#282828
+11:0 fg=#ebdbb2 bg=#3c3836
+11:1 fg=#fabd2f bg=#282828 bold
+11:2-38 fg=#ebdbb2 bg=#282828
+11:39 fg=#fabd2f bg=#282828 bold
+11:40-79 fg=#ebdbb2 bg=#282828
+12:0 fg=#ebdbb2 bg=#3c3836
+12:1 fg=#fabd2f bg=#282828 bold
+12:2-38 fg=#ebdbb2 bg=#282828
+12:39 fg=#fabd2f bg=#282828 bold
+12:40-79 fg=#ebdbb2 bg=#282828
+13:0 fg=#ebdbb2 bg=#3c3836
+13:1 fg=#fabd2f bg=#282828 bold
+13:2-38 fg=#ebdbb2 bg=#282828
+13:39 fg=#fabd2f bg=#282828 bold
+13:40-79 fg=#ebdbb2 bg=#282828
+14:0 fg=#ebdbb2 bg=#3c3836
+14:1 fg=#fabd2f bg=#282828 bold
+14:2-38 fg=#ebdbb2 bg=#282828
+14:39 fg=#fabd2f bg=#282828 bold
+14:40-79 fg=#ebdbb2 bg=#282828
+15:0 fg=#ebdbb2 bg=#3c3836
+15:1 fg=#fabd2f bg=#282828 bold
+15:2-38 fg=#ebdbb2 bg=#282828
+15:39 fg=#fabd2f bg=#282828 bold
+15:40-79 fg=#ebdbb2 bg=#282828
+16:0 fg=#ebdbb2 bg=#3c3836
+16:1 fg=#fabd2f bg=#282828 bold
+16:2-38 fg=#ebdbb2 bg=#282828
+16:39 fg=#fabd2f bg=#282828 bold
+16:40-79 fg=#ebdbb2 bg=#282828
+17:0 fg=#ebdbb2 bg=#3c3836
+17:1 fg=#fabd2f bg=#282828 bold
+17:2-38 fg=#ebdbb2 bg=#282828
+17:39 fg=#fabd2f bg=#282828 bold
+17:40-79 fg=#ebdbb2 bg=#282828
+18:0 fg=#ebdbb2 bg=#3c3836
+18:1 fg=#fabd2f bg=#282828 bold
+18:2-38 fg=#ebdbb2 bg=#282828
+18:39 fg=#fabd2f bg=#282828 bold
+18:40-79 fg=#ebdbb2 bg=#282828
+19:0 fg=#ebdbb2 bg=#3c3836
+19:1 fg=#fabd2f bg=#282828 bold
+19:2-38 fg=#ebdbb2 bg=#282828
+19:39 fg=#fabd2f bg=#282828 bold
+19:40-79 fg=#ebdbb2 bg=#282828
+20:0 fg=#ebdbb2 bg=#3c3836
+20:1 fg=#fabd2f bg=#282828 bold
+20:2-38 fg=#ebdbb2 bg=#282828
+20:39 fg=#fabd2f bg=#282828 bold
+20:40-79 fg=#ebdbb2 bg=#282828
+21:0 fg=#ebdbb2 bg=#3c3836
+21:1 fg=#fabd2f bg=#282828 bold
+21:2-38 fg=#ebdbb2 bg=#282828
+21:39 fg=#fabd2f bg=#282828 bold
+21:40-79 fg=#ebdbb2 bg=#282828
+22:0 fg=#ebdbb2 bg=#3c3836
+22:1 fg=#fabd2f bg=#282828 bold
+22:2-38 fg=#ebdbb2 bg=#282828
+22:39 fg=#fabd2f bg=#282828 bold
+22:40-79 fg=#ebdbb2 bg=#282828
+23:0 fg=#ebdbb2 bg=#3c3836
+23:1-39 fg=#fabd2f bg=#282828 bold
+23:40-79 fg=#ebdbb2 bg=#282828

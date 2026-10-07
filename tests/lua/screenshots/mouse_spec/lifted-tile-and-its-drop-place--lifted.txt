@@ -1,6 +1,6 @@
 size 80x12 cursor 11:80 hidden
- 0|                                        ┌─────────────────────────────┌────────┐
- 1|                                        │$                  ┌─────────│────────│
+ 0|                                        ╭─────────────────────────────╭────────╮
+ 1|                                        │$                  ╭─────────│────────│
  2|                                        │                   │$        │        │
  3|                                        │                   │         │        │
  4|                                        │                   │         │        │
@@ -10,48 +10,48 @@ size 80x12 cursor 11:80 hidden
  8|                                        │                   │         │        │
  9|                                        │                   │         │        │
 10|                                        │                   │         │        │
-11|                                        └───────────────────│         └────────┘
+11|                                        ╰───────────────────│         ╰────────╯
 --
-0:40-69 dim
-0:70-79 bold
-1:40 dim
-1:60-79 bold
-2:40 dim
-2:60 bold
-2:70 bold
-2:79 bold
-3:40 dim
-3:60 bold
-3:70 bold
-3:79 bold
-4:40 dim
-4:60 bold
-4:70 bold
-4:79 bold
-5:40 dim
-5:60 bold
-5:70 bold
-5:79 bold
-6:40 dim
-6:60 bold
-6:70 bold
-6:79 bold
-7:40 dim
-7:60 bold
-7:70 bold
-7:79 bold
-8:40 dim
-8:60 bold
-8:70 bold
-8:79 bold
-9:40 dim
-9:60 bold
-9:70 bold
-9:79 bold
-10:40 dim
-10:60 bold
-10:70 bold
-10:79 bold
-11:40-59 dim
-11:60 bold
-11:70-79 bold
+0:40-69 fg=8
+0:70-79 fg=4 bold
+1:40 fg=8
+1:60-79 fg=4 bold
+2:40 fg=8
+2:60 fg=4 bold
+2:70 fg=4 bold
+2:79 fg=4 bold
+3:40 fg=8
+3:60 fg=4 bold
+3:70 fg=4 bold
+3:79 fg=4 bold
+4:40 fg=8
+4:60 fg=4 bold
+4:70 fg=4 bold
+4:79 fg=4 bold
+5:40 fg=8
+5:60 fg=4 bold
+5:70 fg=4 bold
+5:79 fg=4 bold
+6:40 fg=8
+6:60 fg=4 bold
+6:70 fg=4 bold
+6:79 fg=4 bold
+7:40 fg=8
+7:60 fg=4 bold
+7:70 fg=4 bold
+7:79 fg=4 bold
+8:40 fg=8
+8:60 fg=4 bold
+8:70 fg=4 bold
+8:79 fg=4 bold
+9:40 fg=8
+9:60 fg=4 bold
+9:70 fg=4 bold
+9:79 fg=4 bold
+10:40 fg=8
+10:60 fg=4 bold
+10:70 fg=4 bold
+10:79 fg=4 bold
+11:40-59 fg=8
+11:60 fg=4 bold
+11:70-79 fg=4 bold

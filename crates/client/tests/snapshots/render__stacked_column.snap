@@ -1,23 +1,22 @@
 ---
 source: crates/client/tests/render.rs
-assertion_line: 178
 expression: "fixture.render(Size::new(60, 12))"
 ---
 Buffer {
     area: Rect { x: 0, y: 0, width: 60, height: 12 },
     content: [
-        "┌────────────────────────────┐                              ",
+        "╭────────────────────────────╮                              ",
         "│top                         │                              ",
         "│                            │                              ",
         "│                            │                              ",
         "│                            │                              ",
-        "└────────────────────────────┘                              ",
-        "┌────────────────────────────┐                              ",
+        "╰────────────────────────────╯                              ",
+        "╭────────────────────────────╮                              ",
         "│bottom                      │                              ",
         "│                            │                              ",
         "│                            │                              ",
         "│                            │                              ",
-        "└────────────────────────────┘                              ",
+        "╰────────────────────────────╯                              ",
     ],
     styles: [
         x: 0, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
@@ -40,25 +39,25 @@ Buffer {
         x: 30, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
         x: 0, y: 5, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
         x: 30, y: 5, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
-        x: 0, y: 6, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 0, y: 6, fg: Indexed(147), bg: Reset, underline: Reset, modifier: BOLD,
         x: 30, y: 6, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
-        x: 0, y: 7, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 0, y: 7, fg: Indexed(147), bg: Reset, underline: Reset, modifier: BOLD,
         x: 1, y: 7, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
-        x: 29, y: 7, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 29, y: 7, fg: Indexed(147), bg: Reset, underline: Reset, modifier: BOLD,
         x: 30, y: 7, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
-        x: 0, y: 8, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 0, y: 8, fg: Indexed(147), bg: Reset, underline: Reset, modifier: BOLD,
         x: 1, y: 8, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
-        x: 29, y: 8, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 29, y: 8, fg: Indexed(147), bg: Reset, underline: Reset, modifier: BOLD,
         x: 30, y: 8, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
-        x: 0, y: 9, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 0, y: 9, fg: Indexed(147), bg: Reset, underline: Reset, modifier: BOLD,
         x: 1, y: 9, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
-        x: 29, y: 9, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 29, y: 9, fg: Indexed(147), bg: Reset, underline: Reset, modifier: BOLD,
         x: 30, y: 9, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
-        x: 0, y: 10, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 0, y: 10, fg: Indexed(147), bg: Reset, underline: Reset, modifier: BOLD,
         x: 1, y: 10, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
-        x: 29, y: 10, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 29, y: 10, fg: Indexed(147), bg: Reset, underline: Reset, modifier: BOLD,
         x: 30, y: 10, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
-        x: 0, y: 11, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 0, y: 11, fg: Indexed(147), bg: Reset, underline: Reset, modifier: BOLD,
         x: 30, y: 11, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
     ]
 }

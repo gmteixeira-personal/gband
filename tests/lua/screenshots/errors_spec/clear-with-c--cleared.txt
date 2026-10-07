@@ -1,5 +1,5 @@
 size 60x16 cursor 15:1 hidden
- 0|I┌───────────────────────────┐
+ 0|I╭───────────────────────────╮
  1| │$                          │
  2|1│                           │
  3|2│                           │
@@ -14,46 +14,65 @@ size 60x16 cursor 15:1 hidden
 12| │                           │
 13| │                           │
 14| │                           │
-15| └───────────────────────────┘
+15| ╰───────────────────────────╯
 --
-0:0 fg=#7aa2f7 bold
-0:1-29 bold
-1:1 bold
-1:29 bold
-2:0 fg=#c0caf5 bold
-2:1 bold
-2:29 bold
-3:0 fg=#565f89
-3:1 bold
-3:29 bold
-4:1 bold
-4:8 fg=8
-4:9-14 fg=8 bold
-4:15-51 fg=8
-5:1 bold
-5:8 fg=8
-5:51 fg=8
-6:1 bold
-6:8 fg=8
-6:51 fg=8
-7:1 bold
-7:8 fg=8
-7:51 fg=8
-8:1 bold
-8:8 fg=8
-8:51 fg=8
-9:1 bold
-9:8 fg=8
-9:51 fg=8
-10:1 bold
-10:8 fg=8
-10:51 fg=8
-11:1 bold
-11:8-51 fg=8
-12:1 bold
-12:29 bold
-13:1 bold
-13:29 bold
-14:1 bold
-14:29 bold
-15:1-29 bold
+0:0 fg=4 bg=0 bold
+0:1-29 fg=4 bold
+1:0 bg=0
+1:1 fg=4 bold
+1:29 fg=4 bold
+2:0 fg=15 bg=0 bold
+2:1 fg=4 bold
+2:29 fg=4 bold
+3:0 fg=8 bg=0
+3:1 fg=4 bold
+3:29 fg=4 bold
+4:0 bg=0
+4:1 fg=4 bold
+4:8 fg=8 bg=0
+4:9-14 fg=4 bg=0 bold
+4:15-51 fg=8 bg=0
+5:0 bg=0
+5:1 fg=4 bold
+5:8 fg=8 bg=0
+5:9-50 fg=7 bg=0
+5:51 fg=8 bg=0
+6:0 bg=0
+6:1 fg=4 bold
+6:8 fg=8 bg=0
+6:9-50 fg=7 bg=0
+6:51 fg=8 bg=0
+7:0 bg=0
+7:1 fg=4 bold
+7:8 fg=8 bg=0
+7:9-50 fg=7 bg=0
+7:51 fg=8 bg=0
+8:0 bg=0
+8:1 fg=4 bold
+8:8 fg=8 bg=0
+8:9-50 fg=7 bg=0
+8:51 fg=8 bg=0
+9:0 bg=0
+9:1 fg=4 bold
+9:8 fg=8 bg=0
+9:9-50 fg=7 bg=0
+9:51 fg=8 bg=0
+10:0 bg=0
+10:1 fg=4 bold
+10:8 fg=8 bg=0
+10:9-50 fg=7 bg=0
+10:51 fg=8 bg=0
+11:0 bg=0
+11:1 fg=4 bold
+11:8-51 fg=8 bg=0
+12:0 bg=0
+12:1 fg=4 bold
+12:29 fg=4 bold
+13:0 bg=0
+13:1 fg=4 bold
+13:29 fg=4 bold
+14:0 bg=0
+14:1 fg=4 bold
+14:29 fg=4 bold
+15:0 bg=0
+15:1-29 fg=4 bold

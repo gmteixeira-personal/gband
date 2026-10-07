@@ -14,7 +14,10 @@ use gband_core::layout::{
 use gband_core::view::{CenterFocusedColumn, Scene, View, ViewAction};
 use gband_emulator::{Emulator, Grid};
 use gband_lua::plugin_windows::{FloatingFrame, Run};
-use gband_lua::{Bar, BarSide, Border, BorderChars, CharSet, Color, Sides, Slot, Style};
+use gband_lua::{
+    Bar, BarSide, Border, BorderChars, CharSet, ClientStyles, Color, Options, Palette, Sides, Slot,
+    Style,
+};
 use insta::assert_snapshot;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
@@ -31,6 +34,11 @@ struct Fixture {
     float_focused: bool,
     tile_border: Border,
     floating_border: Border,
+    focused_tile_chars: BorderChars,
+    focused_floating_chars: BorderChars,
+    styles: ClientStyles,
+    palette: Palette,
+    colors: ColorSupport,
     bars: Vec<(Bar, Rect)>,
     region: Option<Rect>,
     overlay: Overlay,
@@ -65,8 +73,13 @@ impl Fixture {
             banner: None,
             floats: Vec::new(),
             float_focused: false,
-            tile_border: Border::default(),
-            floating_border: Border::default(),
+            tile_border: Options::default().tile_border,
+            floating_border: Options::default().floating_border,
+            focused_tile_chars: Options::default().focused_tile_border_chars,
+            focused_floating_chars: Options::default().focused_floating_border_chars,
+            styles: ClientStyles::default(),
+            palette: Palette::default(),
+            colors: ColorSupport::Indexed,
             bars: Vec::new(),
             region: None,
             overlay: Overlay::default(),
@@ -143,6 +156,15 @@ impl Fixture {
         )
     }
 
+    fn screen(&self, terminal: Size) -> Buffer {
+        let drawn = self.at_rest(terminal);
+        let mut backend = Terminal::new(TestBackend::new(terminal.cols, terminal.rows)).unwrap();
+        let area = backend.size().unwrap();
+        let ribbon = self.ribbon(area.into(), &drawn);
+        backend.draw(|frame| draw_frame(frame, &ribbon)).unwrap();
+        backend.backend().buffer().clone()
+    }
+
     fn render_drawn(&self, terminal: Size, drawn: &Drawn) -> String {
         let mut terminal = Terminal::new(TestBackend::new(terminal.cols, terminal.rows)).unwrap();
         let terminal_area = terminal.size().unwrap();
@@ -168,6 +190,10 @@ impl Fixture {
             )),
             tile_border: &self.tile_border,
             floating_border: &self.floating_border,
+            focused_tile_chars: &self.focused_tile_chars,
+            focused_floating_chars: &self.focused_floating_chars,
+            styles: self.styles,
+            palette: self.palette,
             floats: self
                 .floats
                 .iter()
@@ -175,7 +201,7 @@ impl Fixture {
                 .map(|(index, float)| (index as u32 + 1, float))
                 .collect(),
             float_focused: self.float_focused,
-            colors: ColorSupport::Indexed,
+            colors: self.colors,
             banner: self.banner.as_deref(),
             bars: self
                 .bars
@@ -968,7 +994,7 @@ fn tile_taller_than_the_ribbon_area() {
     fixture.bars.push(sidebar(30));
     fixture.region = Some(Rect::new(1, 0, 99, 30));
     let screen = fixture.render(Size::new(100, 30));
-    assert!(screen.contains("\"I┌"), "{screen}");
+    assert!(screen.contains("\"I╭"), "{screen}");
     assert_snapshot!(screen);
 }
 
@@ -978,4 +1004,161 @@ fn ribbon_beside_the_sidebar() {
     fixture.bars.push(sidebar(24));
     fixture.region = Some(Rect::new(1, 0, 79, 24));
     assert_snapshot!(fixture.render(Size::new(80, 24)));
+}
+
+fn corners(buffer: &Buffer, left: u16, top: u16, right: u16, bottom: u16) -> [&str; 4] {
+    [
+        buffer[(left, top)].symbol(),
+        buffer[(right, top)].symbol(),
+        buffer[(left, bottom)].symbol(),
+        buffer[(right, bottom)].symbol(),
+    ]
+}
+
+const ROUNDED: [&str; 4] = ["╭", "╮", "╰", "╯"];
+
+#[test]
+fn rounded_by_default() {
+    let (fixture, _) = Fixture::new(Size::new(80, 24), 2, 80);
+    let screen = fixture.screen(Size::new(80, 24));
+    assert_eq!(corners(&screen, 0, 0, 39, 23), ROUNDED);
+    assert_eq!(corners(&screen, 40, 0, 79, 23), ROUNDED);
+}
+
+#[test]
+fn focused_tile_with_its_own_characters() {
+    let (mut fixture, _) = Fixture::new(Size::new(80, 24), 2, 80);
+    fixture.act(ViewAction::FocusRight, 80);
+    fixture.focused_tile_chars = BorderChars::Named(CharSet::Thick);
+    let screen = fixture.screen(Size::new(80, 24));
+    assert_eq!(corners(&screen, 40, 0, 79, 23), ["┏", "┓", "┗", "┛"]);
+    assert_eq!(screen[(50, 0)].symbol(), "━");
+    assert_eq!(screen[(40, 5)].symbol(), "┃");
+    assert_eq!(corners(&screen, 0, 0, 39, 23), ROUNDED);
+    fixture.act(ViewAction::FocusLeft, 80);
+    let screen = fixture.screen(Size::new(80, 24));
+    assert_eq!(corners(&screen, 0, 0, 39, 23), ["┏", "┓", "┗", "┛"]);
+    assert_eq!(corners(&screen, 40, 0, 79, 23), ROUNDED);
+}
+
+#[test]
+fn focused_floating_window_with_its_own_characters() {
+    let (mut fixture, windows) = Fixture::new(Size::new(80, 24), 3, 80);
+    floating_at(&mut fixture, windows[1], 0, 0, 80);
+    floating_at(&mut fixture, windows[2], 40, 8, 80);
+    fixture.act(ViewAction::FocusWindow(windows[2]), 80);
+    fixture.focused_floating_chars = BorderChars::Named(CharSet::Double);
+    let screen = fixture.screen(Size::new(80, 24));
+    assert_eq!(corners(&screen, 40, 8, 79, 19), ["╔", "╗", "╚", "╝"]);
+    assert_eq!(corners(&screen, 0, 0, 39, 11), ROUNDED);
+}
+
+#[test]
+fn focused_characters_keep_the_sides() {
+    let (mut fixture, _) = Fixture::new(Size::new(80, 24), 1, 80);
+    fixture.tile_border.sides = sides(&["left"]);
+    fixture.focused_tile_chars = BorderChars::Named(CharSet::Thick);
+    let screen = fixture.screen(Size::new(80, 24));
+    for row in 0..24 {
+        assert_eq!(screen[(0, row)].symbol(), "┃", "row {row}");
+        assert_eq!(screen[(39, row)].symbol(), " ", "row {row}");
+    }
+    for col in 1..39 {
+        assert_eq!(screen[(col, 0)].symbol(), " ", "col {col}");
+        assert_eq!(screen[(col, 23)].symbol(), " ", "col {col}");
+    }
+}
+
+#[test]
+fn drop_outline_uses_the_focused_characters() {
+    let (mut fixture, windows) = Fixture::new(Size::new(80, 12), 2, 80);
+    fixture.focused_tile_chars = BorderChars::Named(CharSet::Double);
+    fixture.colors = ColorSupport::TrueColor;
+    fixture.overlay.lifted = Some(Lifted {
+        window: windows[0],
+        x: 50,
+        y: 2,
+        width: 20,
+        height: 6,
+        outline: Some(Rect::new(0, 0, 10, 12)),
+    });
+    let screen = fixture.screen(Size::new(80, 12));
+    assert_eq!(corners(&screen, 0, 0, 9, 11), ["╔", "╗", "╚", "╝"]);
+    let cell = &screen[(0, 0)];
+    assert_eq!(cell.fg, ratatui::style::Color::Rgb(0xb1, 0xb9, 0xf9));
+    assert!(cell.modifier.contains(ratatui::style::Modifier::BOLD));
+}
+
+#[test]
+fn built_in_border_look() {
+    let (mut fixture, _) = Fixture::new(Size::new(80, 24), 2, 80);
+    fixture.act(ViewAction::FocusRight, 80);
+    fixture.colors = ColorSupport::TrueColor;
+    let screen = fixture.screen(Size::new(80, 24));
+    let focused = &screen[(40, 0)];
+    assert_eq!(focused.fg, ratatui::style::Color::Rgb(0xb1, 0xb9, 0xf9));
+    assert!(focused.modifier.contains(ratatui::style::Modifier::BOLD));
+    let other = &screen[(0, 0)];
+    assert_eq!(other.fg, ratatui::style::Color::Reset);
+    assert!(other.modifier.contains(ratatui::style::Modifier::DIM));
+}
+
+#[test]
+fn colored_focused_border() {
+    let (mut fixture, _) = Fixture::new(Size::new(80, 24), 2, 80);
+    fixture.act(ViewAction::FocusRight, 80);
+    fixture.styles.border_focused = Style {
+        fg: Some(Color::Index(2)),
+        bold: true,
+        ..Style::default()
+    };
+    let screen = fixture.screen(Size::new(80, 24));
+    assert_eq!(screen[(40, 0)].fg, ratatui::style::Color::Indexed(2));
+    assert!(
+        screen[(40, 0)]
+            .modifier
+            .contains(ratatui::style::Modifier::BOLD)
+    );
+    assert!(
+        screen[(0, 0)]
+            .modifier
+            .contains(ratatui::style::Modifier::DIM)
+    );
+}
+
+#[test]
+fn banner_group() {
+    let (mut fixture, _) = Fixture::new(Size::new(40, 6), 1, 40);
+    fixture.colors = ColorSupport::TrueColor;
+    fixture.styles.banner = Style {
+        fg: Some(Color::Rgb(0xff, 0xff, 0xff)),
+        bg: Some(Color::Rgb(0xaa, 0x00, 0x00)),
+        ..Style::default()
+    };
+    fixture.banner = Some("boom".to_owned());
+    let screen = fixture.screen(Size::new(40, 6));
+    let cell = &screen[(0, 5)];
+    assert_eq!(cell.symbol(), "b");
+    assert_eq!(cell.fg, ratatui::style::Color::Rgb(0xff, 0xff, 0xff));
+    assert_eq!(cell.bg, ratatui::style::Color::Rgb(0xaa, 0x00, 0x00));
+    assert!(!cell.modifier.contains(ratatui::style::Modifier::REVERSED));
+}
+
+#[test]
+fn palette_covers_tiles_bars_and_the_empty_ribbon() {
+    let (mut fixture, windows) = Fixture::new(Size::new(80, 24), 1, 79);
+    fixture.colors = ColorSupport::TrueColor;
+    fixture.palette.bg = Some((0x28, 0x28, 0x28));
+    fixture.palette.colors[1] = Some((0xcc, 0x24, 0x1d));
+    fixture.bars.push(sidebar(24));
+    fixture.region = Some(Rect::new(1, 0, 79, 24));
+    fixture.write(windows[0], b"\x1b[31mx\x1b[0m");
+    let screen = fixture.screen(Size::new(80, 24));
+    let background = ratatui::style::Color::Rgb(0x28, 0x28, 0x28);
+    let x = &screen[(2, 1)];
+    assert_eq!(x.symbol(), "x");
+    assert_eq!(x.fg, ratatui::style::Color::Rgb(0xcc, 0x24, 0x1d));
+    assert_eq!(x.bg, background);
+    assert_eq!(screen[(60, 10)].bg, background);
+    assert_eq!(screen[(0, 10)].bg, background);
 }

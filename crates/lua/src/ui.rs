@@ -57,6 +57,88 @@ pub struct Style {
     pub dim: bool,
 }
 
+pub type Rgb = (u8, u8, u8);
+
+pub const PALETTE_COLORS: [&str; 16] = [
+    "black",
+    "red",
+    "green",
+    "yellow",
+    "blue",
+    "magenta",
+    "cyan",
+    "white",
+    "bright_black",
+    "bright_red",
+    "bright_green",
+    "bright_yellow",
+    "bright_blue",
+    "bright_magenta",
+    "bright_cyan",
+    "bright_white",
+];
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Palette {
+    pub fg: Option<Rgb>,
+    pub bg: Option<Rgb>,
+    pub colors: [Option<Rgb>; 16],
+}
+
+impl Palette {
+    pub fn is_empty(&self) -> bool {
+        *self == Self::default()
+    }
+
+    fn fields(&mut self) -> impl Iterator<Item = (&'static str, &mut Option<Rgb>)> {
+        [("fg", &mut self.fg), ("bg", &mut self.bg)]
+            .into_iter()
+            .chain(PALETTE_COLORS.into_iter().zip(self.colors.iter_mut()))
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ClientStyles {
+    pub border: Style,
+    pub border_focused: Style,
+    pub banner: Style,
+}
+
+impl Default for ClientStyles {
+    fn default() -> Self {
+        Self {
+            border: Style {
+                dim: true,
+                ..Style::default()
+            },
+            border_focused: Style {
+                fg: Some(Color::Rgb(0xb1, 0xb9, 0xf9)),
+                bold: true,
+                ..Style::default()
+            },
+            banner: Style {
+                fg: Some(Color::Index(1)),
+                reverse: true,
+                ..Style::default()
+            },
+        }
+    }
+}
+
+#[derive(Default)]
+struct Look {
+    palette: Palette,
+    palette_dirty: bool,
+    styles: Option<RegistryKey>,
+    presented: Option<ClientStyles>,
+}
+
+#[derive(Default)]
+struct Settings {
+    reopen: Option<u32>,
+    hooks: Option<RegistryKey>,
+}
+
 #[derive(Default)]
 struct State {
     view: ViewState,
@@ -136,6 +218,11 @@ pub(crate) fn install(lua: &Lua, gband: &Table) -> mlua::Result<Table> {
     lua.set_app_data(State::default());
     lua.set_app_data(Hooks::default());
     lua.set_app_data(Timers::default());
+    lua.set_app_data(Settings::default());
+    lua.set_app_data(Look {
+        palette_dirty: true,
+        ..Look::default()
+    });
     let ui = lua.create_table()?;
     ui.set(
         "width",
@@ -230,7 +317,122 @@ fn host(lua: &Lua) -> mlua::Result<Table> {
             Ok(())
         })?,
     )?;
+    let palette = lua.create_table()?;
+    palette.set(
+        "set",
+        lua.create_function(|lua, spec: Table| set_palette(lua, read_palette(&spec)?))?,
+    )?;
+    palette.set(
+        "get",
+        lua.create_function(|lua, ()| palette_table(lua, &look(lua).palette))?,
+    )?;
+    host.set("palette", palette)?;
+    host.set(
+        "settings_reopen",
+        lua.create_function(|lua, line: Option<u32>| {
+            settings(lua).reopen = line;
+            Ok(())
+        })?,
+    )?;
+    host.set(
+        "settings_hooks",
+        lua.create_function(|lua, hooks: Table| {
+            settings(lua).hooks = Some(lua.create_registry_value(hooks)?);
+            Ok(())
+        })?,
+    )?;
+    host.set(
+        "client_styles",
+        lua.create_function(|lua, function: Function| {
+            look(lua).styles = Some(lua.create_registry_value(function)?);
+            Ok(())
+        })?,
+    )?;
     Ok(host)
+}
+
+fn settings(lua: &Lua) -> mlua::AppDataRefMut<'_, Settings> {
+    lua.app_data_mut::<Settings>()
+        .expect("the settings are installed with the runtime")
+}
+
+pub(crate) fn take_settings_reopen(lua: &Lua) -> Option<u32> {
+    settings(lua).reopen.take()
+}
+
+pub(crate) fn open_settings(lua: &Lua, line: u32) -> mlua::Result<()> {
+    let hooks = match &settings(lua).hooks {
+        Some(key) => lua.registry_value::<Table>(key)?,
+        None => return Ok(()),
+    };
+    hooks.get::<Function>("open")?.call(line)
+}
+
+fn look(lua: &Lua) -> mlua::AppDataRefMut<'_, Look> {
+    lua.app_data_mut::<Look>()
+        .expect("the look is installed with the runtime")
+}
+
+fn hex(text: &str) -> Option<Rgb> {
+    let hex = text.strip_prefix('#').filter(|hex| hex.len() == 6)?;
+    let channel = |at: usize| u8::from_str_radix(hex.get(at..at + 2)?, 16).ok();
+    Some((channel(0)?, channel(2)?, channel(4)?))
+}
+
+fn read_palette(spec: &Table) -> mlua::Result<Palette> {
+    let mut palette = Palette::default();
+    for (name, slot) in palette.fields() {
+        if let Some(text) = spec.get::<Option<String>>(name)? {
+            *slot = Some(hex(&text).ok_or_else(|| {
+                mlua::Error::runtime(format!("invalid palette color for `{name}`: {text}"))
+            })?);
+        }
+    }
+    Ok(palette)
+}
+
+fn palette_table(lua: &Lua, palette: &Palette) -> mlua::Result<Table> {
+    let table = lua.create_table()?;
+    let mut palette = *palette;
+    for (name, slot) in palette.fields() {
+        if let Some((r, g, b)) = *slot {
+            table.set(name, format!("#{r:02x}{g:02x}{b:02x}"))?;
+        }
+    }
+    Ok(table)
+}
+
+fn set_palette(lua: &Lua, palette: Palette) -> mlua::Result<()> {
+    let mut look = look(lua);
+    if look.palette != palette {
+        look.palette = palette;
+        look.palette_dirty = true;
+    }
+    Ok(())
+}
+
+pub(crate) fn take_palette(lua: &Lua) -> Option<Palette> {
+    let mut look = look(lua);
+    std::mem::take(&mut look.palette_dirty).then_some(look.palette)
+}
+
+pub(crate) fn take_client_styles(lua: &Lua) -> mlua::Result<Option<ClientStyles>> {
+    let function = match &look(lua).styles {
+        Some(key) => lua.registry_value::<Function>(key)?,
+        None => return Ok(None),
+    };
+    let table: Table = function.call(())?;
+    let styles = ClientStyles {
+        border: style(&table.get("border")?)?,
+        border_focused: style(&table.get("border_focused")?)?,
+        banner: style(&table.get("banner")?)?,
+    };
+    let mut look = look(lua);
+    if look.presented == Some(styles) {
+        return Ok(None);
+    }
+    look.presented = Some(styles);
+    Ok(Some(styles))
 }
 
 fn hooks(lua: &Lua) -> mlua::AppDataRefMut<'_, Hooks> {
@@ -379,14 +581,8 @@ fn color(value: Value) -> mlua::Result<Option<Color>> {
         Value::Nil => None,
         Value::Integer(index) => Some(Color::Index(u8::try_from(index).map_err(|_| invalid())?)),
         Value::String(text) => {
-            let text = text.to_str()?;
-            let hex = text
-                .strip_prefix('#')
-                .filter(|hex| hex.len() == 6)
-                .ok_or_else(invalid)?;
-            let channel =
-                |at: usize| u8::from_str_radix(&hex[at..at + 2], 16).map_err(|_| invalid());
-            Some(Color::Rgb(channel(0)?, channel(2)?, channel(4)?))
+            let (r, g, b) = hex(&text.to_str()?).ok_or_else(invalid)?;
+            Some(Color::Rgb(r, g, b))
         }
         _ => return Err(invalid()),
     })
@@ -594,6 +790,64 @@ mod tests {
         assert_eq!(truncate("abc", 1), "…");
         assert_eq!(truncate("a", 1), "a");
         assert_eq!(truncate("", 0), "");
+    }
+
+    fn gruvbox() -> Palette {
+        let mut palette = Palette {
+            fg: Some((0xeb, 0xdb, 0xb2)),
+            bg: Some((0x28, 0x28, 0x28)),
+            ..Palette::default()
+        };
+        palette.colors[1] = Some((0xcc, 0x24, 0x1d));
+        palette
+    }
+
+    #[test]
+    fn palette_set_marks_it_changed_once() {
+        let config = config("");
+        let lua = config.runtime.lua();
+        take_palette(lua);
+        set_palette(lua, gruvbox()).unwrap();
+        assert_eq!(take_palette(lua), Some(gruvbox()));
+        assert_eq!(take_palette(lua), None);
+        set_palette(lua, gruvbox()).unwrap();
+        assert_eq!(take_palette(lua), None);
+    }
+
+    #[test]
+    fn palette_set_replaces_every_field() {
+        let config = config("");
+        let lua = config.runtime.lua();
+        set_palette(lua, gruvbox()).unwrap();
+        let only_fg = Palette {
+            fg: Some((1, 2, 3)),
+            ..Palette::default()
+        };
+        set_palette(lua, only_fg).unwrap();
+        assert_eq!(take_palette(lua), Some(only_fg));
+    }
+
+    #[test]
+    fn palette_emptied() {
+        let config = config("");
+        let lua = config.runtime.lua();
+        set_palette(lua, gruvbox()).unwrap();
+        take_palette(lua);
+        set_palette(lua, Palette::default()).unwrap();
+        let taken = take_palette(lua).unwrap();
+        assert!(taken.is_empty());
+    }
+
+    #[test]
+    fn palette_restored_from_its_table() {
+        let config = config("");
+        let lua = config.runtime.lua();
+        set_palette(lua, gruvbox()).unwrap();
+        let saved = palette_table(lua, &look(lua).palette).unwrap();
+        assert_eq!(saved.get::<String>("red").unwrap(), "#cc241d");
+        set_palette(lua, Palette::default()).unwrap();
+        set_palette(lua, read_palette(&saved).unwrap()).unwrap();
+        assert_eq!(look(lua).palette, gruvbox());
     }
 
     #[test]

@@ -297,7 +297,7 @@ t.case("configuration of the case", function(g)
     size = "40x6",
     config = [[gband.plugin("gband.sidebar", { side = "right" })]],
   })
-  t.match(g.screen().row(0), "┐ *I$")
+  t.match(g.screen().row(0), "╮ *I$")
   t.eq(g.screen().cell(0, 39).char, "I")
   t.eq(g.screen().cols, 40)
   t.eq(g.screen().rows, 6)
@@ -344,7 +344,7 @@ fn key_style_of_a_case() {
     let project = Project::new("keystyle");
     project.file(
         "tests/keystyle_spec.lua",
-        r#"local t = require("gband.test")
+        r##"local t = require("gband.test")
 
 t.case("default configuration without the chooser", function(g)
   g.start()
@@ -354,7 +354,7 @@ t.case("default configuration without the chooser", function(g)
 end)
 
 t.case("first start in a case", function(g)
-  g.start({ keystyle = false })
+  g.start({ keystyle = false, theme = false })
   g.settle()
   t.eq(g.client("return #gband.win.list()"), 1)
   t.eq(g.client("return gband.win.info(gband.win.list()[1]).focused"), true)
@@ -381,7 +381,41 @@ t.case("unknown key style", function(g)
   end)
   t.match(err, "keystyle_spec.lua:34: `keystyle` of g.start")
 end)
-"#,
+
+t.case("terminal theme by default", function(g)
+  g.start()
+  t.eq(g.client("return gband.colorscheme()"), "terminal")
+  t.eq(g.client("return gband.settings.theme()"), "terminal")
+end)
+
+t.case("theme of a case", function(g)
+  g.start({ theme = "gruvbox" })
+  t.eq(g.client("return gband.palette.get().bg"), "#282828")
+end)
+
+t.case("no theme saved", function(g)
+  g.start({ theme = false })
+  t.eq(g.client("return gband.settings.theme()"), nil)
+  t.eq(g.client("return gband.colorscheme()"), "default")
+end)
+
+t.case("files replace the saved theme", function(g)
+  g.start({ theme = "nord", files = { ["user/theme.lua"] = 'return "dracula"' } })
+  t.eq(g.client("return gband.colorscheme()"), "dracula")
+end)
+
+t.case("invalid theme", function(g)
+  local ok, err = pcall(function()
+    g.start({ theme = "../x" })
+  end)
+  t.eq(ok, false)
+  t.match(err, "`theme` of g.start")
+  ok, err = pcall(function()
+    g.start({ theme = 3 })
+  end)
+  t.match(err, "`theme` of g.start")
+end)
+"##,
     );
     let output = project.run(&[]);
     assert_passed(&output);
@@ -507,7 +541,7 @@ t.case("open a window by key", function(g)
   g.keys("ctrl+space n")
   g.settle()
   t.eq(g.client("return #gband.layout().bands[1].columns"), 2)
-  local _, corners = g.screen().row(0):gsub("┐", "")
+  local _, corners = g.screen().row(0):gsub("╮", "")
   t.eq(corners, 2)
 end)
 
@@ -597,7 +631,7 @@ fn observing_a_case() {
 
 t.case("sidebar colour", function(g)
   g.start()
-  t.eq(g.screen().cell(0, 0).fg, "#7aa2f7")
+  t.eq(g.screen().cell(0, 0).fg, 4)
   t.eq(g.screen().cell(0, 0).char, "I")
   t.eq(g.screen().cursor.visible, true)
 end)
@@ -892,7 +926,7 @@ t.case("key effect is drawn", function(g)
   g.start({ size = "60x12" })
   g.keys("ctrl+space n")
   g.settle()
-  local _, corners = g.screen().row(0):gsub("┐", "")
+  local _, corners = g.screen().row(0):gsub("╮", "")
   t.eq(corners, 2)
 end)
 

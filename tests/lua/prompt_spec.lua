@@ -53,7 +53,8 @@ t.case("the key list holds the prompt between the key list and detach", function
   local list = row_of(g, "list the keys")
   t.ok(list, "the key list's own line is shown")
   t.match(g.screen().row(list + 1), "│:%s+run Lua")
-  t.match(g.screen().row(list + 2), "│D%s+detach")
+  t.match(g.screen().row(list + 2), "│s%s+settings")
+  t.match(g.screen().row(list + 3), "│D%s+detach")
   local order = g.client([[
     local keys = {}
     for _, entry in ipairs(gband.keymap.list("prefix")) do
@@ -61,6 +62,6 @@ t.case("the key list holds the prompt between the key list and detach", function
     end
     return table.concat(keys, " ")
   ]])
-  t.match(order, "%? : D ")
+  t.match(order, "%? : s D ")
   g.expect_screenshot("hint")
 end)
