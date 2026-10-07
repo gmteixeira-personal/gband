@@ -43,7 +43,7 @@ A failure to prepare the directory SHALL be recorded in the process's log, and S
 - **AND** the client attaches with the bindings of the default configuration
 
 ### Requirement: Configuration file
-The client configuration file SHALL be `user/init.lua` in the configuration directory. Each client SHALL load its configuration when it starts, after preparing the configuration directory. Loading SHALL use one new Lua state, starting from the declared defaults of the client options and no key bindings, and SHALL evaluate the init file and then the `client.lua` files the plugins capability sources from the runtimepath. The init file SHALL be the configuration file when it exists, and the default client configuration otherwise. Before the init file, loading SHALL install only the client's `gband` API and the bundled `default` colorscheme, as the colorschemes capability defines. Nothing of the default configuration SHALL be evaluated before the init file: the configuration file replaces the default configuration rather than adding to it. A missing configuration file SHALL NOT be an error. The client SHALL use the prefix, the key tables, the camera policy, the notification style, the highlight groups, the bars and the callbacks. The server SHALL NOT evaluate the client configuration; it loads the server configuration as the server-runtime capability defines.
+The client configuration file SHALL be `user/init.lua` in the configuration directory. Each client SHALL load its configuration when it starts, after preparing the configuration directory. Loading SHALL use one new Lua state, starting from the declared defaults of the client options and no key bindings, and SHALL evaluate the init file and then the `client.lua` files the plugins capability sources from the runtimepath. The init file SHALL be the configuration file when it exists, and the default client configuration otherwise. Before the init file, loading SHALL install only the client's `gband` API and load the start theme: the saved theme, or the bundled `default` theme, as the colorschemes capability defines. Nothing of the default configuration SHALL be evaluated before the init file: the configuration file replaces the default configuration rather than adding to it. A missing configuration file SHALL NOT be an error. The client SHALL use the prefix, the key tables, the camera policy, the notification style, the highlight groups, the bars and the callbacks. The server SHALL NOT evaluate the client configuration; it loads the server configuration as the server-runtime capability defines.
 
 #### Scenario: No configuration file
 - **WHEN** no `user/init.lua` exists, no plugin directory exists, and a client attaches
@@ -68,9 +68,9 @@ The client configuration file SHALL be `user/init.lua` in the configuration dire
 - **THEN** the new window's column has width 1/3
 
 ### Requirement: Defaults use the public API
-The default configuration SHALL use only the `gband` API that the configuration file can use. It SHALL set the options to their declared defaults. It SHALL make its key bindings only by calling `gband.keystyle.use()` with no argument, as the key-style capability defines, so the saved key style, or the modal key style when none is saved, makes them. It SHALL make no other binding and declare no mode. It SHALL set up the key list plugin `gband.keylist` and the Lua prompt plugin `gband.prompt` only through that call. It SHALL then set up, with `gband.plugin` and no options, the bundled error list plugin `gband.errors`, then the bundled sidebar plugin `gband.sidebar`, in that order, and register the offer of the key-style capability's "Offer on the first start". Evaluated alone, with no configuration directory, it SHALL produce the declared defaults of the options and the default key bindings of the client-attach capability for the modal key style.
+The default configuration SHALL use only the `gband` API that the configuration file can use. It SHALL set the options to their declared defaults. It SHALL make its key bindings only by calling `gband.keystyle.use()` with no argument, as the key-style capability defines, so the saved key style, or the modal key style when none is saved, makes them. It SHALL make no other binding and declare no mode. It SHALL set up the key list plugin `gband.keylist` and the Lua prompt plugin `gband.prompt` only through that call. It SHALL then set up, with `gband.plugin` and no options, the bundled error list plugin `gband.errors`, then the bundled sidebar plugin `gband.sidebar` unless `gband.settings.sidebar()` returns `false`, in that order, and register the offer of the settings capability's "Offer on the first start". Evaluated alone, with no configuration directory, it SHALL produce the declared defaults of the options and the default key bindings of the client-attach capability for the modal key style.
 
-The default key bindings and the declaration of the `navigation` mode SHALL exist only in the key style presets. The setup of the error list and sidebar plugins and the offer of the chooser SHALL exist only in the default configuration.
+The default key bindings and the declaration of the `navigation` mode SHALL exist only in the key style presets. The setup of the error list and sidebar plugins and the offer of the settings window SHALL exist only in the default configuration.
 
 #### Scenario: Defaults reproduce the built-in behaviour
 - **WHEN** the default configuration is evaluated alone
@@ -102,6 +102,20 @@ The default key bindings and the declaration of the `navigation` mode SHALL exis
 - **THEN** the entry for `:` has the action `prompt.open` and the description `run Lua`
 - **AND** it comes right after the entry for `?` and before the entry for `D`
 - **AND** `gband.keymap.list("root")` holds no entry
+
+#### Scenario: Settings bound by the defaults
+- **WHEN** the default configuration is evaluated alone and `gband.keymap.list("prefix")` is read
+- **THEN** the entry for `s` has the description `settings`
+- **AND** it comes right after the entry for `:` and before the entry for `D`
+
+#### Scenario: Sidebar left out by the saved setting
+- **WHEN** `user/sidebar.lua` holds `return false`, no `user/init.lua` exists, and a client attaches
+- **THEN** `gband.bar.list()` holds no bar
+- **AND** an error is shown as the banner on the ribbon area's bottom row
+
+#### Scenario: Saved theme with a user file
+- **WHEN** `user/theme.lua` holds `return "nord"` and `user/init.lua` binds only `alt+h`
+- **THEN** `gband.colorscheme()` returns `nord` once the file has loaded
 
 #### Scenario: No binding in the defaults file
 - **WHEN** `defaults/init.lua` is read
@@ -399,9 +413,11 @@ Every option SHALL have a name, a type, a declared default and a description, an
 | `loop_bands` | a boolean | `true` |
 | `notify_style` | `"osc9"`, `"osc777"`, `"bell"` or `"none"` | `"osc9"` |
 | `tile_border_sides` | a list of side names, as the borders capability defines them | `{ "top", "right", "bottom", "left" }` |
-| `tile_border_chars` | a character set, as the borders capability defines it | `"plain"` |
+| `tile_border_chars` | a character set, as the borders capability defines it | `"rounded"` |
+| `focused_tile_border_chars` | a character set, for the focused tiled window's border | `"rounded"` |
 | `floating_border_sides` | a list of side names | `{ "top", "right", "bottom", "left" }` |
-| `floating_border_chars` | a character set | `"plain"` |
+| `floating_border_chars` | a character set | `"rounded"` |
+| `focused_floating_border_chars` | a character set, for the focused floating window's border | `"rounded"` |
 | `width_step` | a number greater than 0 and at most 10000 | `1/10` |
 | `height_step` | a number greater than 0 and at most 1 | `1/10` |
 
@@ -416,7 +432,7 @@ A process SHALL know only the options of its own side, and options declared in i
 
 `gband.set` SHALL take one table of options. Each call SHALL change only the options the table names, and a later call SHALL override an earlier one. An unknown option name, a value of the wrong type, a value out of range or an unknown camera policy given to `gband.set` SHALL be a configuration error naming the option.
 
-Reading `gband.opt.<name>` SHALL return the option's current value: a key name for `prefix`, a number for a width or a step, a list of numbers in ascending order for `width_presets`, a string for `center_focused_column` and `notify_style`, a list of side names in the held order for `tile_border_sides` and `floating_border_sides`, the name or a new list of the eight strings for `tile_border_chars` and `floating_border_chars`, a boolean for `loop_bands`, and the value as set for a declared option. Assigning `gband.opt.<name>` SHALL set the option. A value that the option's type rejects SHALL be reported as a configuration error at the line of the assignment, SHALL NOT fail the load, and SHALL set the option to its declared default. An assignment to a name no option declares SHALL be held until an option of that name is declared later in the same load, and then validated; one still undeclared when loading finishes SHALL be reported as a configuration error at the line of the assignment, and SHALL NOT fail the load. The error for a built-in option of the other side SHALL name the side that owns it.
+Reading `gband.opt.<name>` SHALL return the option's current value: a key name for `prefix`, a number for a width or a step, a list of numbers in ascending order for `width_presets`, a string for `center_focused_column` and `notify_style`, a list of side names in the held order for `tile_border_sides` and `floating_border_sides`, the name or a new list of the eight strings for `tile_border_chars`, `focused_tile_border_chars`, `floating_border_chars` and `focused_floating_border_chars`, a boolean for `loop_bands`, and the value as set for a declared option. Assigning `gband.opt.<name>` SHALL set the option. A value that the option's type rejects SHALL be reported as a configuration error at the line of the assignment, SHALL NOT fail the load, and SHALL set the option to its declared default. An assignment to a name no option declares SHALL be held until an option of that name is declared later in the same load, and then validated; one still undeclared when loading finishes SHALL be reported as a configuration error at the line of the assignment, and SHALL NOT fail the load. The error for a built-in option of the other side SHALL name the side that owns it.
 
 `gband.opt.declare(name, spec)` SHALL declare an option under its full name, as the plugins capability defines, and return that full name. `spec.type` SHALL be `"boolean"`, `"integer"`, `"number"` or `"string"`. `spec.values`, optional, SHALL list the only values allowed. `spec.default` SHALL be a valid value, and `spec.desc` an optional description. Declaring a name already declared, an unknown type, or an invalid default SHALL be an error at the line of the call. `gband.opt.list()` SHALL return one table per option of its side, built-in and declared, in ascending byte order of names, each holding `name`, `type`, `default`, `value` and `desc`.
 
@@ -508,6 +524,15 @@ Options SHALL be set and declared only while the configuration loads. Setting or
 - **WHEN** line 3 of `user/init.lua` sets `gband.opt.loop_bands = "yes"`
 - **THEN** loading succeeds with `loop_bands` set to `true`
 - **AND** an error at `user/init.lua` line 3 naming `loop_bands` is reported
+
+#### Scenario: Rounded borders by default
+- **WHEN** `user/init.lua` sets no border option and reads `gband.opt.tile_border_chars`, `gband.opt.focused_tile_border_chars`, `gband.opt.floating_border_chars` and `gband.opt.focused_floating_border_chars`
+- **THEN** each value read is `"rounded"`
+
+#### Scenario: Focused border characters of the wrong type
+- **WHEN** line 2 of `user/init.lua` sets `gband.opt.focused_tile_border_chars = "heavy"`
+- **THEN** loading succeeds with `focused_tile_border_chars` set to `"rounded"`
+- **AND** an error at `user/init.lua` line 2 naming `focused_tile_border_chars` is reported
 
 ### Requirement: Reporting configuration errors
 A configuration error SHALL be reported as the file's path, a colon, the line, a colon and a message. The line SHALL be the line of a syntax error, the line where a runtime error was raised, or the line of the call or assignment that received the invalid value. A plugin error SHALL be reported the same way, preceded by the plugin's name, a colon and a space. Each process SHALL record every configuration error and plugin error of its own Lua in its log. The client SHALL also report the errors of the server's Lua that the server sends it, as the server-runtime capability defines, preceded by `server: `, and the plugin requirement errors of the plugin-bridge capability. The client SHALL keep its error list: every error it has reported since the list was last emptied, oldest first. A load with none of its own SHALL empty the list, and so SHALL clearing the errors. `gband.errors()` SHALL return a new list of the error list's texts, oldest first. The client SHALL show the latest error until the list is emptied. While the sidebar's error marker is drawn, as the sidebar capability defines, the client SHALL show the error's text only through the error list. While no error marker is drawn, the client SHALL show it as a banner on the bottom row of the ribbon area, over the ribbon and cut to the ribbon area's width. Neither SHALL change the size the client reports.

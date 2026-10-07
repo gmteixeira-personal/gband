@@ -208,6 +208,7 @@ With the modal key style, the bindings SHALL be: Ctrl+Space as the prefix, no bi
 | Ctrl+Up | `prefix ctrl+up` | move the focused window, or its floating box, up | session | |
 | `?` | `prefix ?` | open the key list, as the key-list capability defines, which returns to interactive mode | client | |
 | `:` | `prefix :` | open the Lua prompt, as the lua-prompt capability defines, which returns to interactive mode | client | |
+| `s` | `prefix s` | open the settings window, as the settings capability defines, which returns to interactive mode | client | `settings` |
 | `D` | `prefix D` | detach | client | |
 | Escape | `prefix escape` | return to interactive mode | — | `interactive mode` |
 | Enter | `prefix enter` | return to interactive mode | — | `interactive mode` |
@@ -253,7 +254,7 @@ Where a scenario of this requirement names no key style, the modal key style is 
 - **AND** the sidebar shows `N` on row 0
 
 #### Scenario: Repeated resize
-- **WHEN** the client's 80×24 terminal sets the screen area, the client has no bar, the only window sits in a column of width 1/2, and the user presses Ctrl+Space, `=`, `=`, then Escape, waits, and runs `tput cols`
+- **WHEN** the client's 80×24 terminal sets the screen area, the only window sits in a column of width 1/2, and the user presses Ctrl+Space, `=`, `=`, then Escape, waits, and runs `tput cols`
 - **THEN** the column's width is 7/10 and the tile is 56 columns wide
 - **AND** the window prints `54`, so the keys after Escape reached it
 
@@ -287,7 +288,7 @@ Where a scenario of this requirement names no key style, the modal key style is 
 - **AND** the second band holds the new window
 
 #### Scenario: Grow the column
-- **WHEN** the client's 80×24 terminal sets the screen area, the client has no bar, the only window sits in a column of width 1/2, and the user presses Ctrl+Space, `=`, then Escape, waits, and runs `tput cols`
+- **WHEN** the client's 80×24 terminal sets the screen area, the only window sits in a column of width 1/2, and the user presses Ctrl+Space, `=`, then Escape, waits, and runs `tput cols`
 - **THEN** the tile is 48 columns wide
 - **AND** the window prints `46`
 
@@ -389,6 +390,15 @@ Where a scenario of this requirement names no key style, the modal key style is 
 - **WHEN** no `user/init.lua` exists and the user presses Ctrl+Space then `:`
 - **THEN** a floating plugin window titled `lua` shows `:` and has focus
 - **AND** `root` is active, so a following `j` is typed into the prompt and does not focus the window below
+
+#### Scenario: Open the settings window
+- **WHEN** no `user/init.lua` exists and the user presses Ctrl+Space then `s`
+- **THEN** a floating plugin window titled `settings` has focus
+- **AND** `root` is active, so a following `j` moves the window's cursor line and does not focus the window below
+
+#### Scenario: Settings with the direct key style
+- **WHEN** the direct key style is saved, no `user/init.lua` exists, and the user presses Ctrl+Space then `s`
+- **THEN** the settings window is open and focused
 
 #### Scenario: Colon reaches the focused window
 - **WHEN** no `user/init.lua` exists, `root` is active, and the user types `:`
