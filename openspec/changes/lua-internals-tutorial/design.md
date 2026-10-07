@@ -16,7 +16,7 @@ What gband writes under `defaults/`, from `crates/lua/src/directory.rs` (`prepar
 | `defaults/lua/gband/<file>` | `crates/lua/src/runtime/gband/<file>`, for every module except the two presets |
 | `defaults/colors/<name>.lua` | `crates/lua/src/runtime/gband/colors/<name>.lua` |
 
-That is 30 files, about 3,270 lines with blank lines. Every top-level statement in them starts in the first column. `defaults/colors/default.lua` is empty. Nine palette themes are the same text once their `#rrggbb` colors are masked: `dracula`, `gruvbox`, `kanagawa`, `nord`, `one-dark`, `rose-pine`, `solarized`, `tokyo-night` and `vesper`. The four `catppuccin-*` flavors and the `catppuccin` alias are one line each and differ in the flavor's name. `terminal` is 16 calls to `gband.hl.set`.
+That is 35 files, about 3,300 lines with blank lines. Every top-level statement in them starts in the first column. The sixteen colorschemes and `defaults/lua/gband/theme/catppuccin.lua` hold about 400 of those lines, nearly all color data. Nine palette themes, `gruvbox` among them, are one call to `require("gband.theme").apply` with a palette and UI colors. The four `catppuccin-*` flavors and the `catppuccin` alias are one line each and read their colors from `theme/catppuccin.lua`. `terminal` is 16 calls to `gband.hl.set`, and `default.lua` is empty.
 
 `gband.core` exists in the client only. The bundled Lua reaches it through `local core = gband.core`, so a quote holds `core.timer`, never `gband.core.timer`.
 
@@ -35,7 +35,7 @@ That is 30 files, about 3,270 lines with blank lines. Every top-level statement 
 
 ### The covered files are what gband writes, read from a scratch directory
 
-The check runs `gband_lua::prepare` on a scratch configuration directory and walks its `defaults/`. The set of covered files and the text a quote is compared with are then exactly what a reader finds on disk. A bundled file added later is covered with no edit to the check.
+The check runs `gband_lua::prepare` on a scratch configuration directory and walks its `defaults/`. The set of files and the text a quote is compared with are then exactly what a reader finds on disk. A bundled file added later is covered with no edit to the check, unless the theme-data exemption below names it.
 
 A table from reader paths to repository paths in the check was rejected. It would drift when a module is added. `bundled_files()` alone would also miss `defaults/init.lua`, `defaults/server.lua` and the presets' real location, `defaults/keystyle/`.
 
@@ -62,11 +62,13 @@ In `docs/internals/`:
 
 GitHub renders `lua <path>` as Lua, because it uses only the first word. The scripting tutorial's rules for `docs/tutorial/` are unchanged.
 
-### The theme exemption masks colors only
+### One colorscheme is covered
 
-A colorscheme needs no quotes when, with every `#rrggbb` replaced by one placeholder, its text equals a colorscheme whose every non-blank line is quoted. Chapter 01 quotes `nord` in full, so the eight other palette themes need no quotes. It also quotes `terminal` and the five one-line `catppuccin` files, because each differs from the others in more than colors. It names `default.lua`, which is empty. The theme quotes total about 50 lines instead of about 280.
+The coverage and naming checks skip every file under `defaults/colors/` except `gruvbox.lua`, and skip `defaults/lua/gband/theme/catppuccin.lua`. Chapter 01 quotes `gruvbox` in full: 29 lines that show how a colorscheme hands a palette and UI colors to `gband.theme`. The other colorschemes are built the same way, or are one-line catppuccin flavors whose tables are the skipped module. The quote rule still applies to a skipped file, so a chapter that chooses to show one shows it verbatim.
 
-Masking string literals or identifiers too was rejected. A theme that renamed or added a palette field would still match and pass. Quoting all sixteen files was rejected as 230 lines of hex values that teach nothing new.
+The exemption is a rule, not a list of theme names: a colorscheme added later is skipped with no edit to the check. If `gruvbox.lua` is removed or renamed, chapter 01's quote names a path gband does not write, and the quote check fails.
+
+Masking colors, so that the eight palette themes that match a quoted one need no quotes, was rejected. It still required quoting `terminal`, the five catppuccin files and the 118-line color module: about 170 lines of data that teach nothing `gruvbox` does not. Quoting all sixteen colorschemes was rejected for the same reason.
 
 ### Naming is checked outside fenced blocks
 
@@ -74,7 +76,7 @@ The file-naming check and the `gband.core` check search the chapters' text with 
 
 ### One check file, generalized over two tutorials
 
-`crates/lua/tests/tutorial.rs` gains a tutorial description: its docs directory, its examples directory, and whether every chapter needs a directory. The scripting tutorial requires a directory for every chapter. The internals tutorial requires one only for a chapter that has a `lua` block with no path, or a `screen` block. The chapter-to-directory check, the `lua` block check and the `screen` block check take this description. The quote, coverage, theme, naming and `gband.core` checks are internals-only tests in the same file. The `tutorial` test in `tests/lua_specs.rs` discovers directories under `examples/internals/` as well as `examples/tutorial/`.
+`crates/lua/tests/tutorial.rs` gains a tutorial description: its docs directory, its examples directory, and whether every chapter needs a directory. The scripting tutorial requires a directory for every chapter. The internals tutorial requires one only for a chapter that has a `lua` block with no path, or a `screen` block. The chapter-to-directory check, the `lua` block check and the `screen` block check take this description. The quote, coverage, naming and `gband.core` checks are internals-only tests in the same file. The `tutorial` test in `tests/lua_specs.rs` discovers directories under `examples/internals/` as well as `examples/tutorial/`.
 
 A second check file was rejected. Each file under `crates/lua/tests/` is its own crate, so the fence parser and the screen comparison would have to move into `common/` or be copied.
 
@@ -83,9 +85,9 @@ A second check file was rejected. Each file under `crates/lua/tests/` is its own
 | chapter | quotes | lines |
 |---|---|---|
 | 00-boundary | `defaults/lua/gband/prelude.lua` | 8 |
-| 01-themes | `defaults/colors/nord.lua`, `terminal.lua`, the four `catppuccin-*.lua` and `catppuccin.lua`; names `default.lua` and the eight other palette themes | 50 |
+| 01-themes | `defaults/colors/gruvbox.lua` | 29 |
 | 02-highlights | `defaults/lua/gband/palette.lua`, `hl.lua` | 311 |
-| 03-colorschemes | `colorscheme.lua`, `theme.lua`, `theme/catppuccin.lua` | 211 |
+| 03-colorschemes | `colorscheme.lua`, `theme.lua` | 93 |
 | 04-bars | `bar.lua` | 374 |
 | 05-plugin-windows | `win.lua` from the top through `api.list`: state, line handling, placing, rendering, option checks and the API | about 585 |
 | 06-window-provider | `win.lua` from `LINE_STEPS` to the end: keys, mouse, the hooks, `core.provide("windows", hooks)` and `gband.win = api` | about 245 |
@@ -110,4 +112,4 @@ The prelude must keep `gband.settings`: `gband.colorscheme`'s `start` and the ke
 - [A change in flight that edits bundled Lua meets this change at `/ready`] -> Merging `dev` into that change brings the coverage check, which then fails on its edits. Its implementer revises the quotes. Changes proposed after this one is archived should list `docs/internals/` in Expected Files when they touch bundled Lua.
 - [A quote updated mechanically can leave stale prose] -> The checks cannot read prose. The failing quote's paragraph is the one to reread, and review catches the rest.
 - [Uniqueness can force an awkward boundary] -> Add a neighbouring line to the quote. Lines that repeat in a file, such as `end`, are only ever ambiguous on their own.
-- [Thirteen chapters, about 3,000 quoted lines] -> The tasks split the writing per chapter. The quote check runs from the first task, so each chapter's quotes are checked as they are written. The coverage and naming checks pass only once the last chapter is in, so they are verified in the final task.
+- [Thirteen chapters, about 2,900 quoted lines] -> The tasks split the writing per chapter. The quote check runs from the first task, so each chapter's quotes are checked as they are written. The coverage and naming checks pass only once the last chapter is in, so they are verified in the final task.

@@ -6,9 +6,9 @@ gband SHALL include an internals tutorial in `docs/internals/`. It SHALL explain
 | chapter | teaches |
 |---|---|
 | `00-boundary.md` | what the executable provides and what Lua builds: `gband.core`, the providers, the prelude, `require` and the runtimepath, the copies under `defaults/`, and replacing a bundled file by copying it under `user/` |
-| `01-themes.md` | colorscheme files: a palette theme, the `terminal` theme, the `catppuccin` flavors and alias, and the empty `default` theme |
+| `01-themes.md` | colorscheme files, through the `gruvbox` theme |
 | `02-highlights.md` | the modules `gband.palette` and `gband.hl`, and the styles provider |
-| `03-colorschemes.md` | the modules `gband.colorscheme`, `gband.theme` and `gband.theme.catppuccin` |
+| `03-colorschemes.md` | the modules `gband.colorscheme` and `gband.theme` |
 | `04-bars.md` | the module `gband.bar` and the bars provider |
 | `05-plugin-windows.md` | the state, drawing and API of the module `gband.win` |
 | `06-window-provider.md` | the windows provider of `gband.win`: its input, layout and drawing functions |
@@ -34,7 +34,7 @@ The index SHALL link to every chapter, in order. The Scripting section of `READM
 - **THEN** it links to `docs/internals/README.md`
 
 ### Requirement: Quotes of bundled files
-A fenced code block in an internals chapter whose info string is `lua` followed by a second word is a quote. The second word SHALL be the path, relative to the configuration directory, of a file that gband writes under `defaults/`, such as `defaults/lua/gband/bar.lua` or `defaults/colors/nord.lua`. The quote's lines SHALL equal a run of consecutive lines of that file's text, verbatim, indentation and blank lines included. The run SHALL occur at exactly one position in the file. gband's test suite SHALL fail when a quote names a path that gband does not write, matches no run of the file, or matches more than one, and SHALL name the chapter, the path and the quote's first line.
+A fenced code block in an internals chapter whose info string is `lua` followed by a second word is a quote. The second word SHALL be the path, relative to the configuration directory, of a file that gband writes under `defaults/`, such as `defaults/lua/gband/bar.lua` or `defaults/colors/gruvbox.lua`. The quote's lines SHALL equal a run of consecutive lines of that file's text, verbatim, indentation and blank lines included. The run SHALL occur at exactly one position in the file. gband's test suite SHALL fail when a quote names a path that gband does not write, matches no run of the file, or matches more than one, and SHALL name the chapter, the path and the quote's first line.
 
 #### Scenario: Quote found
 - **WHEN** `docs/internals/04-bars.md` holds a block opened by `` ```lua defaults/lua/gband/bar.lua `` whose lines equal lines 1 to 12 of the text gband writes at `defaults/lua/gband/bar.lua`
@@ -53,11 +53,11 @@ A fenced code block in an internals chapter whose info string is `lua` followed 
 - **THEN** gband's test suite fails and names the chapter and `defaults/lua/gband/menu.lua`
 
 ### Requirement: Every bundled file covered
-Every non-blank line of every file that gband writes under `defaults/` SHALL be in exactly one quote across the internals chapters, and no line SHALL be in more than one quote. Quotes MAY appear in any order and in any chapter. A file under `defaults/colors/` needs no quotes when its text, with every `#rrggbb` color replaced by one placeholder, equals the text of another file under `defaults/colors/` whose every non-blank line is quoted, treated the same way. Every file that gband writes under `defaults/` SHALL be named by its path, such as `defaults/colors/default.lua`, outside fenced code blocks in at least one internals chapter. gband's test suite SHALL fail when a line is quoted in no chapter, naming the file, the line's number and its text; when a line is quoted twice, naming the file, the line's number and both chapters; and when a file is named in no chapter, naming the file.
+The covered files SHALL be every file that gband writes under `defaults/`, except the files under `defaults/colors/` other than `defaults/colors/gruvbox.lua`, and except `defaults/lua/gband/theme/catppuccin.lua`. Every non-blank line of every covered file SHALL be in exactly one quote across the internals chapters, and no line of any file SHALL be in more than one quote. Quotes MAY appear in any order and in any chapter. Every covered file SHALL be named by its path, such as `defaults/colors/gruvbox.lua`, outside fenced code blocks in at least one internals chapter. gband's test suite SHALL fail when a line of a covered file is quoted in no chapter, naming the file, the line's number and its text; when a line is quoted twice, naming the file, the line's number and both chapters; and when a covered file is named in no chapter, naming the file.
 
 #### Scenario: Whole file quoted
 - **WHEN** gband's test suite runs on the tutorial as written
-- **THEN** every non-blank line of `defaults/lua/gband/win.lua`, `defaults/keystyle/modal.lua`, `defaults/init.lua` and every other file gband writes under `defaults/` is in exactly one quote, apart from the colorschemes the exemption covers
+- **THEN** every non-blank line of `defaults/lua/gband/win.lua`, `defaults/keystyle/modal.lua`, `defaults/init.lua`, `defaults/colors/gruvbox.lua` and every other covered file is in exactly one quote
 
 #### Scenario: New function not explained
 - **WHEN** a change adds a function to the bundled `gband.bar` module and no chapter quotes it
@@ -67,21 +67,17 @@ Every non-blank line of every file that gband writes under `defaults/` SHALL be 
 - **WHEN** `05-plugin-windows.md` and `06-window-provider.md` both quote the line of `defaults/lua/gband/win.lua` that registers the windows provider
 - **THEN** gband's test suite fails and names the file, the line's number and both chapters
 
-#### Scenario: Theme that differs only in colors
-- **WHEN** every line of `defaults/colors/nord.lua` is quoted, and `defaults/colors/gruvbox.lua` differs from it only in its `#rrggbb` colors
-- **THEN** `defaults/colors/gruvbox.lua` needs no quotes
+#### Scenario: Covered theme changed
+- **WHEN** a change adds a field to the `ui` table of the bundled `gruvbox` theme and no chapter quotes the new line
+- **THEN** gband's test suite fails and names `defaults/colors/gruvbox.lua`, the new line's number and its text
 
-#### Scenario: Theme that gains a field
-- **WHEN** a change adds a field to the `ui` table of the bundled `gruvbox` theme only
-- **THEN** gband's test suite fails and names a line of `defaults/colors/gruvbox.lua` that no quote holds
-
-#### Scenario: Empty file named
-- **WHEN** `defaults/colors/default.lua` is empty and `docs/internals/01-themes.md` names `defaults/colors/default.lua` in its text
-- **THEN** the check passes for that file
+#### Scenario: Other theme data not covered
+- **WHEN** a change edits a color of the bundled `nord` theme and a color in `defaults/lua/gband/theme/catppuccin.lua`, and adds a bundled colorscheme `defaults/colors/ocean.lua`, and no chapter quotes or names any of them
+- **THEN** the coverage and naming checks pass
 
 #### Scenario: File never named
-- **WHEN** a change adds a bundled colorscheme whose text equals `defaults/colors/nord.lua` with other colors, and no chapter names its path
-- **THEN** gband's test suite fails and names the new file's path
+- **WHEN** a change adds a bundled module whose copy is `defaults/lua/gband/notes.lua`, every line of it is quoted, and no chapter names `defaults/lua/gband/notes.lua` outside fenced code blocks
+- **THEN** gband's test suite fails and names `defaults/lua/gband/notes.lua`
 
 ### Requirement: Every primitive taught
 For every field of the client's `gband.core` table, at every depth, collected with only the API installed and before any configuration file runs, the text `gband.core.<path>`, such as `gband.core.provide` or `gband.core.palette.set`, SHALL appear outside fenced code blocks in at least one internals chapter. gband's test suite SHALL fail when a field appears in no chapter, and SHALL name the field.
