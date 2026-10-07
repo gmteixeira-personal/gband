@@ -762,6 +762,7 @@ fn float(layout: &mut Layout, window: WindowId) {
         SessionAction::ToggleFloating {
             window,
             after: None,
+            floating: None,
         },
     );
     assert!(layout.floating(window).is_some());
@@ -1122,6 +1123,7 @@ fn tile_the_focused_floating_window_after_the_tiled_focus() {
         Some(SessionAction::ToggleFloating {
             window: floated[0],
             after: Some(windows[0]),
+            floating: None,
         })
     );
 }

@@ -420,7 +420,7 @@ The actions in `gband.action`:
 | `drag_band` | when bound to a mouse button, slide the band or switch bands with the mouse |
 
 `gband.action.list()` lists every action with its description.
-A target table names the window an action acts on, and the target of `drag_resize_window` names in `edges` the edges a drag moves.
+A target table names the window an action acts on, the target of `drag_resize_window` names in `edges` the edges a drag moves, and the target of `toggle_window_floating` can name in `floating` the layer to put the window in, floating or tiling it without toggling.
 The four grow and shrink actions also take a `step`, so one binding can resize by another amount than the options give:
 
 ```lua

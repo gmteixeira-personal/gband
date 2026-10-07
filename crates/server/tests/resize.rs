@@ -246,6 +246,7 @@ async fn floating_window_takes_its_box_size() {
         SessionAction::ToggleFloating {
             window,
             after: None,
+            floating: None,
         },
         SessionAction::SetWidth {
             window,

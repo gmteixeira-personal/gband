@@ -31,8 +31,8 @@ fn session(name: &str) -> SessionName {
 }
 
 #[test]
-fn protocol_version_is_ten() {
-    assert_eq!(PROTOCOL_VERSION, 10);
+fn protocol_version_is_eleven() {
+    assert_eq!(PROTOCOL_VERSION, 11);
 }
 
 #[test]
@@ -274,10 +274,22 @@ fn session_actions_round_trip() {
         SessionAction::ToggleFloating {
             window: WindowId(3),
             after: Some(WindowId(1)),
+            floating: None,
         },
         SessionAction::ToggleFloating {
             window: WindowId(3),
             after: None,
+            floating: None,
+        },
+        SessionAction::ToggleFloating {
+            window: WindowId(3),
+            after: None,
+            floating: Some(true),
+        },
+        SessionAction::ToggleFloating {
+            window: WindowId(4),
+            after: Some(WindowId(1)),
+            floating: Some(false),
         },
         SessionAction::MoveColumn {
             window: WindowId(2),
@@ -374,6 +386,7 @@ fn floating_windows_in_the_layout_round_trip() {
         SessionAction::ToggleFloating {
             window: windows[1],
             after: None,
+            floating: None,
         },
         SessionAction::SetWidth {
             window: windows[1],
@@ -391,10 +404,12 @@ fn floating_windows_in_the_layout_round_trip() {
         SessionAction::ToggleFloating {
             window: windows[2],
             after: Some(windows[0]),
+            floating: None,
         },
         SessionAction::ToggleFloating {
             window: windows[2],
             after: None,
+            floating: None,
         },
     ] {
         layout.apply(action, AREA, &options);

@@ -314,6 +314,7 @@ async fn float_a_window_for_every_client() {
         .act(SessionAction::ToggleFloating {
             window: b,
             after: None,
+            floating: None,
         })
         .await;
     for client in [&mut first, &mut second] {
@@ -326,6 +327,108 @@ async fn float_a_window_for_every_client() {
             .map(|floating| floating.window)
             .collect();
         assert_eq!(floating, [b]);
+    }
+}
+
+fn toggle(window: WindowId, floating: Option<bool>) -> SessionAction {
+    SessionAction::ToggleFloating {
+        window,
+        after: None,
+        floating,
+    }
+}
+
+fn floating_list(client: &TestClient) -> Vec<WindowId> {
+    client.layout.bands()[0]
+        .floating
+        .iter()
+        .map(|floating| floating.window)
+        .collect()
+}
+
+async fn widen(
+    sender: &mut TestClient,
+    other: &mut TestClient,
+    window: WindowId,
+    width: Proportion,
+) {
+    sender.act(SessionAction::SetWidth { window, width }).await;
+    for client in [sender, other] {
+        client
+            .wait_until(|client| {
+                client.layout.locate(window).is_some_and(|location| {
+                    client.layout.bands()[location.band].columns[location.column].width == width
+                })
+            })
+            .await;
+    }
+}
+
+async fn settle(first: &mut TestClient, second: &mut TestClient, tiled: WindowId) {
+    widen(first, second, tiled, Proportion::ONE_THIRD).await;
+    widen(second, first, tiled, Proportion::TWO_THIRDS).await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn two_clients_float_the_same_window() {
+    let server = TestServer::start("float-twice", &["/bin/sh"]).await;
+    let mut first = server.attach(80, 24).await;
+    let mut second = server.attach(80, 24).await;
+    let a = first.first();
+    let b = first.open_after(a).await;
+    first.act(toggle(b, Some(true))).await;
+    second.act(toggle(b, Some(true))).await;
+    settle(&mut first, &mut second, a).await;
+    for client in [&first, &second] {
+        assert_eq!(floating_list(client), [b]);
+        let record = client.layout.floating(b).unwrap();
+        assert_eq!(
+            (record.width, record.rows, record.col, record.row),
+            (Proportion::ONE_HALF, 20, 20, 2)
+        );
+        assert!(client.layout.locate(b).is_none());
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn two_clients_toggle_the_same_window() {
+    let server = TestServer::start("toggle-twice", &["/bin/sh"]).await;
+    let mut first = server.attach(80, 24).await;
+    let mut second = server.attach(80, 24).await;
+    let a = first.first();
+    let b = first.open_after(a).await;
+    first.act(toggle(b, None)).await;
+    second.act(toggle(b, None)).await;
+    settle(&mut first, &mut second, a).await;
+    for client in [&first, &second] {
+        assert!(floating_list(client).is_empty());
+        assert_eq!(
+            client.layout.locate(b).map(|location| location.band),
+            Some(0)
+        );
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn last_request_wins() {
+    let server = TestServer::start("last-wins", &["/bin/sh"]).await;
+    let mut first = server.attach(80, 24).await;
+    let mut second = server.attach(80, 24).await;
+    let a = first.first();
+    let b = first.open_after(a).await;
+    first.act(toggle(b, None)).await;
+    second
+        .wait_until(|client| client.layout.floating(b).is_some())
+        .await;
+    first.act(toggle(b, Some(false))).await;
+    second
+        .wait_until(|client| client.layout.locate(b).is_some())
+        .await;
+    second.act(toggle(b, Some(true))).await;
+    for client in [&mut first, &mut second] {
+        client
+            .wait_until(|client| floating_list(client) == [b])
+            .await;
     }
 }
 

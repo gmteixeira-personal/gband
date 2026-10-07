@@ -416,7 +416,7 @@ The built-in events of the client:
 | `BandChanged` | `band`, `previous`: band numbers | the viewed band changes |
 | `WindowOpened` | `window`, `band` | a window appears in the layout |
 | `WindowClosed` | `window`, `band` | a window leaves the layout |
-| `LayoutChanged` | empty | the bands, columns, windows, column widths or floating boxes change |
+| `LayoutChanged` | empty | the size of the screen area, the bands, columns, windows, column widths or floating boxes change |
 | `TerminalResized` | `cols`, `rows` | the client's terminal changes size |
 | `ConfigReloaded` | empty | a reload succeeded, to the new configuration's handlers |
 | `KeyTableChanged` | `table`, `previous` | the active key table changes |
@@ -448,6 +448,8 @@ The mouse events only report: the click, drag or wheel step still reaches the wi
 Attaching to a session emits no `WindowOpened`, `LayoutChanged`, `FocusChanged`, `BandChanged` or `WindowStateChanged` for what is already there.
 The server's events are in "Server events".
 A layout that opens or closes a window emits `LayoutChanged` after its `WindowOpened` and `WindowClosed` events.
+A change of the screen area's size, the `cols` and `rows` of `gband.layout()`, emits `LayoutChanged` too, whichever client's resize, attach or bar change caused it.
+This client's own resize runs `TerminalResized` at once, and `LayoutChanged` when the layout with the new screen area arrives.
 
 A handler can dispatch actions, call `gband.spawn` and `gband.keymap.enter`.
 The actions run after the handler returns, and the events they cause are emitted in turn.
@@ -622,6 +624,17 @@ The server's session actions take `step` the same way, and use 1/10 without it.
 `toggle_window_floating` takes `window` and an optional `after`, a tiled window of the same band.
 A floating window is tiled again as a new column after `after`, or, without it, after the tiled window this client focused last in that band, or as the band's first column.
 `after` is ignored when `window` is tiled.
+`floating = true` floats `window`, and leaves a window that already floats as it is.
+`floating = false` tiles `window`, after `after` or by the rule above, and leaves a tiled window as it is.
+Without `floating` the action toggles.
+The server decides whether the window moves, so two clients that both float a window float it once.
+
+```lua
+gband.on("WindowOpened", function(event)
+  gband.action.toggle_window_floating({ window = event.window, floating = true })
+end)
+```
+
 `send_prefix` takes `window` and sends the prefix key to it.
 `gband.spawn` takes `band` and `after` beside `cmd`.
 
@@ -637,6 +650,7 @@ end, { desc = "resize the window from its bottom edge" })
 ```
 
 A target on a view action or on `detach`, `drag_window` or `drag_band`, a field the action does not take, a `step` out of its range, or a window or band not in the layout is an error at the line of the call.
+So are a `floating` that is not a boolean, `after` together with `floating = true`, and a `toggle_window_floating` target without `window`.
 So is an `edges` that is missing, not a list of edge names, empty, or that names an edge twice or both edges of a pair.
 A call that raises one of these errors dispatches nothing.
 
@@ -1575,6 +1589,7 @@ gband.action.close_window({ session = ev.session, window = ev.window })
 `open_window` takes `session`, `band`, an optional `after` window, an optional `program`, a command line string or a list of argument strings, and an optional `floating`.
 `floating = true` opens the window floating in `band`, and cannot be given with `after`.
 `toggle_window_floating` also takes an optional `after` window: a floating window is tiled after it, or as the band's first column without it, since the server knows no client's focus.
+It also takes an optional `floating`: `true` floats the window and leaves a floating window as it is, `false` tiles it and leaves a tiled window as it is, and without it the action toggles; `floating = true` cannot be given with `after`.
 
 ```lua
 gband.action.open_window({ session = "work", band = 1, after = 2, program = { "htop", "-d", "10" } })

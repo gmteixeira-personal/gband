@@ -135,17 +135,7 @@ fn open_window_target(lua: &Lua, target: &Table, name: &str) -> Result<Dispatch,
     fields(target, &["band", "after", "floating"], name)?;
     let band = get(target, "band")?;
     let after = get(target, "after")?;
-    let floating = match get(target, "floating")? {
-        Value::Nil => false,
-        Value::Boolean(floating) => floating,
-        other => {
-            return Err(format!(
-                "the `floating` of `{name}` must be a boolean, found {}",
-                other.type_name()
-            ));
-        }
-    };
-    if !floating {
+    if floating(target, name)? != Some(true) {
         let (band, after) = open_target(lua, &band, &after)?
             .ok_or_else(|| format!("the target of `{name}` must name `band` or `after`"))?;
         return Ok(Dispatch::Session(SessionAction::open(band, after, None)));
@@ -169,14 +159,32 @@ fn open_window_target(lua: &Lua, target: &Table, name: &str) -> Result<Dispatch,
     }))
 }
 
+fn floating(target: &Table, name: &str) -> Result<Option<bool>, String> {
+    match get(target, "floating")? {
+        Value::Nil => Ok(None),
+        Value::Boolean(floating) => Ok(Some(floating)),
+        other => Err(format!(
+            "the `floating` of `{name}` must be a boolean, found {}",
+            other.type_name()
+        )),
+    }
+}
+
 fn toggle_floating_target(lua: &Lua, target: &Table, name: &str) -> Result<Dispatch, String> {
-    fields(target, &["window", "after"], name)?;
+    fields(target, &["window", "after", "floating"], name)?;
     let value = get(target, "window")?;
     if value.is_nil() {
         return Err(format!("the target of `{name}` must name a `window`"));
     }
+    let floating = floating(target, name)?;
+    let after = get(target, "after")?;
+    if floating == Some(true) && !after.is_nil() {
+        return Err(format!(
+            "the target of `{name}` cannot hold `after` with `floating = true`"
+        ));
+    }
     let window = self::window(lua, &value)?;
-    let after = match get(target, "after")? {
+    let after = match after {
         Value::Nil => None,
         value => Some(self::window(lua, &value)?),
     };
@@ -196,6 +204,7 @@ fn toggle_floating_target(lua: &Lua, target: &Table, name: &str) -> Result<Dispa
     Ok(Dispatch::Session(SessionAction::ToggleFloating {
         window,
         after,
+        floating,
     }))
 }
 

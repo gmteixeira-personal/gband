@@ -146,6 +146,7 @@ async fn subscriber_sees_floating_and_moves() {
         SessionAction::ToggleFloating {
             window: second,
             after: None,
+            floating: None,
         },
         SessionAction::MoveColumn {
             window: second,
@@ -154,6 +155,7 @@ async fn subscriber_sees_floating_and_moves() {
         SessionAction::ToggleFloating {
             window: second,
             after: Some(first),
+            floating: None,
         },
     ] {
         client.act(action).await;
@@ -186,4 +188,34 @@ async fn subscriber_sees_floating_and_moves() {
             full_width: false,
         })
     );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn naming_the_own_layer_publishes_nothing() {
+    let (server, mut events) = start("ev-own-layer").await;
+    let mut client = server.attach(80, 24).await;
+    let first = client.first();
+    let second = client.open_after(first).await;
+    until(&mut events, |event| opened(event) == Some(second)).await;
+    let toggle = |floating| SessionAction::ToggleFloating {
+        window: second,
+        after: Some(first),
+        floating: Some(floating),
+    };
+    for action in [
+        toggle(false),
+        toggle(true),
+        toggle(true),
+        SessionAction::ToggleFullWidth(first),
+    ] {
+        client.act(action).await;
+    }
+    assert!(matches!(
+        next(&mut events).await,
+        SessionEvent::Layout(LayoutEvent::WindowFloated { window, .. }) if window == second
+    ));
+    assert!(matches!(
+        next(&mut events).await,
+        SessionEvent::Layout(LayoutEvent::ColumnWidthChanged { .. })
+    ));
 }

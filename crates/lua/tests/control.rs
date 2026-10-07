@@ -297,6 +297,7 @@ fn tile_a_named_window_after_a_named_window() {
         [session(SessionAction::ToggleFloating {
             window: WindowId(4),
             after: Some(WindowId(1)),
+            floating: None,
         })]
     );
     assert_eq!(
@@ -308,7 +309,53 @@ fn tile_a_named_window_after_a_named_window() {
         [session(SessionAction::ToggleFloating {
             window: WindowId(4),
             after: None,
+            floating: None,
         })]
+    );
+}
+
+#[test]
+fn toggle_floating_names_a_layer() {
+    assert_eq!(
+        dispatched(
+            "float-named",
+            state(with_floating(), 1, Some(1), "root"),
+            "gband.action.toggle_window_floating({ window = 4, floating = true })"
+        ),
+        [session(SessionAction::ToggleFloating {
+            window: WindowId(4),
+            after: None,
+            floating: Some(true),
+        })]
+    );
+    assert_eq!(
+        dispatched(
+            "tile-named",
+            state(with_floating(), 1, Some(1), "root"),
+            "gband.action.toggle_window_floating({ window = 4, after = 1, floating = false })"
+        ),
+        [session(SessionAction::ToggleFloating {
+            window: WindowId(4),
+            after: Some(WindowId(1)),
+            floating: Some(false),
+        })]
+    );
+}
+
+#[test]
+fn float_twice_dispatches_twice() {
+    let float = SessionAction::ToggleFloating {
+        window: WindowId(2),
+        after: None,
+        floating: Some(true),
+    };
+    assert_eq!(
+        dispatched(
+            "float-twice",
+            state(two_bands(), 1, Some(1), "root"),
+            "gband.action.toggle_window_floating({ window = 2, floating = true })\ngband.action.toggle_window_floating({ window = 2, floating = true })"
+        ),
+        [session(float.clone()), session(float)]
     );
 }
 
@@ -325,6 +372,24 @@ fn tile_after_a_window_of_another_band() {
         state(with_floating(), 1, Some(1), "root"),
         "gband.action.toggle_window_floating({ after = 1 })",
         "window",
+    );
+    failed(
+        "floating-yes",
+        state(with_floating(), 1, Some(1), "root"),
+        "gband.action.toggle_window_floating({ window = 4, floating = 'yes' })",
+        "`floating`",
+    );
+    failed(
+        "float-with-after",
+        state(with_floating(), 1, Some(1), "root"),
+        "gband.action.toggle_window_floating({ window = 4, after = 1, floating = true })",
+        "`after`",
+    );
+    failed(
+        "float-without-window",
+        state(with_floating(), 1, Some(1), "root"),
+        "gband.action.toggle_window_floating({ floating = true })",
+        "`window`",
     );
 }
 
@@ -821,6 +886,33 @@ fn unknown_window_is_an_error_at_the_line() {
 }
 
 #[test]
+fn floating_not_a_boolean_is_an_error_at_the_line() {
+    let scratch = Scratch::new("floating-not-boolean");
+    let path = scratch.write(
+        "\n\n\n\n\n\ngband.bind('alt+f', function() gband.action.toggle_window_floating({ window = 3, floating = 'yes' }) end)\n",
+    );
+    let config = scratch.loaded();
+    clean(
+        &config
+            .runtime
+            .set_state(state(two_bands(), 1, Some(1), "root")),
+    );
+    let chord = gband_lua::Chord::Key(key("alt+f"));
+    let Some((_, gband_lua::Binding::Callback(callback))) = config.keymap["root"]
+        .iter()
+        .find(|(bound, _)| *bound == chord)
+    else {
+        panic!("alt+f is not bound to a function");
+    };
+    let outcome = config.runtime.call(*callback);
+    assert!(outcome.dispatched.is_empty());
+    let [error] = outcome.errors.as_slice() else {
+        panic!("{:?}", outcome.errors);
+    };
+    assert_error_at(error, &path, 7, "floating");
+}
+
+#[test]
 fn opposite_edges_are_an_error_at_the_line() {
     let scratch = Scratch::new("opposite-edges");
     let path = scratch.write(
@@ -1037,6 +1129,7 @@ fn set_position_keeps_the_dispatch_order() {
             session(SessionAction::ToggleFloating {
                 window: WindowId(4),
                 after: Some(WindowId(1)),
+                floating: None,
             }),
         ]
     );

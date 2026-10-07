@@ -828,6 +828,7 @@ impl Display {
                 .flat_map(|band| band.windows().map(move |window| (window, band.id)))
                 .collect(),
             size: self.terminal,
+            area: self.area,
             shape: self
                 .layout
                 .bands()
@@ -1033,6 +1034,7 @@ pub struct Observed {
     band: BandId,
     windows: BTreeMap<WindowId, BandId>,
     size: Size,
+    area: Size,
     shape: Vec<(BandId, Vec<ColumnShape>, Vec<FloatingWindow>)>,
 }
 
@@ -1053,7 +1055,7 @@ fn changes(before: Option<Observed>, after: Option<&Observed>) -> Vec<Event> {
             events.push(Event::WindowOpened { window, band });
         }
     }
-    if after.shape != before.shape {
+    if after.shape != before.shape || after.area != before.area {
         events.push(Event::LayoutChanged);
     }
     if after.band != before.band {
@@ -1592,9 +1594,17 @@ impl Controls {
                 Dispatch::Session(SessionAction::ToggleFloating {
                     window,
                     after: None,
+                    floating,
                 }) => {
-                    let after = display.tiled_beside(window);
-                    let action = SessionAction::ToggleFloating { window, after };
+                    let after = match floating {
+                        Some(true) => None,
+                        None | Some(false) => display.tiled_beside(window),
+                    };
+                    let action = SessionAction::ToggleFloating {
+                        window,
+                        after,
+                        floating,
+                    };
                     steps.push(Step::Send(ClientMessage::Action(action)));
                 }
                 Dispatch::Session(action) => {

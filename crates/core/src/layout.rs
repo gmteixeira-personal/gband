@@ -431,6 +431,7 @@ pub enum SessionAction {
     ToggleFloating {
         window: WindowId,
         after: Option<WindowId>,
+        floating: Option<bool>,
     },
     MoveColumn {
         window: WindowId,
@@ -708,10 +709,18 @@ impl Layout {
                     WindowHeight::Auto(_) => None,
                 },
             ),
-            SessionAction::ToggleFloating { window, after } => match self.place(window) {
-                Some(Place::Tiled(location)) => self.float(window, location, area, options),
-                Some(Place::Floating { band, index }) => self.tile(band, index, after),
-                None => Vec::new(),
+            SessionAction::ToggleFloating {
+                window,
+                after,
+                floating,
+            } => match (self.place(window), floating) {
+                (Some(Place::Tiled(location)), None | Some(true)) => {
+                    self.float(window, location, area, options)
+                }
+                (Some(Place::Floating { band, index }), None | Some(false)) => {
+                    self.tile(band, index, after)
+                }
+                _ => Vec::new(),
             },
             SessionAction::MoveColumn { window, direction } => match self.place(window) {
                 Some(Place::Tiled(location)) => self.move_column(location, direction),

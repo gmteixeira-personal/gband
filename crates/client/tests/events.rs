@@ -249,6 +249,7 @@ fn moving_a_floating_box_is_a_layout_change() {
         SessionAction::ToggleFloating {
             window,
             after: None,
+            floating: None,
         },
         Size::new(80, 24),
         &options,
@@ -290,6 +291,60 @@ fn heights_alone_are_no_layout_change() {
     );
     client.receive([shown(&layout)]);
     assert_eq!(client.log(), Vec::<String>::new());
+}
+
+fn shown_in(layout: &Layout, cols: u16, rows: u16) -> ServerMessage {
+    ServerMessage::Layout {
+        cols,
+        rows,
+        layout: layout.clone(),
+    }
+}
+
+#[test]
+fn another_client_changes_the_screen_area() {
+    let (_scratch, mut client) = recording(
+        "area-changed",
+        "gband.on('LayoutChanged', function() area = gband.layout().cols .. 'x' .. gband.layout().rows end)",
+    );
+    let (layout, _) = layout_of(2);
+    client.receive([shown(&layout)]);
+    client.receive([shown_in(&layout, 100, 30)]);
+    assert_eq!(client.log(), ["LayoutChanged "]);
+    let area: String = client
+        .controls
+        .runtime()
+        .lua()
+        .globals()
+        .get("area")
+        .unwrap();
+    assert_eq!(area, "100x30");
+}
+
+#[test]
+fn same_area_is_no_layout_change() {
+    let (_scratch, mut client) = recording("area-same", "");
+    let (layout, _) = layout_of(2);
+    client.receive([shown(&layout)]);
+    client.receive([shown(&layout)]);
+    assert_eq!(client.log(), Vec::<String>::new());
+}
+
+#[test]
+fn area_and_shape_change_once() {
+    let (_scratch, mut client) = recording("area-and-shape", "");
+    let (mut layout, windows) = layout_of(2);
+    client.receive([shown(&layout)]);
+    layout.apply(
+        SessionAction::SetWidth {
+            window: windows[1],
+            width: Proportion::ONE_THIRD,
+        },
+        Size::new(100, 30),
+        &LayoutOptions::default(),
+    );
+    client.receive([shown_in(&layout, 100, 30)]);
+    assert_eq!(client.log(), ["LayoutChanged "]);
 }
 
 #[test]

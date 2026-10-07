@@ -1262,10 +1262,19 @@ fn act(layout: &mut Layout, action: SessionAction, area: Size) -> Vec<LayoutEven
     events
 }
 
-fn toggle(layout: &mut Layout, window: WindowId, after: Option<WindowId>) -> Vec<LayoutEvent> {
+fn toggle(
+    layout: &mut Layout,
+    window: WindowId,
+    after: Option<WindowId>,
+    floating: Option<bool>,
+) -> Vec<LayoutEvent> {
     act(
         layout,
-        SessionAction::ToggleFloating { window, after },
+        SessionAction::ToggleFloating {
+            window,
+            after,
+            floating,
+        },
         AREA,
     )
 }
@@ -1302,14 +1311,14 @@ fn box_at(layout: &mut Layout, window: WindowId, col: u16, row: u16, width: Prop
 fn floated(columns: usize) -> (Layout, Vec<WindowId>) {
     let (mut layout, windows) = row_of_columns(columns);
     let last = *windows.last().unwrap();
-    toggle(&mut layout, last, None);
+    toggle(&mut layout, last, None, None);
     (layout, windows)
 }
 
 #[test]
 fn float_the_only_window_of_a_band() {
     let (mut layout, first) = started();
-    toggle(&mut layout, first, None);
+    toggle(&mut layout, first, None, None);
     assert!(layout.bands()[0].columns.is_empty());
     assert_eq!(floating_list(&layout, 0), [first]);
     assert_eq!(layout.bands().len(), 2);
@@ -1318,7 +1327,7 @@ fn float_the_only_window_of_a_band() {
 #[test]
 fn window_in_one_place_only() {
     let (mut layout, windows) = row_of_columns(2);
-    toggle(&mut layout, windows[1], None);
+    toggle(&mut layout, windows[1], None, None);
     assert_eq!(
         layout
             .windows()
@@ -1330,7 +1339,7 @@ fn window_in_one_place_only() {
         layout.place(windows[1]),
         Some(Place::Floating { band: 0, index: 0 })
     );
-    toggle(&mut layout, windows[1], Some(windows[0]));
+    toggle(&mut layout, windows[1], Some(windows[0]), None);
     assert_eq!(
         layout
             .windows()
@@ -1344,7 +1353,7 @@ fn window_in_one_place_only() {
 #[test]
 fn column_removed_when_its_last_window_floats() {
     let (mut layout, windows) = row_of_columns(3);
-    toggle(&mut layout, windows[1], None);
+    toggle(&mut layout, windows[1], None, None);
     assert_eq!(
         columns(&layout, 0),
         vec![vec![windows[0]], vec![windows[2]]]
@@ -1356,7 +1365,7 @@ fn column_removed_when_its_last_window_floats() {
 fn floating_window_keeps_its_band() {
     let (mut layout, first) = started();
     open(&mut layout, 1, None);
-    toggle(&mut layout, first, None);
+    toggle(&mut layout, first, None, None);
     assert_eq!(layout.bands().len(), 3);
     assert!(!layout.bands()[0].is_empty());
     let kept = band_id(&layout, 1);
@@ -1431,8 +1440,8 @@ fn open_floating_in_a_missing_band() {
 #[test]
 fn floating_window_exits() {
     let (mut layout, windows) = row_of_columns(3);
-    toggle(&mut layout, windows[1], None);
-    toggle(&mut layout, windows[2], None);
+    toggle(&mut layout, windows[1], None, None);
+    toggle(&mut layout, windows[2], None, None);
     layout.remove(windows[1]);
     assert_invariants(&layout);
     assert_eq!(floating_list(&layout, 0), [windows[2]]);
@@ -1441,7 +1450,7 @@ fn floating_window_exits() {
 #[test]
 fn first_float_opens_a_new_box() {
     let (mut layout, windows) = row_of_columns(2);
-    toggle(&mut layout, windows[1], None);
+    toggle(&mut layout, windows[1], None, None);
     assert_eq!(
         record(&layout, windows[1]),
         FloatingWindow {
@@ -1474,7 +1483,11 @@ fn first_float_takes_the_default_width() {
     };
     let (window, after) = (windows[1], None);
     layout.apply(
-        SessionAction::ToggleFloating { window, after },
+        SessionAction::ToggleFloating {
+            window,
+            after,
+            floating: None,
+        },
         AREA,
         &options,
     );
@@ -1494,7 +1507,7 @@ fn first_float_takes_the_default_width() {
 fn float_from_a_stack() {
     let (mut layout, windows) = stacked(2);
     set_width(&mut layout, windows[0], Proportion::ONE_THIRD);
-    toggle(&mut layout, windows[1], None);
+    toggle(&mut layout, windows[1], None, None);
     assert_eq!(columns(&layout, 0), vec![vec![windows[0]]]);
     assert_eq!(heights_of(&layout, windows[0]), [auto(1, 1)]);
     let floating = record(&layout, windows[1]);
@@ -1510,7 +1523,11 @@ fn new_box_in_a_tall_area() {
     let area = Size::new(120, 67);
     let (window, after) = (windows[1], None);
     layout.apply(
-        SessionAction::ToggleFloating { window, after },
+        SessionAction::ToggleFloating {
+            window,
+            after,
+            floating: None,
+        },
         area,
         &LayoutOptions::default(),
     );
@@ -1523,17 +1540,17 @@ fn float_again_returns_to_the_last_box() {
     let (mut layout, windows) = floated(2);
     box_at(&mut layout, windows[1], 5, 3, Proportion::ONE_THIRD, 10);
     let kept = record(&layout, windows[1]);
-    toggle(&mut layout, windows[1], Some(windows[0]));
-    toggle(&mut layout, windows[1], None);
+    toggle(&mut layout, windows[1], Some(windows[0]), None);
+    toggle(&mut layout, windows[1], None, None);
     assert_eq!(record(&layout, windows[1]), kept);
 }
 
 #[test]
 fn tile_right_of_the_named_window() {
     let (mut layout, windows) = row_of_columns(3);
-    toggle(&mut layout, windows[2], None);
+    toggle(&mut layout, windows[2], None, None);
     set_width(&mut layout, windows[2], Proportion::ONE_THIRD);
-    toggle(&mut layout, windows[2], Some(windows[0]));
+    toggle(&mut layout, windows[2], Some(windows[0]), None);
     assert_eq!(
         columns(&layout, 0),
         vec![vec![windows[0]], vec![windows[2]], vec![windows[1]]]
@@ -1548,7 +1565,7 @@ fn tile_right_of_the_named_window() {
 #[test]
 fn tile_with_no_window_named() {
     let (mut layout, windows) = floated(2);
-    toggle(&mut layout, windows[1], None);
+    toggle(&mut layout, windows[1], None, None);
     assert_eq!(
         columns(&layout, 0),
         vec![vec![windows[1]], vec![windows[0]]]
@@ -1560,7 +1577,7 @@ fn tile_with_no_window_named() {
 fn tile_after_a_window_of_another_band_goes_first() {
     let (mut layout, windows) = floated(2);
     let other = open(&mut layout, 1, None);
-    toggle(&mut layout, windows[1], Some(other));
+    toggle(&mut layout, windows[1], Some(other), None);
     assert_eq!(
         columns(&layout, 0),
         vec![vec![windows[1]], vec![windows[0]]]
@@ -1576,8 +1593,76 @@ fn tiled_full_width_is_kept() {
         AREA,
     );
     assert!(record(&layout, windows[1]).full_width);
-    toggle(&mut layout, windows[1], Some(windows[0]));
+    toggle(&mut layout, windows[1], Some(windows[0]), None);
     assert_eq!(width_of(&layout, windows[1]), (Proportion::ONE_HALF, true));
+}
+
+#[test]
+fn request_to_float_a_tiled_window() {
+    let (mut layout, windows) = row_of_columns(2);
+    assert!(!toggle(&mut layout, windows[1], None, Some(true)).is_empty());
+    assert_eq!(
+        record(&layout, windows[1]),
+        FloatingWindow {
+            window: windows[1],
+            col: 20,
+            row: 2,
+            width: Proportion::ONE_HALF,
+            full_width: false,
+            rows: 20,
+        }
+    );
+}
+
+#[test]
+fn request_to_float_a_floating_window() {
+    let (mut layout, windows) = row_of_columns(3);
+    toggle(&mut layout, windows[1], None, None);
+    toggle(&mut layout, windows[2], None, None);
+    box_at(&mut layout, windows[1], 5, 3, Proportion::ONE_THIRD, 10);
+    let before = layout.clone();
+    assert!(toggle(&mut layout, windows[1], None, Some(true)).is_empty());
+    assert_eq!(layout, before);
+    assert_eq!(floating_list(&layout, 0), [windows[1], windows[2]]);
+}
+
+#[test]
+fn two_requests_to_float_one_window() {
+    let (mut layout, windows) = row_of_columns(2);
+    toggle(&mut layout, windows[1], None, Some(true));
+    toggle(&mut layout, windows[1], None, Some(true));
+    assert_eq!(floating_list(&layout, 0), [windows[1]]);
+    let floating = record(&layout, windows[1]);
+    assert_eq!(
+        (floating.width, floating.rows, floating.col, floating.row),
+        (Proportion::ONE_HALF, 20, 20, 2)
+    );
+    assert_eq!(columns(&layout, 0), vec![vec![windows[0]]]);
+}
+
+#[test]
+fn request_to_tile_a_floating_window() {
+    let (mut layout, windows) = row_of_columns(3);
+    toggle(&mut layout, windows[2], None, None);
+    set_width(&mut layout, windows[2], Proportion::ONE_THIRD);
+    toggle(&mut layout, windows[2], Some(windows[0]), Some(false));
+    assert_eq!(
+        columns(&layout, 0),
+        vec![vec![windows[0]], vec![windows[2]], vec![windows[1]]]
+    );
+    assert_eq!(
+        width_of(&layout, windows[2]),
+        (Proportion::ONE_THIRD, false)
+    );
+    assert!(layout.bands()[0].floating.is_empty());
+}
+
+#[test]
+fn request_to_tile_a_tiled_window() {
+    let (mut layout, windows) = row_of_columns(2);
+    let before = layout.clone();
+    assert!(toggle(&mut layout, windows[1], Some(windows[0]), Some(false)).is_empty());
+    assert_eq!(layout, before);
 }
 
 #[test]
@@ -1841,11 +1926,11 @@ fn set_position_on_a_tiled_window() {
 #[test]
 fn identifier_survives_floating() {
     let (mut layout, windows) = row_of_columns(2);
-    toggle(&mut layout, windows[1], None);
+    toggle(&mut layout, windows[1], None, None);
     assert!(layout.contains(windows[1]));
     move_column(&mut layout, windows[1], Direction::Right, AREA);
     assert!(layout.contains(windows[1]));
-    toggle(&mut layout, windows[1], Some(windows[0]));
+    toggle(&mut layout, windows[1], Some(windows[0]), None);
     assert_eq!(layout.windows().collect::<Vec<_>>(), windows);
 }
 
@@ -1974,6 +2059,7 @@ fn move_to_place_ignores_floating_and_invalid_references() {
         SessionAction::ToggleFloating {
             window: c,
             after: None,
+            floating: None,
         },
     );
     let before = layout.clone();

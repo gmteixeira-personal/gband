@@ -11,6 +11,7 @@ Chapter 01 already used it to find the focused window.
 
 `gband.layout()` describes every band, column and window of the session.
 Each band has `id`, `columns` and `floating`; each column has `windows`; each window has `id`.
+Its `cols` and `rows` give the size of the screen area, and `LayoutChanged` runs when they change, whichever client changed them.
 Walking it answers which band a window is in, or nil when the window has left the layout:
 
 ```lua

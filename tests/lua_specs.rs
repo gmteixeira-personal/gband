@@ -62,6 +62,11 @@ fn mouse() {
 }
 
 #[test]
+fn floating_target() {
+    gband_test(root(), &["tests/lua/floating_target_spec.lua"]);
+}
+
+#[test]
 fn bundled_key_list() {
     gband_test(root(), &["tests/lua/keylist_spec.lua"]);
 }
