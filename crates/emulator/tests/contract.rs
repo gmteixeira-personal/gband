@@ -241,3 +241,117 @@ fn grid_keeps_cells_when_shrunk() {
 fn grid_writes_nothing_back_for_plain_output() {
     plain_output_asks_nothing::<Grid>();
 }
+
+fn titled(output: &[u8]) -> Grid {
+    let mut grid = Grid::new(SIZE);
+    grid.process(output);
+    grid
+}
+
+#[test]
+fn no_title_at_first() {
+    let mut grid = titled(b"hello");
+    assert_eq!(grid.title(), None);
+    assert!(!grid.take_title_changed());
+}
+
+#[test]
+fn osc_0_and_2_set_the_title() {
+    let mut grid = titled(b"\x1b]2;build\x07");
+    assert_eq!(grid.title(), Some("build"));
+    assert!(grid.take_title_changed());
+    assert!(!grid.take_title_changed());
+    grid.process(b"\x1b]0;test\x1b\\");
+    assert_eq!(grid.title(), Some("test"));
+}
+
+#[test]
+fn title_holding_a_semicolon() {
+    assert_eq!(
+        titled(b"\x1b]0;make; make test\x07").title(),
+        Some("make; make test")
+    );
+    assert_eq!(titled(b"\x1b]2;a;b;c\x07").title(), Some("a;b;c"));
+}
+
+#[test]
+fn osc_1_leaves_the_title() {
+    assert_eq!(
+        titled(b"\x1b]2;build\x07\x1b]1;icon\x07").title(),
+        Some("build")
+    );
+    assert_eq!(titled(b"\x1b]1;icon;x\x07").title(), None);
+}
+
+#[test]
+fn empty_title_clears_it() {
+    let mut grid = titled(b"\x1b]2;build\x07");
+    grid.take_title_changed();
+    grid.process(b"\x1b]2;\x07");
+    assert_eq!(grid.title(), None);
+    assert!(grid.take_title_changed());
+    assert_eq!(titled(b"\x1b]2;build\x07\x1b]2;  \x07").title(), None);
+}
+
+#[test]
+fn control_characters_removed() {
+    assert_eq!(titled(b"\x1b]2; a\tb \x07").title(), Some("ab"));
+}
+
+#[test]
+fn same_title_is_no_change() {
+    let mut grid = titled(b"\x1b]2;build\x07");
+    grid.take_title_changed();
+    grid.process(b"\x1b]2;build\x07");
+    assert!(!grid.take_title_changed());
+}
+
+#[test]
+fn pushed_title_is_restored() {
+    for (push, pop) in [("22;0", "23;0"), ("22;2", "23;2"), ("22", "23")] {
+        let output = format!("\x1b]2;user@host:~\x07\x1b[{push}t\x1b]2;VIM - notes\x07");
+        let mut grid = titled(output.as_bytes());
+        assert_eq!(grid.title(), Some("VIM - notes"));
+        grid.process(format!("\x1b[{pop}t").as_bytes());
+        assert_eq!(grid.title(), Some("user@host:~"));
+    }
+}
+
+#[test]
+fn pushed_absence_clears_the_title() {
+    let grid = titled(b"\x1b[22;2t\x1b]2;VIM - notes\x07\x1b[23;2t");
+    assert_eq!(grid.title(), None);
+}
+
+#[test]
+fn pop_from_an_empty_stack_keeps_the_title() {
+    assert_eq!(titled(b"\x1b]2;build\x07\x1b[23t").title(), Some("build"));
+}
+
+#[test]
+fn icon_stack_is_ignored() {
+    let grid = titled(b"\x1b]2;a\x07\x1b[22;1t\x1b]2;b\x07\x1b[23;1t");
+    assert_eq!(grid.title(), Some("b"));
+    let grid = titled(b"\x1b]2;a\x07\x1b[22;0t\x1b]2;b\x07\x1b[22;1t\x1b[23;0t");
+    assert_eq!(grid.title(), Some("a"));
+}
+
+#[test]
+fn title_stack_drops_the_oldest_entry() {
+    let mut grid = titled(b"");
+    for index in 0..11 {
+        grid.process(format!("\x1b]2;t{index}\x07\x1b[22t").as_bytes());
+    }
+    grid.process(b"\x1b]2;top\x07");
+    for index in (1..11).rev() {
+        grid.process(b"\x1b[23t");
+        assert_eq!(grid.title(), Some(format!("t{index}").as_str()));
+    }
+    grid.process(b"\x1b[23t");
+    assert_eq!(grid.title(), Some("t1"));
+}
+
+#[test]
+fn title_kept_after_reset() {
+    assert_eq!(titled(b"\x1b]2;build\x07\x1bc").title(), Some("build"));
+}

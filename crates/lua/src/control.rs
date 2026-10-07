@@ -27,6 +27,7 @@ pub(crate) fn install(lua: &Lua, gband: &Table) -> mlua::Result<()> {
     window.set("send_keys", lua.create_function(send_keys)?)?;
     window.set("send_text", lua.create_function(send_text)?)?;
     window.set("paste", lua.create_function(paste)?)?;
+    window.set("rename", lua.create_function(rename)?)?;
     gband.set("window", window)?;
     let band = lua.create_table()?;
     band.set("view", lua.create_function(view_band)?)?;
@@ -371,6 +372,7 @@ fn layout(lua: &Lua, (): ()) -> mlua::Result<Table> {
                     "plugin_window",
                     plugin_windows::plugin_window_of(lua, window)?,
                 )?;
+                set_names(&item, &state, window)?;
                 windows.push(item)?;
             }
             described.set("windows", windows)?;
@@ -391,6 +393,7 @@ fn layout(lua: &Lua, (): ()) -> mlua::Result<Table> {
                 "plugin_window",
                 plugin_windows::plugin_window_of(lua, record.window)?,
             )?;
+            set_names(&item, &state, record.window)?;
             floating.push(item)?;
         }
         entry.set("floating", floating)?;
@@ -398,6 +401,14 @@ fn layout(lua: &Lua, (): ()) -> mlua::Result<Table> {
     }
     table.set("bands", bands)?;
     Ok(table)
+}
+
+fn set_names(item: &Table, state: &ui::ViewState, window: WindowId) -> mlua::Result<()> {
+    if let Some(name) = state.names.get(&window) {
+        item.set("name", name.shown.as_str())?;
+        item.set("manual_name", name.manual.as_deref())?;
+    }
+    Ok(())
 }
 
 fn view(lua: &Lua, (): ()) -> mlua::Result<Table> {
@@ -632,4 +643,39 @@ fn paste(lua: &Lua, (target, value): (Value, Value)) -> mlua::Result<()> {
         },
         what,
     )
+}
+
+fn manual_name(value: &Value) -> Result<Option<String>, String> {
+    let name = match value {
+        Value::Nil => return Ok(None),
+        Value::String(name) => name.to_string_lossy(),
+        other => {
+            return Err(format!(
+                "expected a name as a string or nil, found {}",
+                other.type_name()
+            ));
+        }
+    };
+    if let Some(c) = name.chars().find(|&c| is_control(c)) {
+        return Err(format!(
+            "the name holds the control character U+{:04X}",
+            u32::from(c)
+        ));
+    }
+    let name = name.trim();
+    Ok((!name.is_empty()).then(|| name.to_owned()))
+}
+
+fn rename(lua: &Lua, (target, value): (Value, Value)) -> mlua::Result<()> {
+    let what = "gband.window.rename";
+    dispatching(lua, what)?;
+    let window = checked(lua, what, window(lua, &target))?;
+    if plugin_windows::plugin_window_of(lua, window)?.is_some() {
+        return Err(ConfigError::raise(
+            lua,
+            format!("{what}: window {window} is a drawn window and has no name"),
+        ));
+    }
+    let name = checked(lua, what, manual_name(&value))?;
+    api::queue(lua, Dispatch::Rename { window, name }, what)
 }

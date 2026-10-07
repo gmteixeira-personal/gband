@@ -48,6 +48,14 @@ impl Vt100 {
             .map(std::mem::take)
             .unwrap_or_default()
     }
+
+    pub fn title(&self) -> Option<&str> {
+        self.parser.callbacks().title.as_deref()
+    }
+
+    pub fn take_title_changed(&mut self) -> bool {
+        std::mem::take(&mut self.parser.callbacks_mut().title_changed)
+    }
 }
 
 impl Emulator for Vt100 {

@@ -16,7 +16,7 @@ use gband_emulator::{Emulator, Grid};
 use gband_lua::plugin_windows::{FloatingFrame, Run};
 use gband_lua::{
     Bar, BarSide, Border, BorderChars, CharSet, ClientStyles, Color, Options, Palette, Sides, Slot,
-    Style,
+    Style, WindowName, WindowNames,
 };
 use insta::assert_snapshot;
 use ratatui::Terminal;
@@ -42,6 +42,7 @@ struct Fixture {
     bars: Vec<(Bar, Rect)>,
     region: Option<Rect>,
     overlay: Overlay,
+    titles: Option<WindowNames>,
 }
 
 impl Fixture {
@@ -83,6 +84,7 @@ impl Fixture {
             bars: Vec::new(),
             region: None,
             overlay: Overlay::default(),
+            titles: None,
         };
         fixture.reset_grids();
         (fixture, windows)
@@ -209,8 +211,25 @@ impl Fixture {
                 .map(|(bar, area)| Shown { bar, area: *area })
                 .collect(),
             overlay: self.overlay,
+            titles: self.titles.as_ref(),
         }
     }
+
+    fn name(&mut self, window: WindowId, name: &str) {
+        self.titles.get_or_insert_default().insert(
+            window,
+            WindowName {
+                shown: name.to_owned(),
+                manual: None,
+            },
+        );
+    }
+}
+
+fn row_text(screen: &Buffer, row: u16) -> String {
+    (0..screen.area.width)
+        .map(|col| screen[(col, row)].symbol())
+        .collect()
 }
 
 #[test]
@@ -1161,4 +1180,135 @@ fn palette_covers_tiles_bars_and_the_empty_ribbon() {
     assert_eq!(x.bg, background);
     assert_eq!(screen[(60, 10)].bg, background);
     assert_eq!(screen[(0, 10)].bg, background);
+}
+
+#[test]
+fn title_on_a_tile() {
+    let (mut fixture, windows) = Fixture::new(Size::new(80, 24), 1, 80);
+    fixture.name(windows[0], "vim");
+    let screen = fixture.screen(Size::new(80, 24));
+    assert_eq!(
+        &row_text(&screen, 0)[..],
+        format!("╭vim{}╮{}", "─".repeat(35), " ".repeat(40))
+    );
+}
+
+#[test]
+fn long_title_cut() {
+    let (mut fixture, windows) = Fixture::new(Size::new(20, 6), 1, 20);
+    fixture.name(windows[0], "cargo test --workspace");
+    let screen = fixture.screen(Size::new(20, 6));
+    assert_eq!(
+        row_text(&screen, 0),
+        format!("╭cargo te╮{}", " ".repeat(10))
+    );
+}
+
+#[test]
+fn wide_title_cut_leaves_out_whole_characters() {
+    let (mut fixture, windows) = Fixture::new(Size::new(20, 6), 1, 20);
+    fixture.name(windows[0], "ab漢字漢字");
+    let screen = fixture.screen(Size::new(20, 6));
+    let symbols: Vec<&str> = [1, 2, 3, 5, 7, 9]
+        .into_iter()
+        .map(|col| screen[(col, 0)].symbol())
+        .collect();
+    assert_eq!(symbols, ["a", "b", "漢", "字", "漢", "╮"]);
+}
+
+#[test]
+fn focused_title_styled_as_the_focused_border() {
+    let (mut fixture, windows) = Fixture::new(Size::new(80, 24), 2, 80);
+    fixture.name(windows[0], "one");
+    fixture.name(windows[1], "two");
+    fixture.styles.border_focused = Style {
+        fg: Some(Color::Index(2)),
+        bold: true,
+        ..Style::default()
+    };
+    let screen = fixture.screen(Size::new(80, 24));
+    let focused = fixture.view.focused().unwrap();
+    let (focused_col, other_col) = if focused == windows[0] {
+        (1, 41)
+    } else {
+        (41, 1)
+    };
+    assert_eq!(
+        screen[(focused_col, 0)].fg,
+        ratatui::style::Color::Indexed(2)
+    );
+    assert!(
+        screen[(focused_col, 0)]
+            .modifier
+            .contains(ratatui::style::Modifier::BOLD)
+    );
+    assert_eq!(screen[(other_col, 0)].fg, ratatui::style::Color::Reset);
+    assert!(
+        screen[(other_col, 0)]
+            .modifier
+            .contains(ratatui::style::Modifier::DIM)
+    );
+    assert_eq!(
+        screen[(focused_col, 0)].style(),
+        screen[(focused_col - 1, 0)].style()
+    );
+    assert_eq!(
+        screen[(other_col, 0)].style(),
+        screen[(other_col - 1, 0)].style()
+    );
+}
+
+#[test]
+fn no_title_without_a_top_side() {
+    let (mut fixture, windows) = Fixture::new(Size::new(80, 24), 1, 80);
+    fixture.name(windows[0], "vim");
+    fixture.tile_border.sides = Sides {
+        top: false,
+        ..Sides::ALL
+    };
+    let screen = fixture.screen(Size::new(80, 24));
+    assert!(!row_text(&screen, 0).contains("vim"));
+}
+
+#[test]
+fn no_title_while_titles_are_off() {
+    let (fixture, _) = Fixture::new(Size::new(80, 24), 1, 80);
+    let screen = fixture.screen(Size::new(80, 24));
+    assert_eq!(
+        row_text(&screen, 0),
+        format!("╭{}╮{}", "─".repeat(38), " ".repeat(40))
+    );
+}
+
+#[test]
+fn title_of_a_clipped_column() {
+    let (mut fixture, windows) = Fixture::new(Size::new(80, 24), 2, 80);
+    for &window in &windows {
+        fixture.change(SessionAction::CycleWidth(window), 80);
+    }
+    let title = "0123456789".repeat(5);
+    fixture.name(windows[0], &title);
+    fixture.act(ViewAction::FocusRight, 80);
+    assert_eq!(fixture.view.camera(), 26);
+    let screen = fixture.screen(Size::new(80, 24));
+    assert!(row_text(&screen, 0).starts_with(&title[25..]));
+}
+
+#[test]
+fn title_on_a_floating_window() {
+    let (mut fixture, windows) = Fixture::new(Size::new(80, 24), 1, 80);
+    fixture.change(
+        SessionAction::ToggleFloating {
+            window: windows[0],
+            after: None,
+        },
+        80,
+    );
+    fixture.name(windows[0], "float");
+    let screen = fixture.screen(Size::new(80, 24));
+    let row = (0..24)
+        .find(|&row| row_text(&screen, row).contains('╭'))
+        .unwrap();
+    let text = row_text(&screen, row);
+    assert!(text.contains("╭float─"), "{text}");
 }

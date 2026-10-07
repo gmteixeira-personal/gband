@@ -75,6 +75,10 @@ pub enum Dispatch {
         action: SessionAction,
     },
     ClearErrors,
+    Rename {
+        window: WindowId,
+        name: Option<String>,
+    },
 }
 
 #[derive(Default)]

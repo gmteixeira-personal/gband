@@ -396,7 +396,13 @@ fn defaults_reproduce_the_built_in_behaviour() {
     );
     assert_eq!(
         plugins,
-        ["errors.clear", "errors.open", "keylist.open", "prompt.open"]
+        [
+            "errors.clear",
+            "errors.open",
+            "keylist.open",
+            "prompt.open",
+            "prompt.rename"
+        ]
     );
     clean(&config.runtime.set_state(drawn(80)));
     let bars: Vec<String> = eval(
@@ -509,8 +515,8 @@ fn prefix_keys(config: &Config) -> Vec<String> {
 fn every_default_binding_is_described() {
     let (_scratch, direct) = with_saved_style("described-direct", "direct");
     for (config, count) in [
-        (gband_lua::defaults(gband_lua::Side::Client), 47),
-        (direct, 45),
+        (gband_lua::defaults(gband_lua::Side::Client), 48),
+        (direct, 46),
     ] {
         assert_described(&config, count);
     }
@@ -674,6 +680,12 @@ fn prompt_set_up_by_the_defaults() {
         "for _, entry in ipairs(gband.keymap.list('prefix')) do if entry.key == ':' then return { entry.action, entry.desc } end end",
     );
     assert_eq!(entry, ["prompt.open", "run Lua"]);
+    assert_eq!(position("N"), position(":") + 1);
+    let entry: Vec<String> = eval(
+        &config,
+        "for _, entry in ipairs(gband.keymap.list('prefix')) do if entry.key == 'N' then return { entry.action, entry.desc } end end",
+    );
+    assert_eq!(entry, ["prompt.rename", "rename the window"]);
     assert_eq!(root_keys(&config), MOD_ROWS);
 }
 
@@ -685,7 +697,7 @@ fn settings_bound_by_the_defaults() {
         "local keys = {} for _, entry in ipairs(gband.keymap.list('prefix')) do keys[#keys + 1] = entry.key end return keys",
     );
     let position = |key: &str| keys.iter().position(|bound| bound == key).unwrap();
-    assert_eq!(position("s"), position(":") + 1);
+    assert_eq!(position("s"), position("N") + 1);
     assert!(position("s") < position("D"));
     let desc: String = eval(
         &config,
@@ -761,10 +773,11 @@ fn every_action_is_named() {
         "errors.open",
         "errors.clear",
         "prompt.open",
+        "prompt.rename",
     ];
     expected.sort();
     assert_eq!(names, expected);
-    assert_eq!(ACTIONS.len() + 4, expected.len());
+    assert_eq!(ACTIONS.len() + 5, expected.len());
 }
 
 #[test]

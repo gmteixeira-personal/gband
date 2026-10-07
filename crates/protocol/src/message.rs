@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::session::{SessionName, SessionSummary};
 use crate::value::Value;
 
-pub const PROTOCOL_VERSION: u32 = 9;
+pub const PROTOCOL_VERSION: u32 = 10;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Hello {
@@ -60,6 +60,10 @@ pub enum ClientMessage {
         window: WindowId,
         event: MouseEvent,
     },
+    Rename {
+        window: WindowId,
+        name: Option<String>,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -102,6 +106,11 @@ pub enum ServerMessage {
         window: WindowId,
         key: String,
         value: Option<Value>,
+    },
+    WindowName {
+        window: WindowId,
+        automatic: String,
+        manual: Option<String>,
     },
     Result {
         call: u64,

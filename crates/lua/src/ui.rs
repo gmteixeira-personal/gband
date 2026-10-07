@@ -36,9 +36,18 @@ pub struct ViewState {
     pub area: Size,
     pub ribbon: Size,
     pub states: Arc<WindowStates>,
+    pub names: Arc<WindowNames>,
 }
 
 pub type WindowStates = BTreeMap<WindowId, BTreeMap<String, Data>>;
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct WindowName {
+    pub shown: String,
+    pub manual: Option<String>,
+}
+
+pub type WindowNames = BTreeMap<WindowId, WindowName>;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Color {

@@ -139,3 +139,68 @@ Options SHALL be set and declared only while the configuration loads. Setting or
 #### Scenario: Window titles of the wrong type
 - **WHEN** line 2 of `user/init.lua` calls `gband.set({ window_titles = "no" })`
 - **THEN** a configuration error at `user/init.lua` line 2 names `window_titles`
+
+### Requirement: Defaults use the public API
+The default configuration SHALL use only the `gband` API that the configuration file can use. It SHALL set the options to their declared defaults. It SHALL make its key bindings only by calling `gband.keystyle.use()` with no argument, as the key-style capability defines, so the saved key style, or the modal key style when none is saved, makes them. It SHALL make no other binding and declare no mode. It SHALL set up the key list plugin `gband.keylist` and the Lua prompt plugin `gband.prompt` only through that call. It SHALL then set up, with `gband.plugin` and no options, the bundled error list plugin `gband.errors`, then the bundled sidebar plugin `gband.sidebar` unless `gband.settings.sidebar()` returns `false`, in that order, and register the offer of the settings capability's "Offer on the first start". Evaluated alone, with no configuration directory, it SHALL produce the declared defaults of the options and the default key bindings of the client-attach capability for the modal key style.
+
+The default key bindings and the declaration of the `navigation` mode SHALL exist only in the key style presets. The setup of the error list and sidebar plugins and the offer of the settings window SHALL exist only in the default configuration.
+
+#### Scenario: Defaults reproduce the built-in behaviour
+- **WHEN** the default configuration is evaluated alone
+- **THEN** the options equal the defaults in the "Options and their values" table
+- **AND** the bindings equal the client-attach capability's default table for the modal key style, entry for entry
+- **AND** `gband.bar.list()` holds exactly one bar, `sidebar`, on the side `left`, 1 column wide on an 80×24 terminal
+
+#### Scenario: Every default binding is described
+- **WHEN** the default configuration is evaluated with either key style saved and `gband.keymap.list("prefix")` is read
+- **THEN** every entry with an action has the description `gband.action.list()` gives its action
+- **AND** every entry without an action has the description the client-attach capability's default table gives its key
+
+#### Scenario: Navigation mode declared by the defaults
+- **WHEN** the default configuration is evaluated alone and `gband.keymap.label("prefix")` is read
+- **THEN** it returns `navigation`
+
+#### Scenario: Direct style from the saved choice
+- **WHEN** `user/keystyle.lua` holds `return "direct"`, no `user/init.lua` exists, and a client attaches
+- **THEN** `gband.keymap.label("prefix")` returns `prefix`
+- **AND** the bindings equal the client-attach capability's bindings for the direct key style, entry for entry
+
+#### Scenario: Key list set up by the defaults
+- **WHEN** the default configuration is evaluated alone and `gband.keymap.list("prefix")` is read
+- **THEN** the entry for `?` has the action `keylist.open`
+- **AND** it comes after the entry for `R` and before the entry for `D`
+
+#### Scenario: Prompt set up by the defaults
+- **WHEN** the default configuration is evaluated alone and `gband.keymap.list("prefix")` is read
+- **THEN** the entry for `:` has the action `prompt.open` and the description `run Lua`
+- **AND** it comes right after the entry for `?` and before the entry for `D`
+- **AND** `gband.keymap.list("root")` holds no entry
+
+#### Scenario: Rename bound by the defaults
+- **WHEN** the default configuration is evaluated alone and `gband.keymap.list("prefix")` is read
+- **THEN** the entry for `N` has the action `prompt.rename` and the description `rename the window`
+- **AND** it comes right after the entry for `:` and before the entry for `D`
+
+#### Scenario: Settings bound by the defaults
+- **WHEN** the default configuration is evaluated alone and `gband.keymap.list("prefix")` is read
+- **THEN** the entry for `s` has the description `settings`
+- **AND** it comes right after the entry for `N` and before the entry for `D`
+
+#### Scenario: Sidebar left out by the saved setting
+- **WHEN** `user/sidebar.lua` holds `return false`, no `user/init.lua` exists, and a client attaches
+- **THEN** `gband.bar.list()` holds no bar
+- **AND** an error is shown as the banner on the ribbon area's bottom row
+
+#### Scenario: Saved theme with a user file
+- **WHEN** `user/theme.lua` holds `return "nord"` and `user/init.lua` binds only `alt+h`
+- **THEN** `gband.colorscheme()` returns `nord` once the file has loaded
+
+#### Scenario: No binding in the defaults file
+- **WHEN** `defaults/init.lua` is read
+- **THEN** it calls `gband.keystyle.use()` once
+- **AND** it calls none of `gband.keymap.set`, `gband.bind` and `gband.keymap.mode`
+
+#### Scenario: Copied defaults load unchanged
+- **WHEN** `user/init.lua` is a copy of `defaults/init.lua`
+- **THEN** loading succeeds
+- **AND** the options, bindings and modes equal those of the default configuration with the same saved key style

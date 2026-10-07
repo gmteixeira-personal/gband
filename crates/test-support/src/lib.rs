@@ -246,6 +246,7 @@ pub struct TestClient {
     pub exited: bool,
     pub bridge: Vec<ServerMessage>,
     pub states: HashMap<WindowId, BTreeMap<String, Value>>,
+    pub names: HashMap<WindowId, (String, Option<String>)>,
 }
 
 impl TestClient {
@@ -306,6 +307,7 @@ impl TestClient {
             exited: false,
             bridge: Vec::new(),
             states: HashMap::new(),
+            names: HashMap::new(),
         };
         match client.receive().await {
             Some(ServerMessage::Layout { .. }) => {}
@@ -321,11 +323,15 @@ impl TestClient {
                 other => panic!("expected a snapshot, got {other:?}"),
             }
         }
+        let mut states = false;
         loop {
             match client.receive().await {
                 Some(ServerMessage::Requirements(_)) => return client,
-                Some(ServerMessage::WindowState { .. }) => {}
-                other => panic!("expected window states, then requirements, got {other:?}"),
+                Some(ServerMessage::WindowName { .. }) if !states => {}
+                Some(ServerMessage::WindowState { .. }) => states = true,
+                other => panic!(
+                    "expected window names, then window states, then requirements, got {other:?}"
+                ),
             }
         }
     }
@@ -413,6 +419,7 @@ impl TestClient {
                 self.layout = layout.clone();
                 self.area = Size::new(*cols, *rows);
                 self.grids.retain(|window, _| layout.contains(*window));
+                self.names.retain(|window, _| layout.contains(*window));
             }
             ServerMessage::Snapshot {
                 window,
@@ -441,6 +448,15 @@ impl TestClient {
                 self.opened.push((*request, *window));
             }
             ServerMessage::Exited => self.exited = true,
+            ServerMessage::WindowName {
+                window,
+                automatic,
+                manual,
+            } => {
+                assert!(self.grids.contains_key(window), "name before a snapshot");
+                self.names
+                    .insert(*window, (automatic.clone(), manual.clone()));
+            }
             ServerMessage::WindowState { window, key, value } => {
                 let state = self.states.entry(*window).or_default();
                 match value {

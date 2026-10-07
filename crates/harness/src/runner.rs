@@ -763,6 +763,16 @@ fn start(_: &Lua, context: &Context, opts: Value) -> mlua::Result<MultiValue> {
             )));
         }
     };
+    let window_titles = match field("window_titles")? {
+        Value::Nil => false,
+        Value::Boolean(titles) => titles,
+        other => {
+            return Err(fail(format!(
+                "`window_titles` of g.start must be a boolean, found {}",
+                other.type_name()
+            )));
+        }
+    };
     context.slot().started = true;
     let setup = Setup {
         executable: context.run.executable.clone(),
@@ -771,6 +781,7 @@ fn start(_: &Lua, context: &Context, opts: Value) -> mlua::Result<MultiValue> {
         server_config: optional_text("server_config")?,
         keystyle,
         theme,
+        window_titles,
         files,
         plugins,
         env,

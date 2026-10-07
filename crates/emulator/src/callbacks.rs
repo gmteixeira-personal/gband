@@ -8,10 +8,15 @@ pub enum Record {
     Settle(u64),
 }
 
+const TITLE_STACK_DEPTH: usize = 10;
+
 #[derive(Default)]
 pub struct Callbacks {
     pub write_back: Vec<u8>,
     pub records: Option<Vec<Record>>,
+    pub title: Option<String>,
+    pub title_changed: bool,
+    title_stack: Vec<Option<String>>,
 }
 
 impl Callbacks {
@@ -20,6 +25,42 @@ impl Callbacks {
             records.push(record);
         }
     }
+
+    fn set_title(&mut self, title: Option<String>) {
+        if self.title != title {
+            self.title = title;
+            self.title_changed = true;
+        }
+    }
+
+    fn push_title(&mut self) {
+        if self.title_stack.len() == TITLE_STACK_DEPTH {
+            self.title_stack.remove(0);
+        }
+        self.title_stack.push(self.title.clone());
+    }
+
+    fn pop_title(&mut self) {
+        if let Some(title) = self.title_stack.pop() {
+            self.set_title(title);
+        }
+    }
+}
+
+fn cleaned_title(text: &str) -> Option<String> {
+    let kept: String = text.chars().filter(|c| !c.is_control()).collect();
+    let trimmed = kept.trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_owned())
+}
+
+fn title_stack_operation(params: &[&[u16]]) -> Option<bool> {
+    let mut values = params.iter().map(|param| param.first().copied());
+    let push = match values.next()?? {
+        22 => true,
+        23 => false,
+        _ => return None,
+    };
+    matches!(values.next(), None | Some(None | Some(0 | 2))).then_some(push)
 }
 
 fn joined(params: &[&[u8]]) -> String {
@@ -85,6 +126,10 @@ impl vt100::Callbacks for Callbacks {
         }
     }
 
+    fn set_window_title(&mut self, _: &mut Screen, title: &[u8]) {
+        self.set_title(cleaned_title(&String::from_utf8_lossy(title)));
+    }
+
     fn unhandled_control(&mut self, _: &mut Screen, b: u8) {
         tracing::debug!("unhandled control {b:#04x}");
     }
@@ -104,6 +149,16 @@ impl vt100::Callbacks for Callbacks {
     ) {
         if let Some(reply) = query_reply(screen, i1, i2, params, c) {
             self.write_back.extend_from_slice(reply.as_bytes());
+            return;
+        }
+        if (i1, i2, c) == (None, None, 't')
+            && let Some(push) = title_stack_operation(params)
+        {
+            if push {
+                self.push_title();
+            } else {
+                self.pop_title();
+            }
             return;
         }
         let params = params
@@ -127,6 +182,14 @@ impl vt100::Callbacks for Callbacks {
     }
 
     fn unhandled_osc(&mut self, _: &mut Screen, params: &[&[u8]]) {
+        match params {
+            [b"0" | b"2", text @ ..] => {
+                self.set_title(cleaned_title(&joined(text)));
+                return;
+            }
+            [b"1", ..] => return,
+            _ => {}
+        }
         if self.records.is_some()
             && let Some(record) = recognised(params)
         {

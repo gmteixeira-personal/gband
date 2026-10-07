@@ -1,6 +1,7 @@
 gband.opt.prefix = "ctrl+space"
 gband.opt.center_focused_column = "never"
 gband.opt.loop_bands = true
+gband.opt.window_titles = true
 gband.opt.notify_style = "osc9"
 gband.opt.tile_border_sides = { "top", "right", "bottom", "left" }
 gband.opt.tile_border_chars = "rounded"

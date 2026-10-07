@@ -29,6 +29,9 @@ gband follows niri's scrollable tiling model instead:
 Scrolling, band switches and resizes animate.
 Set `GBAND_ANIMATIONS=off` before you attach to turn the animations off.
 
+Each window shows its name on its top border; see [Window names](#window-names).
+Set `GBAND_WINDOW_TITLES=off` before you attach to draw no names, whatever the `window_titles` option holds.
+
 ## Names
 
 gband keeps niri's layout model but renames one of its parts:
@@ -62,7 +65,7 @@ The prefix key, Ctrl+Space, gives the keys below their gband meaning, in one of 
 - **modal**: Ctrl+Space enters navigation mode, and the sidebar shows `N`.
   Each key below acts and navigation mode stays active, so `l` `l` `l` moves three columns and `=` `=` widens the column twice.
   A key with no binding does nothing.
-  Escape or Enter returns to interactive mode, and so do `?`, `:`, `s` and Ctrl+Space once they have acted, and `n` unless the settings window's `I on new` is `off`.
+  Escape or Enter returns to interactive mode, and so do `?`, `:`, `N`, `s` and Ctrl+Space once they have acted, and `n` unless the settings window's `I on new` is `off`.
 - **direct**: Ctrl+Space then one key acts once, and the keys that follow reach the window again, as in tmux.
   Ctrl+Space `l` `l` moves one column and types `l`.
   Escape, Enter and any other key with no binding after Ctrl+Space are discarded.
@@ -91,6 +94,7 @@ Both styles bind the same keys after Ctrl+Space:
 | Ctrl+`j`, Ctrl+`k`, or Ctrl with the down or up arrow | move the window, or the floating window, down or up |
 | `?` | list these keys, and run the one you choose; the list takes the keys that follow |
 | `:` | open the Lua prompt, which runs one line of Lua |
+| `N` | rename the focused window; see [Window names](#window-names) |
 | `s` | open the settings window |
 | `D` | detach |
 | Escape, Enter | modal only: return to interactive mode |
@@ -267,6 +271,7 @@ The client options, set in `user/init.lua`, and their defaults:
 | `prefix` | one key | `"ctrl+space"` |
 | `center_focused_column` | `"never"`, `"always"` or `"on-overflow"` | `"never"` |
 | `loop_bands` | `true` or `false`: whether focus goes round from a band's last column to its first, drawing a long enough band as a loop | `true` |
+| `window_titles` | `true` or `false`: whether windows show their names on their top borders | `true` |
 | `tile_border_sides` | the sides of a tiled window's border that are drawn: a list of `"top"`, `"right"`, `"bottom"` and `"left"` | `{ "top", "right", "bottom", "left" }` |
 | `tile_border_chars` | the border's characters: `"plain"`, `"rounded"`, `"double"`, `"thick"`, or a list of eight one-cell strings | `"rounded"` |
 | `focused_tile_border_chars` | the focused tiled window border's characters, with the same sides | `"rounded"` |
@@ -451,9 +456,58 @@ A `user/init.lua` that calls no `gband.keystyle.use()` sets it up and binds it i
 ```lua
 gband.plugin("gband.prompt")
 gband.keymap.set("prefix", ":", gband.action["prompt.open"], { desc = "run Lua" })
+gband.keymap.set("prefix", "N", gband.action["prompt.rename"], { desc = "rename the window" })
 ```
 
 `gband.hl.set("PromptCursor", { ... })` styles the cursor, which is reversed by default.
+
+### Window names
+
+Every window that runs a program has a name, shown on its top border from the border's second column, in the border's colors.
+A name too long for the border is cut to the border's width less 2 cells, and a window whose border draws no top side shows none.
+The server keeps the names, so every client attached to a session shows the same ones.
+
+A window's name is, in this order:
+
+1. Its manual name, set with Ctrl+Space then `N`.
+2. Its title, as the program in it last set it with OSC 0 or OSC 2.
+   A program that saves the title and restores it on exit, as vim does, gives the earlier title back.
+3. The command in its foreground, such as `sleep` or `vim`, followed within a second.
+   A login shell's leading `-` is dropped, so `-zsh` shows `zsh`.
+
+When two or more windows of a band share a name, each shows ` #` and a number after it, counted in layout order: the columns left to right, each column's windows top to bottom, then the floating windows.
+So two shells show `bash #1` and `bash #2`, and `vim` alone shows `vim`.
+The numbers follow the layout as windows move.
+
+Ctrl+Space then `N` opens a one-line box titled `rename` on the bottom rows, holding the focused window's manual name, and returns to interactive mode so the box takes what you type.
+It edits as the Lua prompt does.
+Enter saves the line as the window's manual name, and Enter on an empty line clears it, so the window takes its automatic name again.
+Escape closes the box and changes nothing.
+Opening the Lua prompt closes the rename box, and the other way round.
+
+As in Zellij, a title wins over the command.
+A shell that sets a title such as `user@host:~` at each prompt keeps showing it while a command runs, unless the shell also sets the title to the command.
+fish does that by default.
+zsh and bash need a hook that does it before each command:
+
+```zsh
+# ~/.zshrc
+preexec() { printf '\e]2;%s\a' "${1%% *}" }
+precmd() { printf '\e]2;%s\a' "${PWD/#$HOME/~}" }
+```
+
+```bash
+# ~/.bashrc
+trap 'printf "\e]2;%s\a" "${BASH_COMMAND%% *}"' DEBUG
+PROMPT_COMMAND='printf "\e]2;%s\a" "${PWD/#$HOME/~}"'
+```
+
+A shell that sets no title at all shows its foreground command, such as `bash` at the prompt and `make` while it builds.
+A manual name covers the rest.
+
+`gband.opt.window_titles = false` draws no names, and `GBAND_WINDOW_TITLES=off` does the same whatever the option holds.
+The names are still kept, and `gband.layout()` and the rename box still use them.
+`gband.window.rename(window, name)` renames a window from Lua; [docs/plugins.md](docs/plugins.md) describes it.
 
 ### Sidebar
 

@@ -19,6 +19,7 @@ use portable_pty::{
 use tokio::sync::{mpsc, watch};
 use tracing::Span;
 
+use crate::process;
 use crate::scripting::Taps;
 
 const DRAIN_TIMEOUT: Duration = Duration::from_millis(500);
@@ -42,6 +43,54 @@ pub struct Window {
 struct Terminal {
     grid: Grid,
     master: Option<Box<dyn MasterPty + Send>>,
+    names: Option<Names>,
+}
+
+struct Names {
+    program: String,
+    group: Option<i32>,
+    command: String,
+    automatic: String,
+    manual: Option<String>,
+    generation: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WindowNames {
+    pub generation: u64,
+    pub automatic: String,
+    pub manual: Option<String>,
+}
+
+impl Terminal {
+    fn update_name(&mut self, reread: bool) -> bool {
+        let Some(names) = &mut self.names else {
+            return false;
+        };
+        let title_changed = self.grid.take_title_changed();
+        let group = self
+            .master
+            .as_ref()
+            .and_then(|master| master.process_group_leader());
+        let group_changed = group != names.group;
+        if !(reread || title_changed || group_changed) {
+            return false;
+        }
+        if reread || group_changed {
+            names.group = group;
+            names.command = process::foreground_command(group, &names.program);
+        }
+        let automatic = self
+            .grid
+            .title()
+            .map_or_else(|| names.command.clone(), str::to_owned);
+        if automatic == names.automatic {
+            return false;
+        }
+        names.automatic = automatic;
+        names.generation += 1;
+        true
+    }
 }
 
 pub struct Seen {
@@ -90,6 +139,7 @@ impl Window {
             terminal: Mutex::new(Terminal {
                 grid: Grid::new(size),
                 master: None,
+                names: None,
             }),
             generation: AtomicU64::new(0),
             changed: Arc::clone(changed),
@@ -133,6 +183,38 @@ impl Window {
         self.terminal.lock().unwrap().grid.modes()
     }
 
+    pub fn names(&self) -> Option<WindowNames> {
+        let terminal = self.terminal.lock().unwrap();
+        let names = terminal.names.as_ref()?;
+        Some(WindowNames {
+            generation: names.generation,
+            automatic: names.automatic.clone(),
+            manual: names.manual.clone(),
+        })
+    }
+
+    pub fn refresh_name(&self) {
+        let changed = self.terminal.lock().unwrap().update_name(true);
+        if changed {
+            self.notify();
+        }
+    }
+
+    pub fn rename(&self, manual: Option<String>) {
+        {
+            let mut terminal = self.terminal.lock().unwrap();
+            let Some(names) = &mut terminal.names else {
+                return;
+            };
+            if names.manual == manual {
+                return;
+            }
+            names.manual = manual;
+            names.generation += 1;
+        }
+        self.notify();
+    }
+
     pub fn foreground_group(&self) -> Option<i32> {
         self.terminal
             .lock()
@@ -169,6 +251,7 @@ impl Window {
         {
             let mut terminal = self.terminal.lock().unwrap();
             terminal.grid.process(bytes);
+            terminal.update_name(false);
             self.generation.fetch_add(1, Ordering::AcqRel);
             let write_back = terminal.grid.take_write_back();
             if !write_back.is_empty()
@@ -227,11 +310,25 @@ pub fn spawn(
         .context("cannot read the PTY")?;
     let writer = pair.master.take_writer().context("cannot write the PTY")?;
     let (input, receiver) = mpsc::unbounded_channel();
-    let window = Arc::new(Window {
-        terminal: Mutex::new(Terminal {
-            grid: Grid::new(size),
-            master: Some(pair.master),
+    let program_name = program
+        .first()
+        .map(|program| program.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let mut terminal = Terminal {
+        grid: Grid::new(size),
+        master: Some(pair.master),
+        names: Some(Names {
+            program: program_name,
+            command: String::new(),
+            group: None,
+            automatic: String::new(),
+            manual: None,
+            generation: 0,
         }),
+    };
+    terminal.update_name(true);
+    let window = Arc::new(Window {
+        terminal: Mutex::new(terminal),
         generation: AtomicU64::new(0),
         changed: Arc::clone(changed),
         write_back: input.downgrade(),

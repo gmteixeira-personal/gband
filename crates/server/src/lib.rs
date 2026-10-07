@@ -3,6 +3,7 @@ mod connection;
 mod event;
 mod hub;
 mod lock;
+mod process;
 mod registry;
 mod scripting;
 mod session;

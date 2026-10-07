@@ -14,7 +14,7 @@ Changing the returned table SHALL NOT change the layout. Calling `gband.layout()
 #### Scenario: Two columns
 - **WHEN** the screen area is 80×24, the first band holds a column of width 1/2 with window 1, and a full-width column of width 1/3 with window 2 at a fixed height of 10 rows above window 3 at weight 1, and a binding function calls `gband.layout()`
 - **THEN** the result's `cols` is 80 and `rows` is 24
-- **AND** its first band's columns are a column with `width` 0.5, `full_width` `false` and the window `id = 1, weight = 1`, and a column with `width` 1/3 and `full_width` `true` whose windows are `id = 2, rows = 10` and `id = 3, weight = 1`
+- **AND** its first band's columns are `{ width = 0.5, full_width = false, windows = { { id = 1, weight = 1 } } }` and a column with `width` 1/3 and `full_width` `true` whose windows are `{ id = 2, rows = 10 }` and `{ id = 3, weight = 1 }`
 - **AND** its last band has no columns and no floating windows
 
 #### Scenario: While loading
@@ -23,7 +23,7 @@ Changing the returned table SHALL NOT change the layout. Calling `gband.layout()
 
 #### Scenario: Floating window
 - **WHEN** the screen area is 80×24 and band 1 holds window 1 in a column and floating window 2 with `col` 50, `row` 3, width 1/2, full width off and `rows` 10, and a binding function calls `gband.layout()`
-- **THEN** its first band's floating window has `id = 2, width = 0.5, full_width = false, rows = 10, col = 40, row = 3`
+- **THEN** its first band's `floating` is `{ { id = 2, width = 0.5, full_width = false, rows = 10, col = 40, row = 3 } }`
 
 #### Scenario: Window names
 - **WHEN** band 1 holds windows 1 and 2, both running `bash` with no title set, window 3 running `vim`, and window 3 is renamed `notes`, and a binding function calls `gband.layout()`

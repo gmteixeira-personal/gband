@@ -27,13 +27,15 @@ use gband_core::input::Key;
 use gband_core::layout::{
     BandId, FloatingWindow, Layout, LayoutOptions, Program, Proportion, SessionAction, WindowId,
 };
+use gband_core::names::shown_names;
 use gband_core::terminal_input::{Decoder, TerminalInput};
 use gband_core::view::{CenterFocusedColumn, Layer, Scene, View, ViewAction};
 use gband_emulator::{Emulator, Grid};
 use gband_lua::{
     BandState, Bar, Binding, Border, BorderChars, ClientStyles, Config, ConfigError, Dispatch,
     Event, Options, Outcome as Ran, Palette, PluginManifest, PluginWindowRequest,
-    Requirement as Needed, Runtime, Slot, Version, ViewState, WindowInput, WindowStates,
+    Requirement as Needed, Runtime, Slot, Version, ViewState, WindowInput, WindowName, WindowNames,
+    WindowStates,
 };
 use gband_protocol::{ClientMessage, ExecutableId, Requirement, ServerMessage, SessionName, Value};
 use ratatui::layout::Rect;
@@ -102,6 +104,9 @@ pub fn run(
     let cwd = std::env::current_dir().context("cannot read the current directory")?;
     let animations = parse_animations(std::env::var(ANIMATIONS_VARIABLE).ok().as_deref());
     let mut display = Display::new(terminal_size(), animations);
+    display.allow_titles(parse_window_titles(
+        std::env::var(WINDOW_TITLES_VARIABLE).ok().as_deref(),
+    ));
     display.set_colors(ColorSupport::detect());
     let mut controls = Controls::new(configuration.config, &mut display);
     let placed = controls.place_bars(&mut display);
@@ -166,6 +171,19 @@ impl Drop for TerminalGuard {
     }
 }
 
+pub const WINDOW_TITLES_VARIABLE: &str = "GBAND_WINDOW_TITLES";
+
+pub fn parse_window_titles(value: Option<&str>) -> bool {
+    match value {
+        None | Some("on") => true,
+        Some("off") => false,
+        Some(other) => {
+            tracing::warn!("{WINDOW_TITLES_VARIABLE} value {other:?} is not on or off, using on");
+            true
+        }
+    }
+}
+
 pub struct Display {
     layout: Arc<Layout>,
     area: Size,
@@ -187,6 +205,10 @@ pub struct Display {
     colors: ColorSupport,
     plugin_windows: PluginWindows,
     states: Arc<WindowStates>,
+    names: HashMap<WindowId, (String, Option<String>)>,
+    shown_names: Arc<WindowNames>,
+    titles_allowed: bool,
+    window_titles: bool,
     ready: bool,
     tile_border: Border,
     floating_border: Border,
@@ -224,6 +246,10 @@ impl Display {
             colors: ColorSupport::default(),
             plugin_windows: PluginWindows::new(),
             states: Arc::new(WindowStates::new()),
+            names: HashMap::new(),
+            shown_names: Arc::new(WindowNames::new()),
+            titles_allowed: true,
+            window_titles: true,
             ready: false,
             tile_border: Border::default(),
             floating_border: Border::default(),
@@ -565,6 +591,40 @@ impl Display {
         previous
     }
 
+    pub fn window_name(&self, window: WindowId) -> Option<&WindowName> {
+        self.shown_names.get(&window)
+    }
+
+    pub fn allow_titles(&mut self, allowed: bool) {
+        self.titles_allowed = allowed;
+    }
+
+    fn name_windows(&mut self) {
+        let current: HashMap<WindowId, String> = self
+            .names
+            .iter()
+            .map(|(&window, (automatic, manual))| {
+                (window, manual.clone().unwrap_or_else(|| automatic.clone()))
+            })
+            .collect();
+        let mut shown = WindowNames::new();
+        for band in self.layout.bands() {
+            for (window, name) in shown_names(band, &current) {
+                let manual = self.names[&window].1.clone();
+                shown.insert(
+                    window,
+                    WindowName {
+                        shown: name,
+                        manual,
+                    },
+                );
+            }
+        }
+        if *self.shown_names != shown {
+            self.shown_names = Arc::new(shown);
+        }
+    }
+
     pub fn plugin_windows(&self) -> &PluginWindows {
         &self.plugin_windows
     }
@@ -587,6 +647,7 @@ impl Display {
         self.floating_border = options.floating_border.clone();
         self.focused_tile_chars = options.focused_tile_border_chars.clone();
         self.focused_floating_chars = options.focused_floating_border_chars.clone();
+        self.window_titles = options.window_titles;
         let looping = std::mem::replace(&mut self.loop_bands, options.loop_bands);
         if let Some(view) = &mut self.view {
             view.set_center_focused_column(self.policy);
@@ -713,6 +774,7 @@ impl Display {
             area: self.area,
             ribbon: self.ribbon_size(),
             states: Arc::clone(&self.states),
+            names: Arc::clone(&self.shown_names),
         }
     }
 
@@ -792,7 +854,9 @@ impl Display {
                     Arc::make_mut(&mut self.states)
                         .retain(|&window, _| layout.contains(window) || !previous.contains(window));
                 }
+                self.names.retain(|&window, _| layout.contains(window));
                 self.layout = Arc::new(layout);
+                self.name_windows();
                 let area = Size::new(cols, rows);
                 if area != self.area {
                     self.presentation.snap();
@@ -819,6 +883,18 @@ impl Display {
             },
             ServerMessage::Focus(window) => {
                 self.with_view(|view, scene| view.focus_window(window, scene))
+            }
+            ServerMessage::WindowName {
+                window,
+                automatic,
+                manual,
+            } => {
+                if self.layout.contains(window) {
+                    self.names.insert(window, (automatic, manual));
+                    self.name_windows();
+                } else {
+                    tracing::debug!(window = %window, "ignoring a name for a window not in the layout");
+                }
             }
             ServerMessage::Opened { .. }
             | ServerMessage::Event { .. }
@@ -880,6 +956,7 @@ impl Display {
             banner: self.banner.as_deref().filter(|_| !self.error_item),
             bars: self.bars().map(|(bar, area)| Shown { bar, area }).collect(),
             overlay: self.overlay(),
+            titles: (self.titles_allowed && self.window_titles).then_some(&*self.shown_names),
         }
     }
 
@@ -1532,6 +1609,9 @@ impl Controls {
                     tracing::debug!("ignoring a server action dispatched in the client")
                 }
                 Dispatch::ClearErrors => display.clear_errors(),
+                Dispatch::Rename { window, name } => {
+                    steps.push(Step::Send(ClientMessage::Rename { window, name }));
+                }
             }
         }
         for error in &outcome.errors {

@@ -36,6 +36,7 @@ pub struct Setup {
     pub server_config: Option<String>,
     pub keystyle: Option<String>,
     pub theme: Option<String>,
+    pub window_titles: bool,
     pub files: Vec<(String, String)>,
     pub plugins: Vec<PathBuf>,
     pub env: Vec<(OsString, Option<OsString>)>,
@@ -156,13 +157,15 @@ fn prepare(env: &mut TestEnv, setup: &Setup, socket: &Path) -> Result<(), String
         search.push(":");
         search.push(&path);
     }
-    let set: [(&str, Option<OsString>); 13] = [
+    let titles = (!setup.window_titles).then(|| OsString::from("off"));
+    let set: [(&str, Option<OsString>); 14] = [
         ("SHELL", Some("/bin/sh".into())),
         ("PS1", Some("$ ".into())),
         ("TERM", Some("xterm-256color".into())),
         ("COLORTERM", Some("truecolor".into())),
         ("TZ", Some("UTC".into())),
         ("GBAND_ANIMATIONS", Some("off".into())),
+        ("GBAND_WINDOW_TITLES", titles),
         ("INPUTRC", Some("/dev/null".into())),
         ("PATH", Some(search)),
         (SOCKET_VARIABLE, Some(socket.as_os_str().to_owned())),

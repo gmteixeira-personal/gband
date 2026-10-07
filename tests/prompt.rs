@@ -120,3 +120,100 @@ fn colon_in_interactive_mode() {
     assert!(interactive(&screen), "{}", client.contents());
     assert!(!screen.contents().contains("lua"), "{}", client.contents());
 }
+
+fn titled(env: &TestEnv) -> Attached {
+    let mut client = Attached::start_with(env, &env.executable, &["attach"], 80, 24, |command| {
+        command.env_remove("GBAND_WINDOW_TITLES")
+    });
+    client.wait_for_prompt();
+    client.shell_pid(env);
+    client
+}
+
+fn title(screen: &Grid) -> Option<String> {
+    let tile = tiles(screen).into_iter().find(|tile| tile.focused)?;
+    let row = screen
+        .contents()
+        .lines()
+        .nth(usize::from(tile.top))?
+        .to_owned();
+    let border: String = row
+        .chars()
+        .skip(usize::from(tile.left) + 1)
+        .take(usize::from(tile.right - tile.left - 1))
+        .collect();
+    Some(border.trim_end_matches('─').to_owned())
+}
+
+fn floating_line(screen: &Grid, title: &str) -> Option<String> {
+    let contents = screen.contents();
+    let lines: Vec<&str> = contents.lines().collect();
+    let top = lines
+        .iter()
+        .position(|line| line.contains(&format!("┌{title}")))?;
+    let row = lines.get(top + 1)?;
+    let start = row.find('│')? + '│'.len_utf8();
+    let end = row.rfind('│')?;
+    Some(row.get(start..end)?.trim_end().to_owned())
+}
+
+fn rename_line(screen: &Grid) -> Option<String> {
+    floating_line(screen, "rename")
+}
+
+fn rename_to(client: &mut Attached, name: &str) {
+    client.send(b"\x00N");
+    client.wait_for("the rename prompt", |screen| rename_line(screen).is_some());
+    client.send(b"\x15");
+    client.wait_for("an empty rename prompt", |screen| {
+        rename_line(screen).as_deref() == Some("")
+    });
+    client.send(name.as_bytes());
+    client.wait_for("the typed name", |screen| {
+        rename_line(screen).as_deref() == Some(name)
+    });
+    client.send(b"\r");
+}
+
+#[test]
+fn rename_the_focused_window() {
+    let env = TestEnv::new("prompt-rename");
+    let mut client = titled(&env);
+    client.wait_for("the title sh", |screen| {
+        title(screen).as_deref() == Some("sh")
+    });
+    rename_to(&mut client, "logs");
+    client.wait_for("the title logs", |screen| {
+        rename_line(screen).is_none() && title(screen).as_deref() == Some("logs")
+    });
+    client.send(b"\x00N");
+    client.wait_for("the prompt holding the manual name", |screen| {
+        rename_line(screen).as_deref() == Some("logs")
+    });
+    client.send(b"x\x1b");
+    client.wait_for("the prompt closed with the name kept", |screen| {
+        rename_line(screen).is_none() && title(screen).as_deref() == Some("logs")
+    });
+    client.send(b"\x00N");
+    client.wait_for("the rename prompt again", |screen| {
+        rename_line(screen).as_deref() == Some("logs")
+    });
+    client.send(b"\x15\r");
+    client.wait_for("the automatic name back", |screen| {
+        rename_line(screen).is_none() && title(screen).as_deref() == Some("sh")
+    });
+}
+
+#[test]
+fn lua_prompt_replaces_the_rename_prompt() {
+    let env = TestEnv::new("prompt-rename-replaced");
+    let mut client = attached(&env);
+    client.send(b"\x00N");
+    client.wait_for("the rename prompt", |screen| rename_line(screen).is_some());
+    client.send(b"ab\x00:");
+    client.wait_for("only the Lua prompt", |screen| {
+        rename_line(screen).is_none() && floating_line(screen, "lua").as_deref() == Some(":")
+    });
+    client.send(b"x");
+    client.wait_for("the Lua prompt focused", |screen| prompt_shows(screen, "x"));
+}

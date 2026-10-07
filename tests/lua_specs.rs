@@ -75,6 +75,11 @@ fn looping_bands() {
 }
 
 #[test]
+fn window_names() {
+    gband_test(root(), &["tests/lua/window_names_spec.lua"]);
+}
+
+#[test]
 fn example_plugin_agent_status() {
     gband_test(&root().join("examples/plugins/agent-status"), &[]);
 }

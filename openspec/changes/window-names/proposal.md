@@ -37,7 +37,7 @@ Out of scope:
 ### Modified Capabilities
 - `client-attach`: the key binding tables gain `N`, renaming the focused window.
 - `lua-control`: `gband.layout()` window tables hold `name` and `manual_name`, and `gband.window.rename` is dispatched like an action.
-- `configuration`: the client option `window_titles` in the options table.
+- `configuration`: the client option `window_titles` in the options table, and the default `prefix N` binding between `:` and `s`.
 - `plugin-testing`: `g.start`'s `window_titles` field and `GBAND_WINDOW_TITLES=off` in the case environment.
 - `wire-protocol`: the `rename` client message, the `window name` server message and its place in the attach order, and the protocol version.
 

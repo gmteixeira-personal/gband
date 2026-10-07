@@ -291,7 +291,7 @@ Each built-in option belongs to one side, and each process knows only its own si
 
 | side | options |
 |---|---|
-| client | `prefix`, `center_focused_column`, `loop_bands`, `notify_style`, `tile_border_sides`, `tile_border_chars`, `focused_tile_border_chars`, `floating_border_sides`, `floating_border_chars`, `focused_floating_border_chars`, `width_step`, `height_step`, `mouse_mod` |
+| client | `prefix`, `center_focused_column`, `loop_bands`, `window_titles`, `notify_style`, `tile_border_sides`, `tile_border_chars`, `focused_tile_border_chars`, `floating_border_sides`, `floating_border_chars`, `focused_floating_border_chars`, `width_step`, `height_step`, `mouse_mod` |
 | server | `default_column_width`, `width_presets` |
 
 ```lua
@@ -301,6 +301,9 @@ local presets = gband.opt.width_presets
 ```
 
 `loop_bands`, `true` by default, lets focus go round from a band's last column to its first; `false` stops focus at either end.
+
+`window_titles`, `true` by default, draws each window's name on its top border; `false` draws none, while the names are still kept and `gband.layout()` still holds them.
+The client reads `GBAND_WINDOW_TITLES` when it starts: `off` draws no names whatever `window_titles` holds, unset or `on` leaves the option in charge, and any other value is logged as a warning and read as unset.
 
 An invalid value is reported at the line of the assignment, does not fail the load, and resets the option to its default.
 Setting an option of the other side is reported naming the side that owns it, and reading one returns nil.
@@ -504,8 +507,8 @@ end, { desc = "the navigation n" })
 - `cols` and `rows`: the size of the screen area.
 - `bands`: one table per band, in order, each with `id`, `columns` and `floating`.
 - `columns`: one table per column, left to right, each with `width` as a number, `full_width` and `windows`.
-- `windows`: one table per window, top to bottom, each with `id` and either `rows`, a fixed height, or `weight`, an automatic height's weight. A window that shows a tiled plugin window this client opened also has `plugin_window`.
-- `floating`: one table per floating window, in the band's floating order, each with `id`, `width` and `full_width` as a column has them, `rows`, the box's height, and `col` and `row`, the box's top-left cell as placed in the screen area. A window that shows a plugin window this client opened also has `plugin_window`.
+- `windows`: one table per window, top to bottom, each with `id` and either `rows`, a fixed height, or `weight`, an automatic height's weight. A window that shows a tiled plugin window this client opened also has `plugin_window`. A window that runs a program also has `name`, the name its border shows, with ` #n` when another window of the band has the same name, and `manual_name`, the name set by `gband.window.rename`, when it has one.
+- `floating`: one table per floating window, in the band's floating order, each with `id`, `width` and `full_width` as a column has them, `rows`, the box's height, and `col` and `row`, the box's top-left cell as placed in the screen area. A window that shows a plugin window this client opened also has `plugin_window`, and one that runs a program has `name` and `manual_name` as a window table has them.
 
 `gband.view()` returns `band`, the viewed band, `window`, the focused window or nil, `floating`, true while the band's floating layer has focus, `plugin_window`, the focused plugin window or nil, `table`, the active key table, and `cols` and `rows`, the size of the ribbon.
 
@@ -567,6 +570,7 @@ A window or band number not in the layout is an error at the line of the call.
 - `gband.window.send_keys(window, keys)` sends a key name, or a list of them, as key presses.
 - `gband.window.send_text(window, text)` sends each character as a key press, a line feed or carriage return as Enter and a tab as Tab. Other control characters are an error.
 - `gband.window.paste(window, text)` sends `text` as a paste.
+- `gband.window.rename(window, name)` sets the window's manual name, which its border and every client show instead of its title or command, with leading and trailing whitespace trimmed. A `name` that is nil or empty clears it. A drawn window of a plugin window, a `name` that is neither a string nor nil, and a `name` holding a control character are errors.
 
 Keys sent this way run no binding and leave the active key table alone.
 
@@ -861,12 +865,13 @@ keyform("ctrl+space") -- "C-space"
 ## The Lua prompt: `gband.prompt`
 
 gband also bundles the Lua prompt, module `gband.prompt`, plugin `prompt`.
-Its `setup` takes no options, and registers the action `prompt.open`, described as `run Lua`.
-Both key style presets set it up right after the key list, before their key bindings, and bind Ctrl+Space then `:` to it, right after `?`:
+Its `setup` takes no options, and registers the actions `prompt.open`, described as `run Lua`, and `prompt.rename`, described as `rename the window`.
+Both key style presets set it up right after the key list, before their key bindings, and bind Ctrl+Space then `:` to `prompt.open`, right after `?`, and Ctrl+Space then `N` to `prompt.rename`, right after `:`:
 
 ```lua
 gband.plugin("gband.prompt")
 gband.keymap.set("prefix", ":", gband.action["prompt.open"], { desc = "run Lua" })
+gband.keymap.set("prefix", "N", gband.action["prompt.rename"], { desc = "rename the window" })
 ```
 
 `prompt.open` enters `root` and opens a focused floating plugin window with a border, titled `lua`, 3 rows high and as wide as the ribbon, on the ribbon's last three rows from its first column, sized from `gband.view()` as it opens.
@@ -891,6 +896,12 @@ A line runs as Lua source text, never a binary chunk, compiled as chunk `@prompt
 It belongs to no plugin, as code of `user/init.lua` does, although the plugin `prompt` runs it, and it has an instruction budget of its own: a line that exceeds it stops alone, and `prompt` is not marked failed.
 A syntax error, a runtime error and a stop by the instruction limit are each reported as a configuration error read `prompt:1: <message>`, such as `prompt:1: instruction limit exceeded`; what the line dispatched before the error stands.
 Return values are dropped.
+
+`prompt.rename` does nothing unless `gband.view()` names a focused window that runs a program.
+Then it enters `root` and opens the rename prompt for that window: a floating plugin window placed and sized as the Lua prompt, titled `rename`, whose line starts as the window's manual name and shows no `:`.
+It edits its line as the Lua prompt does, but Enter closes it and calls `gband.window.rename` on the window it was opened for, unless that window has left the layout.
+Dispatching `prompt.rename` while the rename prompt is open focuses it and keeps its line and its window.
+At most one of the two prompts is open: opening either closes the other first, dropping its line.
 
 The prompt gives `PromptCursor` the default `{ reverse = true }` when its module is first required.
 
