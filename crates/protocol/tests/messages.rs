@@ -31,8 +31,8 @@ fn session(name: &str) -> SessionName {
 }
 
 #[test]
-fn protocol_version_is_nine() {
-    assert_eq!(PROTOCOL_VERSION, 9);
+fn protocol_version_is_ten() {
+    assert_eq!(PROTOCOL_VERSION, 10);
 }
 
 #[test]
@@ -173,6 +173,32 @@ fn client_messages_round_trip() {
     round_trip(ClientMessage::Mouse {
         window: WindowId(2),
         event: MouseEvent::new(MouseKind::Motion(None), 300, 90, Modifiers::SHIFT),
+    });
+}
+
+#[test]
+fn rename_round_trips() {
+    round_trip(ClientMessage::Rename {
+        window: WindowId(2),
+        name: Some("logs".to_owned()),
+    });
+    round_trip(ClientMessage::Rename {
+        window: WindowId(3),
+        name: None,
+    });
+}
+
+#[test]
+fn window_name_round_trips() {
+    round_trip(ServerMessage::WindowName {
+        window: WindowId(4),
+        automatic: "vim".to_owned(),
+        manual: Some("notes".to_owned()),
+    });
+    round_trip(ServerMessage::WindowName {
+        window: WindowId(4),
+        automatic: "bash".to_owned(),
+        manual: None,
     });
 }
 

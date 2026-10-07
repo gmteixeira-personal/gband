@@ -94,6 +94,7 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Link<R, W> {
 struct Sent {
     state: Option<Arc<State>>,
     windows: HashMap<WindowId, (u64, Seen)>,
+    names: HashMap<WindowId, u64>,
 }
 
 pub async fn serve(
@@ -347,6 +348,9 @@ fn dispatch(
                 output,
             }),
             ClientMessage::Shown(windows) => session.command(Command::Shown { client, windows }),
+            ClientMessage::Rename { window, name } => {
+                session.command(Command::Rename { window, name });
+            }
             ClientMessage::Detach => return Ok(true),
             ClientMessage::Attach { .. }
             | ClientMessage::ListSessions
@@ -430,6 +434,8 @@ async fn sync(
         .await?;
         sent.windows
             .retain(|window, _| state.windows.contains_key(window));
+        sent.names
+            .retain(|window, _| state.windows.contains_key(window));
         sent.state = Some(Arc::clone(&state));
     }
     for window in state.layout.windows() {
@@ -457,6 +463,25 @@ async fn sync(
                 rows: size.rows,
                 contents,
             },
+        };
+        deliver(writer, &message, settling).await?;
+    }
+    for window in state.layout.windows() {
+        let Some(names) = state
+            .windows
+            .get(&window)
+            .and_then(|entry| entry.window.names())
+        else {
+            continue;
+        };
+        if sent.names.get(&window) == Some(&names.generation) {
+            continue;
+        }
+        sent.names.insert(window, names.generation);
+        let message = ServerMessage::WindowName {
+            window,
+            automatic: names.automatic,
+            manual: names.manual,
         };
         deliver(writer, &message, settling).await?;
     }

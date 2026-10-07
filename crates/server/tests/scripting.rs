@@ -6,7 +6,9 @@ use std::time::Duration;
 use gband_core::input::{Key, KeyCode};
 use gband_core::layout::Proportion;
 use gband_lua::{LoadOptions, Locations, Side};
-use gband_protocol::{ClientMessage, Key as DataKey, Requirement, ServerMessage, Value};
+use gband_protocol::{
+    ClientMessage, Key as DataKey, Requirement, ServerMessage, SessionName, Value,
+};
 use gband_server::{Reloader, Scripting, ServerConfig};
 use gband_test_support::*;
 
@@ -244,6 +246,45 @@ async fn kept_across_reload() {
     event(&mut client, "reloaded").await;
     let later = scripted.attach().await;
     assert_eq!(later.states[&first]["agent"], text("waiting"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn attach_order_with_window_names() {
+    let scripted = start("lua-attach-names", AGENT).await;
+    let mut client = scripted.attach().await;
+    let first = client.first();
+    client.open_after(first).await;
+    tokio::time::sleep(SETTLE).await;
+    let (mut peer, _) = TestClient::accepted(&scripted.server.socket(), 80, 24).await;
+    peer.send(&ClientMessage::Attach {
+        session: SessionName::default(),
+        cwd: "/".into(),
+    })
+    .await;
+    let mut received = Vec::new();
+    loop {
+        let message: ServerMessage = peer.recv().await.unwrap();
+        received.push(match message {
+            ServerMessage::Requirements(_) => break,
+            ServerMessage::Layout { .. } => "layout".to_owned(),
+            ServerMessage::Snapshot { window, .. } => format!("snapshot {window}"),
+            ServerMessage::WindowName { window, .. } => format!("name {window}"),
+            ServerMessage::WindowState { window, .. } => format!("state {window}"),
+            other => format!("{other:?}"),
+        });
+    }
+    assert_eq!(
+        received,
+        [
+            "layout",
+            "snapshot 1",
+            "snapshot 2",
+            "name 1",
+            "name 2",
+            "state 1",
+            "state 2"
+        ]
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]

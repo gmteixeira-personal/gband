@@ -37,7 +37,7 @@ Out of scope:
 ### Modified Capabilities
 - `client-attach`: the key binding tables gain `N`, renaming the focused window.
 - `lua-control`: `gband.layout()` window tables hold `name` and `manual_name`, and `gband.window.rename` is dispatched like an action.
-- `configuration`: the client option `window_titles` in the options table.
+- `configuration`: the client option `window_titles` in the options table, and the default `prefix N` binding between `:` and `s`.
 - `plugin-testing`: `g.start`'s `window_titles` field and `GBAND_WINDOW_TITLES=off` in the case environment.
 - `wire-protocol`: the `rename` client message, the `window name` server message and its place in the attach order, and the protocol version.
 
@@ -65,38 +65,52 @@ Out of scope:
 
 ### Expected Files
 - openspec/changes/window-names/
+- README.md
+- crates/client/src/bindings.rs
+- crates/client/src/lib.rs
+- crates/client/src/render.rs
+- crates/client/tests/render.rs
+- crates/core/src/lib.rs
+- crates/core/src/names.rs
+- crates/core/tests/names.rs
 - crates/emulator/src/callbacks.rs
 - crates/emulator/src/lib.rs
 - crates/emulator/tests/contract.rs
-- crates/core/src/names.rs
-- crates/core/src/lib.rs
-- crates/core/tests/names.rs
-- crates/protocol/src/message.rs
-- crates/protocol/tests/messages.rs
-- crates/server/src/process.rs
-- crates/server/src/lib.rs
-- crates/server/src/window.rs
-- crates/server/src/session.rs
-- crates/client/src/lib.rs
-- crates/client/src/render.rs
-- crates/client/src/bindings.rs
-- crates/lua/src/control.rs
-- crates/lua/src/options.rs
-- crates/lua/src/runtime/gband/prompt.lua
-- crates/lua/src/runtime/gband/keystyle/modal.lua
-- crates/lua/src/runtime/gband/keystyle/direct.lua
-- crates/lua/tests/control.rs
-- crates/lua/tests/options.rs
-- crates/lua/tests/prompt.rs
 - crates/harness/src/case.rs
 - crates/harness/src/env.rs
-- tests/window_names.rs
-- tests/prompt.rs
-- tests/keystyle.rs
-- tests/lua_specs.rs
-- tests/lua/window_names_spec.lua
-- tests/lua/screenshots/keylist_spec/
-- tests/lua/screenshots/window_names_spec/
-- README.md
+- crates/harness/src/runner.rs
+- crates/lua/src/api.rs
+- crates/lua/src/control.rs
+- crates/lua/src/defaults.lua
+- crates/lua/src/lib.rs
+- crates/lua/src/options.rs
+- crates/lua/src/runtime/gband/keystyle/direct.lua
+- crates/lua/src/runtime/gband/keystyle/modal.lua
+- crates/lua/src/runtime/gband/prompt.lua
+- crates/lua/src/ui.rs
+- crates/lua/tests/config.rs
+- crates/lua/tests/control.rs
+- crates/lua/tests/options.rs
+- crates/lua/tests/plugins.rs
+- crates/lua/tests/prompt.rs
+- crates/protocol/src/message.rs
+- crates/protocol/tests/messages.rs
+- crates/server/src/connection.rs
+- crates/server/src/lib.rs
+- crates/server/src/process.rs
+- crates/server/src/session.rs
+- crates/server/src/window.rs
+- crates/server/tests/scripting.rs
+- crates/server/tests/sync.rs
+- crates/test-support/src/lib.rs
 - docs/plugins.md
 - docs/testing.md
+- tests/keystyle.rs
+- tests/lua/prompt_spec.lua
+- tests/lua/screenshots/keylist_spec/default-list--last-page.txt
+- tests/lua/screenshots/prompt_spec/the-key-list-holds-the-prompt-between-the-key-list-and-detach--hint.txt
+- tests/lua/screenshots/window_names_spec/
+- tests/lua/window_names_spec.lua
+- tests/lua_specs.rs
+- tests/prompt.rs
+- tests/window_names.rs

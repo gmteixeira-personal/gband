@@ -83,3 +83,39 @@ fn other_press_after_the_prefix_with_the_direct_key_style() {
     });
     assert_eq!(focused_tile(&client).left, second.left);
 }
+
+fn rename_line(screen: &Grid) -> Option<String> {
+    let contents = screen.contents();
+    let lines: Vec<&str> = contents.lines().collect();
+    let top = lines.iter().position(|line| line.contains("┌rename"))?;
+    let row = lines.get(top + 1)?;
+    let start = row.find('│')? + '│'.len_utf8();
+    let end = row.rfind('│')?;
+    Some(row.get(start..end)?.trim_end().to_owned())
+}
+
+fn renaming(name: &str, style: &str) {
+    let env = TestEnv::new(name);
+    env.save_key_style(style);
+    let mut client = Attached::start(&env, 80, 24);
+    client.wait_for_prompt();
+    client.shell_pid(&env);
+    client.send(b"\x00N");
+    client.wait_for("the rename prompt", |screen| {
+        rename_line(screen).as_deref() == Some("")
+    });
+    client.send(b"j");
+    client.wait_for("j typed into the rename prompt", |screen| {
+        rename_line(screen).as_deref() == Some("j")
+    });
+}
+
+#[test]
+fn rename_the_focused_window() {
+    renaming("keystyle-rename-modal", "modal");
+}
+
+#[test]
+fn rename_with_the_direct_key_style() {
+    renaming("keystyle-rename-direct", "direct");
+}

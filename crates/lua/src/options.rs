@@ -36,6 +36,7 @@ pub struct Options {
     pub layout: LayoutOptions,
     pub center_focused_column: CenterFocusedColumn,
     pub loop_bands: bool,
+    pub window_titles: bool,
     pub notify_style: NotifyStyle,
     pub tile_border: Border,
     pub floating_border: Border,
@@ -59,6 +60,7 @@ impl Default for Options {
             layout: LayoutOptions::default(),
             center_focused_column: CenterFocusedColumn::default(),
             loop_bands: true,
+            window_titles: true,
             notify_style: NotifyStyle::default(),
             tile_border: rounded(),
             floating_border: rounded(),
@@ -92,6 +94,9 @@ impl Options {
         }
         if let Some(loop_bands) = patch.loop_bands {
             self.loop_bands = loop_bands;
+        }
+        if let Some(window_titles) = patch.window_titles {
+            self.window_titles = window_titles;
         }
         if let Some(style) = patch.notify_style {
             self.notify_style = style;
@@ -135,6 +140,7 @@ impl Options {
             "width_presets" => self.layout.presets = defaults.layout.presets,
             "center_focused_column" => self.center_focused_column = defaults.center_focused_column,
             "loop_bands" => self.loop_bands = defaults.loop_bands,
+            "window_titles" => self.window_titles = defaults.window_titles,
             "notify_style" => self.notify_style = defaults.notify_style,
             "tile_border_sides" => self.tile_border.sides = defaults.tile_border.sides,
             "tile_border_chars" => self.tile_border.chars = defaults.tile_border.chars,
@@ -163,6 +169,7 @@ impl Options {
                 .into_lua(lua),
             "center_focused_column" => lua.to_value(&self.center_focused_column),
             "loop_bands" => self.loop_bands.into_lua(lua),
+            "window_titles" => self.window_titles.into_lua(lua),
             "notify_style" => lua.to_value(&self.notify_style),
             "tile_border_sides" => self.tile_border.sides.to_lua(lua),
             "tile_border_chars" => self.tile_border.chars.to_lua(lua),
@@ -178,10 +185,11 @@ impl Options {
     }
 }
 
-const CLIENT_NAMES: [&str; 13] = [
+const CLIENT_NAMES: [&str; 14] = [
     "prefix",
     "center_focused_column",
     "loop_bands",
+    "window_titles",
     "notify_style",
     "tile_border_sides",
     "tile_border_chars",
@@ -231,7 +239,7 @@ pub(crate) fn check_name(lua: &Lua, name: &str) -> Result<(), String> {
     Err(foreign(lua, name).unwrap_or_else(|| format!("unknown option `{name}`")))
 }
 
-const BUILTIN: [(&str, &str, &str); 15] = [
+const BUILTIN: [(&str, &str, &str); 16] = [
     ("prefix", "string", "the key that starts a key sequence"),
     (
         "default_column_width",
@@ -257,6 +265,11 @@ const BUILTIN: [(&str, &str, &str); 15] = [
         "loop_bands",
         "boolean",
         "whether focus and the strip go round from a band's last column to its first",
+    ),
+    (
+        "window_titles",
+        "boolean",
+        "whether windows show their names on their top borders",
     ),
     (
         "tile_border_sides",
@@ -727,6 +740,7 @@ pub struct OptionsPatch {
     width_presets: Option<Presets>,
     center_focused_column: Option<CenterFocusedColumn>,
     loop_bands: Option<bool>,
+    window_titles: Option<bool>,
     notify_style: Option<NotifyStyle>,
     tile_border_sides: Option<Sides>,
     tile_border_chars: Option<BorderChars>,

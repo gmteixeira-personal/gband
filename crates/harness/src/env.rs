@@ -178,6 +178,7 @@ impl TestEnv {
             ("XDG_DATA_HOME", Some(self.data_home().into_os_string())),
             ("SHELL", Some("/bin/sh".into())),
             ("INPUTRC", Some("/dev/null".into())),
+            ("GBAND_WINDOW_TITLES", Some("off".into())),
             ("GBAND", None),
             ("GBAND_LOG", None),
         ]

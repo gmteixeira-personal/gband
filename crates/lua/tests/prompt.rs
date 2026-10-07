@@ -6,10 +6,10 @@ use common::*;
 use gband_core::action::Action;
 use gband_core::geometry::Size;
 use gband_core::input::{Key, KeyCode};
-use gband_core::layout::{Layout, LayoutOptions};
+use gband_core::layout::{Layout, LayoutOptions, WindowId};
 use gband_core::view::ViewAction;
 use gband_lua::plugin_windows::{FloatingFrame, Frame, Run};
-use gband_lua::{Color, Config, Dispatch, Outcome, ViewState};
+use gband_lua::{Color, Config, Dispatch, Outcome, ViewState, WindowName};
 
 fn state(ribbon: Size) -> ViewState {
     let mut layout = Layout::new();
@@ -59,6 +59,36 @@ impl Prompt {
         let outcome = run_job(&self.config, "gband.action['prompt.open']()");
         clean(&outcome);
         outcome
+    }
+
+    fn rename(&self) -> Outcome {
+        let outcome = run_job(&self.config, "gband.action['prompt.rename']()");
+        clean(&outcome);
+        outcome
+    }
+
+    fn named(&self, manual: Option<&str>) {
+        let mut view = state(Size::new(60, 24));
+        view.names = Arc::new(
+            [(
+                WindowId(1),
+                WindowName {
+                    shown: manual.unwrap_or("bash").to_owned(),
+                    manual: manual.map(str::to_owned),
+                },
+            )]
+            .into(),
+        );
+        clean(&self.config.runtime.set_state(view));
+        self.config.runtime.take_frames();
+    }
+
+    fn frame_of(&self, win: u32) -> FloatingFrame {
+        let frames = self.config.runtime.take_frames();
+        match frames.into_iter().rfind(|(id, _)| *id == win) {
+            Some((_, Some(Frame::Floating(frame)))) => frame,
+            other => panic!("expected a floating frame of {win}, got {other:?}"),
+        }
     }
 
     fn win(&self) -> u32 {
@@ -420,4 +450,160 @@ fn endless_loop() {
     let outcome = prompt.press("enter");
     clean(&outcome);
     assert!(global::<bool>(&prompt.config, "ran"));
+}
+
+fn renamed(window: u32, name: Option<&str>) -> Dispatch {
+    Dispatch::Rename {
+        window: WindowId(window),
+        name: name.map(str::to_owned),
+    }
+}
+
+#[test]
+fn rename_action_registered() {
+    let prompt = Prompt::new("rename-registered");
+    let desc: String = eval(
+        &prompt.config,
+        "for _, a in ipairs(gband.action.list()) do if a.name == 'prompt.rename' then return a.desc end end",
+    );
+    assert_eq!(desc, "rename the window");
+}
+
+#[test]
+fn rename_the_focused_window() {
+    let prompt = Prompt::new("rename-focused");
+    let outcome = prompt.rename();
+    assert!(
+        outcome
+            .dispatched
+            .contains(&Dispatch::Enter("root".to_owned()))
+    );
+    let frame = prompt.frame();
+    assert_eq!(
+        (frame.col, frame.row, frame.width, frame.height),
+        (0, 21, 60, 3)
+    );
+    assert_eq!(frame.title.as_deref(), Some("rename"));
+    assert!(frame.focused);
+    let row = &frame.lines[0];
+    assert_eq!(text(row).trim_end(), "");
+    assert_eq!(cursor(row).0, 0);
+    prompt.type_text("logs");
+    let row = &prompt.frame().lines[0];
+    assert_eq!(text(row).trim_end(), "logs");
+    assert_eq!(cursor(row).0, 4);
+    let outcome = prompt.press("enter");
+    clean(&outcome);
+    assert_eq!(outcome.dispatched, [renamed(1, Some("logs"))]);
+    assert!(prompt.open_windows().is_empty());
+}
+
+#[test]
+fn rename_prompt_starts_with_the_manual_name() {
+    let prompt = Prompt::new("rename-manual");
+    prompt.named(Some("logs"));
+    prompt.rename();
+    let row = &prompt.frame().lines[0];
+    assert_eq!(text(row).trim_end(), "logs");
+    assert_eq!(cursor(row).0, 4);
+}
+
+#[test]
+fn clear_by_renaming_to_nothing() {
+    let prompt = Prompt::new("rename-clear");
+    prompt.named(Some("logs"));
+    prompt.rename();
+    clean(&prompt.press("ctrl+u"));
+    let outcome = prompt.press("enter");
+    clean(&outcome);
+    assert_eq!(outcome.dispatched, [renamed(1, None)]);
+}
+
+#[test]
+fn escape_keeps_the_name() {
+    let prompt = Prompt::new("rename-escape");
+    prompt.named(Some("logs"));
+    prompt.rename();
+    prompt.type_text("x");
+    let outcome = prompt.press("escape");
+    clean(&outcome);
+    assert!(outcome.dispatched.is_empty());
+    assert!(prompt.open_windows().is_empty());
+}
+
+#[test]
+fn rename_in_an_empty_band() {
+    let prompt = Prompt::new("rename-empty");
+    let view = ViewState {
+        window: None,
+        layout: Arc::new(Layout::new()),
+        ..state(Size::new(60, 24))
+    };
+    clean(&prompt.config.runtime.set_state(view));
+    let outcome = prompt.rename();
+    assert!(outcome.dispatched.is_empty(), "{:?}", outcome.dispatched);
+    assert!(prompt.open_windows().is_empty());
+}
+
+#[test]
+fn window_closed_while_renaming() {
+    let prompt = Prompt::new("rename-closed");
+    prompt.rename();
+    prompt.type_text("logs");
+    let view = ViewState {
+        window: None,
+        layout: Arc::new(Layout::new()),
+        ..state(Size::new(60, 24))
+    };
+    clean(&prompt.config.runtime.set_state(view));
+    let outcome = prompt.press("enter");
+    clean(&outcome);
+    assert!(outcome.dispatched.is_empty(), "{:?}", outcome.dispatched);
+    assert!(prompt.open_windows().is_empty());
+}
+
+#[test]
+fn rename_again_while_open_keeps_the_line() {
+    let prompt = Prompt::new("rename-again");
+    prompt.rename();
+    prompt.type_text("ab");
+    let first = prompt.win();
+    prompt.named(Some("other"));
+    prompt.rename();
+    assert_eq!(prompt.open_windows(), [first]);
+    let outcome = prompt.press("enter");
+    assert_eq!(outcome.dispatched, [renamed(1, Some("ab"))]);
+}
+
+#[test]
+fn lua_prompt_replaces_the_rename_prompt() {
+    let prompt = Prompt::new("rename-replaced");
+    prompt.rename();
+    prompt.type_text("ab");
+    prompt.config.runtime.take_frames();
+    prompt.open();
+    let windows = prompt.open_windows();
+    assert_eq!(windows.len(), 1);
+    let frame = prompt.frame_of(windows[0]);
+    assert_eq!(frame.title.as_deref(), Some("lua"));
+    assert_eq!(text(&frame.lines[0]).trim_end(), ":");
+    assert!(eval::<bool>(
+        &prompt.config,
+        "return gband.win.info(gband.win.list()[1]).focused"
+    ));
+}
+
+#[test]
+fn rename_prompt_replaces_the_lua_prompt() {
+    let prompt = Prompt::new("rename-replaces");
+    prompt.open();
+    prompt.type_text("ab");
+    prompt.config.runtime.take_frames();
+    prompt.rename();
+    let windows = prompt.open_windows();
+    assert_eq!(windows.len(), 1);
+    assert_eq!(prompt.frame_of(windows[0]).title.as_deref(), Some("rename"));
+    prompt.open();
+    let windows = prompt.open_windows();
+    assert_eq!(text(&prompt.frame_of(windows[0]).lines[0]).trim_end(), ":");
 }

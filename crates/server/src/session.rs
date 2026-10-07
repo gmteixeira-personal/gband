@@ -22,6 +22,7 @@ use crate::window::{self, SpawnRequest, Window, WindowEntry, WindowExit};
 
 const KILL_GRACE: Duration = Duration::from_secs(2);
 const SETTLE: Duration = Duration::from_millis(100);
+const NAME_CHECK: Duration = Duration::from_secs(1);
 pub const INITIAL_AREA: Size = Size::new(80, 24);
 
 pub struct State {
@@ -48,6 +49,10 @@ pub enum Command {
         client: u64,
         window: WindowId,
         output: Vec<u8>,
+    },
+    Rename {
+        window: WindowId,
+        name: Option<String>,
     },
     Leave {
         client: u64,
@@ -188,6 +193,7 @@ impl Session {
                     tracing::debug!(window = %window, "ignoring content for a window the client does not own")
                 }
             },
+            Command::Rename { window, name } => self.rename(window, name),
             Command::Leave { client } => {
                 let owned: Vec<WindowId> = self
                     .plugins
@@ -203,6 +209,23 @@ impl Session {
             Command::Barrier(reached) => {
                 let _ = reached.send(());
             }
+        }
+    }
+
+    fn rename(&self, window: WindowId, name: Option<String>) {
+        let Some(live) = self.windows.get(&window) else {
+            tracing::debug!(window = %window, "ignoring a rename of a window that runs no program");
+            return;
+        };
+        let name = name
+            .map(|name| name.trim().to_owned())
+            .filter(|name| !name.is_empty());
+        live.entry.window.rename(name);
+    }
+
+    pub fn refresh_names(&self) {
+        for live in self.windows.values() {
+            live.entry.window.refresh_name();
         }
     }
 
@@ -498,11 +521,14 @@ pub async fn drive(
     mut commands: mpsc::UnboundedReceiver<Command>,
     mut exits: mpsc::UnboundedReceiver<WindowExit>,
 ) {
+    let mut names = tokio::time::interval(NAME_CHECK);
+    names.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     while !session.is_over() {
         let settle_at = session.settle_at;
         tokio::select! {
             Some(command) = commands.recv() => session.handle(command),
             Some(exit) = exits.recv() => session.exited(exit),
+            _ = names.tick() => session.refresh_names(),
             () = async { tokio::time::sleep_until(settle_at.unwrap()).await }, if settle_at.is_some() => {
                 session.settle();
             }

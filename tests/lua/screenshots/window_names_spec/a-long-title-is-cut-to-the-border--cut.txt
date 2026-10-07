@@ -1,0 +1,32 @@
+size 30x8 cursor 5:4 shown
+0|I╭cargo test -╮
+1| │$ printf '\0│
+2|1│33]2;cargo t│
+3|2│est --worksp│
+4| │ace\007'    │
+5| │$           │
+6| │            │
+7| ╰────────────╯
+--
+0:0 fg=4 bg=0 bold
+0:1-14 fg=4 bold
+1:0 bg=0
+1:1 fg=4 bold
+1:14 fg=4 bold
+2:0 fg=15 bg=0 bold
+2:1 fg=4 bold
+2:14 fg=4 bold
+3:0 fg=8 bg=0
+3:1 fg=4 bold
+3:14 fg=4 bold
+4:0 bg=0
+4:1 fg=4 bold
+4:14 fg=4 bold
+5:0 bg=0
+5:1 fg=4 bold
+5:14 fg=4 bold
+6:0 bg=0
+6:1 fg=4 bold
+6:14 fg=4 bold
+7:0 bg=0
+7:1-14 fg=4 bold

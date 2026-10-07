@@ -5,7 +5,7 @@ use gband_core::layout::{BandId, Layout, WindowId};
 use gband_core::view::{Scene, View};
 use gband_emulator::{Emulator, Grid};
 use gband_lua::plugin_windows::{FloatingFrame, Run};
-use gband_lua::{Bar, Border, BorderChars, ClientStyles, Palette, Sides};
+use gband_lua::{Bar, Border, BorderChars, ClientStyles, Palette, Sides, WindowNames};
 use ratatui::Frame;
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Position, Rect};
@@ -127,6 +127,7 @@ pub struct Ribbon<'a> {
     pub banner: Option<&'a str>,
     pub bars: Vec<Shown<'a>>,
     pub overlay: Overlay,
+    pub titles: Option<&'a WindowNames>,
 }
 
 pub fn draw_frame(frame: &mut Frame<'_>, ribbon: &Ribbon<'_>) {
@@ -216,23 +217,22 @@ fn draw_float(buffer: &mut Buffer, region: Rect, float: &FloatingFrame, colors: 
     let inner = if let Some(border) = &float.border {
         draw_border(buffer, area, border, colors.style(&float.border_style));
         if let Some(title) = &float.title {
-            let room = area.width.saturating_sub(2);
-            let cells = (gband_lua::ui::width(title) as u16).min(room);
-            let x = area.x + 1;
-            buffer.set_style(Rect::new(x, area.y, cells, 1), Style::reset());
-            buffer.set_stringn(
-                x,
-                area.y,
-                title,
-                usize::from(cells),
-                colors.style(&float.title_style),
-            );
+            draw_title(buffer, area, title, colors.style(&float.title_style));
         }
         interior(area)
     } else {
         area
     };
     draw_lines(buffer, inner, &float.lines, colors);
+}
+
+fn draw_title(buffer: &mut Buffer, area: Rect, title: &str, style: Style) -> u16 {
+    let room = area.width.saturating_sub(2);
+    let cells = (gband_lua::ui::width(title) as u16).min(room);
+    let x = area.x + 1;
+    buffer.set_style(Rect::new(x, area.y, cells, 1), Style::reset());
+    buffer.set_stringn(x, area.y, title, usize::from(cells), style);
+    cells
 }
 
 fn draw_lines(buffer: &mut Buffer, inner: Rect, lines: &[Vec<Run>], colors: ColorSupport) {
@@ -557,13 +557,17 @@ pub fn render(ribbon: &Ribbon<'_>, buffer: &mut Buffer) -> Option<Position> {
         } else {
             &ribbon.styles.border
         };
+        let title = ribbon
+            .titles
+            .and_then(|titles| titles.get(&window))
+            .map(|name| name.shown.as_str());
         paint(
             buffer,
             target,
             &tile,
             &placement,
             grid,
-            (&border, ribbon.colors.style(style)),
+            (&border, ribbon.colors.style(style), title),
             selection,
         );
         if focused && region.kind != RegionKind::Lifted && ribbon.drawn.settled {
@@ -604,7 +608,7 @@ fn paint(
     tile: &DrawnTile,
     placement: &Placement,
     grid: Option<&Grid>,
-    border: (&Border, Style),
+    border: (&Border, Style, Option<&str>),
     selection: Option<Selected>,
 ) {
     let (scratch, shift) = draw_tile(tile, grid, border, &placement.clip);
@@ -721,7 +725,7 @@ impl<S: Screen> Screen for Shifted<'_, S> {
 fn draw_tile(
     tile: &DrawnTile,
     grid: Option<&Grid>,
-    (border, style): (&Border, Style),
+    (border, style, title): (&Border, Style, Option<&str>),
     clip: &Clip,
 ) -> (Buffer, Shift) {
     let cut_left = u16::from(clip.start > 0);
@@ -740,6 +744,18 @@ fn draw_tile(
     );
     let mut scratch = Buffer::empty(area);
     draw_border(&mut scratch, area, border, style);
+    if let Some(title) = title
+        && border.sides.top
+        && clip.top == 0
+    {
+        let row = Rect::new(0, 0, tile.width, 1);
+        let mut line = Buffer::empty(row);
+        let cells = draw_title(&mut line, row, title, style);
+        let shown = shift.cols..shift.cols + area.width;
+        for column in (1..1 + cells).filter(|column| shown.contains(column)) {
+            scratch[(column - shift.cols, 0)] = line[(column, 0)].clone();
+        }
+    }
     let inner = interior(area);
     if let Some(grid) = grid {
         let screen = Shifted {

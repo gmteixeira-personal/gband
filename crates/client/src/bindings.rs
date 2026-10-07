@@ -405,6 +405,7 @@ mod tests {
         for pressed in [
             char_key('?'),
             char_key(':'),
+            char_key('N'),
             char_key('s'),
             char_key('n'),
             Key::plain(KeyCode::Escape),
@@ -426,7 +427,7 @@ mod tests {
             .map(|(key, _, _)| key)
             .collect();
         let order = "h l j k u i c n q [ ] r f - = _ + R v V ctrl+h ctrl+l ctrl+j ctrl+k \
-            ctrl+left ctrl+right ctrl+down ctrl+up ? : s D escape enter left right down up prefix \
+            ctrl+left ctrl+right ctrl+down ctrl+up ? : N s D escape enter left right down up prefix \
             leftmouse rightmouse middlemouse mod+leftmouse mod+rightmouse mod+middlemouse \
             mod+wheeldown mod+wheelup";
         assert_eq!(keys, order.split_whitespace().collect::<Vec<_>>());
@@ -543,7 +544,10 @@ mod tests {
                     assert_eq!(*direct, modal, "{key}")
                 }
                 _ => assert!(
-                    matches!(action.as_deref(), Some("keylist.open" | "prompt.open")) || key == "s",
+                    matches!(
+                        action.as_deref(),
+                        Some("keylist.open" | "prompt.open" | "prompt.rename")
+                    ) || key == "s",
                     "{key}"
                 ),
             }
@@ -744,8 +748,10 @@ gband.keymap.set('prefix', 'alt+wheeldown', gband.action.focus_band_down)",
                         assert!(matches!(binding, Binding::Callback(_)), "{chord:?} {key}");
                     }
                     None => {
-                        let registered =
-                            matches!(action.as_deref(), Some("keylist.open" | "prompt.open"));
+                        let registered = matches!(
+                            action.as_deref(),
+                            Some("keylist.open" | "prompt.open" | "prompt.rename")
+                        );
                         assert!(action.is_some(), "{key}");
                         assert!(
                             matches!(binding, Binding::Action(_)) != registered,

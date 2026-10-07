@@ -103,6 +103,7 @@ Call it once, before any other function of the handle.
 | `server_config` | the contents of `user/server.lua` | none: the default server configuration |
 | `keystyle` | the key style saved in `user/keystyle.lua`: `"modal"`, `"direct"`, or `false` to save none | `"modal"` |
 | `theme` | the theme saved in `user/theme.lua`: a colorscheme name, or `false` to save none | `"terminal"` |
+| `window_titles` | whether windows show their names on their top borders: `true` or `false` | `false` |
 | `files` | a table from paths relative to the configuration directory to contents, such as `{ ["user/lua/extra.lua"] = "..." }` | none |
 | `plugins` | a list of further plugin directories for this case, relative to the test file's directory | none |
 | `env` | environment variables to set, or to remove with `false` | none |
@@ -116,12 +117,16 @@ Start with `keystyle = false` and `theme = false` to see the settings window tha
 The `terminal` theme colors gband's own parts with the indexes 0 to 15 only and sets no terminal palette, so screenshots record small indexes, such as `fg=4` for the focused border, and programs' colors as they print them, whatever theme gband starts with by default.
 Give another theme, such as `theme = "gruvbox"`, to test what it draws.
 
+Cases draw no window names on the borders, so a screenshot shows a window's name only when its case asks for one with `window_titles = true`.
+A plugin's references then stay the same whatever the program in a window sets as its title.
+
 Each case gets a new directory tree under the system's temporary directory, holding its own configuration, data, state and runtime directories and a working directory.
 The plugin under test, every `--plugin` and every `plugins` entry are linked into its plugins directory under their directory names.
 Its gband runs with:
 
 - `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME` and `XDG_RUNTIME_DIR` inside the tree
 - `SHELL=/bin/sh`, `PS1='$ '`, `INPUTRC=/dev/null`, `TERM=xterm-256color`, `COLORTERM=truecolor`, `TZ=UTC` and `GBAND_ANIMATIONS=off`
+- `GBAND_WINDOW_TITLES=off`, unless `window_titles` is `true`
 - a directory of the tree first in `PATH`, holding `xdg-open` and `open`, which record their argument for `g.opened()` and open nothing
 - `GBAND_TEST_SOCKET`, as "The test channel" describes, and no `GBAND`, `GBAND_SESSION`, `GBAND_WINDOW` or `GBAND_LOG`
 - then the changes `env` asks for

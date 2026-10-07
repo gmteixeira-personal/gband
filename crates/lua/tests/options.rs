@@ -221,6 +221,7 @@ fn list_holds_built_in_and_declared_options() {
             "tile_border_chars",
             "tile_border_sides",
             "width_step",
+            "window_titles",
         ]
     );
     let greeting: Vec<String> = eval(
@@ -329,6 +330,34 @@ fn looping_bands_turned_off() {
     assert!(config.errors.is_empty(), "{:?}", config.errors);
     assert!(!global::<bool>(&config, "looping"));
     assert!(!config.options.loop_bands);
+}
+
+#[test]
+fn window_titles_by_default() {
+    let scratch = Scratch::new("window-titles-default");
+    scratch.write("titles = gband.opt.window_titles");
+    let config = scratch.loaded();
+    assert!(global::<bool>(&config, "titles"));
+    assert!(config.options.window_titles);
+}
+
+#[test]
+fn window_titles_off() {
+    let scratch = Scratch::new("window-titles-off");
+    scratch.write("gband.set({ window_titles = false })\ntitles = gband.opt.window_titles");
+    let config = scratch.loaded();
+    assert!(config.errors.is_empty(), "{:?}", config.errors);
+    assert!(!global::<bool>(&config, "titles"));
+    assert!(!config.options.window_titles);
+}
+
+#[test]
+fn window_titles_of_the_wrong_type() {
+    let scratch = Scratch::new("window-titles-wrong-type");
+    let path = scratch
+        .write("gband.set({ window_titles = false })\ngband.set({ window_titles = \"no\" })");
+    let error = scratch.load().err().expect("a wrong type fails the load");
+    assert_error_at(&error, &path, 2, "window_titles");
 }
 
 #[test]

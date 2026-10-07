@@ -11,7 +11,10 @@ use gband_core::layout::{
     Weight, WindowContent, WindowHeight, WindowId,
 };
 use gband_core::view::ViewAction;
-use gband_lua::{BandState, Config, Dispatch, Outcome, ViewState, WindowInput};
+use gband_lua::{
+    BandState, Config, Dispatch, Outcome, PluginWindowRequest, ViewState, WindowInput, WindowName,
+    WindowNames,
+};
 use mlua::Table;
 
 const AREA: Size = Size::new(80, 24);
@@ -987,4 +990,162 @@ fn spawn_rejects_an_unknown_field() {
         "gband.spawn({ after = 9 })",
         "9",
     );
+}
+
+fn named(layout: Layout, names: &[(u32, &str, Option<&str>)]) -> ViewState {
+    let names: WindowNames = names
+        .iter()
+        .map(|&(window, shown, manual)| {
+            (
+                WindowId(window),
+                WindowName {
+                    shown: shown.to_owned(),
+                    manual: manual.map(str::to_owned),
+                },
+            )
+        })
+        .collect();
+    ViewState {
+        names: Arc::new(names),
+        ..state(layout, 1, Some(1), "root")
+    }
+}
+
+fn three_windows() -> Layout {
+    let mut layout = Layout::new();
+    let first = opened(&mut layout, 0, None);
+    let second = opened(&mut layout, 0, Some(first));
+    opened(&mut layout, 0, Some(second));
+    layout
+}
+
+#[test]
+fn window_names() {
+    let view = named(
+        three_windows(),
+        &[
+            (1, "bash #1", None),
+            (2, "bash #2", None),
+            (3, "notes", Some("notes")),
+        ],
+    );
+    let (_scratch, config) = loaded_with("names", "", view);
+    let summary: String = eval(
+        &config,
+        r#"
+        local parts = {}
+        for _, column in ipairs(gband.layout().bands[1].columns) do
+          for _, window in ipairs(column.windows) do
+            parts[#parts + 1] = string.format("%d %s %s", window.id, tostring(window.name), tostring(window.manual_name))
+          end
+        end
+        return table.concat(parts, "; ")
+        "#,
+    );
+    assert_eq!(summary, "1 bash #1 nil; 2 bash #2 nil; 3 notes notes");
+}
+
+#[test]
+fn floating_window_names() {
+    let view = named(with_floating(), &[(4, "vim", None)]);
+    let (_scratch, config) = loaded_with("names-floating", "", view);
+    let name: String = eval(&config, "return gband.layout().bands[1].floating[1].name");
+    assert_eq!(name, "vim");
+}
+
+fn drawn_window() -> (Scratch, Config) {
+    let (scratch, config) = loaded_with("names-drawn", JOB, state(two_bands(), 1, Some(1), "root"));
+    let outcome = run_job(&config, "gband.win.open({ kind = 'tiled' })");
+    let [Dispatch::PluginWindow(PluginWindowRequest::Open { plugin_window, .. })] =
+        outcome.dispatched.as_slice()
+    else {
+        panic!("{:?}", outcome.dispatched);
+    };
+    clean(
+        &config
+            .runtime
+            .plugin_window_opened(*plugin_window, Some(WindowId(2))),
+    );
+    (scratch, config)
+}
+
+#[test]
+fn drawn_window_has_no_name() {
+    let (_scratch, config) = drawn_window();
+    let summary: String = eval(
+        &config,
+        r#"
+        local window = gband.layout().bands[1].columns[2].windows[1]
+        return string.format("%s %s", tostring(window.plugin_window), tostring(window.name))
+        "#,
+    );
+    assert_eq!(summary, "1 nil");
+}
+
+#[test]
+fn rename_a_drawn_window() {
+    let (_scratch, config) = drawn_window();
+    let outcome = run_job(&config, "gband.window.rename(2, 'x')");
+    assert!(outcome.dispatched.is_empty(), "{:?}", outcome.dispatched);
+    let [error] = outcome.errors.as_slice() else {
+        panic!("{:?}", outcome.errors);
+    };
+    assert!(error.message.contains("drawn window"), "{error}");
+}
+
+#[test]
+fn rename_dispatched_in_order() {
+    assert_eq!(
+        dispatched(
+            "rename",
+            state(two_bands(), 1, Some(1), "root"),
+            "gband.window.focus(2)\ngband.window.rename(1, '  logs ')\ngband.window.rename(2, '')\ngband.window.rename(2)"
+        ),
+        [
+            Dispatch::Action(Action::View(ViewAction::FocusWindow(WindowId(2)))),
+            Dispatch::Rename {
+                window: WindowId(1),
+                name: Some("logs".to_owned()),
+            },
+            Dispatch::Rename {
+                window: WindowId(2),
+                name: None,
+            },
+            Dispatch::Rename {
+                window: WindowId(2),
+                name: None,
+            },
+        ]
+    );
+}
+
+#[test]
+fn rename_errors() {
+    let view = || state(two_bands(), 1, Some(1), "root");
+    failed(
+        "rename-unknown",
+        view(),
+        "gband.window.rename(9, 'x')",
+        "window 9",
+    );
+    failed(
+        "rename-control",
+        view(),
+        "gband.window.rename(1, 'a\\nb')",
+        "control character",
+    );
+    failed(
+        "rename-type",
+        view(),
+        "gband.window.rename(1, 3)",
+        "string or nil",
+    );
+}
+
+#[test]
+fn rename_during_loading() {
+    let scratch = Scratch::new("rename-loading");
+    let path = scratch.write("\n\ngband.window.rename(1, 'logs')\n");
+    let error = scratch.load().map(|_| ()).unwrap_err();
+    assert_error_at(&error, &path, 3, "binding function");
 }
