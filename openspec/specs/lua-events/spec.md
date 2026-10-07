@@ -88,7 +88,11 @@ The client SHALL emit these events, and no other built-in events:
 - `window`: the number of the target's window, or of a tiled plugin window's drawn window, and nil otherwise.
 - `plugin_window`: the target plugin window's number, and nil otherwise.
 - `content_col` and `content_row`: the target's content cell, and nil without one.
+- `box_col` and `box_row`: for the targets `"window"` and `"plugin_window"`, the cell's column and row less those of the top-left cell of the target's box, counted from 0, with the border cells included; nil for other targets.
+- `box_width` and `box_height`: for the targets `"window"` and `"plugin_window"`, the width and height of the target's box, border included, as drawn in the frame the event was resolved against; nil for other targets.
 - `table`: the name of the key table active when the event arrived.
+
+The box of a target SHALL be the box the mouse capability's "Pointer targets" resolves the cell to: a tile's box at the position drawn, a floating window's box, a floating plugin window's box, or the tile of a tiled plugin window's drawn window. The box fields SHALL count the whole box, also the cells that the terminal or the ribbon area cuts off, so `box_col` and `box_row` give the same cell whether or not the box is wholly shown. For a cell with a content cell, `box_col` SHALL equal `content_col` plus the column of the content area's top-left cell within the box, and `box_row` SHALL equal `content_row` plus that cell's row within the box.
 
 The client SHALL emit a mouse event for every press, release, motion with a button held to another cell, and wheel step the terminal reports, after handling it, whether a binding, a default, a gesture or a program took it. A motion with no button held SHALL emit none. Mouse events SHALL only report: a handler SHALL NOT keep an event from the window, plugin window or gesture that takes it.
 
@@ -128,7 +132,19 @@ The first layout after attaching SHALL emit no `WindowOpened` and no `LayoutChan
 
 #### Scenario: Click event
 - **WHEN** a handler of `MousePressed` is registered and the user clicks content column 4 and row 2 of window 1 with the left button
-- **THEN** the handler runs once with `button` `"left"`, `target` `"window"`, `window` 1, `content_col` 4, `content_row` 2 and `table` `"root"`
+- **THEN** the handler runs once with `button` `"left"`, `target` `"window"`, `window` 1, `content_col` 4, `content_row` 2, `box_col` 5, `box_row` 3 and `table` `"root"`
+
+#### Scenario: Box cell on a border
+- **WHEN** the ribbon area starts at the terminal's top-left cell, window 2's tile has its box at columns 40 to 79 and rows 0 to 23, a handler of `MousePressed` is registered, and the user presses the left button at column 79 and row 0
+- **THEN** the handler runs once with `target` `"window"`, `window` 2, `content_col` nil, `content_row` nil, `box_col` 39, `box_row` 0, `box_width` 40 and `box_height` 24
+
+#### Scenario: Box cell of a cut tile
+- **WHEN** the ribbon area starts at the terminal's top-left cell, a tile's box is 40×24 and starts 10 columns left of the terminal's first column, a handler of `MousePressed` is registered, and the user presses at column 0 and row 5
+- **THEN** the handler runs once with `box_col` 10, `box_row` 5, `box_width` 40 and `box_height` 24
+
+#### Scenario: Box cell of a floating plugin window
+- **WHEN** a floating plugin window with a border has its box of 20×10 at column 5 and row 3 of a ribbon area that starts at the terminal's top-left cell, a handler of `MousePressed` is registered, and the user presses at column 5 and row 12
+- **THEN** the handler runs once with `target` `"plugin_window"`, `box_col` 0, `box_row` 9, `box_width` 20 and `box_height` 10
 
 #### Scenario: Drag events
 - **WHEN** a handler of `MouseDragged` is registered and the user drags with the left button across three cells of one row and releases
@@ -136,7 +152,7 @@ The first layout after attaching SHALL emit no `WindowOpened` and no `LayoutChan
 
 #### Scenario: Wheel event
 - **WHEN** a handler of `MouseScrolled` is registered and the user turns the wheel two steps up over empty ribbon
-- **THEN** the handler runs twice with `direction` `"up"` and `target` `"ribbon"`
+- **THEN** the handler runs twice with `direction` `"up"`, `target` `"ribbon"`, and `box_col`, `box_row`, `box_width` and `box_height` nil
 
 ### Requirement: Actions from handlers
 A handler MAY call action values, `gband.spawn` and `gband.keymap.enter` as a binding function does. The actions it dispatches SHALL run after it returns, in the order dispatched. Events that those actions cause SHALL be emitted in turn. An event emitted while ten events are already being delivered, each caused by the one before, SHALL NOT be delivered, and the process SHALL record a warning in its log.

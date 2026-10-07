@@ -105,11 +105,11 @@ After the init file returns, loading SHALL source, for each plugin in runtimepat
 - **THEN** the default bindings apply and Alt+G runs the plugin's binding
 
 ### Requirement: Side and API version
-`gband.side` SHALL be the string `"client"` in a client, `"server"` in the server, and `"test"` in a test file that `gband test` runs, as the plugin-testing capability defines. `gband.api_version` SHALL be the integer `1` on every side. Both SHALL be set before the init file or the test file runs.
+`gband.side` SHALL be the string `"client"` in a client, `"server"` in the server, and `"test"` in a test file that `gband test` runs, as the plugin-testing capability defines. `gband.api_version` SHALL be the integer `2` on every side. Both SHALL be set before the init file or the test file runs.
 
 #### Scenario: Side and version
 - **WHEN** `user/init.lua` reads `gband.side` and `gband.api_version`
-- **THEN** they are `"client"` and `1`
+- **THEN** they are `"client"` and `2`
 
 #### Scenario: Server side
 - **WHEN** `user/server.lua` reads `gband.side`
@@ -128,8 +128,8 @@ A plugin module SHALL be a table with a `setup` function, an optional string `na
 - **AND** `gband.plugin` returns `true`
 
 #### Scenario: API mismatch
-- **WHEN** a plugin module declares `api = 2`
-- **THEN** the log records a warning naming the plugin, version 2 and version 1
+- **WHEN** a plugin module declares `api = 1`
+- **THEN** the log records a warning naming the plugin, version 1 and version 2
 - **AND** its `setup` runs
 
 #### Scenario: Missing module
