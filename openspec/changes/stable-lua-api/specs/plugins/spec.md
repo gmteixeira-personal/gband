@@ -1,7 +1,18 @@
 ## MODIFIED Requirements
 
 ### Requirement: Module lookup
-`require(name)` SHALL look for the module in each runtimepath entry in order, before Lua's own search path: a name `a.b` SHALL be found at `lua/a/b.lua`, then at `lua/a/b/init.lua`, in each entry. When no entry holds the module, `require` SHALL look among the modules bundled with gband, and only then in Lua's own search path. The bundled modules SHALL be `gband.sidebar`, as the sidebar capability defines, `gband.errors`, as the error-list capability defines, `gband.prompt`, as the lua-prompt capability defines, the key style presets `gband.keystyle.modal` and `gband.keystyle.direct`, as the key-style capability defines, `gband.keylist`, as the key-list capability defines, `gband.keyform`, which returns the function that turns a key name into the form the key-list capability's "Key form" defines, `gband.theme` and `gband.theme.catppuccin`, as the colorschemes capability's "Themes" defines, and `gband.settings.window`, as the settings capability defines. The first file found SHALL be loaded, and errors in it SHALL name its path and line. Errors in a bundled module SHALL name its path under `gband/`, such as `gband/sidebar.lua`. A bundled module's chunk SHALL receive the same arguments as a module found on the runtimepath: the module name and its path, under `gband/` for a bundled module. `require` SHALL return the module's value and that path. No other module SHALL be bundled, and the parts of the API that the client installs SHALL NOT be `require`-able modules.
+`require(name)` SHALL look for the module in each runtimepath entry in order, before Lua's own search path: a name `a.b` SHALL be found at `lua/a/b.lua`, then at `lua/a/b/init.lua`, in each entry. When no entry holds the module, `require` SHALL look among the modules bundled with gband, and only then in Lua's own search path. The bundled modules are these:
+
+- `gband.prelude` and the API modules `gband.hl`, `gband.palette`, `gband.colorscheme`, `gband.bar`, `gband.win`, `gband.settings` and `gband.keystyle`, as the lua-api capability defines;
+- `gband.sidebar`, as the sidebar capability defines;
+- `gband.errors`, as the error-list capability defines;
+- `gband.prompt`, as the lua-prompt capability defines;
+- the key style presets `gband.keystyle.modal` and `gband.keystyle.direct`, as the key-style capability defines;
+- `gband.keylist`, as the key-list capability defines;
+- `gband.keyform`, which returns the function that turns a key name into the form the key-list capability's "Key form" defines;
+- `gband.theme` and `gband.theme.catppuccin`, as the colorschemes capability's "Themes" defines.
+
+The first file found SHALL be loaded, and errors in it SHALL name its path and line. Errors in a bundled module SHALL name its path under `gband/`, such as `gband/sidebar.lua`. A bundled module's chunk SHALL receive the same arguments as a module found on the runtimepath: the module name and its path, under `gband/` for a bundled module. `require` SHALL return the module's value and that path. A module in a runtimepath entry SHALL override the bundled module of the same name, the prelude and the API modules included.
 
 #### Scenario: Module from a plugin directory
 - **WHEN** `/tmp/data/gband/plugins/hello/lua/hello/init.lua` exists and `user/init.lua` calls `require("hello")`
@@ -31,43 +42,61 @@
 - **WHEN** `user/lua/gband/sidebar.lua` exists
 - **THEN** `require("gband.sidebar")` loads `user/lua/gband/sidebar.lua`
 
+#### Scenario: API module is a module
+- **WHEN** no runtimepath entry holds `lua/gband/hl.lua` and `user/init.lua` calls `local hl, path = require("gband.hl")`
+- **THEN** `path` is `gband/hl.lua`, and `hl.drawn` is a function
+
 #### Scenario: Bundled chunk arguments
-- **WHEN** `user/lua/probe.lua` returns `{ ... }`, and `user/init.lua` compares `require("probe")` with what the bundled `gband.keyform` chunk receives
+- **WHEN** `user/lua/probe.lua` returns `{ ... }`, and `user/init.lua` compares what `require("probe")` returns with what the bundled `gband.keyform` chunk receives
 - **THEN** both hold the module name and the module's path, and nothing else
 
-#### Scenario: API tables are not modules
-- **WHEN** `user/init.lua` calls `pcall(require, "gband.hl")`, `pcall(require, "gband.win")` and `pcall(require, "gband.bar")`
-- **THEN** each call returns `false`
+### Requirement: Side guard
+Each process's `gband` table SHALL hold only the API of its side. Reading a field of `gband`, or of `gband.action`, that only another side provides SHALL raise an error naming the field and the side that provides it, at the line of the read. The fields only the client provides SHALL be `bind`, `unbind`, `spawn`, `keymap`, `keystyle`, `settings`, `ui`, `hl`, `colorscheme`, `palette`, `layout`, `view`, `window`, `band`, `win`, `bar`, `errors`, `clear_errors`, `rpc`, `notify`, `bell`, `clipboard`, `open`, `core`, and the view and client actions in `gband.action`. The fields only the server provides SHALL be `sessions` and `session`. Every other field the plugins, configuration, lua-events and lua-commands capabilities define SHALL exist on the client and the server, with each side's own behaviour where the server-runtime capability defines one. The test side's `gband` SHALL hold only `side`, `api_version` and `core`, whose fields are the test-side primitives the plugin-testing capability's API documentation gives: `register` and `wrap`. Reading any other field that the client or the server provides there SHALL raise an error naming the field and the sides that provide it.
 
-## ADDED Requirements
+#### Scenario: Client API in the server
+- **WHEN** line 3 of a plugin's `server.lua` reads `gband.keymap`
+- **THEN** a plugin error at that line names `gband.keymap` and the client
 
-### Requirement: Evaluate source
-`gband.eval(source, name)` SHALL compile `source`, a string, as Lua source text, never as a binary chunk, with `name` as its chunk name, and run it. It SHALL exist on the client and the server. The code SHALL belong to no plugin, as code of the configuration file does, whoever calls `gband.eval`. It SHALL be able to call everything the calling code can call. It SHALL run with its own instruction budget, of the size "Instruction limit" defines, so a run that exceeds it stops only the evaluated code, and the calling code continues with its own budget unchanged. A stop SHALL NOT mark the calling code's plugin failed.
+#### Scenario: Key style API in the server
+- **WHEN** line 2 of `user/server.lua` calls `gband.keystyle.use()`
+- **THEN** loading fails with an error at that line naming `gband.keystyle` and the client
 
-A syntax error, an error raised while the code runs, and a stop by the instruction limit SHALL each be reported as a configuration error, as the configuration capability defines, with `name` in place of the file's path and the line within `source`. `gband.eval` SHALL then return `false` and the error's message. When the code returns, `gband.eval` SHALL return `true` followed by the code's return values. Dispatches the code made before an error SHALL stand. A `source` or `name` that is not a string SHALL raise an error at the line of the call.
+#### Scenario: Settings API in the server
+- **WHEN** line 2 of `user/server.lua` calls `gband.settings.theme()`
+- **THEN** loading fails with an error at that line naming `gband.settings` and the client
 
-#### Scenario: Return values
-- **WHEN** a binding function calls `gband.eval("return 1 + 1", "calc")`
-- **THEN** the call returns `true` and `2`, and no error is reported
+#### Scenario: Palette in the server
+- **WHEN** line 3 of a plugin's `server.lua` calls `gband.palette.get()`
+- **THEN** a plugin error at that line names `gband.palette` and the client
 
-#### Scenario: Runtime error reported at the name
-- **WHEN** a binding function calls `gband.eval("\nerror('boom')", "probe")`
-- **THEN** the client reports the error `probe:2: boom`
-- **AND** the call returns `false` and the message
+#### Scenario: Server API in the client
+- **WHEN** line 2 of `user/init.lua` calls `gband.sessions()`
+- **THEN** loading fails with an error at that line naming `gband.sessions` and the server
 
-#### Scenario: Syntax error
-- **WHEN** a binding function calls `gband.eval("gband.(", "probe")`
-- **THEN** the client reports an error beginning `probe:1:` and the call returns `false`
+#### Scenario: View action in the server
+- **WHEN** a server handler calls `gband.action.focus_column_left()`
+- **THEN** a plugin error names `focus_column_left` and the client
 
-#### Scenario: Endless loop stops only the code
-- **WHEN** the action of plugin `p` calls `gband.eval("while true do end", "probe")` and then dispatches `focus_column_left`
-- **THEN** the client reports the error `probe:1: instruction limit exceeded`
-- **AND** the column to the left is focused, and `p` is not marked failed
+#### Scenario: Client API in a test file
+- **WHEN** line 4 of a test file reads `gband.opt`
+- **THEN** the file fails with an error at line 4 naming `gband.opt`, the client and the server
 
-#### Scenario: Evaluated code belongs to no plugin
-- **WHEN** the action of plugin `p` calls `gband.eval("gband.action.register('greet', function() end)", "probe")`
-- **THEN** `gband.action.greet` holds the action and `gband.action["p.greet"]` is nil
+#### Scenario: Bars in the server
+- **WHEN** line 2 of a plugin's `server.lua` reads `gband.bar`
+- **THEN** a plugin error at that line names `gband.bar` and the client
 
-#### Scenario: Wrong argument
-- **WHEN** line 3 of `user/init.lua` calls `gband.eval(42, "probe")`
-- **THEN** loading fails with an error at `user/init.lua` line 3
+#### Scenario: Clearing errors in the server
+- **WHEN** line 4 of a plugin's `server.lua` calls `gband.clear_errors()`
+- **THEN** a plugin error at that line names `gband.clear_errors` and the client
+
+#### Scenario: Configuration directory in a test file
+- **WHEN** line 2 of a test file reads `gband.config_dir`
+- **THEN** the file fails with an error at line 2 naming `gband.config_dir`, the client and the server
+
+#### Scenario: Core primitives in the server
+- **WHEN** line 2 of `user/server.lua` calls `gband.core.owner()`
+- **THEN** loading fails with an error at that line naming `gband.core` and the client
+
+#### Scenario: Test primitives
+- **WHEN** a test file reads `gband.core.register`
+- **THEN** it is a function, and reading `gband.core.owner` there raises an error naming the client

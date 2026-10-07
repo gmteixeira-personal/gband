@@ -1,51 +1,53 @@
 ## Why
 
-gband's Lua API has two layers today. Configuration and plugins see the documented `gband` table. Every Lua file bundled with gband also gets a private `host` table, through the bundled module loader in `crates/lua/src/bundled.rs`. The sidebar, the Lua prompt, the settings window and the API modules `gband.win`, `gband.bar`, `gband.hl`, `gband.colorscheme`, `gband.palette`, `gband.settings` and `gband.keystyle` all call it. The test module `gband.test` gets a `host` table of its own as well. A copy of one of these files in `user/lua/` gets no `host` and breaks. So the bundled features cannot serve as the examples the README says they are, and a script author can only find out what a bundled feature relies on by reading gband's source.
+gband's Lua API has two layers today. Configuration and plugins see the documented `gband` table. Every Lua file bundled with gband also gets a private `host` table, through the bundled module loader in `crates/lua/src/bundled.rs`. The sidebar, the Lua prompt and the API modules call it: `gband.win`, `gband.bar`, `gband.hl`, `gband.colorscheme`, `gband.palette`, `gband.settings` and `gband.keystyle`. The test module `gband.test` gets a `host` table of its own. A copy of one of these files in `user/lua/` gets no `host` and breaks. So the bundled Lua cannot serve as the examples the README says it is. A script author can only learn what it relies on by reading gband's Rust source, and can never replace it.
 
-gband should have one boundary. The executable, written in Rust, provides a stable, documented API. Every Lua file, bundled or the user's own, consumes only that API. Then anyone can script gband from the documentation and the bundled examples alone, without reading the Rust code or having the source.
+gband should keep its logic in Lua and make Lua as powerful as possible, with as little Rust as possible. Rust exposes a small, stable, documented set of primitives. Every Lua file, bundled or the user's own, uses only documented API. Then anyone can script gband, or replace any bundled part of it, from the documentation and the bundled sources alone.
 
 ## What Changes
 
-- **One API, provided by the executable.** Every function, table and event a Lua script can use is part of `gband`, the `require`-able test module `gband.test`, or Lua's own standard library. Each is documented in `docs/plugins.md` or `docs/testing.md`. Nothing else is reachable: no private table, no hidden chunk argument, no undocumented field.
-- **The `host` table is removed.** Bundled chunks are loaded like any other module and get no private argument. The API modules written in Lua today move into Rust, behind the same documented functions with the same behaviour: `gband.hl`, `gband.palette`, `gband.colorscheme`, `gband.bar`, `gband.win`, the stored-settings part of `gband.settings`, `gband.keystyle.use` and `gband.keystyle.saved`, and the test module `gband.test`. Their modules stop being `require`-able: `require("gband.win")` and the like stop working. They were never documented as modules.
-- **Bundled features are API consumers.** The sidebar, the key list, the error list, the Lua prompt and rename box, the settings window and theme list, the two key style presets, the theme builder `gband.theme`, the key form `gband.keyform` and every bundled theme use only the documented API. Each one works unchanged when copied into a runtimepath entry. The settings window moves out of the `gband.settings` API into a bundled module of its own, `gband.settings.window`.
-- **New public API**, for what the bundled features got from `host`:
-  - `gband.eval(source, name)` compiles and runs one Lua source text as code of the configuration file would run, with its own instruction budget. It reports failures as configuration errors at `name` and the line. The Lua prompt runs its line with it.
-  - The client event `ErrorsChanged` fires when the client's error list changes. The sidebar redraws its marker on it.
-  - `gband.bar.mark_errors(id, shown)` says that a bar's lines show the error marker. While a shown bar marks errors, the client draws no error banner. The sidebar uses it in place of a private flag.
-  - `gband.settings.save(name, value, opts)` saves one setting file in one step, and `opts.reopen` names the settings window line to reopen once the reload it causes succeeds. `gband.settings.open(opts)` takes that line as `opts.line`, and opens the window by requiring `gband.settings.window`.
-- **The bundled sources ship with gband.** Each process writes every bundled Lua module, plugin and theme to `defaults/lua/gband/` and `defaults/colors/`, mirroring a runtimepath entry, as it already writes `defaults/init.lua` and the key style presets. Users can read them without the source, and copy one into `user/` to change it.
-- **A stability rule.** The documented API is the whole public surface. A release that removes something documented, or changes what it does, raises `gband.api_version`. Additions do not. This change adds API and removes only undocumented internals, so `gband.api_version` stays `1`.
-- **Enforced by tests.** One test fails when the client or server `gband` table holds a field that `docs/plugins.md` does not document. Another loads each bundled Lua file as a copy from `user/lua/` or `user/colors/` and checks that it behaves as the bundled one does. A third checks that no bundled chunk receives an argument.
+- **No Lua logic moves into Rust.** The API modules `gband.hl`, `gband.palette`, `gband.colorscheme`, `gband.bar`, `gband.win`, `gband.settings` and `gband.keystyle`, the bundled plugins, the key style presets, the themes and `gband.test` stay Lua.
+- **`gband.core`: the private hooks become public primitives.** Every function of today's `host` table becomes a documented, stable function in the new client table `gband.core`. Each one keeps its current behaviour, and gains argument checks and a documented name. Examples: the current plugin, isolated calls with an owner, error reports, loading a file, emitting a built-in event, the view state, timers, the terminal palette, presenting plugin window frames and bars, placing bars, the error marker flag, key name parsing, and the border and width validators. Three kinds of hook are not carried over:
+  - A hook that duplicates existing public API is dropped, and its callers use that API: `focus_window` becomes `gband.window.focus`.
+  - Hooks with no caller, `timer`, `cancel` and `events`, become public rather than being deleted, because Rust already has them.
+  - The single-slot registrations, `window_hooks`, `bar_hooks`, `settings_hooks` and `client_styles`, become one documented call, `gband.core.provide(kind, implementation)`. A user's implementation can replace the bundled one for plugin windows, bars, the settings window or the drawn styles.
+- **The hand-offs between Lua modules become documented module exports**, in place of fields the modules wrote into `host`: `require("gband.hl")` exports `drawn`, `snapshot`, `restore`, `quiet` and `clear`; `require("gband.settings")` exports `read` and `write`; and `require("gband.colorscheme")` exports `start`.
+- **The Lua prelude.** Before the init file, the client requires one bundled module, `gband.prelude`. It requires the API modules in order and loads the start theme. Rust does nothing more. Every module is found through the ordinary module search, so a copy in `user/lua/gband/` replaces any bundled module, API modules and the prelude included.
+- **The test side** gets `gband.core.register` and `gband.core.wrap`, and `gband.test` uses only those.
+- **The bundled sources ship with gband.** Each process writes every bundled module, the prelude, the API modules and the plugins to `defaults/lua/gband/`, and every theme to `defaults/colors/`. The layout mirrors a runtimepath entry, next to the files it already writes there.
+- **A stability rule.** The documented API is the whole public surface: the Rust tables, `gband.core`, the Lua API modules and their exports. A release that removes something documented, or changes what it does, raises `gband.api_version`. Additions do not. This change only adds documented API and removes the undocumented `host`, so `gband.api_version` stays `1`.
+- **Enforced by tests.** Three tests guard the boundary:
+  - One fails when a field of `gband`, `gband.core` or a documented module export lacks documentation.
+  - One checks that no chunk receives an argument a runtimepath module would not.
+  - One runs the Lua spec suite again with every bundled file copied into `user/`.
 
 Out of scope:
-- New features in the API modules being ported. Their behaviour, error messages and error lines stay as their capabilities define them.
-- Type annotation files for Lua language servers. A later change can generate them from the same documentation.
+- Moving Rust code that already exists into Lua. A later change can do that, built on `gband.core`.
+- Changing what any primitive does. This change names, checks and documents what exists.
+- Type annotation files for Lua language servers.
 - Removing stale files from `defaults/` that an older build wrote.
 
 ## Capabilities
 
 ### New Capabilities
-- `lua-api`: the boundary between the executable and Lua: the API the executable provides, documented in full, with nothing private; bundled Lua as consumers that work as copies; the bundled sources written to `defaults/`; the stability rule for `gband.api_version`; and the tests that enforce all of this.
+- `lua-api`: the boundary between the executable and Lua. It covers the primitives in `gband.core` and `gband.core.provide`, the prelude, the bundled Lua as consumers that work as copies, the complete documentation, the bundled sources in `defaults/`, the stability rule for `gband.api_version`, and the tests that enforce all of this.
 
 ### Modified Capabilities
-- `plugins`: "Module lookup" drops the host table and lists the bundled modules after the change: the consumer modules only, adding `gband.theme`, `gband.theme.catppuccin` and `gband.settings.window`. A new "Evaluate source" requirement defines `gband.eval`.
-- `configuration`: "Configuration directory" also writes the bundled modules and themes under `defaults/lua/gband/` and `defaults/colors/`. "Reporting configuration errors" hides the banner while any bar's error marker is drawn, not only the sidebar's.
-- `lua-events`: "Built-in events" gains `ErrorsChanged`.
-- `bars`: a new "Error marker bars" requirement defines `gband.bar.mark_errors`, and "Bars and reloads" clears the mark on a reload.
-- `sidebar`: "Error marker" marks the sidebar's errors through `gband.bar.mark_errors` and redraws on `ErrorsChanged`.
-- `lua-prompt`: "Running the line" runs the line with `gband.eval`.
-- `settings`: a new "Save a setting" requirement defines `gband.settings.save`. "Settings window" places the window in the bundled module `gband.settings.window`, opened by `gband.settings.open`. "Reopen after a save" is driven by `opts.reopen`.
+- `plugins`: "Module lookup" passes no host table, lists the API modules and `gband.prelude` among the bundled modules, and lets a runtimepath module override any of them. "Side guard" adds `core` to the client and the test side.
+- `configuration`: "Configuration directory" also writes the bundled modules and themes under `defaults/lua/gband/` and `defaults/colors/`.
 
 ## Impact
 
-- Lua crate: `crates/lua/src/bundled.rs` and `crates/lua/src/runtime.rs` lose the host table. `ui.rs`, `bars.rs`, `plugin_windows.rs` and `removed.rs` drop their host hooks, and `guard.rs`, `events.rs` and `directory.rs` gain the new API. New Rust modules implement highlights, the palette, colorschemes, bars, plugin windows, settings and key styles.
-- Removed Lua: `crates/lua/src/runtime/gband/hl.lua`, `palette.lua`, `colorscheme.lua`, `bar.lua`, `win.lua` and `keystyle.lua`. `settings.lua` becomes `settings/window.lua`.
-- Changed Lua: `sidebar.lua` and `prompt.lua` use only the public API.
-- Harness: `crates/harness/src/test.lua` moves into `crates/harness/src/runner.rs`, or a module next to it.
-- Tests: the existing tests of each ported module must pass unchanged. That is the evidence that behaviour did not change. New tests cover the documentation, the copies, the chunk arguments, `gband.eval`, `ErrorsChanged`, `mark_errors`, `settings.save` and the files under `defaults/`.
-- Docs: `docs/plugins.md` gains an "API and stability" section and the new functions and event. `docs/testing.md` documents `gband.test` in full. The README's Scripting section drops the caveat that some bundled features cannot be copied.
-- No protocol change and no new dependency.
+- Lua crate, Rust side:
+  - `crates/lua/src/ui.rs`, `bars.rs`, `plugin_windows.rs` and `removed.rs` install their functions into `gband.core` instead of `host`, with argument checks.
+  - `crates/lua/src/runtime.rs` replaces the `bundled::API` loop and `start_theme` with `require("gband.prelude")`.
+  - `crates/lua/src/bundled.rs` drops `BIND` and the host parameter.
+  - `crates/lua/src/directory.rs` writes the sources to `defaults/`, and `sides.rs` guards `core`.
+- Lua crate, Lua side: every file under `crates/lua/src/runtime/gband/` that calls `host` switches to `gband.core`, to existing public API or to a module export. The new `prelude.lua` holds the load order.
+- Harness: `crates/harness/src/runner.rs` installs `gband.core.register` and `gband.core.wrap`, and `crates/harness/src/test.lua` uses them.
+- Tests: existing tests pass unchanged, apart from tests that reach into the runtime's private state. New tests cover the documentation, the chunk arguments, the copies, `gband.core` argument checks, `provide`, the prelude override and the files under `defaults/`.
+- Docs: `docs/plugins.md` gains a "Core primitives: `gband.core`" section, the module exports, and an "API and stability" section. `docs/testing.md` documents the test-side primitives. The README's Scripting section says every bundled file can be copied and replaced.
+- No protocol change and no new dependency. The Rust added is argument checks and a renamed install table.
 
 ## Coordination
 
@@ -60,7 +62,6 @@ Out of scope:
 - README.md
 - crates/client/src/lib.rs
 - crates/harness/src/case.rs
-- crates/harness/src/lib.rs
 - crates/harness/src/runner.rs
 - crates/harness/src/test.lua
 - crates/harness/tests/api_docs.rs
@@ -72,4 +73,3 @@ Out of scope:
 - tests/lua/bundled_copies_spec.lua
 - tests/lua/screenshots/bundled_copies_spec/
 - tests/lua_specs.rs
-- tests/settings.rs
