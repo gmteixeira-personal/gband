@@ -1,4 +1,5 @@
-local host = ...
+local core = gband.core
+local hl = require("gband.hl")
 
 gband.hl.default("Bar", {})
 
@@ -43,7 +44,7 @@ end
 
 local function prune()
   for id, bar in pairs(bars) do
-    if bar.plugin and host.failed(bar.plugin) then
+    if bar.plugin and core.failed(bar.plugin) then
       bars[id] = nil
       dirty = true
     end
@@ -131,13 +132,13 @@ local function slot(bar)
 end
 
 local function placements()
-  local state = host.state()
+  local state = core.state()
   local list = ordered()
   local slots = {}
   for index, bar in ipairs(list) do
     slots[index] = slot(bar)
   end
-  local shown = host.place_bars(slots, state.width)
+  local shown = core.place_bars(slots, state.width)
   local result = {}
   for index, bar in ipairs(list) do
     local columns = shown[index]
@@ -186,14 +187,14 @@ local function row_runs(spans, width, style)
 end
 
 local function present()
-  local height = host.state().height
+  local height = core.state().height
   local list = {}
   for _, bar in ipairs(ordered()) do
-    local base = host.hl.drawn(bar.hl)
+    local base = hl.drawn(bar.hl)
     local styles = {}
     local function style(group)
       group = group or bar.hl
-      styles[group] = styles[group] or over(base, host.hl.drawn(group))
+      styles[group] = styles[group] or over(base, hl.drawn(group))
       return styles[group]
     end
     local lines = {}
@@ -211,7 +212,7 @@ local function present()
     }
   end
   presented_height = height
-  host.present_bars(list)
+  core.present_bars(list)
 end
 
 local function notify()
@@ -224,7 +225,7 @@ local function notify()
     if bars[bar.id] == bar and (last == nil or last.width ~= width or last.height ~= height) then
       bar.notified = { width = width, height = height }
       if bar.on_resize then
-        host.call(bar.plugin, nil, bar.on_resize, bar.id, width, height)
+        core.call(bar.plugin, nil, bar.on_resize, bar.id, width, height)
       end
     end
   end
@@ -252,7 +253,7 @@ function api.add(spec)
       error("gband.bar.add: " .. reason, 2)
     end
   end
-  local owner = host.owner()
+  local owner = core.owner()
   if owner == nil and spec.id == nil then
     error("gband.bar.add: a bar added outside a plugin must have an `id`", 2)
   end
@@ -348,12 +349,12 @@ local hooks = {}
 
 function hooks.flush()
   prune()
-  if host.loading() then
+  if core.loading() then
     return
   end
   notify()
   prune()
-  if host.state().height ~= presented_height then
+  if core.state().height ~= presented_height then
     dirty = true
   end
   if dirty then
@@ -362,9 +363,9 @@ function hooks.flush()
   end
 end
 
-host.bar_hooks(hooks)
+core.provide("bars", hooks)
 
-host.after_event(function(name)
+core.after_event(function(name)
   if name == nil or name == "HighlightChanged" or name == "ColorschemeChanged" then
     dirty = true
   end

@@ -1,4 +1,5 @@
-local host = ...
+local core = gband.core
+local hl = require("gband.hl")
 
 local active = nil
 
@@ -9,41 +10,41 @@ local function find(name)
     if file then
       file:close()
       return function()
-        return host.load(path)()
+        return core.load(path)()
       end
     end
   end
-  return host.bundled(name)
+  return core.bundled(name)
 end
 
 local function load(name, level)
   local label = "colors/" .. tostring(name)
   if type(name) ~= "string" or not name:match("^[A-Za-z0-9][A-Za-z0-9_-]*$") then
-    host.report(label, "invalid colorscheme name `" .. tostring(name) .. "`", level)
+    core.report(label, "invalid colorscheme name `" .. tostring(name) .. "`", level)
     return false
   end
   local loader = find(name)
   if not loader then
-    host.report(label, "no colorscheme `" .. name .. "` is on the runtimepath or bundled with gband", level)
+    core.report(label, "no colorscheme `" .. name .. "` is on the runtimepath or bundled with gband", level)
     return false
   end
-  local saved = host.hl.snapshot()
-  local palette = host.palette.get()
-  local quiet = host.hl.quiet
-  host.hl.clear()
-  host.palette.set({})
-  host.hl.quiet = true
-  local ok = host.call(nil, label, loader)
-  host.hl.quiet = quiet
+  local saved = hl.snapshot()
+  local palette = core.palette.get()
+  local quiet = hl.quiet
+  hl.clear()
+  core.palette.set({})
+  hl.quiet = true
+  local ok = core.call(nil, label, loader)
+  hl.quiet = quiet
   if not ok then
-    host.hl.restore(saved)
-    host.palette.set(palette)
+    hl.restore(saved)
+    core.palette.set(palette)
     return false
   end
   local previous = active
   active = name
-  if not host.loading() then
-    host.emit("ColorschemeChanged", { name = name, previous = previous })
+  if not core.loading() then
+    core.emit("ColorschemeChanged", { name = name, previous = previous })
   end
   return true
 end
@@ -56,10 +57,12 @@ function gband.colorscheme(name)
   return loaded
 end
 
-function host.start_theme()
+local function start()
   local saved = gband.settings.theme()
   if saved and load(saved, nil) then
     return
   end
   load("default", nil)
 end
+
+return { start = start }

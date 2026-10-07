@@ -1,4 +1,4 @@
-local host = ...
+local core = gband.core
 
 gband.hl.default("PromptCursor", { reverse = true })
 
@@ -48,7 +48,7 @@ local kinds = {
     marker = ":",
     submit = function(text)
       if text ~= "" then
-        host.call(nil, nil, run, text)
+        core.call(nil, nil, run, text)
       end
     end,
   },

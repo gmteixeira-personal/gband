@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use mlua::{Lua, Table};
+use mlua::{Lua, Table, Value};
 
 use crate::error::ConfigError;
 
@@ -62,9 +62,17 @@ fn user_caller(lua: &Lua) -> Option<(PathBuf, u32)> {
         })
 }
 
-pub(crate) fn install(lua: &Lua, host: &Table) -> mlua::Result<()> {
-    host.set(
+pub(crate) fn install(lua: &Lua, core: &Table) -> mlua::Result<()> {
+    core.set(
         "removed",
-        lua.create_function(|_, name: String| Ok(message(&name)))?,
+        lua.create_function(|lua, name: Value| {
+            let name = crate::check::text(
+                lua,
+                &crate::ui::named("removed"),
+                &name,
+                "an API name as a string",
+            )?;
+            Ok(message(&name))
+        })?,
     )
 }

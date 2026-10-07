@@ -1522,7 +1522,7 @@ impl Controls {
             }
             steps.push(resize_step(size));
         }
-        display.set_error_item(self.runtime.error_item_shown());
+        display.set_error_item(self.runtime.error_marker_shown());
         display.take_look(&self.runtime);
         let frames = self.runtime.take_frames();
         steps.extend(

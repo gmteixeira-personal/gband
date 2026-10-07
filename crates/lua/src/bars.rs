@@ -1,7 +1,8 @@
 use mlua::{IntoLuaMulti, Lua, MultiValue, RegistryKey, Table, Value};
 
+use crate::check;
 use crate::plugin_windows::{Run, read_runs};
-use crate::ui::{self, Style};
+use crate::ui::{self, Style, named};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BarSide {
@@ -79,43 +80,41 @@ struct Presented(Option<Vec<Bar>>);
 struct Hooks(Option<RegistryKey>);
 
 #[derive(Default)]
-struct ErrorItem(bool);
+struct ErrorMarker(bool);
 
-pub(crate) fn install(lua: &Lua, host: &Table) -> mlua::Result<()> {
+pub(crate) fn install(lua: &Lua, core: &Table) -> mlua::Result<()> {
     lua.set_app_data(Presented::default());
     lua.set_app_data(Hooks::default());
-    lua.set_app_data(ErrorItem::default());
-    host.set("place_bars", lua.create_function(place_bars)?)?;
-    host.set(
+    lua.set_app_data(ErrorMarker::default());
+    core.set("place_bars", lua.create_function(place_bars)?)?;
+    core.set(
         "present_bars",
-        lua.create_function(|lua, list: Table| {
-            let bars = list
-                .sequence_values::<Table>()
-                .map(|bar| read_bar(&bar?))
-                .collect::<mlua::Result<Vec<_>>>()?;
+        lua.create_function(|lua, list: Value| {
+            let what = named("present_bars");
+            let list = check::table(lua, &what, &list, "a list of bars")?;
+            let bars = check::checked(lua, &what, read_list(&list, "bar", read_bar))?;
             presented(lua).0 = Some(bars);
             Ok(())
         })?,
     )?;
-    host.set(
-        "bar_hooks",
-        lua.create_function(|lua, table: Table| {
-            let key = lua.create_registry_value(table)?;
-            lua.app_data_mut::<Hooks>()
-                .expect("the bar hooks are installed with the runtime")
-                .0 = Some(key);
-            Ok(())
-        })?,
-    )?;
-    host.set(
-        "error_item",
-        lua.create_function(|lua, shown: bool| {
-            lua.app_data_mut::<ErrorItem>()
-                .expect("the error item is installed with the runtime")
+    core.set(
+        "error_marker",
+        lua.create_function(|lua, shown: Value| {
+            let shown = check::boolean(lua, &named("error_marker"), &shown, "a boolean")?;
+            lua.app_data_mut::<ErrorMarker>()
+                .expect("the error marker is installed with the runtime")
                 .0 = shown;
             Ok(())
         })?,
     )
+}
+
+pub(crate) fn provide(lua: &Lua, implementation: Table) -> mlua::Result<()> {
+    let key = lua.create_registry_value(implementation)?;
+    lua.app_data_mut::<Hooks>()
+        .expect("the bar hooks are installed with the runtime")
+        .0 = Some(key);
+    Ok(())
 }
 
 fn presented(lua: &Lua) -> mlua::AppDataRefMut<'_, Presented> {
@@ -123,37 +122,55 @@ fn presented(lua: &Lua) -> mlua::AppDataRefMut<'_, Presented> {
         .expect("the bars are installed with the runtime")
 }
 
-fn side(name: &str) -> mlua::Result<BarSide> {
-    match name {
-        "left" => Ok(BarSide::Left),
-        "right" => Ok(BarSide::Right),
-        other => Err(mlua::Error::runtime(format!("unknown bar side `{other}`"))),
-    }
+fn read_list<T>(
+    list: &Table,
+    entry: &str,
+    read: impl Fn(&Table) -> Result<T, String>,
+) -> Result<Vec<T>, String> {
+    list.sequence_values::<Value>()
+        .enumerate()
+        .map(|(index, value)| {
+            let at = |reason: String| format!("{entry} {}: {reason}", index + 1);
+            match value.map_err(|error| error.to_string())? {
+                Value::Table(table) => read(&table).map_err(at),
+                other => Err(at(format!("expected a table, found {}", other.type_name()))),
+            }
+        })
+        .collect()
 }
 
-fn read_slot(table: &Table) -> mlua::Result<Slot> {
+fn read_slot(table: &Table) -> Result<Slot, String> {
+    let side = match check::text_field(table, "side", "`left` or `right`")?.as_str() {
+        "left" => BarSide::Left,
+        "right" => BarSide::Right,
+        other => {
+            return Err(format!(
+                "the field `side` must be `left` or `right`, found `{other}`"
+            ));
+        }
+    };
     Ok(Slot {
-        side: side(&table.get::<String>("side")?)?,
-        size: table.get("size")?,
-        order: table.get("order")?,
-        seq: table.get("seq")?,
+        side,
+        size: check::whole_field(table, "size", "an integer from 0 to 65535")?,
+        order: check::number_field(table, "order", "a number")?,
+        seq: check::whole_field(table, "seq", "a non-negative integer")?,
     })
 }
 
-fn read_bar(table: &Table) -> mlua::Result<Bar> {
+fn read_bar(table: &Table) -> Result<Bar, String> {
     Ok(Bar {
-        id: table.get("id")?,
+        id: check::text_field(table, "id", "a string")?,
         slot: read_slot(table)?,
-        base: ui::style(&table.get("base")?)?,
-        lines: read_runs(&table.get("lines")?)?,
+        base: ui::style_field(table, "base")?,
+        lines: read_runs(table)?,
     })
 }
 
-fn place_bars(lua: &Lua, (list, cols): (Table, u16)) -> mlua::Result<MultiValue> {
-    let slots = list
-        .sequence_values::<Table>()
-        .map(|slot| read_slot(&slot?))
-        .collect::<mlua::Result<Vec<_>>>()?;
+fn place_bars(lua: &Lua, (list, cols): (Value, Value)) -> mlua::Result<MultiValue> {
+    let what = named("place_bars");
+    let list = check::table(lua, &what, &list, "a list of slots")?;
+    let cols: u16 = check::integer(lua, &what, &cols, "a column count from 0 to 65535")?;
+    let slots = check::checked(lua, &what, read_list(&list, "slot", read_slot))?;
     let (placed, ribbon) = place(&slots, cols);
     let columns = |columns: Columns| -> mlua::Result<Table> {
         let table = lua.create_table()?;
@@ -175,8 +192,9 @@ pub(crate) fn take(lua: &Lua) -> Option<Vec<Bar>> {
     presented(lua).0.take()
 }
 
-pub(crate) fn error_item_shown(lua: &Lua) -> bool {
-    lua.app_data_ref::<ErrorItem>().is_some_and(|shown| shown.0)
+pub(crate) fn error_marker_shown(lua: &Lua) -> bool {
+    lua.app_data_ref::<ErrorMarker>()
+        .is_some_and(|shown| shown.0)
 }
 
 pub(crate) fn flush(lua: &Lua) -> mlua::Result<()> {

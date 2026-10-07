@@ -10,6 +10,7 @@ use gband_protocol::Value as Data;
 use mlua::{Function, Lua, MultiValue, RegistryKey, Table, Value};
 use unicode_width::UnicodeWidthChar;
 
+use crate::check;
 use crate::error::ConfigError;
 use crate::events;
 use crate::guard;
@@ -157,7 +158,7 @@ struct State {
 #[derive(Default)]
 struct Hooks {
     after_event: Vec<RegistryKey>,
-    on_state: Option<RegistryKey>,
+    on_state: Vec<RegistryKey>,
 }
 
 struct Timer {
@@ -257,71 +258,95 @@ pub(crate) fn install(lua: &Lua, gband: &Table) -> mlua::Result<Table> {
         })?,
     )?;
     gband.set("ui", ui)?;
-    host(lua)
+    let core = core(lua)?;
+    gband.set("core", core.clone())?;
+    Ok(core)
 }
 
-fn host(lua: &Lua) -> mlua::Result<Table> {
-    let host = lua.create_table()?;
-    host.set(
+const CORE: &str = "gband.core";
+
+pub(crate) fn named(name: &str) -> String {
+    format!("{CORE}.{name}")
+}
+
+fn core(lua: &Lua) -> mlua::Result<Table> {
+    let core = lua.create_table()?;
+    core.set(
         "owner",
         lua.create_function(|lua, ()| Ok(owner::current(lua)))?,
     )?;
-    host.set(
+    core.set(
         "loading",
         lua.create_function(|lua, ()| Ok(is_loading(lua)))?,
     )?;
-    host.set(
+    core.set(
         "failed",
-        lua.create_function(|lua, plugin: Option<String>| {
+        lua.create_function(|lua, plugin: Value| {
+            let plugin =
+                check::optional_text(lua, &named("failed"), &plugin, "a plugin name as a string")?;
             Ok(owner::is_failed(lua, plugin.as_deref()))
         })?,
     )?;
-    host.set("call", lua.create_function(call)?)?;
-    host.set("report", lua.create_function(report)?)?;
-    host.set("emit", lua.create_function(emit)?)?;
-    host.set(
+    core.set("call", lua.create_function(call)?)?;
+    core.set("report", lua.create_function(report)?)?;
+    core.set("emit", lua.create_function(emit)?)?;
+    core.set(
         "events",
         lua.create_sequence_from(events::NAMES.iter().copied())?,
     )?;
-    host.set("state", lua.create_function(state)?)?;
-    host.set("timer", lua.create_function(timer)?)?;
-    host.set(
+    core.set("state", lua.create_function(state)?)?;
+    core.set("timer", lua.create_function(timer)?)?;
+    core.set(
         "cancel",
-        lua.create_function(|lua, id: i64| {
+        lua.create_function(|lua, id: Value| {
+            let id: i64 = check::integer(lua, &named("cancel"), &id, "a timer id as an integer")?;
             if let Some(timer) = timers(lua).entries.remove(&id) {
                 lua.remove_registry_value(timer.function)?;
             }
             Ok(())
         })?,
     )?;
-    host.set(
+    core.set(
         "after_event",
-        lua.create_function(|lua, function: Function| {
+        lua.create_function(|lua, function: Value| {
+            let function = check::function(lua, &named("after_event"), &function, "a function")?;
             let key = lua.create_registry_value(function)?;
             hooks(lua).after_event.push(key);
             Ok(())
         })?,
     )?;
-    host.set(
+    core.set(
         "on_state",
-        lua.create_function(|lua, function: Function| {
-            hooks(lua).on_state = Some(lua.create_registry_value(function)?);
+        lua.create_function(|lua, function: Value| {
+            let function = check::function(lua, &named("on_state"), &function, "a function")?;
+            let key = lua.create_registry_value(function)?;
+            hooks(lua).on_state.push(key);
             Ok(())
         })?,
     )?;
-    host.set(
+    core.set(
         "bundled",
-        lua.create_function(|lua, name: String| crate::bundled::colorscheme(lua, &name))?,
+        lua.create_function(|lua, name: Value| {
+            let name = check::text(
+                lua,
+                &named("bundled"),
+                &name,
+                "a colorscheme name as a string",
+            )?;
+            crate::bundled::colorscheme(lua, &name)
+        })?,
     )?;
-    host.set(
+    core.set(
         "load",
-        lua.create_function(|lua, path: String| {
+        lua.create_function(|lua, path: Value| {
+            let path = check::text(lua, &named("load"), &path, "a file path as a string")?;
             crate::runtime::load_file(lua, &PathBuf::from(path))
         })?,
     )?;
-    host.set(
+    core.set(
         "warn",
-        lua.create_function(|_, text: String| {
+        lua.create_function(|lua, text: Value| {
+            let text = check::text(lua, &named("warn"), &text, "the text as a string")?;
             tracing::warn!("{text}");
             Ok(())
         })?,
@@ -329,35 +354,62 @@ fn host(lua: &Lua) -> mlua::Result<Table> {
     let palette = lua.create_table()?;
     palette.set(
         "set",
-        lua.create_function(|lua, spec: Table| set_palette(lua, read_palette(&spec)?))?,
+        lua.create_function(|lua, spec: Value| {
+            let what = named("palette.set");
+            let spec = check::table(lua, &what, &spec, "a table of colors")?;
+            let palette = check::checked(lua, &what, read_palette(&spec))?;
+            set_palette(lua, palette)
+        })?,
     )?;
     palette.set(
         "get",
         lua.create_function(|lua, ()| palette_table(lua, &look(lua).palette))?,
     )?;
-    host.set("palette", palette)?;
-    host.set(
-        "settings_reopen",
-        lua.create_function(|lua, line: Option<u32>| {
-            settings(lua).reopen = line;
+    core.set("palette", palette)?;
+    core.set(
+        "reopen_settings",
+        lua.create_function(|lua, line: Value| {
+            settings(lua).reopen = check::optional_integer(
+                lua,
+                &named("reopen_settings"),
+                &line,
+                "a line number as a non-negative integer or nil",
+            )?;
             Ok(())
         })?,
     )?;
-    host.set(
-        "settings_hooks",
-        lua.create_function(|lua, hooks: Table| {
-            settings(lua).hooks = Some(lua.create_registry_value(hooks)?);
+    core.set("provide", lua.create_function(provide)?)?;
+    Ok(core)
+}
+
+fn provide(lua: &Lua, (kind, implementation): (Value, Value)) -> mlua::Result<()> {
+    let what = named("provide");
+    let kind = check::text(lua, &what, &kind, "a provider kind as a string")?;
+    let table = |description: &str| check::table(lua, &what, &implementation, description);
+    match kind.as_str() {
+        "windows" => crate::plugin_windows::provide(
+            lua,
+            table("the plugin window implementation as a table")?,
+        ),
+        "bars" => crate::bars::provide(lua, table("the bar implementation as a table")?),
+        "settings" => {
+            let implementation = table("the settings implementation as a table")?;
+            settings(lua).hooks = Some(lua.create_registry_value(implementation)?);
             Ok(())
-        })?,
-    )?;
-    host.set(
-        "client_styles",
-        lua.create_function(|lua, function: Function| {
+        }
+        "styles" => {
+            let function = check::function(lua, &what, &implementation, "the styles function")?;
             look(lua).styles = Some(lua.create_registry_value(function)?);
             Ok(())
-        })?,
-    )?;
-    Ok(host)
+        }
+        other => Err(check::fail(
+            lua,
+            &what,
+            format!(
+                "unknown provider kind `{other}`; the kinds are `windows`, `bars`, `settings` and `styles`"
+            ),
+        )),
+    }
 }
 
 fn settings(lua: &Lua) -> mlua::AppDataRefMut<'_, Settings> {
@@ -374,7 +426,10 @@ pub(crate) fn open_settings(lua: &Lua, line: u32) -> mlua::Result<()> {
         Some(key) => lua.registry_value::<Table>(key)?,
         None => return Ok(()),
     };
-    hooks.get::<Function>("open")?.call(line)
+    match hooks.get::<Option<Function>>("open")? {
+        Some(open) => open.call(line),
+        None => Ok(()),
+    }
 }
 
 fn look(lua: &Lua) -> mlua::AppDataRefMut<'_, Look> {
@@ -388,13 +443,13 @@ fn hex(text: &str) -> Option<Rgb> {
     Some((channel(0)?, channel(2)?, channel(4)?))
 }
 
-fn read_palette(spec: &Table) -> mlua::Result<Palette> {
+fn read_palette(spec: &Table) -> Result<Palette, String> {
     let mut palette = Palette::default();
     for (name, slot) in palette.fields() {
-        if let Some(text) = spec.get::<Option<String>>(name)? {
-            *slot = Some(hex(&text).ok_or_else(|| {
-                mlua::Error::runtime(format!("invalid palette color for `{name}`: {text}"))
-            })?);
+        if let Some(text) = check::optional_text_field(spec, name, "a color as `#rrggbb`")? {
+            *slot = Some(
+                hex(&text).ok_or_else(|| format!("invalid palette color for `{name}`: {text}"))?,
+            );
         }
     }
     Ok(palette)
@@ -431,10 +486,11 @@ pub(crate) fn take_client_styles(lua: &Lua) -> mlua::Result<Option<ClientStyles>
         None => return Ok(None),
     };
     let table: Table = function.call(())?;
+    let read = |name: &str| style_field(&table, name).map_err(mlua::Error::runtime);
     let styles = ClientStyles {
-        border: style(&table.get("border")?)?,
-        border_focused: style(&table.get("border_focused")?)?,
-        banner: style(&table.get("banner")?)?,
+        border: read("border")?,
+        border_focused: read("border_focused")?,
+        banner: read("banner")?,
     };
     let mut look = look(lua);
     if look.presented == Some(styles) {
@@ -454,10 +510,13 @@ fn timers(lua: &Lua) -> mlua::AppDataRefMut<'_, Timers> {
         .expect("the timers are installed with the runtime")
 }
 
-fn call(
-    lua: &Lua,
-    (owner, label, function, args): (Option<String>, Option<String>, Function, MultiValue),
-) -> mlua::Result<MultiValue> {
+fn call(lua: &Lua, mut args: MultiValue) -> mlua::Result<MultiValue> {
+    let what = named("call");
+    let mut next = || args.pop_front().unwrap_or(Value::Nil);
+    let (owner, label, function) = (next(), next(), next());
+    let owner = check::optional_text(lua, &what, &owner, "an owner as a plugin name or nil")?;
+    let label = check::optional_text(lua, &what, &label, "a label as a string or nil")?;
+    let function = check::function(lua, &what, &function, "a function")?;
     let labelled = label.is_some();
     match guard::isolated(lua, owner, label, || function.call::<MultiValue>(args))? {
         Ok(mut values) => {
@@ -475,10 +534,16 @@ fn call(
     }
 }
 
-fn report(
-    lua: &Lua,
-    (plugin, message, level): (Option<String>, String, Option<usize>),
-) -> mlua::Result<()> {
+fn report(lua: &Lua, (label, message, level): (Value, Value, Value)) -> mlua::Result<()> {
+    let what = named("report");
+    let plugin = check::optional_text(lua, &what, &label, "a label as a string or nil")?;
+    let message = check::text(lua, &what, &message, "a message as a string")?;
+    let level: Option<usize> = check::optional_integer(
+        lua,
+        &what,
+        &level,
+        "a stack level as a non-negative integer or nil",
+    )?;
     let location = level.and_then(|level| {
         lua.inspect_stack(level, |debug| {
             let source = debug.source().source?;
@@ -499,7 +564,17 @@ fn report(
     Ok(())
 }
 
-fn emit(lua: &Lua, (name, payload): (String, Table)) -> mlua::Result<()> {
+fn emit(lua: &Lua, (name, payload): (Value, Value)) -> mlua::Result<()> {
+    let what = named("emit");
+    let name = check::text(lua, &what, &name, "an event name as a string")?;
+    if !events::NAMES.contains(&name.as_str()) {
+        return Err(check::fail(
+            lua,
+            &what,
+            format!("`{name}` is not a built-in event"),
+        ));
+    }
+    let payload = check::table(lua, &what, &payload, "a payload table")?;
     events::deliver_table(lua, &name, &payload)?;
     after_event(lua, Some(&name))
 }
@@ -577,33 +652,44 @@ pub(crate) fn set_state(lua: &Lua, state: ViewState) -> mlua::Result<()> {
     if !changed {
         return Ok(());
     }
-    let hook = match &hooks(lua).on_state {
-        Some(key) => lua.registry_value::<Function>(key)?,
-        None => return Ok(()),
-    };
-    hook.call::<()>(())
+    let functions: Vec<Function> = hooks(lua)
+        .on_state
+        .iter()
+        .map(|key| lua.registry_value::<Function>(key))
+        .collect::<mlua::Result<_>>()?;
+    for function in functions {
+        function.call::<()>(())?;
+    }
+    Ok(())
 }
 
-fn color(value: Value) -> mlua::Result<Option<Color>> {
-    let invalid = || mlua::Error::runtime("a presented color must be `#rrggbb` or an index");
-    Ok(match value {
-        Value::Nil => None,
-        Value::Integer(index) => Some(Color::Index(u8::try_from(index).map_err(|_| invalid())?)),
-        Value::String(text) => {
-            let (r, g, b) = hex(&text.to_str()?).ok_or_else(invalid)?;
-            Some(Color::Rgb(r, g, b))
-        }
-        _ => return Err(invalid()),
-    })
+fn color(table: &Table, name: &str) -> Result<Option<Color>, String> {
+    let invalid = || format!("the field `{name}` must be `#rrggbb` or a color index");
+    Ok(
+        match table
+            .get::<Value>(name)
+            .map_err(|error| error.to_string())?
+        {
+            Value::Nil => None,
+            Value::Integer(index) => {
+                Some(Color::Index(u8::try_from(index).map_err(|_| invalid())?))
+            }
+            Value::String(text) => {
+                let (r, g, b) = hex(&text.to_string_lossy()).ok_or_else(invalid)?;
+                Some(Color::Rgb(r, g, b))
+            }
+            _ => return Err(invalid()),
+        },
+    )
 }
 
-pub(crate) fn style(table: &Table) -> mlua::Result<Style> {
-    let flag = |name: &str| -> mlua::Result<bool> {
-        Ok(table.get::<Option<bool>>(name)?.unwrap_or(false))
+pub(crate) fn style(table: &Table) -> Result<Style, String> {
+    let flag = |name: &str| -> Result<bool, String> {
+        Ok(check::optional_boolean_field(table, name, "a boolean")?.unwrap_or(false))
     };
     Ok(Style {
-        fg: color(table.get("fg")?)?,
-        bg: color(table.get("bg")?)?,
+        fg: color(table, "fg")?,
+        bg: color(table, "bg")?,
         bold: flag("bold")?,
         italic: flag("italic")?,
         underline: flag("underline")?,
@@ -612,7 +698,24 @@ pub(crate) fn style(table: &Table) -> mlua::Result<Style> {
     })
 }
 
-fn timer(lua: &Lua, (period, function): (u64, Function)) -> mlua::Result<i64> {
+pub(crate) fn style_field(table: &Table, name: &str) -> Result<Style, String> {
+    let style_table = check::table_field(table, name, "a style table")?;
+    style(&style_table).map_err(|reason| format!("the style `{name}`: {reason}"))
+}
+
+fn timer(lua: &Lua, (period, function): (Value, Value)) -> mlua::Result<i64> {
+    let what = named("timer");
+    let period: u64 = check::integer(
+        lua,
+        &what,
+        &period,
+        "a period in milliseconds as a non-negative integer",
+    )?;
+    let function = check::function(lua, &what, &function, "a function")?;
+    start_timer(lua, period, function)
+}
+
+fn start_timer(lua: &Lua, period: u64, function: Function) -> mlua::Result<i64> {
     let period = Duration::from_millis(period.max(1));
     let function = lua.create_registry_value(function)?;
     let mut timers = timers(lua);
@@ -686,7 +789,7 @@ mod tests {
             .load("count = (count or 0) + 1")
             .into_function()
             .unwrap();
-        timer(lua, (period, function)).unwrap();
+        start_timer(lua, period, function).unwrap();
     }
 
     #[test]
@@ -724,7 +827,7 @@ mod tests {
         let config = config("");
         let lua = config.runtime.lua();
         let function = lua.load("count = 1").into_function().unwrap();
-        let id = timer(lua, (100, function)).unwrap();
+        let id = start_timer(lua, 100, function).unwrap();
         timers(lua).entries.remove(&id);
         assert_eq!(config.runtime.next_timer(), None);
     }

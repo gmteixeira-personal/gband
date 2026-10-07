@@ -88,48 +88,40 @@ pub(crate) fn install(
     )?;
     gband.set("plugin", lua.create_function(plugin)?)?;
     gband.set("plugins", lua.create_function(plugins)?)?;
-    let host = match side {
+    match side {
         Side::Client => {
             keymap::install(lua, &gband)?;
             control::install(lua, &gband)?;
             bridge::install(lua, &gband)?;
-            let host = ui::install(lua, &gband)?;
-            host.set(
+            let core = ui::install(lua, &gband)?;
+            core.set(
                 "colorschemes",
                 lua.create_function(|lua, ()| colorschemes(lua))?,
             )?;
-            host.set(
+            core.set(
                 "bundled_themes",
                 lua.create_sequence_from(bundled::themes())?,
             )?;
-            plugin_windows::install(lua, &host)?;
-            crate::bars::install(lua, &host)?;
-            removed::install(lua, &host)?;
-            Some(host)
+            plugin_windows::install(lua, &core)?;
+            crate::bars::install(lua, &core)?;
+            removed::install(lua, &core)?;
         }
-        Side::Server => {
-            server::install(lua, &gband)?;
-            None
-        }
-        Side::Test => None,
-    };
+        Side::Server => server::install(lua, &gband)?,
+        Side::Test => {}
+    }
     lua.globals().set("gband", gband.clone())?;
     lua.globals().set("print", lua.create_function(print)?)?;
     clock::install(lua)?;
     let searchers: Table = lua.globals().get::<Table>("package")?.get("searchers")?;
     let insert: Function = lua.globals().get::<Table>("table")?.get("insert")?;
     insert.call::<()>((searchers, 2, lua.create_function(search)?))?;
-    bundled::install_searcher(lua, 3, host.clone())?;
-    if let Some(host) = host {
-        let loaded: Table = lua.globals().get::<Table>("package")?.get("loaded")?;
-        for (path, source) in bundled::API {
-            let module = bundled::chunk(lua, path, source)?.call::<Value>(host.clone())?;
-            if let Value::Table(module) = module {
-                let name = format!("gband.{}", path.trim_end_matches(".lua"));
-                loaded.set(name, module)?;
-            }
+    bundled::install_searcher(lua, 3)?;
+    if side == Side::Client {
+        let require: Function = lua.globals().get("require")?;
+        match guard::run(lua, None, || require.call::<()>("gband.prelude"))? {
+            Ok(()) => {}
+            Err(failure) => return Err(mlua::Error::external(failure.error)),
         }
-        host.get::<Function>("start_theme")?.call::<()>(())?;
     }
     sides::guard(lua, &gband, side)
 }
@@ -733,8 +725,8 @@ impl Runtime {
         })
     }
 
-    pub fn error_item_shown(&self) -> bool {
-        crate::bars::error_item_shown(&self.lua)
+    pub fn error_marker_shown(&self) -> bool {
+        crate::bars::error_marker_shown(&self.lua)
     }
 
     pub fn set_plugin_window_counter(&self, counter: Arc<AtomicU32>) {

@@ -7,8 +7,9 @@ Plugins can add actions, commands, options, key bindings, event handlers, side b
 This guide uses the names that the README's [Vocabulary](../README.md#vocabulary) defines: a band is a circular row of columns, a column holds windows stacked vertically, and the ribbon is the part of the terminal that the bars leave, where the viewed band is drawn.
 
 Much of gband is itself written with this API, to serve as examples.
-The bundled plugins `gband.keylist`, `gband.errors`, `gband.prompt` and `gband.sidebar`, the settings window, the key styles and the themes are Lua files in [crates/lua/src/runtime/gband/](../crates/lua/src/runtime/gband/).
-The key styles, the key list, the error list and the themes use only the API this guide describes, so they make good starting points.
+The API modules `gband.hl`, `gband.palette`, `gband.colorscheme`, `gband.bar`, `gband.win`, `gband.settings` and `gband.keystyle`, the bundled plugins `gband.keylist`, `gband.errors`, `gband.prompt` and `gband.sidebar`, the key styles and the themes are Lua files in [crates/lua/src/runtime/gband/](../crates/lua/src/runtime/gband/).
+Every one of them uses only the API this guide describes, and each process writes a copy of them under `defaults/lua/gband/` and `defaults/colors/` of the configuration directory.
+Copy one into `user/lua/gband/` or `user/colors/` to change or replace it, as "The prelude and the API modules" describes.
 
 The [sample plugin](../examples/plugins/hello) uses most of what the client API offers.
 The [window sample](../examples/plugins/window) adds a side bar, a highlight group and a colorscheme.
@@ -64,10 +65,12 @@ A directory that holds `server.lua` or `client.lua` but no `plugin.lua` is a plu
 No file under a `plugin/` directory is ever run: plugins written for the earlier `plugin/*.lua` layout move that code to `client.lua`.
 
 `require("a.b")` looks in each runtimepath entry in order, for `lua/a/b.lua` and then `lua/a/b/init.lua`.
-In the client, when no entry holds the module, it looks among the modules bundled with gband, such as `gband.sidebar`, and only then in Lua's own search path.
+When no entry holds the module, it looks among the modules bundled with gband, such as `gband.sidebar`, and only then in Lua's own search path.
 The first file found wins, so a module in `user/lua/` overrides a plugin's module of the same name, and `user/lua/gband/sidebar.lua` overrides the bundled one.
-Errors in a bundled module name its path under `gband/`, such as `gband/sidebar.lua:12:`.
+A bundled module's chunk receives what a module on the runtimepath receives, its name and its path, and `require` returns its value and that path, such as `gband/sidebar.lua`.
+Errors in a bundled module name the same path, such as `gband/sidebar.lua:12:`.
 The key style presets are bundled modules too, so `user/lua/gband/keystyle/direct.lua` replaces the direct key style wherever `gband.keystyle.use("direct")` runs.
+So are the prelude and the API modules, which "The prelude and the API modules" describes.
 
 ## The manifest
 
@@ -97,7 +100,7 @@ Each load runs in a new Lua state.
 In a client:
 
 1. gband sets `gband.side` to `"client"` and `gband.api_version` to `1`.
-2. gband installs the client's `gband` API, including its built-in highlight groups, and loads the start theme: the saved theme, or `default`, as "Themes" describes.
+2. gband installs the client's `gband` API, then requires `gband.prelude`, which installs the API modules, their built-in highlight groups and their providers, and loads the start theme: the saved theme, or `default`, as "Themes" describes.
 3. gband runs the init file: `user/init.lua` when it exists, the default client configuration otherwise.
 4. gband runs every manifest, in runtimepath order.
 5. For each plugin whose manifest is valid, in runtimepath order, gband runs its `client.lua`.
@@ -129,11 +132,12 @@ user/server.lua:3: `gband.keymap` is a client API; this is the server
 
 | only the client | only the server |
 |---|---|
-| `bind`, `unbind`, `spawn`, `keymap`, `keystyle`, `settings`, `ui`, `hl`, `colorscheme`, `palette`, `layout`, `view`, `window`, `band`, `win`, `bar`, `errors`, `clear_errors`, `rpc`, `notify`, `bell`, `clipboard`, `open` | `sessions`, `session` |
+| `bind`, `unbind`, `spawn`, `keymap`, `keystyle`, `settings`, `ui`, `hl`, `colorscheme`, `palette`, `layout`, `view`, `window`, `band`, `win`, `bar`, `errors`, `clear_errors`, `rpc`, `notify`, `bell`, `clipboard`, `open`, `core` | `sessions`, `session` |
 
 Every other field exists on both sides: `on`, `augroup`, `emit`, `cmd`, `opt`, `set`, `plugin`, `plugins`, `runtimepath`, `config_dir`, `side`, `api_version`, `window_state` and `action`.
 `emit`, `window_state`, `action` and the events differ between the sides, as their sections describe.
-A test file's `gband` holds only `side` and `api_version`, and reading any other field names the sides that provide it, such as ``tests/a_spec.lua:4: `gband.opt` is a client and server API; this is the test side``.
+A test file's `gband` holds only `side`, `api_version` and `core`, whose fields are the test primitives [Testing a plugin](testing.md#test-primitives-gbandcore) describes.
+Reading any other field names the sides that provide it, such as ``tests/a_spec.lua:4: `gband.opt` is a client and server API; this is the test side``, and so does reading a client primitive such as `gband.core.owner` there.
 In the server, `gband.action` holds the session actions only; reading a view or client action, such as `gband.action.focus_column_left`, is the same kind of error.
 
 ## Plugin modules and `gband.plugin`
@@ -262,6 +266,44 @@ Registrations, options and bindings are made only while the configuration loads,
 
 `gband.action.<name>` holds every built-in action, and every registered action under its full name.
 Calling an action value inside a callback dispatches it, with the same effect as pressing a key bound to it.
+
+The built-in actions, with the description `gband.action.list()` gives each:
+
+| action | kind | description |
+|---|---|---|
+| `focus_column_left` | view | focus the column to the left |
+| `focus_column_right` | view | focus the column to the right |
+| `focus_window_down` | view | focus the window below |
+| `focus_window_up` | view | focus the window above |
+| `focus_band_down` | view | view the band below |
+| `focus_band_up` | view | view the band above |
+| `center_column` | view | center the focused column |
+| `switch_focus_floating_tiled` | view | switch focus between floating and tiled windows |
+| `open_window` | session | open a window running the user's shell |
+| `close_window` | session | close the window |
+| `consume_or_expel_left` | session | consume or expel the window to the left |
+| `consume_or_expel_right` | session | consume or expel the window to the right |
+| `move_column_left` | session | move the column or floating window to the left |
+| `move_column_right` | session | move the column or floating window to the right |
+| `move_window_down` | session | move the window down |
+| `move_window_up` | session | move the window up |
+| `toggle_window_floating` | session | float or tile the window |
+| `cycle_column_width` | session | cycle the width of the window's column |
+| `toggle_full_width` | session | toggle full width of the window's column |
+| `grow_column_width` | session | grow the width of the window's column |
+| `shrink_column_width` | session | shrink the width of the window's column |
+| `grow_window_height` | session | grow the height of the window |
+| `shrink_window_height` | session | shrink the height of the window |
+| `reset_window_height` | session | reset the height of the window |
+| `detach` | client | detach |
+| `send_prefix` | client | send the prefix key to the focused window |
+| `drag_window` | client | move the window with the mouse |
+| `drag_resize_window` | client | resize the window with the mouse |
+| `drag_band` | client | slide the band or switch bands with the mouse |
+
+The view and client actions exist in the client only.
+The session actions exist on both sides; in the server they take a target, as "Session actions in the server" describes.
+The three `drag_` actions act only when a mouse press runs them, as "Mouse names" describes.
 
 `gband.action.register(name, fn, { desc = "..." })` registers an action and returns its action value.
 Dispatching it runs `fn` with no arguments, at once, before the caller continues.
@@ -1177,6 +1219,186 @@ A mapped color is drawn as a hex color, so a client without 24-bit color draws t
 Indexes 16 to 255 and hex colors are drawn unchanged.
 The palette changes nothing the server stores or sends, and nothing a program in a window reads.
 
+## The prelude and the API modules
+
+Part of the client's API is written in Lua, on top of the primitives "Core primitives" describes.
+Before the init file runs, the client requires the bundled module `gband.prelude` and runs nothing else of its own Lua.
+The bundled prelude requires the API modules in this order, because they call into each other as they load:
+
+| module | installs |
+|---|---|
+| `gband.hl` | `gband.hl` and the built-in highlight groups, and provides the drawn styles |
+| `gband.palette` | `gband.palette` |
+| `gband.colorscheme` | `gband.colorscheme` |
+| `gband.bar` | `gband.bar`, and provides the bars |
+| `gband.win` | `gband.win`, and provides the plugin windows |
+| `gband.settings` | `gband.settings`, and provides the settings window |
+| `gband.keystyle` | `gband.keystyle` |
+
+It then loads the start theme with `require("gband.colorscheme").start()`.
+An error while the prelude loads fails the load, as an error in the init file does.
+
+Each of these is an ordinary module, so `require` finds a file of the same name on the runtimepath first.
+To change one, copy it from `defaults/lua/gband/` of the configuration directory to `user/lua/gband/` and edit the copy; it replaces the bundled module at the next reload.
+A copy of `prelude.lua` decides which API modules load at all.
+A replaced module owns what it installs: a broken `user/lua/gband/win.lua` fails the load, and gband keeps the last configuration that loaded.
+The files under `defaults/` are copies for reading; editing them changes nothing, and each process writes them again as it starts.
+
+Three API modules return a table of exports that other modules use, described below.
+A copy that replaces one of them must keep its exports, with the same meaning, because the other modules require them.
+
+### Exports of `require("gband.hl")`
+
+| export | value |
+|---|---|
+| `drawn(name)` | the resolved style of the group `name`, as `gband.hl.get(name, { resolve = true })` returns it, with a named color turned into its palette index; the style tables of frames and bars take it as it is |
+| `snapshot()` | a new table mapping each group to its explicit style, the one `gband.hl.set` gave it |
+| `restore(saved)` | gives every group the explicit style `saved` holds for it, and none when `saved` holds none |
+| `clear()` | removes every group's explicit style, keeping its default |
+| `quiet` | a boolean, `false` at first; while it is `true`, changes to groups emit no `HighlightChanged` |
+
+### Exports of `require("gband.settings")`
+
+| export | value |
+|---|---|
+| `read(file, valid)` | runs `file`, a path relative to the configuration directory such as `user/theme.lua`, as Lua in an empty environment, and returns its value when `valid(value)` returns true; otherwise, and when the file is missing, broken or there is no configuration directory, nil |
+| `write(file, text)` | replaces `file`, relative to the configuration directory, with `text` in one step; raises an error naming the file when it cannot |
+
+### Exports of `require("gband.colorscheme")`
+
+| export | value |
+|---|---|
+| `start()` | loads the saved theme, or `default` when there is none or it fails to load, as "Themes" describes |
+
+## Core primitives: `gband.core`
+
+`gband.core` holds the client's primitives: the small set of functions the Lua API modules are built from.
+Configuration rarely needs them; they are there so that any part of the Lua API can be replaced or extended.
+`gband.core` exists in the client only.
+Each primitive checks its arguments, and a wrong one is an error at the line of the call that names the primitive, such as ``user/init.lua:4: gband.core.timer: expected a period in milliseconds as a non-negative integer, found string``.
+"Callback" means code that runs where an action can be dispatched, as "Register only at top level" describes.
+
+### Running code
+
+| primitive | effect |
+|---|---|
+| `owner()` | the name of the plugin whose code is running, or nil for code of no plugin |
+| `loading()` | `true` while the configuration loads |
+| `dispatching()` | `true` while a callback runs |
+| `failed(plugin)` | `true` when the plugin named `plugin` is failed, as "Errors" describes; `false` for nil |
+| `call(owner, label, fn, ...)` | runs `fn` with the arguments as code of the plugin `owner`, or of no plugin when `owner` is nil, with an instruction limit of its own. It returns `true` and `fn`'s values. When `fn` fails, the failure is reported as a plugin error, preceded by `label` and a colon when `label` is given, and `call` returns `false` and the message. A plugin that hits the instruction limit is marked failed |
+| `report(label, message, level)` | adds an error to the error list and the log: `message`, preceded by `label` and a colon when `label` is given, at the file and line of the function `level` levels up the stack when `level` is given, `1` being the function that calls `report` |
+| `warn(text)` | writes `text` to the client log as a warning |
+| `load(path)` | compiles the file at `path` and returns it as a function without running it; raises the compile error. Errors in the file then name `path` |
+| `timer(ms, fn)` | runs `fn` as a callback of no plugin every `ms` milliseconds, at least 1, until cancelled, and returns the timer's id. An error in `fn` is reported and the timer goes on. A period missed while the client was busy is skipped |
+| `cancel(id)` | stops the timer `id`; an id that is not running is ignored |
+
+### Events and state
+
+| primitive | effect |
+|---|---|
+| `events` | a list of the client's built-in event names |
+| `emit(name, payload)` | runs the handlers of the built-in event `name` with a copy of the table `payload`, as "Events" describes, then every `after_event` function; a name that is not a built-in event is an error |
+| `after_event(fn)` | adds `fn`, which runs after the handlers of each built-in event with the event's name, and with nil when a load finishes or the plugins are refreshed |
+| `on_state(fn)` | adds `fn`, which runs with no arguments when the active key table, the viewed band's position, the number of bands or the error list changes |
+| `state()` | a new table: `table`, the active key table; `band`, with the viewed band's `number`, its 1-based `index` and the band `count`; `window`, the focused window or nil; `width` and `height`, the terminal's size; `error`, the latest error message or nil; and `ribbon`, with the ribbon area's `cols` and `rows` |
+| `error_marker(shown)` | records whether a bar draws the error marker; while it is `true`, the client draws no error banner |
+
+### Colors and themes
+
+| primitive | effect |
+|---|---|
+| `gband.core.palette.set(spec)` | replaces the terminal palette with `spec`, whose fields `fg`, `bg` and the sixteen color names of "The terminal palette" hold `#rrggbb`; a missing field leaves that color to the terminal |
+| `gband.core.palette.get()` | a new table of the palette's fields that are set |
+| `bundled(name)` | the bundled colorscheme `name` as a function that applies it, or nil |
+| `colorschemes()` | a new list of the names of every `colors/<name>.lua` on the runtimepath, in byte order |
+| `bundled_themes` | the list of the bundled themes' names, in the order "Themes" lists them, without the alias `catppuccin` |
+
+### Plugin windows
+
+| primitive | effect |
+|---|---|
+| `next_window()` | a plugin window number that this client never returned before, also across reloads |
+| `present_window(id, frame)` | sets what the client draws for the plugin window `id`, as the frame table below describes |
+| `forget_window(id)` | stops drawing the plugin window `id` |
+| `request(entry)` | asks the server to open or close the drawn window of a tiled plugin window, as the entry table below describes; only in a callback |
+| `focus_window(window)` | focuses the window `window`, as `gband.window.focus` does, but without checking that the client's layout holds it yet, since the client can report a tiled plugin window's drawn window before its layout does; only in a callback |
+| `parse_key(name)` | the canonical form of the key name `name`, such as `ctrl+a` or `shift+tab`, as the plugin windows' `keys` use it, or nil when `name` is not a key name |
+| `border(spec)` | the border table `spec`, as "Plugin windows" describes it, in canonical form: `sides`, a list of side names, and `chars`, a character set name or a list of 8 strings; or nil and a message |
+| `width(value)` | a column width, a number from 0 to 1, as a numerator and a denominator; or nil and a message |
+| `open_target(band, after)` | checks a target for a new tile, the `band` and `after` of `gband.win.open`, against the layout, and returns `true` and the band and the window to open after, each possibly nil; or `false` and a message |
+| `removed(name)` | the message naming the replacement of an API name that a release removed, such as `` `kind = "pane"` is now `kind = "tiled"` ``, or nil |
+
+A frame is a table:
+
+| field | value |
+|---|---|
+| `kind` | `"floating"` or `"tiled"` |
+| `base` | the style of the frame's cells |
+| `lines` | a list of lines, each a list of runs; a run is `{ text = "...", style = { ... } }`, and control characters in `text` are dropped |
+| `row`, `col`, `width`, `height` | floating only: the box, borders included, in terminal cells from the ribbon area's top left |
+| `border` | floating only: `true`, `false`, nil or a border table |
+| `title` | floating only: the title on the top border, or nil |
+| `border_style`, `title_style` | floating only: the styles of the border and the title |
+| `z` | floating only: the stacking order; a higher `z` is drawn over a lower one |
+| `focused` | floating only: whether the window has focus |
+| `cols`, `rows` | tiled only: the size of the drawn window's content |
+
+A style is a table of `fg` and `bg`, each `#rrggbb` or a palette index from 0 to 255, and the booleans `bold`, `italic`, `underline`, `reverse` and `dim`; a missing field is the default.
+
+A request entry is `{ id = ..., op = "open" | "close" }`.
+An open request also takes `band` and `after`, as `open_target` returns them, `num` and `den`, the column width, and `focus`, whether the new tile takes focus.
+The client answers it through the windows provider's `opened`.
+
+### Bars
+
+| primitive | effect |
+|---|---|
+| `place_bars(slots, cols)` | places a list of slots against `cols` terminal columns, as "Side bars" describes, and returns a list holding, for each slot, its `{ col, width }` or `false` when it is not shown, then the ribbon area's `{ col, width }` |
+| `present_bars(list)` | sets what the client draws for its bars, a list of bar tables |
+
+A slot is `{ side = "left" | "right", size = ..., order = ..., seq = ... }`: the side, the width in columns, the order number, and a sequence number that breaks ties between equal orders.
+A bar table is a slot with `id`, the bar's id, `base`, its style, and `lines`, lines of runs as a frame holds them.
+
+### Settings and providers
+
+| primitive | effect |
+|---|---|
+| `reopen_settings(line)` | remembers the settings window line to reopen after the next load succeeds, or forgets it for nil |
+| `provide(kind, implementation)` | registers the implementation the client calls for `kind`, replacing an earlier one; every load starts with none |
+
+The kinds of provider:
+
+| kind | implementation | the client calls |
+|---|---|---|
+| `"windows"` | a table | the functions below |
+| `"bars"` | a table | `flush()`, before it draws |
+| `"settings"` | a table | `open(line)`, after a load that followed `reopen_settings(line)` succeeds |
+| `"styles"` | a function | the function, before it draws; it returns `border`, `border_focused` and `banner`, the styles of window borders, of the focused window's border and of the error banner |
+
+The windows provider's functions, each called when the event it names happens:
+
+| function | called |
+|---|---|
+| `key(id, name, text)` | a key reaches the focused plugin window `id`: `name` is its canonical name, and `text` the character it types, or nil |
+| `mouse(id, event)` | a mouse event reaches the plugin window `id`: `event` holds `kind` (`"press"`, `"release"`, `"drag"` or `"scroll"`), `button` or `direction`, `content_col` and `content_row` or nil on the border, and `ctrl`, `alt` and `shift` |
+| `paste(id, text)` | text is pasted into the focused plugin window `id` |
+| `set_box(id, col, row, width, height)` | the mouse moved or resized the floating plugin window `id` |
+| `raise(id)` | a press on the plugin window `id` focuses it |
+| `unfocus()` | focus moves to a window, so no floating plugin window has it |
+| `close_focused()` | the window close action runs; returns `true` when it closed the focused floating plugin window, and the action then closes no window |
+| `release()` | the mouse button is released |
+| `opened(id, window)` | the server opened the drawn window `window` for the tiled plugin window `id`, or could not, with nil |
+| `window_resized(id, cols, rows)` | the drawn window of the plugin window `id` changed size |
+| `window_closed(id)` | the drawn window of the plugin window `id` closed |
+| `ribbon_resized()` | the ribbon area changed size |
+| `focused()` | the client asks which plugin window has focus; returns its id or nil |
+| `plugin_window_of(window)` | the client asks which plugin window draws in `window`; returns its id or nil |
+| `flush()` | after each callback, before the client draws |
+
+A kind with no provider leaves its feature out: no plugin windows, no bars, no reopened settings window, or the default styles.
+An unknown kind, or an implementation of the wrong type, is an error at the line of the call.
+
 ## Plain data
 
 Everything that crosses between the sides is plain data: event data, window state values, command arguments and command results.
@@ -1426,6 +1648,21 @@ The server never sends code.
 A client runs only the Lua files of its own machine, and treats every value from a server as data: an event whose data is the string `os.exit(1)` is just that string.
 Attaching to a server, including a remote one, cannot run code in the client.
 The one other Lua a client runs is a chunk from a test runner that its own environment named with `GBAND_TEST_SOCKET`, as [the testing guide](testing.md#the-test-channel) describes; a server never forwards such a chunk.
+
+## API and stability
+
+`gband.api_version` identifies the documented API: everything this guide and [Testing a plugin](testing.md) describe, whether the executable or a bundled Lua module provides it.
+That covers the `gband` tables of both sides, `gband.core`, the providers and their functions, the exports of the API modules, the built-in events and their payloads.
+
+A release raises `gband.api_version` by one when it removes a documented function, table, field, primitive, provider function, module export, event or payload field, or changes the documented arguments, return values, errors or effect of one.
+A release that only adds to the documented API, or changes only what this guide does not describe, keeps it.
+A plugin's `api` field, in "Plugin modules and `gband.plugin`", names the version it was written for.
+
+What changed in each version:
+
+| version | changes |
+|---|---|
+| 1 | the first version; nothing changed |
 
 ## Still to come
 

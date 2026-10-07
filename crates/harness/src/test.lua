@@ -1,9 +1,7 @@
-local host = ...
-
 local t = {}
 local registered = {}
 
-function host.wrap(fn)
+gband.core.wrap(function(fn)
   return function(...)
     local results = table.pack(fn(...))
     if not results[1] then
@@ -11,7 +9,7 @@ function host.wrap(fn)
     end
     return table.unpack(results, 2, results.n)
   end
-end
+end)
 
 local function is_identifier(key)
   return type(key) == "string" and key:match("^[%a_][%w_]*$") ~= nil
@@ -110,7 +108,7 @@ function t.case(name, opts, fn)
     error("t.case expects the case as a function", 2)
   end
   registered[name] = true
-  host.register(name, timeout, fn)
+  gband.core.register(name, timeout, fn)
 end
 
 function t.eq(actual, expected, message)

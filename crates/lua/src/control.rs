@@ -43,7 +43,7 @@ pub(crate) fn field_name(value: &Value) -> String {
     }
 }
 
-fn whole(value: &Value) -> Option<i64> {
+pub(crate) fn whole(value: &Value) -> Option<i64> {
     match *value {
         Value::Integer(number) => Some(number),
         Value::Number(number) if number.fract() == 0.0 && number.abs() < 1e15 => {

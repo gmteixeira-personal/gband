@@ -7,8 +7,7 @@ gband should keep its logic in Lua and make Lua as powerful as possible, with as
 ## What Changes
 
 - **No Lua logic moves into Rust.** The API modules `gband.hl`, `gband.palette`, `gband.colorscheme`, `gband.bar`, `gband.win`, `gband.settings` and `gband.keystyle`, the bundled plugins, the key style presets, the themes and `gband.test` stay Lua.
-- **`gband.core`: the private hooks become public primitives.** Every function of today's `host` table becomes a documented, stable function in the new client table `gband.core`. Each one keeps its current behaviour, and gains argument checks and a documented name. Examples: the current plugin, isolated calls with an owner, error reports, loading a file, emitting a built-in event, the view state, timers, the terminal palette, presenting plugin window frames and bars, placing bars, the error marker flag, key name parsing, and the border and width validators. Three kinds of hook are not carried over:
-  - A hook that duplicates existing public API is dropped, and its callers use that API: `focus_window` becomes `gband.window.focus`.
+- **`gband.core`: the private hooks become public primitives.** Every function of today's `host` table becomes a documented, stable function in the new client table `gband.core`. Each one keeps its current behaviour, and gains argument checks and a documented name. Examples: the current plugin, isolated calls with an owner, error reports, loading a file, emitting a built-in event, the view state, timers, the terminal palette, presenting plugin window frames and bars, placing bars, the error marker flag, key name parsing, and the border and width validators. Two kinds of hook change shape:
   - Hooks with no caller, `timer`, `cancel` and `events`, become public rather than being deleted, because Rust already has them.
   - The single-slot registrations, `window_hooks`, `bar_hooks`, `settings_hooks` and `client_styles`, become one documented call, `gband.core.provide(kind, implementation)`. A user's implementation can replace the bundled one for plugin windows, bars, the settings window or the drawn styles.
 - **The hand-offs between Lua modules become documented module exports**, in place of fields the modules wrote into `host`: `require("gband.hl")` exports `drawn`, `snapshot`, `restore`, `quiet` and `clear`; `require("gband.settings")` exports `read` and `write`; and `require("gband.colorscheme")` exports `start`.
@@ -35,6 +34,7 @@ Out of scope:
 ### Modified Capabilities
 - `plugins`: "Module lookup" passes no host table, lists the API modules and `gband.prelude` among the bundled modules, and lets a runtimepath module override any of them. "Side guard" adds `core` to the client and the test side.
 - `configuration`: "Configuration directory" also writes the bundled modules and themes under `defaults/lua/gband/` and `defaults/colors/`.
+- `plugin-testing`: "Case environment" gains the `g.start` field `bundled_copies`, which copies every bundled module and colorscheme into the case's `user/` directory, and `GBAND_TEST_BUNDLED_COPIES` turns it on for every case of a run.
 
 ## Impact
 

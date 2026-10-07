@@ -9,7 +9,7 @@ use crate::actions::ACTIONS;
 use crate::error::{ConfigError, caller};
 use crate::removed;
 
-pub(crate) const CLIENT_ONLY: [&str; 23] = [
+pub(crate) const CLIENT_ONLY: [&str; 24] = [
     "bind",
     "unbind",
     "spawn",
@@ -33,6 +33,7 @@ pub(crate) const CLIENT_ONLY: [&str; 23] = [
     "bell",
     "clipboard",
     "open",
+    "core",
 ];
 
 pub(crate) const SERVER_ONLY: [&str; 2] = ["sessions", "session"];
@@ -90,6 +91,49 @@ fn providers() -> &'static BTreeMap<String, Vec<Side>> {
     })
 }
 
+fn client_core() -> &'static Vec<String> {
+    static CORE: OnceLock<Vec<String>> = OnceLock::new();
+    CORE.get_or_init(|| {
+        let lua = Lua::new();
+        let installed = crate::runtime::install(&lua, Side::Client, None, crate::BUDGET);
+        let core = installed.and_then(|()| {
+            lua.globals()
+                .get::<Table>("gband")?
+                .raw_get::<Table>("core")
+        });
+        core.map(|core| {
+            core.pairs::<String, Value>()
+                .filter_map(Result::ok)
+                .map(|(name, _)| name)
+                .collect()
+        })
+        .unwrap_or_default()
+    })
+}
+
+fn test_core(lua: &Lua) -> mlua::Result<Table> {
+    let core = lua.create_table()?;
+    let meta = lua.create_table()?;
+    meta.set(
+        "__index",
+        lua.create_function(|lua, (_, key): (Value, Value)| -> mlua::Result<Value> {
+            let Value::String(key) = key else {
+                return Ok(Value::Nil);
+            };
+            let key = key.to_string_lossy();
+            if !client_core().contains(&key) {
+                return Ok(Value::Nil);
+            }
+            Err(located(
+                lua,
+                format!("`gband.core.{key}` is a client API; this is the test side"),
+            ))
+        })?,
+    )?;
+    core.set_metatable(Some(meta))?;
+    Ok(core)
+}
+
 pub(crate) fn located(lua: &Lua, message: String) -> mlua::Error {
     match caller(lua) {
         Some((path, line)) => mlua::Error::runtime(format!("{}:{line}: {message}", path.display())),
@@ -125,6 +169,7 @@ pub fn install_test(lua: &Lua, print: impl Fn(&str) + Send + 'static) -> mlua::R
         })?,
     )?;
     gband.set_metatable(Some(meta))?;
+    gband.set("core", test_core(lua)?)?;
     lua.globals().set("gband", gband)?;
     lua.globals().set(
         "print",
