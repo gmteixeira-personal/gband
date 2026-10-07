@@ -1,0 +1,50 @@
+size 40x8 cursor 5:31 hidden
+0|I╭─────────────────╮╭─────────────────╮
+1| │                 ││                 │
+2|1│       ┌marks───────────────┐       │
+3|2│       │a window 2 in band 1│       │
+4| │       │b window 1 in band 1│       │
+5| │       └────────────────────┘       │
+6| │                 ││                 │
+7| ╰─────────────────╯╰─────────────────╯
+--
+0:0 fg=4 bg=0 bold
+0:1-19 fg=4 bold
+0:20-38 fg=8
+1:0 bg=0
+1:1 fg=4 bold
+1:19 fg=4 bold
+1:20 fg=8
+1:38 fg=8
+2:0 fg=15 bg=0 bold
+2:1 fg=4 bold
+2:9 fg=8 bg=0
+2:10-14 fg=4 bg=0 bold
+2:15-30 fg=8 bg=0
+2:38 fg=8
+3:0 fg=8 bg=0
+3:1 fg=4 bold
+3:9 fg=8 bg=0
+3:10 fg=0 bg=4 bold
+3:11-29 fg=0 bg=4
+3:30 fg=8 bg=0
+3:38 fg=8
+4:0 bg=0
+4:1 fg=4 bold
+4:9 fg=8 bg=0
+4:10 fg=3 bg=0 bold
+4:11-29 fg=7 bg=0
+4:30 fg=8 bg=0
+4:38 fg=8
+5:0 bg=0
+5:1 fg=4 bold
+5:9-30 fg=8 bg=0
+5:38 fg=8
+6:0 bg=0
+6:1 fg=4 bold
+6:19 fg=4 bold
+6:20 fg=8
+6:38 fg=8
+7:0 bg=0
+7:1-19 fg=4 bold
+7:20-38 fg=8

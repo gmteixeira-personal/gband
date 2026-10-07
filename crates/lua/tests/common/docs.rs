@@ -39,7 +39,7 @@ fn identifier(c: char) -> bool {
     c.is_ascii_alphanumeric() || c == '_'
 }
 
-fn mentions(text: &str, needle: &str) -> bool {
+pub fn mentions(text: &str, needle: &str) -> bool {
     text.match_indices(needle).any(|(at, _)| {
         !text[at + needle.len()..]
             .chars()
