@@ -1433,6 +1433,7 @@ The kinds of provider:
 | `"bars"` | a table | `flush()`, before it draws |
 | `"settings"` | a table | `open(line)`, after a load that followed `reopen_settings(line)` succeeds |
 | `"styles"` | a function | the function, before it draws; it returns `border`, `border_focused` and `banner`, the styles of window borders, of the focused window's border and of the error banner |
+| `"decorations"` | a function | the function, with an info table, when it draws a window's top border; it returns the spans drawn at the right end of that border, as [Window decorations](#window-decorations) describes |
 
 The windows provider's functions, each called when the event it names happens:
 
@@ -1454,8 +1455,109 @@ The windows provider's functions, each called when the event it names happens:
 | `plugin_window_of(window)` | the client asks which plugin window draws in `window`; returns its id or nil |
 | `flush()` | after each callback, before the client draws |
 
-A kind with no provider leaves its feature out: no plugin windows, no bars, no reopened settings window, or the default styles.
+A kind with no provider leaves its feature out: no plugin windows, no bars, no reopened settings window, the default styles, or no decorations.
 An unknown kind, or an implementation of the wrong type, is an error at the line of the call.
+
+#### Window decorations
+
+The decorations function supplies text, such as buttons, for the right end of a window's top border.
+The client calls it for each tile, lifted tile and floating window whose border draws the top side and whose top row is inside the ribbon area, a tiled plugin window's drawn window included.
+It is not called for floating plugin windows or for the drop outline of a lifted tile.
+
+It receives one argument, a new table:
+
+| field | value |
+|---|---|
+| `window` | the window's number |
+| `floating` | `true` when the window floats, `false` when it is tiled |
+| `focused` | `true` when the window's border is drawn in the focused style |
+| `width` | the width of the tile or box in cells, border included, as drawn in that frame |
+
+It returns nil, or a list of spans.
+A span is a string, or a table `{ text = <string>, style = <style table> }` whose `style` is optional and takes the fields of a frame's style.
+Get a highlight group's style with `require("gband.hl").drawn(name)`.
+Control characters are removed from the text, and each span is as wide as `gband.ui.width` measures its text.
+Nil and an empty list draw nothing.
+
+The client calls the function at most once per window for each frame.
+It keeps each window's result, and draws it again without calling while the info table holds the same values and no other Lua code of the client has run since: no callback, timer, event handler, state function, other provider or load.
+So a still screen calls nothing, a key press calls it once per window, and an animation that changes a box's width calls it for that window at each frame.
+Keep the function cheap, and return the same spans for the same state and info.
+
+Each call runs outside a callback, as code of no plugin, with its own instruction limit.
+`gband.core.dispatching()` is `false` in it, and an action, `gband.spawn` or `gband.keymap.enter` is an error.
+
+For a box `w` cells wide and spans `d` cells wide in all, the spans are drawn one after another from column `w − 2 − d`, counted from 0 at the left border, so the last one ends at column `w − 3`.
+The corner cell and the cell beside it stay border at both ends.
+In a 40-column box, `[_]`, `[□]` and `[X]` take columns 29 to 31, 32 to 34 and 35 to 37, and columns 38 and 39 show `─` and `╮`.
+When `d` is greater than `w − 4`, no span is drawn at all, so the function can return fewer spans for a narrow box when it wants some shown.
+The spans follow the box as its border does, also during an animation, and the screen's edge cuts them as it cuts the border.
+
+While spans are drawn, the window's name is cut to `w − 4 − d` cells, so at least one border cell separates the two; otherwise it keeps `w − 2` cells.
+A span without `style` is drawn in the window's border style, `WindowBorder` or `WindowBorderFocused`, and a span's `style` replaces only the fields it sets.
+Decorations are drawn whether window titles are on or off.
+
+A call that raises an error, reaches the instruction limit or returns anything other than nil or a list of spans fails.
+The client reports it once, preceded by `decorations: `, such as `decorations: span 2: expected a string or a table with a string text, found integer`, and marks no plugin failed.
+It then draws no decorations and calls the function no more until `gband.core.provide("decorations", fn)` registers one again or a load succeeds.
+
+The client does not hit-test the spans.
+A mouse binding finds the span under a press from the placement rule and the mouse fields `box_col`, `box_row` and `box_width`, as [Events](#events-gbandon-gbandaugroup-gbandemit) describes them, by calling the same function with an info table built from the event:
+
+```lua
+local function buttons(info)
+  if info.floating then
+    return { "[_]", "[□]", "[X]" }
+  end
+end
+gband.core.provide("decorations", buttons)
+
+local function span_at(spans, box_width, box_col)
+  local widths, total = {}, 0
+  for index, span in ipairs(spans or {}) do
+    widths[index] = gband.ui.width(type(span) == "string" and span or span.text)
+    total = total + widths[index]
+  end
+  if total == 0 or total > box_width - 4 then
+    return nil
+  end
+  local first = box_width - 2 - total
+  for index, width in ipairs(widths) do
+    if box_col >= first and box_col < first + width then
+      return index
+    end
+    first = first + width
+  end
+end
+
+local function floats(window)
+  for _, band in ipairs(gband.layout().bands) do
+    for _, box in ipairs(band.floating) do
+      if box.id == window then
+        return true
+      end
+    end
+  end
+  return false
+end
+
+gband.keymap.set("root", "leftmouse", function(e)
+  if e.target ~= "window" or e.box_row ~= 0 then
+    return false
+  end
+  local spans = buttons({
+    window = e.window,
+    floating = floats(e.window),
+    focused = e.window == gband.view().window,
+    width = e.box_width,
+  })
+  if span_at(spans, e.box_width, e.box_col) == 3 then
+    gband.action.close_window({ window = e.window })
+  else
+    return false
+  end
+end, { desc = "close a floating window from its [X]" })
+```
 
 ## Plain data
 

@@ -9,6 +9,7 @@ mod check;
 mod clock;
 mod commands;
 mod control;
+pub mod decorations;
 mod directory;
 mod error;
 mod events;
@@ -41,6 +42,7 @@ pub use crate::bridge::{base64, clipboard_sequence, notification};
 pub use crate::bundled::{files as bundled_files, is_alias as is_bundled_alias};
 pub use crate::callbacks::CallbackId;
 pub use crate::clock::freeze as freeze_time;
+pub use crate::decorations::{DecorationInfo, DecorationSpan};
 pub use crate::directory::{
     Locations, config_dir, config_dir_from, defaults_file, key_style_file, plugins_dir,
     plugins_dir_from, prepare, user_dir, user_file,

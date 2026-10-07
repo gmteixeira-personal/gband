@@ -32,10 +32,10 @@ use gband_core::terminal_input::{Decoder, TerminalInput};
 use gband_core::view::{CenterFocusedColumn, Layer, Scene, View, ViewAction};
 use gband_emulator::{Emulator, Grid};
 use gband_lua::{
-    BandState, Bar, Binding, Border, BorderChars, ClientStyles, Config, ConfigError, Dispatch,
-    Event, Options, Outcome as Ran, Palette, PluginManifest, PluginWindowRequest,
-    Requirement as Needed, Runtime, Slot, Version, ViewState, WindowInput, WindowName, WindowNames,
-    WindowStates,
+    BandState, Bar, Binding, Border, BorderChars, ClientStyles, Config, ConfigError,
+    DecorationInfo, DecorationSpan, Dispatch, Event, Options, Outcome as Ran, Palette,
+    PluginManifest, PluginWindowRequest, Requirement as Needed, Runtime, Slot, Version, ViewState,
+    WindowInput, WindowName, WindowNames, WindowStates,
 };
 use gband_protocol::{ClientMessage, ExecutableId, Requirement, ServerMessage, SessionName, Value};
 use ratatui::layout::Rect;
@@ -58,7 +58,9 @@ use crate::mouse::{
     Sends, drop_columns, drop_place,
 };
 use crate::plugin_windows::{OpenRequest, Opened, PluginWindows};
-use crate::render::{Lifted, Overlay, Region, RegionKind, Ribbon, Shown, draw_frame, regions};
+use crate::render::{
+    Lifted, Overlay, Region, RegionKind, Ribbon, Shown, Top, draw_frame, regions, tops,
+};
 pub use crate::requests::{kill_session, list_sessions};
 pub use crate::transport::{Link, Transport, UnixTransport};
 
@@ -184,6 +186,12 @@ pub fn parse_window_titles(value: Option<&str>) -> bool {
     }
 }
 
+#[derive(Default)]
+struct Decorations {
+    spans: HashMap<WindowId, Vec<DecorationSpan>>,
+    calls: HashMap<WindowId, (DecorationInfo, u64)>,
+}
+
 pub struct Display {
     layout: Arc<Layout>,
     area: Size,
@@ -221,6 +229,7 @@ pub struct Display {
     regions: Vec<Region>,
     framed: bool,
     drawn: Option<Drawn>,
+    decorations: Decorations,
 }
 
 impl Display {
@@ -262,6 +271,7 @@ impl Display {
             regions: Vec::new(),
             framed: false,
             drawn: None,
+            decorations: Decorations::default(),
         }
     }
 
@@ -961,7 +971,17 @@ impl Display {
             bars: self.bars().map(|(bar, area)| Shown { bar, area }).collect(),
             overlay: self.overlay(),
             titles: (self.titles_allowed && self.window_titles).then_some(&*self.shown_names),
+            decorations: Some(&self.decorations.spans),
         }
+    }
+
+    pub fn tops(&mut self, now: Instant) -> Vec<Top> {
+        let drawn = self.present(now);
+        let (Some(view), Some(drawn)) = (&self.view, &drawn) else {
+            return Vec::new();
+        };
+        let area = Rect::new(0, 0, self.terminal.cols, self.terminal.rows);
+        tops(&self.ribbon(view, drawn), area)
     }
 
     fn current_regions(&mut self, now: Instant) -> Vec<Region> {
@@ -1155,6 +1175,42 @@ impl Controls {
             awaiting: None,
             pressing: None,
         }
+    }
+
+    pub fn decorate(&mut self, display: &mut Display, now: Instant) -> Vec<Step> {
+        let runs = self.runtime.lua_runs();
+        let mut kept = std::mem::take(&mut display.decorations);
+        let mut failure = None;
+        for top in display.tops(now) {
+            let info = DecorationInfo {
+                window: top.window,
+                floating: top.floating,
+                focused: top.focused,
+                width: top.width,
+            };
+            let spans = match kept.calls.get(&top.window) {
+                Some(&call) if call == (info, runs) => kept.spans.remove(&top.window),
+                _ => None,
+            };
+            let spans = match spans {
+                Some(spans) => spans,
+                None => match self.runtime.decorations(&info) {
+                    Ok(spans) => spans,
+                    Err(error) => {
+                        failure.get_or_insert(error);
+                        Vec::new()
+                    }
+                },
+            };
+            display.decorations.spans.insert(top.window, spans);
+            display.decorations.calls.insert(top.window, (info, runs));
+        }
+        let Some(error) = failure else {
+            return Vec::new();
+        };
+        display.decorations = Decorations::default();
+        self.report(display, error.to_string());
+        self.react(display, Vec::new(), |_, _, _| {})
     }
 
     pub fn place_bars(&mut self, display: &mut Display) -> Vec<Step> {
@@ -1422,6 +1478,7 @@ impl Controls {
         display: &mut Display,
         result: Result<Config, ConfigError>,
     ) -> Vec<Step> {
+        display.decorations = Decorations::default();
         match result {
             Ok(config) => {
                 tracing::info!("configuration reloaded");
@@ -1791,6 +1848,10 @@ async fn attach(
             let _ = connection.send(&message).await;
         }
         let now = Instant::now();
+        let steps = controls.decorate(&mut display, now);
+        if let Some(outcome) = perform(connection, steps).await? {
+            return Ok(outcome);
+        }
         draw(terminal, &mut display, now)?;
         if let Some(channel) = &mut channel
             && !display.is_animating(now)

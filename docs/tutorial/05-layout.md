@@ -85,6 +85,8 @@ I╭mark a───────────╮
  ╰─────────────────╯
 ```
 
+A border can show more than the window's name: a Lua function can add buttons at its right end, as [window decorations](../plugins.md#window-decorations) describe.
+
 A view of the first band shows how `gband.band` takes a band's number from the layout:
 
 ```lua

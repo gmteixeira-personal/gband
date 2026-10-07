@@ -5,8 +5,9 @@ use std::time::{Duration, Instant};
 
 use common::*;
 use gband_core::action::Action;
+use gband_core::layout::WindowId;
 use gband_core::view::ViewAction;
-use gband_lua::{BandState, Dispatch, ViewState};
+use gband_lua::{BandState, DecorationInfo, Dispatch, ViewState};
 
 const WIN: &str = include_str!("../src/runtime/gband/win.lua");
 const BAR: &str = include_str!("../src/runtime/gband/bar.lua");
@@ -208,7 +209,11 @@ fn argument_errors_name_the_primitive_and_the_field() {
 fn unknown_kind() {
     rejected(
         "gband.core.provide('menus', {})",
-        &["gband.core.provide", "menus"],
+        &["gband.core.provide", "menus", "decorations"],
+    );
+    rejected(
+        "gband.core.provide('decorations', {})",
+        &["gband.core.provide", "function"],
     );
     rejected(
         "gband.core.provide('styles', {})",
@@ -231,6 +236,13 @@ fn no_provider_leaves_the_feature_absent() {
     assert_eq!(config.runtime.take_bars(), None);
     assert!(config.runtime.take_frames().is_empty());
     assert_eq!(config.runtime.take_client_styles(), None);
+    let info = DecorationInfo {
+        window: WindowId(1),
+        floating: false,
+        focused: true,
+        width: 40,
+    };
+    assert_eq!(config.runtime.decorations(&info), Ok(Vec::new()));
     clean(&config.runtime.open_settings(1));
     let (closed, outcome) = config.runtime.close_focused_plugin_window();
     clean(&outcome);

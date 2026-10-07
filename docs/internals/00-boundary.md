@@ -74,6 +74,7 @@ Every load starts with none, so a feature whose provider nobody registers is sim
 | `bars` | `gband.bar`, in [04](04-bars.md) | before it draws, to place and draw the bars |
 | `windows` | `gband.win`, in [06](06-window-provider.md) | when a key, a click, a paste or a resize reaches a plugin window, and before it draws |
 | `settings` | `gband.settings`, in [07](07-settings.md) | after a load that asked to reopen the settings window |
+| `decorations` | no bundled file | when it draws a window's top border, for the spans at its right end |
 
 ## The prelude
 

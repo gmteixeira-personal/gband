@@ -107,6 +107,11 @@ fn window_names() {
 }
 
 #[test]
+fn window_decorations() {
+    gband_test(root(), &["tests/lua/decorations_spec.lua"]);
+}
+
+#[test]
 fn example_plugin_agent_status() {
     gband_test(&root().join("examples/plugins/agent-status"), &[]);
 }
