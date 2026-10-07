@@ -1062,7 +1062,7 @@ fn guide_examples() -> Vec<String> {
 #[test]
 fn guide_examples_run() {
     let examples = guide_examples();
-    assert_eq!(examples.len(), 4);
+    assert_eq!(examples.len(), 5);
     for (index, example) in examples.iter().enumerate() {
         let scratch = Scratch::new(&format!("win-guide-{index}"));
         scratch.write(example);
