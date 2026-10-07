@@ -1343,3 +1343,120 @@ fn rename_during_loading() {
     let error = scratch.load().map(|_| ()).unwrap_err();
     assert_error_at(&error, &path, 3, "binding function");
 }
+
+fn minimize(window: u32) -> Dispatch {
+    Dispatch::Action(Action::View(ViewAction::Minimize(Some(WindowId(window)))))
+}
+
+#[test]
+fn minimize_a_floating_window() {
+    assert_eq!(
+        dispatched(
+            "minimize",
+            state(with_floating(), 1, Some(1), "root"),
+            "gband.window.minimize(4)"
+        ),
+        [minimize(4)]
+    );
+}
+
+#[test]
+fn minimize_a_tiled_window_is_an_error_at_the_line() {
+    let scratch = Scratch::new("minimize-tiled");
+    let path =
+        scratch.write("\n\n\n\ngband.bind('alt+q', function() gband.window.minimize(1) end)\n");
+    let config = scratch.loaded();
+    clean(
+        &config
+            .runtime
+            .set_state(state(with_floating(), 1, Some(1), "root")),
+    );
+    let chord = gband_lua::Chord::Key(key("alt+q"));
+    let Some((_, gband_lua::Binding::Callback(callback))) = config.keymap["root"]
+        .iter()
+        .find(|(bound, _)| *bound == chord)
+    else {
+        panic!("alt+q is not bound to a function");
+    };
+    let outcome = config.runtime.call(*callback);
+    assert!(outcome.dispatched.is_empty());
+    let [error] = outcome.errors.as_slice() else {
+        panic!("{:?}", outcome.errors);
+    };
+    assert_error_at(error, &path, 5, "window 1 is not a floating window");
+}
+
+#[test]
+fn minimize_errors() {
+    for (name, code, mentions) in [
+        ("unknown", "gband.window.minimize(99)", "99"),
+        (
+            "not-a-number",
+            "gband.window.minimize('x')",
+            "gband.window.minimize",
+        ),
+    ] {
+        failed(
+            &format!("minimize-{name}"),
+            state(with_floating(), 1, Some(1), "root"),
+            code,
+            mentions,
+        );
+    }
+}
+
+#[test]
+fn minimize_during_loading() {
+    let scratch = Scratch::new("minimize-loading");
+    let path = scratch.write("\n\ngband.window.minimize(1)\n");
+    let error = scratch.load().map(|_| ()).unwrap_err();
+    assert_error_at(&error, &path, 3, "binding function");
+}
+
+#[test]
+fn minimize_then_focus_keeps_the_dispatch_order() {
+    assert_eq!(
+        dispatched(
+            "minimize-focus",
+            state(with_floating(), 1, Some(4), "root"),
+            "gband.window.minimize(4)\ngband.window.focus(4)"
+        ),
+        [
+            minimize(4),
+            Dispatch::Action(Action::View(ViewAction::FocusWindow(WindowId(4)))),
+        ]
+    );
+}
+
+fn minimized_fields(name: &str, minimized: &[u32]) -> String {
+    let mut layout = with_floating();
+    let window = layout.allocate_window();
+    layout.open_floating(window, BandId(1), None, AREA, &LayoutOptions::default());
+    let view = ViewState {
+        minimized: minimized.iter().map(|&window| WindowId(window)).collect(),
+        ..state(layout, 1, Some(1), "root")
+    };
+    let (_scratch, config) = loaded_with(name, "", view);
+    eval(
+        &config,
+        r#"
+        local parts = {}
+        for _, band in ipairs(gband.layout().bands) do
+          for _, f in ipairs(band.floating) do
+            parts[#parts + 1] = f.id .. "=" .. tostring(f.minimized)
+          end
+        end
+        return table.concat(parts, " ")
+        "#,
+    )
+}
+
+#[test]
+fn minimized_floating_window() {
+    assert_eq!(minimized_fields("layout-minimized", &[5]), "4=nil 5=true");
+}
+
+#[test]
+fn minimized_by_another_client() {
+    assert_eq!(minimized_fields("layout-not-minimized", &[]), "4=nil 5=nil");
+}

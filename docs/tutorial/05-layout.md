@@ -11,6 +11,7 @@ Chapter 01 already used it to find the focused window.
 
 `gband.layout()` describes every band, column and window of the session.
 Each band has `id`, `columns` and `floating`; each column has `windows`; each window has `id`.
+A floating window this client minimized also has `minimized = true`.
 Its `cols` and `rows` give the size of the screen area, and `LayoutChanged` runs when they change, whichever client changed them.
 Walking it answers which band a window is in, or nil when the window has left the layout:
 
@@ -41,7 +42,8 @@ An action that the running callback dispatched takes effect after the callback r
 
 `gband.window` acts on a window by its number, and `gband.band` on a band:
 
-- `gband.window.focus(window)` views the window's band and focuses the window.
+- `gband.window.focus(window)` views the window's band and focuses the window, and restores it when this client minimized it.
+- `gband.window.minimize(window)` hides a floating window from this client until it is focused again.
 - `gband.window.rename(window, name)` sets the name its border shows.
 - `gband.band.view(band)` views a band.
 

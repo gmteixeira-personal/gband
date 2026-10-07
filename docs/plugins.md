@@ -282,6 +282,7 @@ The built-in actions, with the description `gband.action.list()` gives each:
 | `focus_band_up` | view | view the band above |
 | `center_column` | view | center the focused column |
 | `switch_focus_floating_tiled` | view | switch focus between floating and tiled windows |
+| `minimize_window` | view | minimize the focused floating window |
 | `open_window` | session | open a window running the user's shell |
 | `close_window` | session | close the window |
 | `consume_or_expel_left` | session | consume or expel the window to the left |
@@ -587,7 +588,7 @@ end, { desc = "the navigation n" })
 - `bands`: one table per band, in order, each with `id`, `columns` and `floating`.
 - `columns`: one table per column, left to right, each with `width` as a number, `full_width` and `windows`.
 - `windows`: one table per window, top to bottom, each with `id` and either `rows`, a fixed height, or `weight`, an automatic height's weight. A window that shows a tiled plugin window this client opened also has `plugin_window`. A window that runs a program also has `name`, the name its border shows, with ` #n` when another window of the band has the same name, and `manual_name`, the name set by `gband.window.rename`, when it has one.
-- `floating`: one table per floating window, in the band's floating order, each with `id`, `width` and `full_width` as a column has them, `rows`, the box's height, and `col` and `row`, the box's top-left cell as placed in the screen area. A window that shows a plugin window this client opened also has `plugin_window`, and one that runs a program has `name` and `manual_name` as a window table has them.
+- `floating`: one table per floating window, in the band's floating order, each with `id`, `width` and `full_width` as a column has them, `rows`, the box's height, and `col` and `row`, the box's top-left cell as placed in the screen area. A window that shows a plugin window this client opened also has `plugin_window`, and one that runs a program has `name` and `manual_name` as a window table has them. A window this client has minimized has `minimized`, true; other windows have no `minimized`.
 
 `gband.view()` returns `band`, the viewed band, `window`, the focused window or nil, `floating`, true while the band's floating layer has focus, `plugin_window`, the focused plugin window or nil, `table`, the active key table, and `cols` and `rows`, the size of the ribbon.
 
@@ -666,7 +667,8 @@ end, { desc = "open a window as the band's first column" })
 These dispatch like actions, in the order they are called together with the callback's actions, and are errors outside a callback.
 A window or band number not in the layout is an error at the line of the call.
 
-- `gband.window.focus(window)` views the window's band and focuses the window.
+- `gband.window.focus(window)` views the window's band and focuses the window. Focusing a window this client has minimized restores it, on top of the other floating windows.
+- `gband.window.minimize(window)` hides a floating window from this client only, until it is focused again. Other clients still draw it, and its program keeps its size. A window that is not floating is an error; a window already minimized stays minimized.
 - `gband.band.view(band)` views a band, focusing the window last focused there.
 - `gband.window.set_width(window, width)` sets the width of the window's column, or of its box when it floats, a number greater than 0 and at most 10000, and turns full width off.
 - `gband.window.set_height(window, { rows = n })` gives a fixed height; `gband.window.set_height(window, { weight = w })` gives an automatic height of weight `w`.

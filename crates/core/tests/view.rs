@@ -1746,3 +1746,359 @@ fn centred_camera_keeps_its_blank_strip() {
     assert_eq!(view.camera(), 35);
     assert_eq!(drawn_in(&view, narrow).last(), Some(&(windows[2], 25)));
 }
+
+fn overlapping(layout: &mut Layout, windows: &[WindowId]) {
+    for (&window, col) in windows.iter().zip([10, 14, 18]) {
+        place(layout, window, col, 2, Proportion::ONE_HALF);
+    }
+}
+
+#[test]
+fn minimize_the_focused_floating_window() {
+    let (layout, _, floated) = with_floating(1, 2);
+    let before = layout.clone();
+    let mut view = View::new(scene(&layout));
+    act(
+        &mut view,
+        &layout,
+        &[
+            ViewAction::FocusWindow(floated[0]),
+            ViewAction::FocusWindow(floated[1]),
+            ViewAction::Minimize(None),
+        ],
+    );
+    assert_eq!(view.focused(), Some(floated[0]));
+    assert_eq!(view.layer(), Layer::Floating);
+    assert_eq!(view.stacking(scene(&layout)), [floated[0]]);
+    assert!(view.minimized().contains(&floated[1]));
+    assert_eq!(layout, before);
+}
+
+#[test]
+fn minimize_a_tiled_window() {
+    let (layout, windows, _) = with_floating(1, 1);
+    let mut view = View::new(scene(&layout));
+    act(&mut view, &layout, &[ViewAction::Minimize(None)]);
+    assert_eq!(view.focused(), Some(windows[0]));
+    assert_eq!(view.layer(), Layer::Tiled);
+    assert!(view.minimized().is_empty());
+    act(
+        &mut view,
+        &layout,
+        &[ViewAction::Minimize(Some(windows[0]))],
+    );
+    assert!(view.minimized().is_empty());
+}
+
+#[test]
+fn focus_restores() {
+    let (mut layout, _, floated) = with_floating(1, 2);
+    overlapping(&mut layout, &floated);
+    let mut view = View::new(scene(&layout));
+    act(
+        &mut view,
+        &layout,
+        &[
+            ViewAction::FocusWindow(floated[0]),
+            ViewAction::FocusWindow(floated[1]),
+            ViewAction::Minimize(Some(floated[0])),
+        ],
+    );
+    assert_eq!(view.stacking(scene(&layout)), [floated[1]]);
+    act(&mut view, &layout, &[ViewAction::FocusWindow(floated[0])]);
+    assert_eq!(view.stacking(scene(&layout)), [floated[1], floated[0]]);
+    assert_eq!(view.focused(), Some(floated[0]));
+    assert_eq!(view.layer(), Layer::Floating);
+    assert!(view.minimized().is_empty());
+}
+
+fn tile(layout: &mut Layout, window: WindowId) {
+    apply(
+        layout,
+        SessionAction::ToggleFloating {
+            window,
+            after: None,
+            floating: None,
+        },
+    );
+    assert!(layout.locate(window).is_some());
+}
+
+#[test]
+fn tiling_restores() {
+    let (mut layout, _, floated) = with_floating(1, 1);
+    let mut view = View::new(scene(&layout));
+    act(
+        &mut view,
+        &layout,
+        &[ViewAction::Minimize(Some(floated[0]))],
+    );
+    assert!(!view.shown(scene(&layout)).contains(&floated[0]));
+    tile(&mut layout, floated[0]);
+    view.sync(scene(&layout));
+    assert!(view.minimized().is_empty());
+    assert!(view.shown(scene(&layout)).contains(&floated[0]));
+    float(&mut layout, floated[0]);
+    view.sync(scene(&layout));
+    assert_eq!(view.stacking(scene(&layout)), [floated[0]]);
+}
+
+#[test]
+fn every_floating_window_minimized() {
+    let (layout, _, floated) = with_floating(0, 2);
+    let mut view = View::new(scene(&layout));
+    act(
+        &mut view,
+        &layout,
+        &[
+            ViewAction::FocusWindow(floated[1]),
+            ViewAction::Minimize(Some(floated[0])),
+            ViewAction::Minimize(Some(floated[1])),
+        ],
+    );
+    assert_eq!(view.layer(), Layer::Tiled);
+    assert_eq!(view.focused(), None);
+}
+
+#[test]
+fn last_tiled_window_closes_beside_minimized_windows() {
+    let (mut layout, windows, floated) = with_floating(1, 1);
+    let mut view = View::new(scene(&layout));
+    act(
+        &mut view,
+        &layout,
+        &[ViewAction::Minimize(Some(floated[0]))],
+    );
+    layout.remove(windows[0]);
+    view.sync(scene(&layout));
+    assert_eq!(view.focused(), None);
+    assert!(view.stacking(scene(&layout)).is_empty());
+}
+
+#[test]
+fn switch_layers_skips_a_minimized_window() {
+    let (layout, windows, floated) = with_floating(1, 2);
+    let mut view = View::new(scene(&layout));
+    act(
+        &mut view,
+        &layout,
+        &[
+            ViewAction::FocusWindow(floated[1]),
+            ViewAction::FocusWindow(windows[0]),
+            ViewAction::Minimize(Some(floated[1])),
+            ViewAction::SwitchLayer,
+        ],
+    );
+    assert_eq!(view.focused(), Some(floated[0]));
+}
+
+#[test]
+fn focus_right_skips_a_minimized_window() {
+    let (layout, floated) = boxes_in_a_row();
+    let mut view = View::new(scene(&layout));
+    act(
+        &mut view,
+        &layout,
+        &[
+            ViewAction::FocusWindow(floated[0]),
+            ViewAction::Minimize(Some(floated[1])),
+            ViewAction::FocusRight,
+        ],
+    );
+    assert_eq!(view.focused(), Some(floated[2]));
+}
+
+#[test]
+fn only_minimized_floating_windows() {
+    let (layout, windows, floated) = with_floating(1, 1);
+    let mut view = View::new(scene(&layout));
+    act(
+        &mut view,
+        &layout,
+        &[
+            ViewAction::Minimize(Some(floated[0])),
+            ViewAction::SwitchLayer,
+        ],
+    );
+    assert_eq!(view.focused(), Some(windows[0]));
+    assert_eq!(view.layer(), Layer::Tiled);
+    assert!(view.stacking(scene(&layout)).is_empty());
+}
+
+#[test]
+fn minimize_the_last_floating_window() {
+    let (layout, windows, floated) = with_floating(1, 1);
+    let mut view = View::new(scene(&layout));
+    act(
+        &mut view,
+        &layout,
+        &[
+            ViewAction::FocusWindow(floated[0]),
+            ViewAction::Minimize(None),
+        ],
+    );
+    assert_eq!(view.focused(), Some(windows[0]));
+    assert_eq!(view.layer(), Layer::Tiled);
+}
+
+#[test]
+fn minimize_with_an_unfocused_floating_window_left() {
+    let (layout, _, floated) = with_floating(1, 3);
+    let mut view = View::new(scene(&layout));
+    act(
+        &mut view,
+        &layout,
+        &[
+            ViewAction::FocusWindow(floated[1]),
+            ViewAction::FocusWindow(floated[2]),
+            ViewAction::Minimize(Some(floated[1])),
+            ViewAction::Minimize(None),
+        ],
+    );
+    assert_eq!(view.focused(), Some(floated[0]));
+    assert_eq!(view.layer(), Layer::Floating);
+}
+
+#[test]
+fn minimized_window_leaves_the_order() {
+    let (mut layout, _, floated) = with_floating(1, 3);
+    overlapping(&mut layout, &floated);
+    let mut view = View::new(scene(&layout));
+    act(
+        &mut view,
+        &layout,
+        &[
+            ViewAction::FocusWindow(floated[2]),
+            ViewAction::FocusWindow(floated[1]),
+            ViewAction::FocusWindow(floated[0]),
+            ViewAction::Minimize(Some(floated[0])),
+        ],
+    );
+    assert_eq!(view.stacking(scene(&layout)), [floated[2], floated[1]]);
+}
+
+#[test]
+fn two_clients_minimize_independently() {
+    let (layout, windows, floated) = with_floating(1, 1);
+    let mut first = View::new(scene(&layout));
+    let mut second = View::new(scene(&layout));
+    act(&mut first, &layout, &[ViewAction::FocusWindow(floated[0])]);
+    act(&mut second, &layout, &[ViewAction::FocusWindow(floated[0])]);
+    act(&mut first, &layout, &[ViewAction::Minimize(None)]);
+    assert_eq!(first.focused(), Some(windows[0]));
+    assert!(first.stacking(scene(&layout)).is_empty());
+    assert_eq!(second.focused(), Some(floated[0]));
+    assert_eq!(second.stacking(scene(&layout)), [floated[0]]);
+}
+
+#[test]
+fn back_up_past_a_minimized_focus() {
+    let (mut layout, windows, floated) = with_floating(1, 1);
+    open(&mut layout, 1, None);
+    let mut view = View::new(scene(&layout));
+    act(
+        &mut view,
+        &layout,
+        &[
+            ViewAction::FocusWindow(floated[0]),
+            ViewAction::BandDown,
+            ViewAction::Minimize(Some(floated[0])),
+            ViewAction::BandUp,
+        ],
+    );
+    assert_eq!(view.focused(), Some(windows[0]));
+    assert_eq!(view.layer(), Layer::Tiled);
+}
+
+#[test]
+fn down_to_a_band_of_minimized_windows() {
+    let (mut layout, _) = row_of_columns(1);
+    let p3 = open(&mut layout, 1, None);
+    float(&mut layout, p3);
+    assert_eq!(layout.bands().len(), 3);
+    let mut view = View::new(scene(&layout));
+    act(
+        &mut view,
+        &layout,
+        &[ViewAction::Minimize(Some(p3)), ViewAction::BandDown],
+    );
+    assert_eq!(view.band(), layout.bands()[1].id);
+    assert_eq!(view.focused(), None);
+}
+
+#[test]
+fn minimized_window_not_shown() {
+    let (layout, windows, floated) = with_floating(1, 1);
+    let mut view = View::new(scene(&layout));
+    act(
+        &mut view,
+        &layout,
+        &[ViewAction::Minimize(Some(floated[0]))],
+    );
+    assert_eq!(view.shown(scene(&layout)), [windows[0]]);
+}
+
+#[test]
+fn minimized_window_by_name() {
+    let (mut layout, _) = row_of_columns(1);
+    let p3 = open(&mut layout, 1, None);
+    let p4 = open(&mut layout, 1, Some(p3));
+    float(&mut layout, p3);
+    float(&mut layout, p4);
+    overlapping(&mut layout, &[p3, p4]);
+    let mut view = View::new(scene(&layout));
+    act(
+        &mut view,
+        &layout,
+        &[
+            ViewAction::FocusWindow(p3),
+            ViewAction::FocusWindow(p4),
+            ViewAction::Minimize(Some(p3)),
+            ViewAction::BandUp,
+            ViewAction::FocusWindow(p3),
+        ],
+    );
+    assert_eq!(view.band(), layout.bands()[1].id);
+    assert_eq!(view.focused(), Some(p3));
+    assert_eq!(view.layer(), Layer::Floating);
+    assert_eq!(view.stacking(scene(&layout)), [p4, p3]);
+}
+
+#[test]
+fn box_moves_while_minimized() {
+    let (mut layout, _, floated) = with_floating(1, 1);
+    place(&mut layout, floated[0], 20, 2, Proportion::new(1, 4));
+    let mut view = View::new(scene(&layout));
+    act(
+        &mut view,
+        &layout,
+        &[ViewAction::Minimize(Some(floated[0]))],
+    );
+    apply(
+        &mut layout,
+        SessionAction::MoveColumn {
+            window: floated[0],
+            direction: Direction::Right,
+        },
+    );
+    view.sync(scene(&layout));
+    assert!(view.minimized().contains(&floated[0]));
+    act(&mut view, &layout, &[ViewAction::FocusWindow(floated[0])]);
+    assert_eq!(view.stacking(scene(&layout)), [floated[0]]);
+    let placed = boxes(&layout.bands()[0], AREA);
+    assert_eq!(placed[0].x, 28);
+}
+
+#[test]
+fn attach_again_after_minimizing() {
+    let (layout, _, floated) = with_floating(1, 1);
+    let mut view = View::new(scene(&layout));
+    act(
+        &mut view,
+        &layout,
+        &[ViewAction::Minimize(Some(floated[0]))],
+    );
+    let again = View::new(scene(&layout));
+    assert!(again.minimized().is_empty());
+    assert_eq!(again.stacking(scene(&layout)), [floated[0]]);
+}

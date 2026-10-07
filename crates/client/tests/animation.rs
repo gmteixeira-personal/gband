@@ -6,6 +6,7 @@ use gband_client::animation::{
 };
 use gband_client::render::RegionKind;
 use gband_client::{Controls, Display};
+use gband_core::action::Action;
 use gband_core::geometry::{Size, Tile, drawn_copy};
 use gband_core::input::{Modifiers, MouseButton, MouseEvent, MouseKind};
 use gband_core::layout::{
@@ -903,4 +904,46 @@ fn floating_box_follows_the_pointer_at_once() {
     );
     draw(&mut display);
     assert_eq!(boxed(&display), (x + 5, y));
+}
+
+#[test]
+fn minimize_and_restore_at_once() {
+    let mut layout = Layout::new();
+    let band = layout.bands()[0].id;
+    let p1 = layout.allocate_window();
+    let p3 = layout.allocate_window();
+    layout.open(p1, band, None, None, &LayoutOptions::default());
+    layout.open(p3, band, Some(p1), None, &LayoutOptions::default());
+    toggle(&mut layout, p3);
+    let mut display = Display::new(AREA, Animations::On);
+    display.apply(ServerMessage::Layout {
+        cols: AREA.cols,
+        rows: AREA.rows,
+        layout,
+    });
+    let regions = |display: &Display| -> Vec<(Option<WindowId>, RegionKind, i64, i64)> {
+        display
+            .regions()
+            .iter()
+            .map(|region| (region.window, region.kind, region.x, region.y))
+            .collect()
+    };
+    gband_client::dispatch(&mut display, Action::View(ViewAction::FocusWindow(p3)));
+    draw(&mut display);
+    let both = regions(&display);
+    assert!(
+        both.iter()
+            .any(|&(window, kind, ..)| window == Some(p3) && kind == RegionKind::Floating)
+    );
+    gband_client::dispatch(&mut display, Action::View(ViewAction::Minimize(None)));
+    draw(&mut display);
+    let tile_only: Vec<_> = both
+        .iter()
+        .copied()
+        .filter(|&(window, ..)| window == Some(p1))
+        .collect();
+    assert_eq!(regions(&display), tile_only);
+    gband_client::dispatch(&mut display, Action::View(ViewAction::FocusWindow(p3)));
+    draw(&mut display);
+    assert_eq!(regions(&display), both);
 }

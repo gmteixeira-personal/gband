@@ -33,6 +33,7 @@ None.
 - `lua-control`: "Read the layout" adds `minimized` to floating tables. "Dispatch order" names `gband.window.minimize`. A new requirement, "Minimize a window by number", defines `gband.window.minimize`.
 - `actions`: "Lua names of actions" adds `minimize_window` and its description.
 - `animations`: "Floating windows at rest" draws no minimized window, and minimizing and restoring do not animate.
+- `client-attach`: "Ribbon presentation" draws no floating window the client has minimized.
 
 ## Impact
 

@@ -284,6 +284,64 @@ async fn floating_window_takes_its_box_size() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn unshown_floating_window_keeps_its_size_until_shown() {
+    let winches = Winches::new("winch-unshown-floating");
+    let server = winches.server().await;
+    let mut client = server.attach(80, 24).await;
+    let first = client.first();
+    ready(&mut client, first).await;
+    let window = open(&mut client, first).await;
+    for action in [
+        SessionAction::ToggleFloating {
+            window,
+            after: None,
+            floating: None,
+        },
+        SessionAction::SetWidth {
+            window,
+            width: Proportion::ONE_HALF,
+        },
+        SessionAction::SetHeight {
+            window,
+            height: WindowHeight::Fixed(20),
+        },
+    ] {
+        client.act(action).await;
+    }
+    client
+        .wait_until(|client| {
+            client
+                .layout
+                .floating(window)
+                .is_some_and(|floating| floating.rows == 20)
+        })
+        .await;
+    client.show_all().await;
+    let before = winches
+        .settled(&mut client, window, Size::new(38, 18))
+        .await;
+
+    client.show(&[first]).await;
+    client
+        .send(&ClientMessage::Resize {
+            cols: 100,
+            rows: 30,
+        })
+        .await;
+    winches.settled(&mut client, first, Size::new(48, 28)).await;
+    assert_eq!(client.window_screen(window).size(), Size::new(38, 18));
+    assert_eq!(winches.count(window), before);
+
+    client.show(&[first, window]).await;
+    assert_eq!(
+        winches
+            .settled(&mut client, window, Size::new(48, 18))
+            .await,
+        before + 1
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn step_named_by_a_client_reaches_every_client() {
     let server = TestServer::start("step-from-client", &["/bin/sh"]).await;
     let mut first = server.attach(80, 24).await;
