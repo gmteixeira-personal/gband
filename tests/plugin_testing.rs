@@ -444,7 +444,7 @@ fn nothing_left_behind() {
         "local t = require('gband.test')\n\
          t.case('three windows', function(g)\n\
            g.start()\n\
-           g.keys('ctrl+space n ctrl+space n')\n\
+           g.keys('ctrl+space n n')\n\
            g.settle()\n\
            t.eq(g.client('return #gband.layout().bands[1].columns'), 3)\n\
            error('fails on purpose')\n\
@@ -501,7 +501,7 @@ fn users_server_untouched() {
         "local t = require('gband.test')\n\
          t.case('opens windows', function(g)\n\
            g.start()\n\
-           g.keys('ctrl+space n ctrl+space n')\n\
+           g.keys('ctrl+space n n')\n\
            g.settle()\n\
          end)\n",
     );

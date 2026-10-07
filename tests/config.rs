@@ -39,7 +39,7 @@ fn two_windows_first_focused(env: &TestEnv) -> Attached {
     let mut client = Attached::start(env, 80, 24);
     client.wait_for_prompt();
     client.shell_pid(env);
-    client.send(b"\x00n");
+    client.send(b"\x00n\r");
     client.wait_for("the second tile focused", second_focused);
     client.wait_for_prompt();
     client.shell_pid(env);
@@ -269,7 +269,7 @@ fn another_prefix_key_in_a_copy_of_the_defaults() {
     let mut client = Attached::start(&env, 80, 24);
     client.wait_for_prompt();
     client.shell_pid(&env);
-    client.send(b"\x00n");
+    client.send(b"\x00n\r");
     client.wait_for("the second tile focused", second_focused);
     client.wait_for_prompt();
     client.shell_pid(&env);
@@ -524,7 +524,7 @@ fn default_configuration_with_a_plugin() {
     let mut client = Attached::start(&env, 80, 24);
     client.wait_for_prompt();
     client.shell_pid(&env);
-    client.send(b"\x00n");
+    client.send(b"\x00n\r");
     client.wait_for("the second tile focused", second_focused);
     client.wait_for_prompt();
     client.send(b"\x1bg");

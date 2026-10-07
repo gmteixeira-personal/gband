@@ -61,7 +61,7 @@ fn run_an_action() {
     let env = TestEnv::new("prompt-action");
     let mut client = attached(&env);
     labelled(&mut client, "W1");
-    client.send(b"\x00n");
+    client.send(b"\x00n\r");
     client.wait_for("the second window", |screen| {
         untouched_prompt(screen) && !focused_shows(screen, "W1")
     });

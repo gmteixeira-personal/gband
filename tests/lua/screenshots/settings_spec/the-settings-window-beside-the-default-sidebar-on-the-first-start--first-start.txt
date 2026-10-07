@@ -12,7 +12,7 @@ size 80x24 cursor 11:55 hidden
 10| │                       │theme    default             │
 11| │                       │sidebar  on                  │
 12| │                       │keys     modal               │
-13| │                       │I on new on                  │
+13| │                       │I on new off                 │
 14| │                       └─────────────────────────────┘
 15| │                                     │
 16| │                                     │

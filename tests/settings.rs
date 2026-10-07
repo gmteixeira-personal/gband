@@ -57,6 +57,10 @@ fn navigation(screen: &Grid) -> bool {
     sidebar_mode(screen) == "N"
 }
 
+fn interactive(screen: &Grid) -> bool {
+    sidebar_mode(screen) == "I"
+}
+
 fn focused_shows(screen: &Grid, label: &str) -> bool {
     focused_lines(screen).iter().any(|line| line == label)
 }
@@ -379,8 +383,26 @@ fn cannot_save() {
 }
 
 #[test]
+fn turn_interactive_on_new_on() {
+    let env = TestEnv::new("settings-interactive-fresh");
+    let mut client = opened(&env);
+    press(&mut client, b"jjj", 3);
+    let before = reloads(&env);
+    client.send(b"\r");
+    reopened(&client, &env, before, 3, "I on new on");
+    assert_eq!(
+        user_file(&env, "interactive_on_new.lua").as_deref(),
+        Some("return true\n")
+    );
+    escape(&mut client);
+    new_window(&mut client);
+    client.wait_for("interactive mode after the new window", interactive);
+}
+
+#[test]
 fn turn_interactive_on_new_off() {
     let env = TestEnv::new("settings-interactive-off");
+    save_interactive_on_new(&env, true);
     let mut client = opened(&env);
     press(&mut client, b"jjj", 3);
     let before = reloads(&env);
@@ -439,12 +461,9 @@ fn direct_key_style_ignores_the_setting() {
 fn own_configuration_with_the_modal_preset() {
     let env = TestEnv::new("settings-interactive-own");
     env.write_config("gband.keystyle.use(\"modal\")\n");
-    save_interactive_on_new(&env, false);
+    save_interactive_on_new(&env, true);
     let mut client = labelled(&env);
     new_window(&mut client);
-    client.send(b"h");
-    client.wait_for("the first window focused", |screen| {
-        focused_shows(screen, "W1")
-    });
-    assert!(untouched_prompt(&client.screen()), "{}", client.contents());
+    client.run("echo modal-root");
+    client.wait_for_line("modal-root");
 }

@@ -260,7 +260,7 @@ fn interactive_on_new_with_nothing_saved() {
     assert_eq!(saved, None);
     let outcome = settings.prefix_n();
     clean(&outcome);
-    assert!(enters_root(&outcome), "{:?}", outcome.dispatched);
+    assert!(!enters_root(&outcome), "{:?}", outcome.dispatched);
 }
 
 #[test]
@@ -294,7 +294,7 @@ fn broken_interactive_on_new_file_is_not_a_configuration_error() {
     );
     let outcome = settings.prefix_n();
     clean(&outcome);
-    assert!(enters_root(&outcome), "{:?}", outcome.dispatched);
+    assert!(!enters_root(&outcome), "{:?}", outcome.dispatched);
 }
 
 #[test]
@@ -303,12 +303,12 @@ fn own_configuration_with_the_modal_preset() {
         "interactive-own",
         &[
             ("init.lua", "gband.keystyle.use(\"modal\")"),
-            ("interactive_on_new.lua", "return false\n"),
+            ("interactive_on_new.lua", "return true\n"),
         ],
     );
     let outcome = settings.prefix_n();
     clean(&outcome);
-    assert!(!enters_root(&outcome), "{:?}", outcome.dispatched);
+    assert!(enters_root(&outcome), "{:?}", outcome.dispatched);
 }
 
 #[test]
@@ -358,7 +358,7 @@ fn window_opens() {
             "theme    default",
             "sidebar  on",
             "keys     modal",
-            "I on new on"
+            "I on new off"
         ]
     );
     assert_eq!(settings.cursor(), 1);
@@ -395,13 +395,13 @@ fn saved_values_shown() {
         &[
             MODAL,
             ("sidebar.lua", "return false\n"),
-            ("interactive_on_new.lua", "return false\n"),
+            ("interactive_on_new.lua", "return true\n"),
         ],
     );
     settings.open();
     let frame = settings.frame();
     assert_eq!(text(&frame.lines[1]), "sidebar  off");
-    assert_eq!(text(&frame.lines[3]), "I on new off");
+    assert_eq!(text(&frame.lines[3]), "I on new on");
 }
 
 #[test]
@@ -493,8 +493,31 @@ fn switch_the_key_style() {
 }
 
 #[test]
+fn turn_interactive_on_new_on() {
+    let settings = Settings::new("keys-interactive-fresh", &[MODAL]);
+    settings.open();
+    for _ in 0..3 {
+        clean(&settings.press("j"));
+    }
+    clean(&settings.press("enter"));
+    assert_eq!(
+        settings.file("interactive_on_new.lua").as_deref(),
+        Some("return true\n")
+    );
+    assert_eq!(settings.config.runtime.take_settings_reopen(), Some(4));
+    for name in ["l", "right", "h", "left"] {
+        let before = settings.file("interactive_on_new.lua");
+        clean(&settings.press(name));
+        assert_ne!(settings.file("interactive_on_new.lua"), before, "{name}");
+    }
+}
+
+#[test]
 fn turn_interactive_on_new_off() {
-    let settings = Settings::new("keys-interactive-off", &[MODAL]);
+    let settings = Settings::new(
+        "keys-interactive-off",
+        &[MODAL, ("interactive_on_new.lua", "return true\n")],
+    );
     settings.open();
     for _ in 0..3 {
         clean(&settings.press("j"));
@@ -505,11 +528,6 @@ fn turn_interactive_on_new_off() {
         Some("return false\n")
     );
     assert_eq!(settings.config.runtime.take_settings_reopen(), Some(4));
-    for name in ["l", "right", "h", "left"] {
-        let before = settings.file("interactive_on_new.lua");
-        clean(&settings.press(name));
-        assert_ne!(settings.file("interactive_on_new.lua"), before, "{name}");
-    }
 }
 
 #[test]

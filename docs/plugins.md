@@ -966,7 +966,7 @@ The prompt gives `PromptCursor` the default `{ reverse = true }` when its module
 gband bundles two key style presets, the modules `gband.keystyle.modal` and `gband.keystyle.direct`.
 Each is a file of plain top-level calls, as a `user/init.lua` is: it sets up `gband.keylist` and `gband.prompt`, whose actions it binds, then makes its bindings in `prefix`, and binds nothing in `root`.
 The modal preset declares `prefix` a mode labelled `navigation` and binds Escape and Enter to return to interactive mode.
-Its `n` opens a window and returns to interactive mode unless `gband.settings.interactive_on_new()` returned `false` when the preset loaded.
+Its `n` opens a window and returns to interactive mode only when `gband.settings.interactive_on_new()` returned `true` when the preset loaded, and otherwise leaves navigation mode active.
 The direct preset declares no mode, so each key after the prefix key acts once; it binds `n` to `open_window` and the prefix key to `send_prefix` directly.
 Both bind Ctrl+Space then `s` to `gband.settings.open`, described `settings`, right after `:`.
 gband writes copies of both to `defaults/keystyle/` for you to read; loading never reads the copies.
@@ -1017,7 +1017,7 @@ It holds these lines, each a label in `SettingsLabel` padded to 9 cells, then th
 | `theme` | the name `gband.colorscheme()` returns | opens the theme list | `l` and Right load the theme after the active one in `themes()`, `h` and Left the one before, and save it |
 | `sidebar` | `off` when `sidebar()` returns `false`, `on` otherwise | saves the other value | the same as Enter |
 | `keys` | the style `gband.keystyle.saved()` returns, or `modal` | saves the other style | the same as Enter |
-| `I on new` | `off` when `interactive_on_new()` returns `false`, `on` otherwise | saves the other value | the same as Enter |
+| `I on new` | `on` when `interactive_on_new()` returns `true`, `off` otherwise | saves the other value | the same as Enter |
 
 The `theme` line wraps at both ends of the list, and an active colorscheme missing from it steps to the first or the last theme.
 A theme that fails to load is reported, as "Colorschemes" describes, and not saved.
@@ -1037,7 +1037,7 @@ When there is no configuration directory or the write fails, the key raises an e
 
 The saved theme applies to every configuration, since it loads before the init file.
 The sidebar, the key style and `I on new` apply where a configuration asks for them: the default configuration sets up `gband.sidebar` unless `sidebar()` returns `false`, and calls `gband.keystyle.use()` with no argument, whose modal preset reads `interactive_on_new()`.
-A `user/init.lua` with its own `n` binding can read `interactive_on_new()` to follow the setting.
+A `user/init.lua` with its own `n` binding follows the setting by comparing `interactive_on_new()` with `true`, since nil means it was never saved and reads as off.
 A `user/init.lua` that sets up the sidebar or binds its own keys keeps its choice, and the settings window then only saves the setting.
 
 On `Attached`, the default configuration opens the settings window when `gband.config_dir` is set and `theme()`, `sidebar()` and `gband.keystyle.saved()` all return nil.

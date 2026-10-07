@@ -90,7 +90,8 @@ The prefix key, Ctrl+Space, gives the keys below their gband meaning, in one of 
 - **modal**: Ctrl+Space enters navigation mode, and the sidebar shows `N`.
   Each key below acts and navigation mode stays active, so `l` `l` `l` moves three columns and `=` `=` widens the column twice.
   A key with no binding does nothing.
-  Escape or Enter returns to interactive mode, and so do `?`, `:`, `N`, `s` and Ctrl+Space once they have acted, and `n` unless the settings window's `I on new` is `off`.
+  Escape or Enter returns to interactive mode, and so do `?`, `:`, `N`, `s` and Ctrl+Space once they have acted.
+  `n` returns to interactive mode only when the settings window's `I on new` is `on`, which it is not until you save it on.
 - **direct**: Ctrl+Space then one key acts once, and the keys that follow reach the window again, as in tmux.
   Ctrl+Space `l` `l` moves one column and types `l`.
   Escape, Enter and any other key with no binding after Ctrl+Space are discarded.
@@ -105,7 +106,7 @@ Both styles bind the same keys after Ctrl+Space:
 | `j`, `k`, or the down or up arrow | focus the window below or above |
 | `u`, `i` | view the band below or above |
 | `c` | center the focused column in the view, or the focused floating window on the screen |
-| `n` | open a window running your shell; modal returns to interactive mode unless `I on new` is `off` |
+| `n` | open a window running your shell; modal returns to interactive mode only when `I on new` is `on` |
 | `q` | close the window, or the key list or another floating plugin window when it has focus |
 | `[`, `]` | move the window into or out of the column to the left or right |
 | `r` | cycle the column's width through the presets |
@@ -139,7 +140,7 @@ It has these lines:
 | `theme` | the active theme |
 | `sidebar` | `on` or `off` |
 | `keys` | the key style, `modal` or `direct` |
-| `I on new` | `on` or `off`: whether `n` in navigation mode returns to interactive mode; shown with the modal key style only |
+| `I on new` | `on` or `off`: whether `n` in navigation mode returns to interactive mode; `off` until saved `on`; shown with the modal key style only |
 
 `j`, `k` and the up and down arrows move between the lines.
 On `theme`, `l` or Right loads the next theme and `h` or Left the one before, and Enter opens the theme list.
@@ -271,9 +272,9 @@ The copy binds its keys with `gband.keystyle.use()`, which makes the bindings of
 To edit the bindings themselves, copy a style's bindings from `defaults/keystyle/` into `user/init.lua` in place of the `gband.keystyle.use()` call.
 
 The saved theme loads before `user/init.lua` runs, so it applies to your file too, unless your file calls `gband.colorscheme` itself.
-The settings window's `sidebar`, `keys` and `I on new` lines apply only where your file asks for them, as the copy does: it sets up the sidebar unless `gband.settings.sidebar()` returns `false`, and calls `gband.keystyle.use()` with no argument, whose modal `n` returns to interactive mode unless `gband.settings.interactive_on_new()` returns `false`.
+The settings window's `sidebar`, `keys` and `I on new` lines apply only where your file asks for them, as the copy does: it sets up the sidebar unless `gband.settings.sidebar()` returns `false`, and calls `gband.keystyle.use()` with no argument, whose modal `n` returns to interactive mode only when `gband.settings.interactive_on_new()` returns `true`.
 A file that sets up the sidebar or binds its own keys keeps its choice, and the settings window then only saves the setting.
-An `n` binding of your own can read `gband.settings.interactive_on_new()` to follow the `I on new` line.
+An `n` binding of your own can compare `gband.settings.interactive_on_new()` with `true` to follow the `I on new` line.
 
 Without `user/init.lua`, the defaults apply.
 Saving `user/init.lua`, or any other `.lua` file under `user/`, reloads the configuration while gband runs, and deleting `user/init.lua` returns to the defaults.

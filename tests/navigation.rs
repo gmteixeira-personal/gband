@@ -1,5 +1,6 @@
 mod common;
 
+use std::fs;
 use std::thread;
 use std::time::Duration;
 
@@ -63,7 +64,7 @@ fn repeated_focus_moves() {
     let mut client = attached(&env);
     labelled(&mut client, "W1");
     for index in 2..=4 {
-        client.send(b"\x00n");
+        client.send(b"\x00n\r");
         client.wait_for("a new focused window", |screen| {
             untouched_prompt(screen) && !focused_shows(screen, &format!("W{}", index - 1))
         });
@@ -108,21 +109,49 @@ fn enter_returns_to_interactive_mode() {
     assert_eq!(client.tiles().len(), 1);
 }
 
+fn second_tile_focused(screen: &Grid) -> bool {
+    let tiles = tiles(screen);
+    tiles.len() == 2 && tiles[1].focused && tiles[1].left == 40 && tiles[1].right == 78
+}
+
 #[test]
-fn n_opens_a_window_in_interactive_mode() {
+fn open_a_window() {
     let env = TestEnv::new("navigation-open");
+    fs::write(
+        env.config_dir().join("user").join("interactive_on_new.lua"),
+        "return true\n",
+    )
+    .unwrap();
     let mut client = attached(&env);
     client.send(b"\x00n");
-    client.wait_for("the second tile focused", |screen| {
-        let tiles = tiles(screen);
-        tiles.len() == 2 && tiles[1].focused && tiles[1].left == 40 && tiles[1].right == 78
-    });
+    client.wait_for("the second tile focused", second_tile_focused);
     client.wait_for_prompt();
     client.run("echo window=$GBAND_WINDOW");
     client.wait_for_focused("the second window number", |lines| {
         lines.iter().any(|line| line.starts_with("window="))
     });
     assert!(interactive(&client.screen()));
+}
+
+#[test]
+fn open_a_window_and_stay_in_navigation_mode() {
+    let env = TestEnv::new("navigation-open-stay");
+    let mut client = attached(&env);
+    labelled(&mut client, "W1");
+    client.send(b"\x00n");
+    client.wait_for("the second tile focused in navigation mode", |screen| {
+        second_tile_focused(screen) && untouched_prompt(screen) && navigation(screen)
+    });
+    client.send(b"h");
+    client.wait_for("the first window focused in navigation mode", |screen| {
+        focused_shows(screen, "W1") && navigation(screen)
+    });
+    assert!(untouched_prompt(&client.screen()), "{}", client.contents());
+    client.send(b"l");
+    client.wait_for("the second window focused in navigation mode", |screen| {
+        second_tile_focused(screen) && navigation(screen)
+    });
+    assert!(untouched_prompt(&client.screen()), "{}", client.contents());
 }
 
 #[test]

@@ -450,7 +450,7 @@ fn open_second_window(env: &TestEnv) -> Attached {
     let mut client = Attached::start(env, 80, 24);
     client.wait_for_prompt();
     client.shell_pid(env);
-    client.send(b"\x00n");
+    client.send(b"\x00n\r");
     client.wait_for("the second tile focused right of the first", second_focused);
     client.wait_for_prompt();
     client.shell_pid(env);
@@ -482,7 +482,7 @@ fn leader_n_opens_a_focused_window() {
     });
     let first = window_number(&client.focused_lines()).unwrap();
 
-    client.send(b"\x00n");
+    client.send(b"\x00n\r");
     client.wait_for("the second tile focused right of the first", second_focused);
     client.wait_for_prompt();
     client.shell_pid(&env);
@@ -539,7 +539,7 @@ fn leader_u_and_i_switch_bands() {
 
     client.send(b"\x00u");
     client.wait_for("an empty band", |screen| tiles(screen).is_empty());
-    client.send(b"n");
+    client.send(b"n\r");
     client.wait_for("a window in the second band", |screen| {
         tiles(screen).len() == 1
     });
@@ -610,13 +610,13 @@ fn camera_moves_through_frames(env: &TestEnv, animations: Option<&str>) -> bool 
         );
     client.wait_for_prompt();
     client.shell_pid(env);
-    client.send(b"\x00n");
+    client.send(b"\x00n\r");
     client.wait_for("the second tile focused right of the first", second_focused);
     client.wait_for_prompt();
     client.shell_pid(env);
     client.run("echo second-window");
     client.wait_for_line("second-window");
-    client.send(b"\x00n");
+    client.send(b"\x00n\r");
     let deadline = std::time::Instant::now() + TIMEOUT;
     let mut moved = false;
     loop {
@@ -680,7 +680,7 @@ fn animations_off_opens_a_window_without_motion() {
     });
     client.wait_for_prompt();
     client.shell_pid(&env);
-    client.send(b"\x00n");
+    client.send(b"\x00n\r");
     client.wait_for("the second tile focused right of the first", second_focused);
     client.wait_for_prompt();
     client.shell_pid(&env);
