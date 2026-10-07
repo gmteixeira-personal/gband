@@ -20,7 +20,7 @@ When the client takes the terminal, it SHALL enable the terminal's reporting of 
 Every mouse event SHALL point at the terminal cell it reports, at a column and a row counted from 0 at the terminal's top-left cell. The client SHALL resolve the cell to a target against the frame it drew last. The first of these that covers the cell SHALL be the target:
 
 1. a floating plugin window's box, from the top of its stacking order down;
-2. a floating window's box of the viewed band, from the top of this client's stacking order down;
+2. a floating window's box of the viewed band, from the top of this client's stacking order down, except the box of a window this client has minimized, as the floating-windows capability defines;
 3. a tile of the viewed band, at the position drawn;
 4. the ribbon area, as empty ribbon;
 5. any other cell, as outside.
@@ -42,6 +42,10 @@ A tile whose window is a tiled plugin window's drawn window SHALL be that plugin
 #### Scenario: Empty ribbon
 - **WHEN** the camera is at -20 and the user presses at column 5 of the ribbon area, left of the first column
 - **THEN** the target is empty ribbon
+
+#### Scenario: Minimized floating window over a tile
+- **WHEN** this client has minimized a floating window whose box covers column 45 and row 3 above a tile, and the user presses there
+- **THEN** the target is the tile's window
 
 ### Requirement: Mouse names in key tables
 A press of the left, middle or right button, and a wheel step up, down, left or right, SHALL be matched against the active key table as a key, under the mouse names the configuration capability defines, with the Ctrl, Alt and Shift the terminal reports. A release and a motion SHALL never match a binding. While a gesture runs, a wheel step SHALL match no binding.

@@ -13,7 +13,7 @@ Defines how Lua code reads the client's layout and view, and how it performs eve
 - `bands`: one table per band, in order. Each band table holds `id`, the band's number, `columns`, and `floating`.
 - `columns`: one table per column, left to right. Each column table holds `width`, the column's width as a number, `full_width`, a boolean, and `windows`.
 - `windows`: one table per window, top to bottom. Each window table holds `id`, the window's number, and either `rows`, the fixed height in rows, or `weight`, the weight of an automatic height as a number. It holds `plugin_window`, the plugin window's number, when the window is a drawn window of a plugin window this client opened. A window that runs a program also holds `name`, its shown name as the window-names capability defines it, and `manual_name`, its manual name, when it has one.
-- `floating`: one table per floating window, in the band's floating list order. Each holds `id`, `width`, the box's width as a number, `full_width`, a boolean, `rows`, the box record's height, `col` and `row`, the box's top-left cell as placed in the screen area, and `plugin_window`, `name` and `manual_name` as a window table holds them.
+- `floating`: one table per floating window, in the band's floating list order. Each holds `id`, `width`, the box's width as a number, `full_width`, a boolean, `rows`, the box record's height, `col` and `row`, the box's top-left cell as placed in the screen area, and `plugin_window`, `name` and `manual_name` as a window table holds them. It holds `minimized`, `true`, when this client has minimized the window, as the floating-windows capability defines, and no `minimized` otherwise.
 
 Changing the returned table SHALL NOT change the layout. Calling `gband.layout()` while the configuration loads SHALL be an error at the line of the call.
 
@@ -39,6 +39,15 @@ Changing the returned table SHALL NOT change the layout. Calling `gband.layout()
 #### Scenario: Drawn window has no name
 - **WHEN** a client plugin opens a tiled plugin window and a binding function calls `gband.layout()`
 - **THEN** the table of its drawn window holds `plugin_window` and no `name`
+
+#### Scenario: Minimized floating window
+- **WHEN** band 1 holds window 1 in a column and floating windows 2 and 3, this client has minimized window 3, and a binding function calls `gband.layout()`
+- **THEN** window 3's floating table holds `minimized = true`
+- **AND** window 2's floating table holds no `minimized`
+
+#### Scenario: Minimized by another client
+- **WHEN** band 1 holds floating window 2, another client has minimized it, and a binding function of this client calls `gband.layout()`
+- **THEN** window 2's floating table holds no `minimized`
 
 ### Requirement: Read the view
 `gband.view()` SHALL return a new table holding:
@@ -269,7 +278,7 @@ A window number not in the client's layout, or an argument of the wrong type or 
 - **THEN** window 1 receives `\x00` and the active key table does not change
 
 ### Requirement: Dispatch order
-`gband.window.focus`, `gband.window.set_width`, `gband.window.set_height`, `gband.window.set_position`, `gband.window.send_keys`, `gband.window.send_text`, `gband.window.paste`, `gband.window.rename` and `gband.band.view` SHALL be callable wherever an action value is, and an error elsewhere, as the configuration capability defines for action values. Each SHALL be dispatched like an action. It SHALL take effect after the callback returns, in the order dispatched together with the callback's actions.
+`gband.window.focus`, `gband.window.minimize`, `gband.window.set_width`, `gband.window.set_height`, `gband.window.set_position`, `gband.window.send_keys`, `gband.window.send_text`, `gband.window.paste`, `gband.window.rename` and `gband.band.view` SHALL be callable wherever an action value is, and an error elsewhere, as the configuration capability defines for action values. Each SHALL be dispatched like an action. It SHALL take effect after the callback returns, in the order dispatched together with the callback's actions.
 
 #### Scenario: Order with actions
 - **WHEN** a binding function calls `gband.window.set_width(1, 1/3)` and then `gband.action.cycle_column_width({ window = 1 })`
@@ -282,6 +291,14 @@ A window number not in the client's layout, or an argument of the wrong type or 
 #### Scenario: Rename during loading
 - **WHEN** line 3 of `user/init.lua` calls `gband.window.rename(1, "logs")` at the top level
 - **THEN** loading fails with an error at `user/init.lua` line 3
+
+#### Scenario: Minimize during loading
+- **WHEN** line 3 of `user/init.lua` calls `gband.window.minimize(1)` at the top level
+- **THEN** loading fails with an error at `user/init.lua` line 3
+
+#### Scenario: Minimize then focus
+- **WHEN** window 2 floats and is focused, and a binding function calls `gband.window.minimize(2)` and then `gband.window.focus(2)`
+- **THEN** after the function returns, window 2 is focused and drawn
 
 ### Requirement: Place a floating window
 `gband.window.set_position(window, position)` SHALL dispatch set position naming the window, as the session-server capability defines it. The `position` argument SHALL be a table holding `col` and `row`, each an integer of at least 0. The box SHALL be placed as the floating-windows capability defines. A window number not in the client's layout, a window that is not floating in the client's layout, a missing or unknown field, or a value of the wrong type or out of range SHALL be an error at the line of the call.
@@ -336,3 +353,32 @@ Fields that gband fills in, such as `gband.view().pane`, the layout's `panes` an
 #### Scenario: Old environment variable
 - **WHEN** a window runs `echo "[$GBAND_PANE] $GBAND_WINDOW"` as window 2
 - **THEN** it prints `[] 2`
+
+### Requirement: Minimize a window by number
+`gband.window.minimize(window)` SHALL dispatch a view action that minimizes the named window in this client's view, as the floating-windows capability defines. It SHALL send the server no action. A window number not in the client's layout, or a window that is not floating in the client's layout, SHALL be an error at the line of the call whose message names the window. An argument that is not a window number SHALL be an error at the line of the call. A window this client has already minimized SHALL stay minimized, and SHALL NOT be an error. Focusing the window, as `gband.window.focus` does, SHALL restore it.
+
+#### Scenario: Minimize an unfocused floating window
+- **WHEN** band 1 holds window 1 in a column and floating windows 2 and 3, window 3 is focused, and a binding function calls `gband.window.minimize(2)`
+- **THEN** the client does not draw window 2, and window 3 stays focused
+- **AND** the client sends the server no action
+
+#### Scenario: Minimize the focused window
+- **WHEN** band 1 holds window 1 in a column and floating window 2, window 2 is focused, and a binding function calls `gband.window.minimize(2)`
+- **THEN** after the function returns, `gband.view()` has `window` 1 and `floating` false
+
+#### Scenario: Minimize a window of another band
+- **WHEN** the client views band 1, band 2 holds only floating window 4, and a binding function calls `gband.window.minimize(4)` and then `gband.band.view(2)`
+- **THEN** the client views band 2 with no focused window
+
+#### Scenario: Tiled window
+- **WHEN** window 1 is tiled and line 5 of a binding function's file calls `gband.window.minimize(1)`
+- **THEN** the call raises an error at line 5 naming window 1, and nothing is dispatched
+
+#### Scenario: Unknown window
+- **WHEN** no window 99 exists and a binding function calls `gband.window.minimize(99)`
+- **THEN** the call raises an error naming window 99, and nothing is dispatched
+
+#### Scenario: Restore with focus
+- **WHEN** window 2 floats, this client has minimized it, and a binding function calls `gband.window.focus(2)`
+- **THEN** the client draws window 2 on top and focuses it
+- **AND** a later `gband.layout()` gives window 2's floating table no `minimized`
