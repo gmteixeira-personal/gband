@@ -228,6 +228,7 @@ These parts are written in Lua on purpose, to serve as examples of the API.
 Their source is in [crates/lua/src/runtime/gband/](crates/lua/src/runtime/gband/), and gband writes a copy of every file to `defaults/lua/gband/` and `defaults/colors/` in the configuration directory; see [Configuration](#configuration).
 Every bundled file, the APIs included, uses only the documented API that your configuration and plugins have.
 To change or replace one, copy it from `defaults/lua/gband/` to `user/lua/gband/`, or from `defaults/colors/` to `user/colors/`, and edit the copy; it takes the bundled file's place at the next reload.
+[The internals tutorial](docs/internals/README.md) reads every line of these files and explains how they are built on `gband.core`.
 The [plugin guide](docs/plugins.md) documents the whole API, including the primitives in `gband.core` that the bundled Lua is built on, and how `gband.api_version` changes between releases.
 
 Every part comes with sensible defaults, so gband needs no configuration until you want to change something.
@@ -697,4 +698,4 @@ The layout model comes from [niri](https://github.com/YaLTeR/niri), a scrollable
 
 gband is licensed under the [GNU General Public License, version 3](LICENSE) or any later version.
 A [plugin exception](LICENSE-EXCEPTION) lets plugins, init files and colorschemes carry any license, proprietary included, as long as they use gband only through its Lua API.
-The tutorial, the examples and the default configuration are licensed under the [MIT License](LICENSE-MIT), so you can copy them into your own configuration freely.
+The documentation under `docs/`, the examples and the default configuration are licensed under the [MIT License](LICENSE-MIT), so you can copy them into your own configuration freely.

@@ -22,7 +22,7 @@ SOFTWARE.
 
 This license covers the following files and directories of gband:
 
-docs/tutorial/
+docs/
 examples/
 crates/lua/src/defaults.lua
 crates/lua/src/defaults_server.lua

@@ -41,3 +41,7 @@ gband test
 ```
 
 gband's own test suite runs every chapter's tests, and checks that every Lua block in a chapter is in the chapter's files, so the code here works with the gband it ships with.
+
+## Next
+
+[The internals tutorial](../internals/README.md) reads gband's own Lua, the API modules and the bundled plugins this tutorial uses, line by line.
