@@ -231,7 +231,7 @@ local function lines()
     key_style(),
   }
   if values[KEYS] == "modal" then
-    values[INTERACTIVE_ON_NEW] = interactive_on_new() == false and "off" or "on"
+    values[INTERACTIVE_ON_NEW] = interactive_on_new() == true and "on" or "off"
   end
   local out = {}
   for index, value in ipairs(values) do
@@ -247,6 +247,7 @@ end
 
 Each line is two spans: the label in `SettingsLabel`, padded, and the value in the window's own style.
 The `I on new` line exists only for the modal style, since only the modal preset reads it.
+It shows `on` only for a saved `true`, so a setting never saved shows `off`, as the preset reads it.
 
 ```lua defaults/lua/gband/settings.lua
 local function refresh()
@@ -313,12 +314,13 @@ end
 
 ```lua defaults/lua/gband/settings.lua
 local function toggle_interactive_on_new()
-  local next_value = interactive_on_new() == false and "true" or "false"
+  local next_value = interactive_on_new() == true and "false" or "true"
   save(INTERACTIVE_ON_NEW, INTERACTIVE_ON_NEW_FILE, "return " .. next_value .. "\n")
 end
 ```
 
 The other three lines only save.
+The `I on new` toggle compares with `true` as the line does, so the first toggle of a setting never saved saves `true`.
 None of them changes anything directly: the reload that the save causes runs the default configuration again, which reads the new value.
 
 ```lua defaults/lua/gband/settings.lua

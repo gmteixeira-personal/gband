@@ -70,7 +70,7 @@ fn focused(client: &Attached) -> Tile {
 }
 
 fn open_window(client: &mut Attached) {
-    client.send(&[PREFIX, b"n"].concat());
+    client.send(&[PREFIX, b"n\r"].concat());
     client.wait_for("a new focused window", |screen| {
         let lines = focused_lines(screen);
         let written: Vec<&String> = lines.iter().filter(|line| !line.is_empty()).collect();
@@ -448,7 +448,7 @@ fn middle_drag_up_switches_bands_in_navigation_mode() {
     let mut client = attached(&env);
     client.run("echo AAA");
     client.wait_for_line("AAA");
-    client.send(&[PREFIX, b"un"].concat());
+    client.send(&[PREFIX, b"un\r"].concat());
     client.wait_for("a window in the second band", |screen| {
         let shown = tiles(screen);
         shown.len() == 1 && !focused_has(screen, "AAA")
@@ -523,7 +523,7 @@ fn alt_wheel_switches_bands() {
     let mut client = attached(&env);
     client.run("echo AAA");
     client.wait_for_line("AAA");
-    client.send(&[PREFIX, b"un"].concat());
+    client.send(&[PREFIX, b"un\r"].concat());
     client.wait_for("a window in the second band", |screen| {
         tiles(screen).len() == 1 && !focused_has(screen, "AAA")
     });

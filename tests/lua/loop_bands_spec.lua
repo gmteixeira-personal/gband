@@ -17,7 +17,7 @@ local function three_windows(g, config)
   g.start({ config = config })
   for index = 1, 3 do
     if index > 1 then
-      g.keys("ctrl+space n")
+      g.keys("ctrl+space n enter")
       g.settle()
     end
     g.run("clear; printf W" .. index)

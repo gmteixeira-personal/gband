@@ -28,7 +28,7 @@ end)
 
 t.case("two shells are numbered in layout order", function(g)
   started(g)
-  g.keys("ctrl+space n")
+  g.keys("ctrl+space n enter")
   g.wait_text("sh #2")
   g.settle()
   local row = g.screen().row(0)

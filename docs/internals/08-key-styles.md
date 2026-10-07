@@ -117,7 +117,7 @@ set("prefix", "c", action.center_column, { desc = "center the focused column" })
 The navigation keys, `h`, `j`, `k` and `l` for columns and windows, and `u` and `i` for bands.
 
 ```lua defaults/keystyle/modal.lua
-local interactive_on_new = gband.settings.interactive_on_new() ~= false
+local interactive_on_new = gband.settings.interactive_on_new() == true
 ```
 
 ```lua defaults/keystyle/modal.lua
@@ -129,8 +129,8 @@ set("prefix", "n", function()
 end, { desc = "open a window" })
 ```
 
-`n` opens a window and, by default, leaves the mode so you can type in it.
-The choice is read once, when the preset loads, from the `I on new` line of the settings window.
+`n` opens a window and leaves navigation mode active, so a run of layout keys can follow it, unless the `I on new` line of the settings window is turned on; then it leaves the mode so you can type in the new window.
+The choice is read once, when the preset loads, and only a saved `true` turns it on: nothing saved reads as off.
 Changing that line saves the file, which reloads the configuration and loads the preset again.
 
 ```lua defaults/keystyle/modal.lua

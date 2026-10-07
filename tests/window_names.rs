@@ -225,7 +225,7 @@ fn title_follows_the_program() {
 fn number_follows_the_layout() {
     let env = TestEnv::new("names-numbers");
     let mut client = titled(&env);
-    client.send(b"\x00n");
+    client.send(b"\x00n\r");
     client.wait_for("two numbered shells", |screen| {
         titles(screen) == ["sh #1", "sh #2"]
     });

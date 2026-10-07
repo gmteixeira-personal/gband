@@ -368,10 +368,9 @@ fn defaults_reproduce_the_built_in_behaviour() {
     let functions = [
         (
             prefixed("n"),
-            vec![
-                Dispatch::Action(Action::Session(SessionCommand::OpenWindow)),
-                root(),
-            ],
+            vec![Dispatch::Action(Action::Session(
+                SessionCommand::OpenWindow,
+            ))],
         ),
         (prefixed("escape"), vec![root()]),
         (prefixed("enter"), vec![root()]),

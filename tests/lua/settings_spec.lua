@@ -16,7 +16,7 @@ t.case("the settings window beside the default sidebar on the first start", func
   t.match(g.screen().row(10), "^ │ +│theme    default +│")
   t.match(g.screen().row(11), "^ │ +│sidebar  on +│")
   t.match(g.screen().row(12), "^ │ +│keys     modal +│")
-  t.match(g.screen().row(13), "^ │ +│I on new on +│")
+  t.match(g.screen().row(13), "^ │ +│I on new off +│")
   t.eq(g.screen().cell(9, 25).char, "┌")
   t.eq(g.screen().cell(14, 55).char, "┘")
   g.keys("j k")

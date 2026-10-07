@@ -35,7 +35,7 @@ fn spans(tile: &Tile) -> (u16, u16, u16, u16) {
 }
 
 fn second_window(client: &mut Attached) {
-    press(client, b"n");
+    press(client, b"n\r");
     client.wait_for("two tiles", |screen| tiles(screen).len() == 2);
     client.wait_for_prompt();
 }

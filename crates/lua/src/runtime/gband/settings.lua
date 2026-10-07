@@ -134,7 +134,7 @@ local function lines()
     key_style(),
   }
   if values[KEYS] == "modal" then
-    values[INTERACTIVE_ON_NEW] = interactive_on_new() == false and "off" or "on"
+    values[INTERACTIVE_ON_NEW] = interactive_on_new() == true and "on" or "off"
   end
   local out = {}
   for index, value in ipairs(values) do
@@ -195,7 +195,7 @@ local function toggle_keys()
 end
 
 local function toggle_interactive_on_new()
-  local next_value = interactive_on_new() == false and "true" or "false"
+  local next_value = interactive_on_new() == true and "false" or "true"
   save(INTERACTIVE_ON_NEW, INTERACTIVE_ON_NEW_FILE, "return " .. next_value .. "\n")
 end
 

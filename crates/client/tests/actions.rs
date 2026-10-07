@@ -458,6 +458,8 @@ fn navigation_mode_opens_a_window_with_n_and_leaves_with_enter() {
         ),
         "{steps:?}"
     );
+    assert_eq!(controls.active_table(), "prefix");
+    assert_eq!(controls.press(&mut display, key("enter")), []);
     assert_eq!(controls.active_table(), "root");
     assert_eq!(
         controls.press(&mut display, key("x")),

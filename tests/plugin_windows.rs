@@ -100,7 +100,7 @@ fn focused_float_takes_the_keys() {
 fn send_text_runs_a_command_in_another_window() {
     let env = env("windows-send-text");
     let mut client = attached(&env);
-    client.send(b"\x00n");
+    client.send(b"\x00n\r");
     client.wait_for("two tiles", |screen| tiles(screen).len() == 2);
     client.wait_for_prompt();
     client.send(b"\x1bt");
