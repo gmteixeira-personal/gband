@@ -67,4 +67,5 @@ None.
 - README.md
 - docs/plugins.md
 - docs/tutorial/README.md
+- LICENSE-MIT
 - openspec/changes/lua-internals-tutorial/
