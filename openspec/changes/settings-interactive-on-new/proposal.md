@@ -43,9 +43,9 @@ Out of scope:
 - crates/lua/src/runtime/gband/settings.lua
 - crates/lua/src/runtime/gband/keystyle/modal.lua
 - crates/lua/tests/settings.rs
-- crates/client/src/bindings.rs
 - tests/settings.rs
 - tests/lua/settings_spec.lua
+- tests/lua/keylist_spec.lua
 - tests/lua/screenshots/settings_spec/
 - README.md
 - docs/plugins.md
