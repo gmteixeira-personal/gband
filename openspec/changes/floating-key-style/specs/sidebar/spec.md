@@ -1,0 +1,80 @@
+## MODIFIED Requirements
+
+### Requirement: Sidebar rows
+On a shown sidebar of height `h`, row 0 SHALL hold the mode letter, or the apps character as "Apps character" defines, row 1 SHALL be blank, rows 2 to `h − 2` SHALL hold the band labels, and row `h − 1` SHALL hold the error marker. When `h` is 3 or less, no band label SHALL be drawn. When `h` is 1, the one row SHALL hold the error marker while one is drawn, and row 0's mode letter or apps character otherwise. A cell with no content SHALL be blank in the bar's `hl` group.
+
+#### Scenario: Rows of a new session
+- **WHEN** the client's terminal is 80×24, the default configuration is in use, the session holds one window in band 1, and no error is reported
+- **THEN** column 0 shows `I` on row 0, nothing on row 1, `1` on row 2 and `2` on row 3
+- **AND** rows 4 to 23 of column 0 are blank
+
+#### Scenario: Short terminal
+- **WHEN** the client's terminal is 80×3, the default configuration is in use and no error is reported
+- **THEN** column 0 shows `I` on row 0 and nothing on rows 1 and 2
+
+#### Scenario: Terminal background
+- **WHEN** the default configuration and the `default` colorscheme are in use
+- **THEN** no cell of column 0 has a background colour, and the blank cells have no foreground colour either
+
+### Requirement: Mode letter
+While the floating key style is in use, as "Apps character" defines, row 0 SHALL show the apps character in place of the mode letter. Otherwise, the mode letter SHALL be `I` while the active key table is `root`. While any other table is active, it SHALL be the first character of the label `gband.keymap.label` returns for that table, with an ASCII lowercase letter shown in uppercase. It SHALL be drawn in the group `SidebarMode`, and SHALL change in the frame that follows the change of the active table.
+
+#### Scenario: Navigation mode
+- **WHEN** the default configuration is in use and the user presses Ctrl+Space
+- **THEN** row 0 of the sidebar shows `N`
+
+#### Scenario: Back to interactive mode
+- **WHEN** navigation mode is active and the user presses Escape
+- **THEN** row 0 of the sidebar shows `I`
+
+#### Scenario: Prefix without a mode
+- **WHEN** the direct key style is in use, so `prefix` is not a mode, and the user presses Ctrl+Space
+- **THEN** row 0 of the sidebar shows `P` until the key sequence ends
+
+#### Scenario: User mode
+- **WHEN** `user/init.lua` declares `resize` a mode with the label `resize`, and a binding enters `resize`
+- **THEN** row 0 of the sidebar shows `R`
+
+### Requirement: Band click
+A press of the left button on a cell of a shown sidebar that holds a band label SHALL view the band that label stands for, as `gband.band.view` does, whatever key table is active. A press of the left button on the apps character SHALL act as "Apps character" defines. A press of another button, or on any other cell of the sidebar, SHALL do nothing. A press SHALL NOT change the active key table.
+
+#### Scenario: Click a band label
+- **WHEN** the layout holds bands 1, 2 and 3, the client views band 1, and the user presses the left button on column 0, row 4
+- **THEN** the client views band 3, and the label `3` is drawn in `SidebarBandActive`
+
+#### Scenario: Click on the right sidebar
+- **WHEN** the client's terminal is 80×24, the sidebar is on the right, the layout holds bands 1 and 2, the client views band 1, and the user presses the left button on column 79, row 3
+- **THEN** the client views band 2
+
+#### Scenario: Click beside the labels
+- **WHEN** the client views band 1 and the user presses the left button on the sidebar's mode letter, its blank row 1, or a row below the last band label
+- **THEN** the client still views band 1
+
+#### Scenario: Click the mode letter's row with the modal style
+- **WHEN** the modal key style is in use, the client views band 1, and the user presses the left button on column 0, row 0
+- **THEN** the client still views band 1 and no floating plugin window opens
+
+#### Scenario: Right click on a label
+- **WHEN** the layout holds bands 1 and 2, the client views band 1, and the user presses the right button on the label `2`
+- **THEN** the client still views band 1
+
+## ADDED Requirements
+
+### Requirement: Apps character
+The floating key style SHALL be in use while `gband.keystyle.current()` returns `floating`, as the key-style capability defines. While it is in use, row 0 of a shown sidebar SHALL show the apps character `⊞`, U+229E, in the group `SidebarMode`, whatever key table is active. A press of the left button on that cell SHALL dispatch the action `desktop.list`, which opens the window list centred in the ribbon area, as the floating-key-style capability's "Window list" defines, when `gband.action` holds `desktop.list`, and SHALL do nothing otherwise. The press SHALL NOT change the active key table. Row 0 SHALL show the mode letter again when a load in which the floating key style is not in use succeeds.
+
+#### Scenario: Apps character with the floating style
+- **WHEN** the client's terminal is 80×24, no `user/init.lua` exists, and `user/keystyle.lua` holds `return "floating"`
+- **THEN** column 0 shows `⊞` on row 0 in `SidebarMode`, nothing on row 1, and the band labels from row 2
+
+#### Scenario: Apps character after the leader
+- **WHEN** the floating style is in use with the default configuration and the user presses Ctrl+Space
+- **THEN** row 0 of the sidebar shows `⊞`
+
+#### Scenario: Open the window list from the sidebar
+- **WHEN** the floating style is in use with the default configuration, the viewed band holds floating windows named `notes` and `logs`, and the user presses the left button on column 0, row 0
+- **THEN** the window list is open and focused, centred in the ribbon area, with the rows `New window`, `Settings`, a separator, `notes` and `logs` between its borders
+
+#### Scenario: Floating preset required by name
+- **WHEN** `user/init.lua` requires `gband.keystyle.floating` by name and sets up `gband.sidebar`
+- **THEN** row 0 of the sidebar shows `I`
