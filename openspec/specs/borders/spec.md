@@ -34,6 +34,8 @@ A border SHALL take the outermost cell on every side of its box, whichever sides
 
 Border cells SHALL be drawn in the border's style, blank cells included.
 
+Text that another capability draws on a border after the border, such as a window's title as the window-names capability defines it, a window's decorations as the window-decorations capability defines them, or a floating plugin window's title as the plugin-windows capability defines it, SHALL replace the cells it covers. Every other border cell SHALL stay as this requirement defines it.
+
 #### Scenario: Only the left side
 - **WHEN** a 10×5 box is drawn with the sides `left` and the `plain` set
 - **THEN** column 0 shows `│` on rows 0 to 4
@@ -46,6 +48,10 @@ Border cells SHALL be drawn in the border's style, blank cells included.
 #### Scenario: No sides
 - **WHEN** a box is drawn with no sides
 - **THEN** its outermost cells are blank and its interior keeps its size
+
+#### Scenario: Decorations keep the corner cells
+- **WHEN** a tile 20 columns wide is drawn with all four sides and the `rounded` set, and its decorations are the span `[X]`
+- **THEN** its top row shows `╭` on column 0, `[X]` from column 15 to column 17, `─` on column 18 and `╮` on column 19
 
 ### Requirement: Window border options
 Tiled windows SHALL be drawn with the border definition of the client options `tile_border_sides` and `tile_border_chars`. Floating windows SHALL be drawn with the definition of `floating_border_sides` and `floating_border_chars`. The focused tiled window SHALL be drawn with the character set of `focused_tile_border_chars` in place of `tile_border_chars`, and the focused floating window with that of `focused_floating_border_chars` in place of `floating_border_chars`, each keeping its sides. A lifted tile's drop outline, as the mouse capability defines it, SHALL be drawn with all four sides and the character set of `focused_tile_border_chars`. Each SHALL apply only to the client that set it. A border's style SHALL stay as the client-attach capability defines it, distinct for the focused window. A window's terminal size SHALL NOT depend on these options.

@@ -96,8 +96,9 @@ The frame, entry, slot and bar tables SHALL have the fields the API documentatio
 | `"bars"` | a table | `flush()`, before the client draws |
 | `"settings"` | a table | `open(line)`, after a load that followed `reopen_settings(line)` succeeds |
 | `"styles"` | a function | the function, before the client draws. It returns `border`, `border_focused` and `banner`: the drawn styles of window borders, focused borders and the error banner |
+| `"decorations"` | a function | the function, with an info table, when the client draws a window's top border. It returns nil or a list of spans, which the client draws at the right end of that border, as the window-decorations capability defines |
 
-The API documentation SHALL give each function's arguments, return value and the moment the client calls it. A kind with no registration SHALL make the client do what it does without that feature: draw no plugin windows, no bars, no reopened settings window, or default styles. An unknown kind, or an implementation of the wrong type, SHALL raise an error at the line of the call.
+The API documentation SHALL give each function's arguments, return value and the moment the client calls it. A kind with no registration SHALL make the client do what it does without that feature: draw no plugin windows, no bars, no reopened settings window, default styles, or no decorations. An unknown kind, or an implementation of the wrong type, SHALL raise an error at the line of the call.
 
 #### Scenario: Bundled plugin windows
 - **WHEN** the default configuration is in use
@@ -110,6 +111,14 @@ The API documentation SHALL give each function's arguments, return value and the
 #### Scenario: Unknown kind
 - **WHEN** line 2 of `user/init.lua` calls `gband.core.provide("menus", {})`
 - **THEN** loading fails with an error at `user/init.lua` line 2
+
+#### Scenario: Decorations need a function
+- **WHEN** line 2 of `user/init.lua` calls `gband.core.provide("decorations", {})`
+- **THEN** loading fails with an error at `user/init.lua` line 2 that names a function
+
+#### Scenario: No decorations by default
+- **WHEN** the default configuration is in use and two windows are open
+- **THEN** no decorations provider is registered, and each tile's top border shows only the border and the title
 
 ### Requirement: Lua prelude
 Before the init file runs, the client SHALL require the module `gband.prelude` and run nothing else of its own Lua. The bundled prelude SHALL require `gband.hl`, `gband.palette`, `gband.colorscheme`, `gband.bar`, `gband.win`, `gband.settings` and `gband.keystyle`, in that order. Each of these modules installs its part of the `gband` API and registers its providers. The prelude SHALL then load the start theme through the `start` export of `gband.colorscheme`. Because `require` searches the runtimepath first, a module of the same name in a runtimepath entry SHALL replace the bundled prelude or any of these modules. An error raised while the prelude loads SHALL fail the load, as an error in the init file does.
