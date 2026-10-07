@@ -165,7 +165,7 @@ end
 
 return {
   name = "prompt",
-  api = 1,
+  api = 2,
   setup = function(opts)
     if type(opts) ~= "table" then
       error("the options of `prompt` must be a table", 2)

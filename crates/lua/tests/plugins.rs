@@ -58,7 +58,7 @@ fn side_and_version() {
     scratch.write("side, version = gband.side, gband.api_version");
     let config = scratch.loaded();
     assert_eq!(global::<String>(&config, "side"), "client");
-    assert_eq!(global::<i64>(&config, "version"), 1);
+    assert_eq!(global::<i64>(&config, "version"), 2);
 }
 
 #[test]
@@ -104,7 +104,7 @@ fn server_side() {
     scratch.server("side, version = gband.side, gband.api_version");
     let config = scratch.loaded_server();
     assert_eq!(global::<String>(&config, "side"), "server");
-    assert_eq!(global::<i64>(&config, "version"), 1);
+    assert_eq!(global::<i64>(&config, "version"), 2);
 }
 
 #[test]
@@ -487,7 +487,7 @@ fn every_field_belongs_to_one_side() {
 
 const HELLO: &str = "return {
   name = 'hello',
-  api = 1,
+  api = 2,
   setup = function(opts)
     stored = opts.greeting
     received = opts
@@ -528,7 +528,7 @@ fn api_mismatch_still_sets_up() {
     scratch.plugin_file(
         "hello",
         "lua/hello/init.lua",
-        "return { api = 2, setup = function() ran = true end }",
+        "return { api = 1, setup = function() ran = true end }",
     );
     scratch.write("result = gband.plugin('hello')");
     let config = scratch.loaded();
@@ -915,7 +915,7 @@ fn test_side_holds_only_the_side_the_version_and_core() {
     lua.load("print(gband.side, gband.api_version)")
         .exec()
         .unwrap();
-    assert_eq!(*printed.lock().unwrap(), "test\t1\n");
+    assert_eq!(*printed.lock().unwrap(), "test\t2\n");
     let fields: Vec<String> = lua
         .load(
             "local names = {} for name in pairs(gband) do names[#names + 1] = name end \

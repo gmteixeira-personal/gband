@@ -557,3 +557,17 @@ fn remove_a_preset_mouse_binding() {
     wait_file(&file, b"\x1b[<8;5;3M\x1b[<8;5;3m");
     assert_eq!(focused(&client).left, tile.left);
 }
+
+#[test]
+fn declined_click_reaches_the_program() {
+    let env = env("mouse-declined-click");
+    env.write_config(&format!(
+        "{}\ngband.keymap.set('root', 'leftmouse', function() return false end)",
+        DEFAULTS.replace("gband.plugin(\"gband.sidebar\")", "")
+    ));
+    let mut client = attached(&env);
+    let file = recording(&mut client, &env, &format!("printf '{SGR_1000}'; "), 18);
+    let tile = focused(&client);
+    click(&mut client, LEFT, content(&tile, 4, 2));
+    wait_file(&file, b"\x1b[<0;5;3M\x1b[<0;5;3m");
+}

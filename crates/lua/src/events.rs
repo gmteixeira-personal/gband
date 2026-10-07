@@ -20,6 +20,24 @@ pub enum PointerTarget {
     Outside,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BoxCell {
+    pub col: u16,
+    pub row: u16,
+    pub width: u16,
+    pub height: u16,
+}
+
+impl BoxCell {
+    pub(crate) fn fields(boxed: Option<Self>, table: &Table) -> mlua::Result<()> {
+        table.set("box_col", boxed.map(|cell| cell.col))?;
+        table.set("box_row", boxed.map(|cell| cell.row))?;
+        table.set("box_width", boxed.map(|cell| cell.width))?;
+        table.set("box_height", boxed.map(|cell| cell.height))?;
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Pointer {
     pub col: u16,
@@ -29,6 +47,7 @@ pub struct Pointer {
     pub window: Option<WindowId>,
     pub plugin_window: Option<u32>,
     pub content: Option<(u16, u16)>,
+    pub boxed: Option<BoxCell>,
     pub table: String,
 }
 
@@ -69,6 +88,7 @@ impl Pointer {
         payload.set("plugin_window", self.plugin_window)?;
         payload.set("content_col", self.content.map(|(col, _)| col))?;
         payload.set("content_row", self.content.map(|(_, row)| row))?;
+        BoxCell::fields(self.boxed, payload)?;
         payload.set("table", lua.create_string(&self.table)?)?;
         Ok(())
     }

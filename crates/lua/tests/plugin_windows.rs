@@ -12,8 +12,8 @@ use gband_lua::plugin_windows::{
     FloatingFrame, Frame, PluginBox, PluginMouse, PluginMouseKind, Run, TiledFrame,
 };
 use gband_lua::{
-    BandState, Binding, Border, BorderChars, CharSet, Chord, Color, Config, Dispatch, Event,
-    Outcome, PluginWindowRequest, Sides, Style, ViewState,
+    BandState, Binding, Border, BorderChars, BoxCell, CharSet, Chord, Color, Config, Dispatch,
+    Event, Outcome, PluginWindowRequest, Sides, Style, ViewState,
 };
 use mlua::Table;
 
@@ -95,6 +95,7 @@ impl Client {
             &PluginMouse {
                 kind,
                 content: Some((1, row)),
+                boxed: None,
                 modifiers: Modifiers::NONE,
             },
         )
@@ -1114,6 +1115,44 @@ fn click_a_line_runs_on_mouse() {
         "return table.concat({ got.kind, gband.win.info(win).top, tostring(got.button) }, ',')",
     );
     assert_eq!(got, "scroll,5,nil");
+}
+
+#[test]
+fn on_mouse_receives_the_box_cell() {
+    let client = Client::new("win-on-mouse-box", "");
+    client.run(
+        "log = {}
+win = gband.win.open({ width = 20, height = 10, on_mouse = function(_, e)
+  log[#log + 1] = table.concat({ e.kind, tostring(e.box_col), tostring(e.box_row), tostring(e.box_width), tostring(e.box_height) }, ',')
+end })",
+    );
+    let win: u32 = client.global("win");
+    for (kind, boxed) in [
+        (
+            PluginMouseKind::Press(MouseButton::Left),
+            Some(BoxCell {
+                col: 19,
+                row: 0,
+                width: 20,
+                height: 10,
+            }),
+        ),
+        (PluginMouseKind::Drag(MouseButton::Left), None),
+    ] {
+        clean(&client.config.runtime.plugin_window_mouse(
+            win,
+            &PluginMouse {
+                kind,
+                content: None,
+                boxed,
+                modifiers: Modifiers::NONE,
+            },
+        ));
+    }
+    assert_eq!(
+        client.global::<Vec<String>>("log"),
+        ["press,19,0,20,10", "drag,nil,nil,nil,nil"]
+    );
 }
 
 #[test]

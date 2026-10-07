@@ -1,4 +1,4 @@
-local M = { name = "marks", api = 1 }
+local M = { name = "marks", api = 2 }
 
 local marks = {}
 local letters

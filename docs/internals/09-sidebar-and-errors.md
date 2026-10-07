@@ -409,7 +409,7 @@ end
 ```lua defaults/lua/gband/errors.lua
 return {
   name = "errors",
-  api = 1,
+  api = 2,
   setup = function(opts)
     if type(opts) ~= "table" then
       error("the options of `errors` must be a table", 2)
@@ -435,6 +435,6 @@ return {
 }
 ```
 
-The plugin declares `api = 1`, the API version it was written for.
+The plugin declares `api = 2`, the API version it was written for.
 Its one option, `kind`, chooses floating or tiled, and the command `errors.open` can override it per call.
 Each function is registered twice, as an action for key bindings and as a command for the Lua prompt and `gband.cmd`.

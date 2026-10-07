@@ -59,3 +59,11 @@ gband.keymap.set("root", "ctrl+rightmouse", function(event)
     toggle(event.window)
   end
 end, { desc = "mark the window under the pointer" })
+
+gband.keymap.set("root", "ctrl+leftmouse", function(event)
+  if event.target == "window" and event.box_row == 0 then
+    toggle(event.window)
+    return
+  end
+  return false
+end, { desc = "mark the window by its top border" })

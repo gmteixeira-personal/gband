@@ -57,7 +57,7 @@ It works from inside one of your own gband windows too.
 ## Test files
 
 A test file runs in a Lua state of its own, the test side.
-There `gband.side` is `"test"`, `gband.api_version` is `1`, `gband.core` holds the test primitives below, and every other field of `gband` is an error naming the side that has it: test code drives gband from outside, so it reaches the client and the server only through the case handle.
+There `gband.side` is `"test"`, `gband.api_version` is `2`, `gband.core` holds the test primitives below, and every other field of `gband` is an error naming the side that has it: test code drives gband from outside, so it reaches the client and the server only through the case handle.
 `print` writes its line to standard output.
 `require` also finds modules in the test file's own directory.
 

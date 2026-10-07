@@ -46,7 +46,7 @@ pub use crate::directory::{
     plugins_dir_from, prepare, user_dir, user_file,
 };
 pub use crate::error::ConfigError;
-pub use crate::events::{Event, Pointer, PointerTarget};
+pub use crate::events::{BoxCell, Event, Pointer, PointerTarget};
 pub use crate::options::{NotifyStyle, OptValue, Options};
 pub use crate::runtime::{API_VERSION, Outcome, Runtime};
 pub use crate::sides::install_test;

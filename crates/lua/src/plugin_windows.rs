@@ -12,7 +12,7 @@ use crate::api::{self, Dispatch, PluginWindowRequest};
 use crate::border::{Border, BorderChars, Sides};
 use crate::check;
 use crate::control;
-use crate::events::{button_name, direction_name};
+use crate::events::{BoxCell, button_name, direction_name};
 use crate::keys::{key_name, parse_key};
 use crate::ui::{self, Style, named, strip};
 
@@ -58,6 +58,7 @@ pub enum PluginMouseKind {
 pub struct PluginMouse {
     pub kind: PluginMouseKind,
     pub content: Option<(u16, u16)>,
+    pub boxed: Option<BoxCell>,
     pub modifiers: Modifiers,
 }
 
@@ -77,6 +78,7 @@ impl PluginMouse {
         event.set("button", button.map(button_name))?;
         event.set("content_col", self.content.map(|(col, _)| col))?;
         event.set("content_row", self.content.map(|(_, row)| row))?;
+        BoxCell::fields(self.boxed, &event)?;
         event.set("ctrl", self.modifiers.ctrl)?;
         event.set("alt", self.modifiers.alt)?;
         event.set("shift", self.modifiers.shift)?;

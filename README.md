@@ -388,6 +388,7 @@ A key name is one character, or `enter`, `tab`, `backtab`, `backspace`, `escape`
 `leftmouse`, `middlemouse` and `rightmouse` name a press of a mouse button, and `wheelup`, `wheeldown`, `wheelleft` and `wheelright` one step of the wheel, with the same modifiers, such as `alt+rightmouse`. They bind in key tables only, not as the prefix or in a plugin window's `keys`.
 Before a mouse name, `mod` stands for the modifiers of the `mouse_mod` option, so `mod+leftmouse` is Alt with the left button until you change it.
 A bound wheel step runs its binding at most once every 150 ms, and an unbound one still reaches the window under the pointer.
+A function bound to a mouse name can return `false` to pass the press or wheel step on, as if the name were unbound.
 `prefix prefix` binds the prefix key pressed twice.
 
 `gband.spawn { cmd = ... }` takes a command line as a string, which your shell runs, or a list of a program and its arguments.

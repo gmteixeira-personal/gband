@@ -1,4 +1,4 @@
-local M = { name = "hello", api = 1 }
+local M = { name = "hello", api = 2 }
 
 function M.setup(opts)
   gband.opt.declare("greeting", {

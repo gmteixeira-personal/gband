@@ -176,3 +176,54 @@ t.case("mouse events reach handlers", function(g)
   g.settle()
   t.eq(g.client("return seen"), { "left window 4,2" })
 end)
+
+t.case("a declined click focuses the window", function(g)
+  g.start({
+    size = "80x24",
+    config = [[
+      gband.keymap.set("root", "leftmouse", function() return false end)
+      gband.keymap.set("prefix", "n", function() gband.action.open_window() end)
+    ]],
+  })
+  local first = g.client("return gband.view().window")
+  g.keys("ctrl+space n")
+  g.settle()
+  t.ok(g.client("return gband.view().window") ~= first, "the new window is focused")
+  g.mouse("press", "left", 5, 3)
+  g.mouse("release", "left", 5, 3)
+  g.settle()
+  t.eq(g.client("return gband.view().window"), first)
+end)
+
+t.case("box fields reach handlers", function(g)
+  g.start({
+    size = "80x24",
+    config = [[
+      seen = {}
+      gband.on("MousePressed", function(e)
+        seen[#seen + 1] = { e.box_col, e.box_row, e.box_width, e.box_height, tostring(e.content_col) }
+      end)
+    ]],
+  })
+  g.mouse("press", "left", 5, 0)
+  g.mouse("release", "left", 5, 0)
+  g.settle()
+  t.eq(g.client("return seen"), { { 5, 0, 40, 24, "nil" } })
+end)
+
+t.case("a declined wheel step scrolls a plugin window", function(g)
+  g.start({
+    size = "80x24",
+    config = [[gband.keymap.set("root", "wheeldown", function() return false end)]],
+  })
+  local win = g.client([[
+    local lines = {}
+    for n = 1, 25 do lines[n] = "line " .. n end
+    return gband.win.open({ height = 12, col = 5, row = 3, focus = false, lines = lines })
+  ]])
+  g.mouse("scroll", "down", 8, 6)
+  g.settle()
+  local info = g.client("return gband.win.info(...)", win)
+  t.eq(info.top, 2)
+  t.ok(not info.focused, "focus does not change")
+end)

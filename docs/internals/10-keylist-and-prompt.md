@@ -295,7 +295,7 @@ The window is tall enough for its lines, at least one, and at most 15 rows, bord
 ```lua defaults/lua/gband/keylist.lua
 return {
   name = "keylist",
-  api = 1,
+  api = 2,
   setup = function(opts)
     if type(opts) ~= "table" then
       error("the options of `keylist` must be a table", 2)
@@ -569,7 +569,7 @@ Otherwise it opens one only when the focused window, from `gband.view`, runs a p
 ```lua defaults/lua/gband/prompt.lua
 return {
   name = "prompt",
-  api = 1,
+  api = 2,
   setup = function(opts)
     if type(opts) ~= "table" then
       error("the options of `prompt` must be a table", 2)

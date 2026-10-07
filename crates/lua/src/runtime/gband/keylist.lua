@@ -134,7 +134,7 @@ end
 
 return {
   name = "keylist",
-  api = 1,
+  api = 2,
   setup = function(opts)
     if type(opts) ~= "table" then
       error("the options of `keylist` must be a table", 2)

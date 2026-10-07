@@ -85,15 +85,30 @@ pub enum Command {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum MouseCommand {
+pub enum Unbound {
     Default,
-    Run(Binding),
     Discard,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MouseCommand {
+    Default,
+    Run { binding: Binding, unbound: Unbound },
+    Discard,
+}
+
+impl From<Unbound> for MouseCommand {
+    fn from(unbound: Unbound) -> Self {
+        match unbound {
+            Unbound::Default => MouseCommand::Default,
+            Unbound::Discard => MouseCommand::Discard,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WheelCommand {
-    Run(Binding),
+    Run { binding: Binding, ends: bool },
     Pass,
 }
 
@@ -138,31 +153,32 @@ impl Leader {
     }
 
     pub fn handle_mouse(&mut self, keymap: &Keymap, key: MouseKey) -> MouseCommand {
-        let found = |table: &str| {
-            keymap
-                .find_mouse(table, key)
-                .map_or(MouseCommand::Discard, MouseCommand::Run)
+        let (table, unbound) = if keymap.modes.contains(&self.active) {
+            (self.active.clone(), Unbound::Discard)
+        } else if self.active != ROOT {
+            (
+                std::mem::replace(&mut self.active, ROOT.to_owned()),
+                Unbound::Discard,
+            )
+        } else {
+            (ROOT.to_owned(), Unbound::Default)
         };
-        if keymap.modes.contains(&self.active) {
-            return found(&self.active);
-        }
-        if self.active != ROOT {
-            let table = std::mem::replace(&mut self.active, ROOT.to_owned());
-            return found(&table);
-        }
         keymap
-            .find_mouse(ROOT, key)
-            .map_or(MouseCommand::Default, MouseCommand::Run)
+            .find_mouse(&table, key)
+            .map_or(unbound.into(), |binding| MouseCommand::Run {
+                binding,
+                unbound,
+            })
     }
 
-    pub fn handle_wheel(&mut self, keymap: &Keymap, key: MouseKey) -> WheelCommand {
+    pub fn handle_wheel(&self, keymap: &Keymap, key: MouseKey) -> WheelCommand {
         let Some(binding) = keymap.find_mouse(&self.active, key) else {
             return WheelCommand::Pass;
         };
-        if !keymap.modes.contains(&self.active) {
-            self.reset();
+        WheelCommand::Run {
+            binding,
+            ends: self.active != ROOT && !keymap.modes.contains(&self.active),
         }
-        WheelCommand::Run(binding)
     }
 
     pub fn enter(&mut self, table: String) {
@@ -466,7 +482,10 @@ mod tests {
         for (button, action) in drags {
             let alt = mouse(button, Modifiers::ALT);
             let ran = |command| match command {
-                MouseCommand::Run(Binding::Action(action)) => Some(action),
+                MouseCommand::Run {
+                    binding: Binding::Action(action),
+                    ..
+                } => Some(action),
                 _ => None,
             };
             let action = Some(Action::Client(action));
@@ -483,11 +502,17 @@ mod tests {
         }
         for (direction, action) in wheels {
             let alt = mouse(direction, Modifiers::ALT);
-            let action = WheelCommand::Run(Binding::Action(Action::View(action)));
-            assert_eq!(Leader::default().handle_wheel(keymap, alt), action);
+            let run = |ends| WheelCommand::Run {
+                binding: Binding::Action(Action::View(action)),
+                ends,
+            };
+            assert_eq!(Leader::default().handle_wheel(keymap, alt), run(false));
             let mut leader = Leader::default();
             leader.handle(keymap, keymap.prefix);
-            assert_eq!(leader.handle_wheel(keymap, alt), action);
+            assert_eq!(
+                leader.handle_wheel(keymap, alt),
+                run(!keymap.modes.contains(PREFIX))
+            );
             assert_eq!(
                 Leader::default().handle_wheel(keymap, mouse(direction, Modifiers::NONE)),
                 WheelCommand::Pass
@@ -599,7 +624,10 @@ mod tests {
     fn default_mouse_modifier() {
         let keymap =
             configured("gband.keymap.set('root', 'mod+leftmouse', gband.action.drag_window)");
-        let drag = MouseCommand::Run(Binding::Action(Action::Client(ClientAction::DragWindow)));
+        let drag = MouseCommand::Run {
+            binding: Binding::Action(Action::Client(ClientAction::DragWindow)),
+            unbound: Unbound::Default,
+        };
         let mut leader = Leader::default();
         assert_eq!(
             leader.handle_mouse(&keymap, mouse(MouseButton::Left, Modifiers::ALT)),
@@ -619,7 +647,10 @@ mod tests {
             alt: true,
             shift: false,
         };
-        let drag = MouseCommand::Run(Binding::Action(Action::Client(ClientAction::DragWindow)));
+        let drag = MouseCommand::Run {
+            binding: Binding::Action(Action::Client(ClientAction::DragWindow)),
+            unbound: Unbound::Default,
+        };
         let mut leader = Leader::default();
         assert_eq!(
             leader.handle_mouse(&keymap, mouse(MouseButton::Left, ctrl_alt)),
@@ -634,7 +665,10 @@ mod tests {
     #[test]
     fn last_matching_mouse_binding_wins() {
         let alt_left = mouse(MouseButton::Left, Modifiers::ALT);
-        let drag = |action| MouseCommand::Run(Binding::Action(Action::Client(action)));
+        let drag = |action| MouseCommand::Run {
+            binding: Binding::Action(Action::Client(action)),
+            unbound: Unbound::Default,
+        };
         let keymap = configured(
             "gband.keymap.set('root', 'mod+leftmouse', gband.action.drag_window)
 gband.keymap.set('root', 'alt+leftmouse', gband.action.drag_band)",
@@ -666,20 +700,32 @@ gband.keymap.set('prefix', 'alt+leftmouse', function() end)",
         let mut leader = Leader::default();
         assert!(matches!(
             leader.handle_mouse(&keymap, alt_left),
-            MouseCommand::Run(Binding::Callback(_))
+            MouseCommand::Run {
+                binding: Binding::Callback(_),
+                unbound: Unbound::Default
+            }
         ));
         assert!(matches!(
             leader.handle_wheel(&keymap, mouse(WheelDirection::Down, Modifiers::ALT)),
-            WheelCommand::Run(Binding::Callback(_))
+            WheelCommand::Run {
+                binding: Binding::Callback(_),
+                ends: false
+            }
         ));
         assert_eq!(leader.handle(&keymap, keymap.prefix), Command::Discard);
         assert!(matches!(
             leader.handle_mouse(&keymap, alt_left),
-            MouseCommand::Run(Binding::Callback(_))
+            MouseCommand::Run {
+                binding: Binding::Callback(_),
+                unbound: Unbound::Discard
+            }
         ));
         assert_eq!(
             leader.handle_mouse(&keymap, mouse(MouseButton::Right, Modifiers::ALT)),
-            MouseCommand::Run(Binding::Action(Action::Client(ClientAction::DragResize)))
+            MouseCommand::Run {
+                binding: Binding::Action(Action::Client(ClientAction::DragResize)),
+                unbound: Unbound::Discard
+            }
         );
     }
 
@@ -687,7 +733,10 @@ gband.keymap.set('prefix', 'alt+leftmouse', function() end)",
     fn navigation_mode_keeps_wheel_bindings() {
         let keymap = defaults();
         let down = mouse(WheelDirection::Down, Modifiers::ALT);
-        let band_down = WheelCommand::Run(Binding::Action(Action::View(ViewAction::BandDown)));
+        let band_down = WheelCommand::Run {
+            binding: Binding::Action(Action::View(ViewAction::BandDown)),
+            ends: false,
+        };
         let mut leader = Leader::default();
         assert_eq!(leader.handle(&keymap, keymap.prefix), Command::Discard);
         assert_eq!(leader.handle_wheel(&keymap, down), band_down);
@@ -716,13 +765,63 @@ gband.keymap.set('prefix', 'alt+wheeldown', gband.action.focus_band_down)",
         assert_eq!(leader.active(), PREFIX);
         assert_eq!(
             leader.handle_wheel(&keymap, mouse(WheelDirection::Down, Modifiers::ALT)),
-            WheelCommand::Run(Binding::Action(Action::View(ViewAction::BandDown)))
+            WheelCommand::Run {
+                binding: Binding::Action(Action::View(ViewAction::BandDown)),
+                ends: true,
+            }
         );
-        assert_eq!(leader.active(), ROOT);
+        assert_eq!(leader.active(), PREFIX);
+        leader.reset();
         assert_eq!(
             leader.handle_wheel(&keymap, mouse(WheelDirection::Down, Modifiers::ALT)),
             WheelCommand::Pass
         );
+    }
+
+    #[test]
+    fn mouse_run_names_the_unbound_path() {
+        let keymap = configured(
+            "gband.keymap.set('root', 'leftmouse', function() end)
+gband.keymap.set('seq', 'leftmouse', function() end)
+gband.keymap.set('resize', 'leftmouse', function() end)
+gband.keymap.mode('resize')",
+        );
+        let left = mouse(MouseButton::Left, Modifiers::NONE);
+        let unbound = |leader: &mut Leader| match leader.handle_mouse(&keymap, left) {
+            MouseCommand::Run { unbound, .. } => unbound,
+            other => panic!("{other:?}"),
+        };
+        let mut leader = Leader::default();
+        assert_eq!(unbound(&mut leader), Unbound::Default);
+        leader.enter("seq".to_owned());
+        assert_eq!(unbound(&mut leader), Unbound::Discard);
+        assert_eq!(leader.active(), ROOT);
+        leader.enter("resize".to_owned());
+        assert_eq!(unbound(&mut leader), Unbound::Discard);
+        assert_eq!(leader.active(), "resize");
+    }
+
+    #[test]
+    fn wheel_run_ends_only_a_sequence() {
+        let keymap = configured(
+            "gband.keymap.set('root', 'wheeldown', function() end)
+gband.keymap.set('seq', 'wheeldown', function() end)
+gband.keymap.set('resize', 'wheeldown', function() end)
+gband.keymap.mode('resize')",
+        );
+        let down = mouse(WheelDirection::Down, Modifiers::NONE);
+        let mut leader = Leader::default();
+        for (table, expected) in [(ROOT, false), ("seq", true), ("resize", false)] {
+            leader.enter(table.to_owned());
+            assert!(
+                matches!(
+                    leader.handle_wheel(&keymap, down),
+                    WheelCommand::Run { ends, .. } if ends == expected
+                ),
+                "{table}"
+            );
+            assert_eq!(leader.active(), table);
+        }
     }
 
     #[test]
