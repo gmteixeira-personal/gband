@@ -1,9 +1,27 @@
 # gband
 
 gband is a terminal multiplexer inspired by the [niri](https://github.com/YaLTeR/niri) window manager.
-Like niri, it places windows on an infinitely side-scrolling strip.
-Each strip belongs to a band (niri's workspace), and bands stack vertically without limit.
-It is written in Rust and scriptable with Lua.
+It arranges your windows in bands.
+A band is a row of windows that scrolls sideways, and it is circular: past its last window, it goes on with its first.
+gband keeps as many bands as you need, stacked vertically.
+
+gband is animated, includes themes and is fully scriptable in Lua.
+Much of gband itself is written in Lua, and every part of it starts with sensible defaults, so it works without any configuration.
+gband is written in Rust.
+
+## Features
+
+- **Multiple bands.** Each band holds its own row of windows, and the view slides up and down between bands.
+- **Circular bands.** Focus goes round from a band's last column to its first, and a long enough band is drawn as a loop.
+- **Animated.** Scrolling, band switches, moving windows and resizes animate.
+- **Fully scriptable.** The configuration, key bindings and plugins are Lua, in the client and in the server; see [Scripting](#scripting).
+- **Written in Lua, as examples.** The key styles, the key list, the sidebar, the settings window and the themes are Lua code, written that way so you can read how they use the API.
+- **Themes.** gband bundles 15 themes, previews each one as you move through the theme list, and loads colorschemes of your own; see [Settings](#settings).
+- **User friendly.** The settings window opens on the first start to pick a theme, the sidebar and a key style.
+  Ctrl+Space then `?` lists every key and runs the one you choose.
+  The mouse focuses, moves and resizes windows, and selects text.
+  Saving the configuration reloads it at once, and an error names its file and line while the last working configuration stays loaded.
+- **Sensible defaults.** gband needs no configuration file: the defaults bind the keys, set up the sidebar and apply the `default` theme.
 
 ## Status
 
@@ -15,36 +33,42 @@ Configuration, the Lua API and the plugin API can still change between releases.
 Multiplexers such as tmux and Zellij split a fixed screen area into panes.
 Each new pane shrinks the panes already on screen.
 
-gband follows niri's scrollable tiling model instead:
+gband follows niri's scrollable tiling model instead, with bands in place of niri's workspaces:
 
-- Windows sit in columns on a strip that scrolls sideways without limit.
-- A new window adds a column to the strip, and existing windows keep their size.
+- A band is a row of columns, and each column holds one or more windows stacked vertically.
+- A new window adds a column to the band, and existing windows keep their size.
 - The view scrolls sideways to follow focus, so the focused window is always on screen.
-- A column can hold several windows stacked vertically.
-- Each band has its own strip.
-  Bands stack vertically, and the view slides up and down between them.
+- Bands are circular.
+  Focus goes round from a band's last column to its first, and from its first to its last.
+  A band long enough to wrap around the screen is drawn as a loop, its first column following its last.
+  `gband.opt.loop_bands = false` gives every band two ends instead.
+- Bands stack vertically, and the view slides up and down between them.
 - An empty band always waits below the last one.
   Opening a window in it adds a new empty band below, and a band other than the last is removed when its last window closes.
 
-Scrolling, band switches and resizes animate.
+Scrolling, band switches, moving windows and resizes animate.
 Set `GBAND_ANIMATIONS=off` before you attach to turn the animations off.
 
 Each window shows its name on its top border; see [Window names](#window-names).
 Set `GBAND_WINDOW_TITLES=off` before you attach to draw no names, whatever the `window_titles` option holds.
 
-## Names
+## Vocabulary
 
-gband keeps niri's layout model but renames one of its parts:
+gband keeps niri's layout model but calls niri's workspace a band.
+The documentation uses these names:
 
-| niri | gband |
+| name | meaning |
 |---|---|
-| workspace | band |
+| window | a terminal running a program; tmux and Zellij call it a pane |
+| column | one or more windows stacked vertically, side by side with the other columns of its band |
+| band | a circular row of columns that scrolls sideways; niri calls it a workspace |
+| tiled window | a window in a column of its band |
+| floating window | a window in a box over its band, which stays where it is while the band scrolls |
+| plugin window | text that a plugin draws, either floating over the windows or tiled in a column like a window |
+| bar | columns that Lua code reserves at the left or right edge of the terminal, such as the sidebar |
+| ribbon | the part of the terminal that the bars leave, where the viewed band is drawn |
 
-Windows, columns and the strip keep their niri names.
-What gband calls a window, tmux and Zellij call a pane.
-
-A plugin window is something else: text that a plugin draws, either floating over the windows or tiled in a column like a window.
-[docs/plugins.md](docs/plugins.md#plugin-windows-gbandwin) describes plugin windows.
+[docs/plugins.md](docs/plugins.md#plugin-windows-gbandwin) describes plugin windows, and [docs/plugins.md](docs/plugins.md#side-bars-gbandbar) describes bars.
 
 ## Usage
 
@@ -185,8 +209,26 @@ Without it, the copy buffer still pastes inside gband.
 
 ## Scripting
 
-gband embeds a Lua runtime.
+gband embeds a Lua runtime in the client and in the server.
 Configuration and automation are Lua scripts, so key bindings, layout behavior and custom commands are code you can change.
+Plugins add actions, commands, key bindings, bars, plugin windows and colorschemes; see [Plugins](#plugins).
+The Lua prompt, Ctrl+Space then `:`, runs one line of Lua while gband runs.
+
+Much of gband is itself written in Lua:
+
+- the modal and direct key styles
+- the key list, the Lua prompt and the rename box
+- the sidebar and the error list
+- the settings window and the theme list
+- every bundled theme
+- the APIs for bars, plugin windows, highlight groups and colorschemes
+
+These parts are written in Lua on purpose, to serve as examples of the API.
+Their source is in [crates/lua/src/runtime/gband/](crates/lua/src/runtime/gband/).
+The key styles, the key list, the error list and the themes use only the API that your configuration and plugins have, so you can copy one and change it.
+The default configuration and both key styles are also written to `defaults/` in the configuration directory; see [Configuration](#configuration).
+
+Every part comes with sensible defaults, so gband needs no configuration until you want to change something.
 
 ## Configuration
 
@@ -439,7 +481,7 @@ gband.keymap.set("prefix", "?", gband.action["keylist.open"], { desc = "list the
 
 ### Lua prompt
 
-Ctrl+Space then `:` opens a one-line box titled `lua` on the bottom rows of the windows, in the manner of Neovim's command line, and returns to interactive mode so the box takes what you type.
+Ctrl+Space then `:` opens a one-line box titled `lua` on the bottom rows of the ribbon, in the manner of Neovim's command line, and returns to interactive mode so the box takes what you type.
 It shows `:`, the text typed so far and a reversed cell as the cursor; a line too long for the box shows its end.
 Every character goes into the line, `j`, `k` and `q` included, and a paste does too, with each line break turned into a space.
 Backspace deletes the last character, and on an empty line closes the prompt; Ctrl+U clears the line.
@@ -536,7 +578,7 @@ A `user/init.lua` replaces the defaults, so it sets it up itself with the same c
 gband.plugin("gband.sidebar")
 ```
 
-Leaving it out removes the sidebar, and the windows take the whole terminal.
+Leaving it out removes the sidebar, and the ribbon takes the whole terminal.
 Its options place it:
 
 ```lua
@@ -570,7 +612,7 @@ gband.bind("prefix E", function() gband.cmd.run("errors.open", { kind = "tiled" 
 ```
 
 `gband.plugin("gband.errors", { kind = "tiled" })` makes `errors.open` open a tiled window.
-Without a sidebar, the latest error shows on the bottom row of the windows instead.
+Without a sidebar, the latest error shows on the bottom row of the ribbon instead.
 
 ### Plugins
 

@@ -4,6 +4,12 @@ A gband plugin is a directory of Lua files.
 gband finds it on the runtimepath, reads its manifest, runs the file of its side, and lets your configuration set it up.
 Plugins can add actions, commands, options, key bindings, event handlers, side bars, plugin windows, highlight groups and colorschemes in the client, and event handlers, shared window state, events and commands in the server.
 
+This guide uses the names that the README's [Vocabulary](../README.md#vocabulary) defines: a band is a circular row of columns, a column holds windows stacked vertically, and the ribbon is the part of the terminal that the bars leave, where the viewed band is drawn.
+
+Much of gband is itself written with this API, to serve as examples.
+The bundled plugins `gband.keylist`, `gband.errors`, `gband.prompt` and `gband.sidebar`, the settings window, the key styles and the themes are Lua files in [crates/lua/src/runtime/gband/](../crates/lua/src/runtime/gband/).
+The key styles, the key list, the error list and the themes use only the API this guide describes, so they make good starting points.
+
 The [sample plugin](../examples/plugins/hello) uses most of what the client API offers.
 The [window sample](../examples/plugins/window) adds a side bar, a highlight group and a colorscheme.
 The [agent status sample](../examples/plugins/agent-status) has both sides: its server half watches windows, and its client half notifies, counts and jumps.
@@ -300,7 +306,7 @@ gband.opt.default_column_width = 1/3
 local presets = gband.opt.width_presets
 ```
 
-`loop_bands`, `true` by default, lets focus go round from a band's last column to its first; `false` stops focus at either end.
+`loop_bands`, `true` by default, makes bands circular: focus goes round from a band's last column to its first, and a long enough band is drawn as a loop; `false` stops focus at either end.
 
 `window_titles`, `true` by default, draws each window's name on its top border; `false` draws none, while the names are still kept and `gband.layout()` still holds them.
 The client reads `GBAND_WINDOW_TITLES` when it starts: `off` draws no names whatever `window_titles` holds, unset or `on` leaves the option in charge, and any other value is logged as a warning and read as unset.
