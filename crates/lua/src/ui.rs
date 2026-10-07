@@ -229,6 +229,7 @@ pub(crate) fn install(lua: &Lua, gband: &Table) -> mlua::Result<Table> {
     lua.set_app_data(Hooks::default());
     lua.set_app_data(Timers::default());
     lua.set_app_data(Settings::default());
+    crate::decorations::install(lua);
     lua.set_app_data(Look {
         palette_dirty: true,
         ..Look::default()
@@ -402,11 +403,15 @@ fn provide(lua: &Lua, (kind, implementation): (Value, Value)) -> mlua::Result<()
             look(lua).styles = Some(lua.create_registry_value(function)?);
             Ok(())
         }
+        "decorations" => crate::decorations::provide(
+            lua,
+            check::function(lua, &what, &implementation, "the decorations function")?,
+        ),
         other => Err(check::fail(
             lua,
             &what,
             format!(
-                "unknown provider kind `{other}`; the kinds are `windows`, `bars`, `settings` and `styles`"
+                "unknown provider kind `{other}`; the kinds are `windows`, `bars`, `settings`, `styles` and `decorations`"
             ),
         )),
     }
@@ -663,7 +668,7 @@ pub(crate) fn set_state(lua: &Lua, state: ViewState) -> mlua::Result<()> {
     Ok(())
 }
 
-fn color(table: &Table, name: &str) -> Result<Option<Color>, String> {
+pub(crate) fn color(table: &Table, name: &str) -> Result<Option<Color>, String> {
     let invalid = || format!("the field `{name}` must be `#rrggbb` or a color index");
     Ok(
         match table

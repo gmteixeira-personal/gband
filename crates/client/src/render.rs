@@ -5,7 +5,9 @@ use gband_core::layout::{BandId, Layout, WindowId};
 use gband_core::view::{Scene, View};
 use gband_emulator::{Emulator, Grid};
 use gband_lua::plugin_windows::{FloatingFrame, Run};
-use gband_lua::{Bar, Border, BorderChars, ClientStyles, Palette, Sides, WindowNames};
+use gband_lua::{
+    Bar, Border, BorderChars, ClientStyles, DecorationSpan, Palette, Sides, WindowNames,
+};
 use ratatui::Frame;
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Position, Rect};
@@ -128,6 +130,15 @@ pub struct Ribbon<'a> {
     pub bars: Vec<Shown<'a>>,
     pub overlay: Overlay,
     pub titles: Option<&'a WindowNames>,
+    pub decorations: Option<&'a HashMap<WindowId, Vec<DecorationSpan>>>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Top {
+    pub window: WindowId,
+    pub floating: bool,
+    pub focused: bool,
+    pub width: u16,
 }
 
 pub fn draw_frame(frame: &mut Frame<'_>, ribbon: &Ribbon<'_>) {
@@ -217,7 +228,13 @@ fn draw_float(buffer: &mut Buffer, region: Rect, float: &FloatingFrame, colors: 
     let inner = if let Some(border) = &float.border {
         draw_border(buffer, area, border, colors.style(&float.border_style));
         if let Some(title) = &float.title {
-            draw_title(buffer, area, title, colors.style(&float.title_style));
+            draw_title(
+                buffer,
+                area,
+                title,
+                colors.style(&float.title_style),
+                area.width.saturating_sub(2),
+            );
         }
         interior(area)
     } else {
@@ -226,8 +243,7 @@ fn draw_float(buffer: &mut Buffer, region: Rect, float: &FloatingFrame, colors: 
     draw_lines(buffer, inner, &float.lines, colors);
 }
 
-fn draw_title(buffer: &mut Buffer, area: Rect, title: &str, style: Style) -> u16 {
-    let room = area.width.saturating_sub(2);
+fn draw_title(buffer: &mut Buffer, area: Rect, title: &str, style: Style, room: u16) -> u16 {
     let cells = (gband_lua::ui::width(title) as u16).min(room);
     let x = area.x + 1;
     buffer.set_style(Rect::new(x, area.y, cells, 1), Style::reset());
@@ -523,6 +539,22 @@ pub fn regions(ribbon: &Ribbon<'_>, area: Rect) -> Vec<Region> {
     regions
 }
 
+pub fn tops(ribbon: &Ribbon<'_>, area: Rect) -> Vec<Top> {
+    let target = ribbon.region.intersection(area);
+    layers(ribbon, target)
+        .into_iter()
+        .filter(|layer| layer.border.sides.top && layer.placement.clip.top == 0)
+        .filter_map(|layer| {
+            Some(Top {
+                window: layer.region.window?,
+                floating: layer.region.kind == RegionKind::Floating,
+                focused: layer.focused,
+                width: layer.tile.width,
+            })
+        })
+        .collect()
+}
+
 pub fn render(ribbon: &Ribbon<'_>, buffer: &mut Buffer) -> Option<Position> {
     let target = ribbon.region.intersection(buffer.area);
     let mut cursor = None;
@@ -561,13 +593,33 @@ pub fn render(ribbon: &Ribbon<'_>, buffer: &mut Buffer) -> Option<Position> {
             .titles
             .and_then(|titles| titles.get(&window))
             .map(|name| name.shown.as_str());
+        let decorations = ribbon
+            .decorations
+            .and_then(|kept| kept.get(&window))
+            .map(|spans| {
+                spans
+                    .iter()
+                    .map(|span| {
+                        (
+                            span.text.as_str(),
+                            ribbon.colors.style(&span.style.over(*style)),
+                        )
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
         paint(
             buffer,
             target,
             &tile,
             &placement,
             grid,
-            (&border, ribbon.colors.style(style), title),
+            &Edge {
+                border: &border,
+                style: ribbon.colors.style(style),
+                title,
+                decorations,
+            },
             selection,
         );
         if focused && region.kind != RegionKind::Lifted && ribbon.drawn.settled {
@@ -608,10 +660,10 @@ fn paint(
     tile: &DrawnTile,
     placement: &Placement,
     grid: Option<&Grid>,
-    border: (&Border, Style, Option<&str>),
+    edge: &Edge<'_>,
     selection: Option<Selected>,
 ) {
-    let (scratch, shift) = draw_tile(tile, grid, border, &placement.clip);
+    let (scratch, shift) = draw_tile(tile, grid, edge, &placement.clip);
     let clip = &placement.clip;
     for row in clip.top..clip.bottom {
         for column in clip.start..clip.end {
@@ -722,12 +774,42 @@ impl<S: Screen> Screen for Shifted<'_, S> {
     }
 }
 
+struct Edge<'a> {
+    border: &'a Border,
+    style: Style,
+    title: Option<&'a str>,
+    decorations: Vec<(&'a str, Style)>,
+}
+
+fn draw_decorations(line: &mut Buffer, width: u16, decorations: &[(&str, Style)]) -> Option<u16> {
+    let total: usize = decorations
+        .iter()
+        .map(|(text, _)| gband_lua::ui::width(text))
+        .sum();
+    let total = u16::try_from(total)
+        .ok()
+        .filter(|&total| total > 0 && total <= width.saturating_sub(4))?;
+    let mut x = width - 2 - total;
+    for &(text, style) in decorations {
+        let cells = gband_lua::ui::width(text) as u16;
+        line.set_stringn(x, 0, text, usize::from(cells), style);
+        x += cells;
+    }
+    Some(total)
+}
+
 fn draw_tile(
     tile: &DrawnTile,
     grid: Option<&Grid>,
-    (border, style, title): (&Border, Style, Option<&str>),
+    edge: &Edge<'_>,
     clip: &Clip,
 ) -> (Buffer, Shift) {
+    let Edge {
+        border,
+        style,
+        title,
+        ref decorations,
+    } = *edge;
     let cut_left = u16::from(clip.start > 0);
     let cut_right = u16::from(clip.end < tile.width);
     let cut_top = u16::from(clip.top > 0);
@@ -744,15 +826,27 @@ fn draw_tile(
     );
     let mut scratch = Buffer::empty(area);
     draw_border(&mut scratch, area, border, style);
-    if let Some(title) = title
-        && border.sides.top
-        && clip.top == 0
-    {
+    if border.sides.top && clip.top == 0 {
         let row = Rect::new(0, 0, tile.width, 1);
         let mut line = Buffer::empty(row);
-        let cells = draw_title(&mut line, row, title, style);
+        let mut covered = Vec::new();
+        let room = match draw_decorations(&mut line, tile.width, decorations) {
+            Some(total) => {
+                covered.push(tile.width - 2 - total..tile.width - 2);
+                tile.width - 4 - total
+            }
+            None => tile.width.saturating_sub(2),
+        };
+        if let Some(title) = title {
+            let cells = draw_title(&mut line, row, title, style, room);
+            covered.push(1..1 + cells);
+        }
         let shown = shift.cols..shift.cols + area.width;
-        for column in (1..1 + cells).filter(|column| shown.contains(column)) {
+        for column in covered
+            .into_iter()
+            .flatten()
+            .filter(|column| shown.contains(column))
+        {
             scratch[(column - shift.cols, 0)] = line[(column, 0)].clone();
         }
     }

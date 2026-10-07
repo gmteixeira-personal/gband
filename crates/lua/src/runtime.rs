@@ -16,6 +16,7 @@ use mlua::{Function, IntoLuaMulti, Lua, MultiValue, Table, Value};
 
 use crate::api::{self, Dispatch, Queue};
 use crate::callbacks::{self, CallbackId, Callbacks, Ran};
+use crate::decorations::{self, DecorationInfo, DecorationSpan};
 use crate::error::{ConfigError, caller};
 use crate::events::{self, Event, Pointer};
 use crate::guard::{self, Failure};
@@ -53,6 +54,9 @@ struct SetUp(BTreeSet<String>);
 #[derive(Default)]
 pub(crate) struct Manifests(Vec<PluginManifest>);
 
+#[derive(Default)]
+struct Runs(u64);
+
 pub(crate) fn install(
     lua: &Lua,
     side: Side,
@@ -65,6 +69,7 @@ pub(crate) fn install(
     lua.set_app_data(Callbacks::default());
     lua.set_app_data(SetUp::default());
     lua.set_app_data(Manifests::default());
+    lua.set_app_data(Runs::default());
     guard::install(lua, budget)?;
     let gband = lua.create_table()?;
     api::install(lua, &gband, side)?;
@@ -744,6 +749,14 @@ impl Runtime {
         })
     }
 
+    pub fn decorations(&self, info: &DecorationInfo) -> Result<Vec<DecorationSpan>, ConfigError> {
+        decorations::call(&self.lua, info)
+    }
+
+    pub fn lua_runs(&self) -> u64 {
+        self.lua.app_data_ref::<Runs>().map_or(0, |runs| runs.0)
+    }
+
     pub fn error_marker_shown(&self) -> bool {
         crate::bars::error_marker_shown(&self.lua)
     }
@@ -821,6 +834,9 @@ impl Runtime {
 
     fn within_callback(&self, run: impl FnOnce(&Lua) -> mlua::Result<Ending>) -> Outcome {
         let lua = &self.lua;
+        if let Some(mut runs) = lua.app_data_mut::<Runs>() {
+            runs.0 += 1;
+        }
         lua.app_data_mut::<Queue>()
             .expect("the queue is installed with the runtime")
             .0 = Some(Vec::new());

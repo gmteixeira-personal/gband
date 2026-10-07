@@ -5,7 +5,7 @@ use gband_client::animation::{Animations, Drawn, DrawnBand, Presentation, Target
 use gband_client::color::ColorSupport;
 use gband_client::mouse::{Hit, Target, hit};
 use gband_client::render::{
-    Lifted, Overlay, Ribbon, Selected, Shown, draw_border, draw_frame, interior, regions,
+    Lifted, Overlay, Ribbon, Selected, Shown, Top, draw_border, draw_frame, interior, regions, tops,
 };
 use gband_core::geometry::{Size, boxes, tiles};
 use gband_core::layout::{
@@ -13,10 +13,11 @@ use gband_core::layout::{
 };
 use gband_core::view::{CenterFocusedColumn, Scene, View, ViewAction};
 use gband_emulator::{Emulator, Grid};
+use gband_lua::decorations::StylePatch;
 use gband_lua::plugin_windows::{FloatingFrame, Run};
 use gband_lua::{
-    Bar, BarSide, Border, BorderChars, CharSet, ClientStyles, Color, Options, Palette, Sides, Slot,
-    Style, WindowName, WindowNames,
+    Bar, BarSide, Border, BorderChars, CharSet, ClientStyles, Color, DecorationSpan, Options,
+    Palette, Sides, Slot, Style, WindowName, WindowNames,
 };
 use insta::assert_snapshot;
 use ratatui::Terminal;
@@ -43,6 +44,7 @@ struct Fixture {
     region: Option<Rect>,
     overlay: Overlay,
     titles: Option<WindowNames>,
+    decorations: HashMap<WindowId, Vec<DecorationSpan>>,
 }
 
 impl Fixture {
@@ -85,6 +87,7 @@ impl Fixture {
             region: None,
             overlay: Overlay::default(),
             titles: None,
+            decorations: HashMap::new(),
         };
         fixture.reset_grids();
         (fixture, windows)
@@ -212,7 +215,28 @@ impl Fixture {
                 .collect(),
             overlay: self.overlay,
             titles: self.titles.as_ref(),
+            decorations: Some(&self.decorations),
         }
+    }
+
+    fn decorate(&mut self, window: WindowId, spans: &[&str]) {
+        self.decorations.insert(
+            window,
+            spans.iter().copied().map(DecorationSpan::plain).collect(),
+        );
+    }
+
+    fn tops(&self, terminal: Size, drawn: &Drawn) -> Vec<Top> {
+        let area = Rect::new(0, 0, terminal.cols, terminal.rows);
+        tops(&self.ribbon(area, drawn), area)
+    }
+
+    fn screen_drawn(&self, terminal: Size, drawn: &Drawn) -> Buffer {
+        let mut backend = Terminal::new(TestBackend::new(terminal.cols, terminal.rows)).unwrap();
+        let area = backend.size().unwrap();
+        let ribbon = self.ribbon(area.into(), drawn);
+        backend.draw(|frame| draw_frame(frame, &ribbon)).unwrap();
+        backend.backend().buffer().clone()
     }
 
     fn name(&mut self, window: WindowId, name: &str) {
@@ -1313,4 +1337,231 @@ fn title_on_a_floating_window() {
         .unwrap();
     let text = row_text(&screen, row);
     assert!(text.contains("╭float─"), "{text}");
+}
+
+const BUTTONS: [&str; 3] = ["[_]", "[□]", "[X]"];
+
+fn cells(screen: &Buffer, row: u16, columns: std::ops::Range<u16>) -> String {
+    columns.map(|col| screen[(col, row)].symbol()).collect()
+}
+
+#[test]
+fn three_buttons_in_a_40_column_box() {
+    let (mut fixture, windows) = Fixture::new(Size::new(80, 24), 2, 80);
+    floating_at(&mut fixture, windows[1], 20, 6, 80);
+    fixture.decorate(windows[1], &BUTTONS);
+    let screen = fixture.screen(Size::new(80, 24));
+    assert_eq!(cells(&screen, 6, 48..60), "─[_][□][X]─╮");
+}
+
+#[test]
+fn spans_that_just_fit() {
+    let (mut fixture, windows) = Fixture::new(Size::new(26, 6), 1, 26);
+    fixture.name(windows[0], "vim");
+    fixture.decorate(windows[0], &BUTTONS);
+    let screen = fixture.screen(Size::new(26, 6));
+    assert_eq!(cells(&screen, 0, 0..13), "╭─[_][□][X]─╮");
+}
+
+#[test]
+fn box_too_narrow() {
+    let (mut fixture, windows) = Fixture::new(Size::new(24, 6), 1, 24);
+    fixture.name(windows[0], "vim");
+    fixture.decorate(windows[0], &BUTTONS);
+    let screen = fixture.screen(Size::new(24, 6));
+    assert_eq!(
+        row_text(&screen, 0),
+        format!("╭vim{}╮{}", "─".repeat(7), " ".repeat(12))
+    );
+}
+
+#[test]
+fn no_decorations_without_a_top_side() {
+    let (mut fixture, windows) = Fixture::new(Size::new(80, 24), 2, 80);
+    floating_at(&mut fixture, windows[1], 20, 6, 80);
+    fixture.floating_border.sides = sides(&["left", "right", "bottom"]);
+    for &window in &windows {
+        fixture.decorate(window, &["[X]"]);
+    }
+    let screen = fixture.screen(Size::new(80, 24));
+    assert!(!row_text(&screen, 6).contains("[X]"));
+    assert_eq!(cells(&screen, 0, 35..38), "[X]");
+    let drawn = fixture.at_rest(Size::new(80, 24));
+    let topped: Vec<WindowId> = fixture
+        .tops(Size::new(80, 24), &drawn)
+        .iter()
+        .map(|top| top.window)
+        .collect();
+    assert_eq!(topped, [windows[0]]);
+}
+
+#[test]
+fn decorations_of_a_column_cut_at_the_left_edge() {
+    let (mut fixture, windows) = Fixture::new(Size::new(80, 24), 2, 80);
+    for &window in &windows {
+        fixture.change(SessionAction::CycleWidth(window), 80);
+        fixture.decorate(window, &["[X]"]);
+    }
+    fixture.act(ViewAction::FocusRight, 80);
+    let screen = fixture.screen(Size::new(80, 24));
+    assert_eq!(cells(&screen, 0, 22..27), "[X]─╮");
+    assert_eq!(cells(&screen, 0, 75..80), "[X]─╮");
+}
+
+#[test]
+fn decorations_during_an_animation() {
+    let (mut fixture, windows) = Fixture::new(Size::new(80, 12), 2, 80);
+    fixture.decorate(windows[0], &["[X]"]);
+    let mut drawn = fixture.at_rest(Size::new(80, 12));
+    drawn.tiles.get_mut(&windows[0]).unwrap().width = 30;
+    drawn.settled = false;
+    let top = fixture
+        .tops(Size::new(80, 12), &drawn)
+        .into_iter()
+        .find(|top| top.window == windows[0])
+        .unwrap();
+    assert_eq!(top.width, 30);
+    let screen = fixture.screen_drawn(Size::new(80, 12), &drawn);
+    assert_eq!(cells(&screen, 0, 25..30), "[X]─╮");
+}
+
+#[test]
+fn decorations_on_a_lifted_tile() {
+    let (mut fixture, windows) = Fixture::new(Size::new(80, 12), 2, 80);
+    for &window in &windows {
+        fixture.decorate(window, &["[X]"]);
+    }
+    fixture.overlay.lifted = Some(Lifted {
+        window: windows[0],
+        x: 20,
+        y: 2,
+        width: 40,
+        height: 6,
+        outline: Some(Rect::new(0, 0, 40, 12)),
+    });
+    let screen = fixture.screen(Size::new(80, 12));
+    assert_eq!(cells(&screen, 2, 55..60), "[X]─╮");
+    assert_eq!(cells(&screen, 0, 0..20), format!("╭{}", "─".repeat(19)));
+    let drawn = fixture.at_rest(Size::new(80, 12));
+    let lifted = fixture
+        .tops(Size::new(80, 12), &drawn)
+        .into_iter()
+        .find(|top| top.window == windows[0])
+        .unwrap();
+    assert_eq!(lifted.width, 40);
+}
+
+#[test]
+fn decorations_with_titles_off() {
+    let (mut fixture, windows) = Fixture::new(Size::new(40, 6), 1, 40);
+    fixture.decorate(windows[0], &["[X]"]);
+    let screen = fixture.screen(Size::new(40, 6));
+    assert_eq!(
+        row_text(&screen, 0),
+        format!("╭{}[X]─╮{}", "─".repeat(14), " ".repeat(20))
+    );
+}
+
+#[test]
+fn title_cut_before_decorations() {
+    let (mut fixture, windows) = Fixture::new(Size::new(40, 6), 1, 40);
+    fixture.name(windows[0], "cargo test --workspace");
+    fixture.decorate(windows[0], &BUTTONS);
+    let screen = fixture.screen(Size::new(40, 6));
+    assert_eq!(
+        row_text(&screen, 0),
+        format!("╭cargo t─[_][□][X]─╮{}", " ".repeat(20))
+    );
+}
+
+#[test]
+fn short_title_beside_decorations() {
+    let (mut fixture, windows) = Fixture::new(Size::new(80, 6), 1, 80);
+    fixture.name(windows[0], "vim");
+    fixture.decorate(windows[0], &BUTTONS);
+    let screen = fixture.screen(Size::new(80, 6));
+    assert_eq!(
+        row_text(&screen, 0),
+        format!("╭vim{}[_][□][X]─╮{}", "─".repeat(25), " ".repeat(40))
+    );
+}
+
+#[test]
+fn decorations_keep_the_corner_cells() {
+    let (mut fixture, windows) = Fixture::new(Size::new(40, 6), 1, 40);
+    fixture.tile_border = Border {
+        sides: Sides::ALL,
+        chars: BorderChars::Named(CharSet::Rounded),
+    };
+    fixture.focused_tile_chars = BorderChars::Named(CharSet::Rounded);
+    fixture.decorate(windows[0], &["[X]"]);
+    let screen = fixture.screen(Size::new(40, 6));
+    assert_eq!(cells(&screen, 0, 0..1), "╭");
+    assert_eq!(cells(&screen, 0, 15..20), "[X]─╮");
+}
+
+#[test]
+fn plain_spans_take_the_border_style() {
+    let (mut fixture, windows) = Fixture::new(Size::new(80, 24), 2, 80);
+    for &window in &windows {
+        fixture.decorate(window, &["[X]"]);
+    }
+    assert_eq!(fixture.view.focused(), Some(windows[0]));
+    let screen = fixture.screen(Size::new(80, 24));
+    for (left, focused) in [(0, true), (40, false)] {
+        let span = &screen[(left + 36, 0)];
+        assert_eq!(span.symbol(), "X");
+        assert_eq!(span.style(), screen[(left + 38, 0)].style());
+        assert_eq!(
+            span.modifier.contains(ratatui::style::Modifier::BOLD),
+            focused
+        );
+    }
+}
+
+#[test]
+fn style_over_the_border_style() {
+    let (mut fixture, windows) = Fixture::new(Size::new(40, 6), 1, 40);
+    fixture.styles.border_focused = Style {
+        fg: Some(Color::Rgb(0xb1, 0xb9, 0xf9)),
+        bold: true,
+        ..Style::default()
+    };
+    fixture.decorations.insert(
+        windows[0],
+        vec![DecorationSpan {
+            text: "[X]".to_owned(),
+            style: StylePatch {
+                fg: Some(Color::Index(1)),
+                ..StylePatch::default()
+            },
+        }],
+    );
+    let screen = fixture.screen(Size::new(40, 6));
+    let span = &screen[(16, 0)];
+    assert_eq!(span.symbol(), "X");
+    assert_eq!(span.fg, ratatui::style::Color::Indexed(1));
+    assert!(span.modifier.contains(ratatui::style::Modifier::BOLD));
+}
+
+#[test]
+fn decorations_beside_a_title() {
+    let (mut fixture, windows) = Fixture::new(Size::new(60, 6), 2, 60);
+    fixture.name(windows[0], "vim");
+    fixture.name(windows[1], "cargo test --workspace");
+    for &window in &windows {
+        fixture.decorate(window, &BUTTONS);
+    }
+    fixture.write(windows[0], b"editing");
+    assert_snapshot!(fixture.render(Size::new(60, 6)));
+}
+
+#[test]
+fn decorations_on_a_floating_window() {
+    let (mut fixture, windows) = Fixture::new(Size::new(80, 24), 3, 80);
+    floating_at(&mut fixture, windows[2], 20, 6, 80);
+    fixture.name(windows[2], "float");
+    fixture.decorate(windows[2], &BUTTONS);
+    fixture.write(windows[2], b"floating");
+    assert_snapshot!(fixture.render(Size::new(80, 24)));
 }

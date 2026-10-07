@@ -456,6 +456,8 @@ gband.set {
 
 The groups `WindowBorder` and `WindowBorderFocused` color the borders, and each theme other than `default` sets both; [docs/plugins.md](docs/plugins.md#highlight-groups-gbandhl) lists them.
 
+Lua can draw decorations, such as buttons, at the right end of a window's top border, as [docs/plugins.md](docs/plugins.md#window-decorations) describes.
+
 ### Floating windows
 
 Each band has a floating layer drawn over its columns, as niri's floating windows are.
@@ -517,6 +519,7 @@ gband.keymap.set("prefix", "N", gband.action["prompt.rename"], { desc = "rename 
 
 Every window that runs a program has a name, shown on its top border from the border's second column, in the border's colors.
 A name too long for the border is cut to the border's width less 2 cells, and a window whose border draws no top side shows none.
+On a border that shows decorations, the name is cut shorter, so that at least one border cell is left before them.
 The server keeps the names, so every client attached to a session shows the same ones.
 
 A window's name is, in this order:
