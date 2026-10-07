@@ -30,7 +30,7 @@ Every animated quantity SHALL move from its drawn value toward its target as a c
 
 #### Scenario: Speed changed mid-flight
 - **WHEN** a quantity moving from 0 toward 40 at speed 1 is drawn at 20, and a reload sets `animation_speed` to 2
-- **THEN** the next frame draws it within one cell of where it would have been drawn without the change
+- **THEN** at that instant it is drawn at the same value, with the same velocity
 - **AND** it is drawn at 40 and is at rest no later than 200 ms after the reload
 
 ### Requirement: Turning animations off
@@ -64,3 +64,31 @@ A reload that turns animations off SHALL draw every animated quantity at its tar
 #### Scenario: Turned off by a reload mid-flight
 - **WHEN** the camera is scrolling and a reload sets `gband.opt.animations = false`
 - **THEN** the next frame the client draws shows the camera at its target
+
+### Requirement: Animated presentation
+The client SHALL separate what it draws from what the layout and its view decide. The layout, the tile geometry, the focused window, the viewed band and each camera SHALL change at once, as the layout, layout-view and client-attach capabilities define. Only the drawn camera, the drawn band and each tile's drawn position and size SHALL move toward those targets over time. Key input, pastes and session actions SHALL go to the newly focused window from the moment focus changes, whether or not an animation is running. When no animation is running, the drawn state SHALL equal the target state.
+
+#### Scenario: Typing during a scroll
+- **WHEN** the client focuses the column to the right, the camera starts to scroll, and the user types `echo right` and Enter before the scroll ends
+- **THEN** `right` appears in the newly focused window only
+
+#### Scenario: At rest
+- **WHEN** no layout or view change has happened for `400 / s` ms, where `s` is the value of `animation_speed`
+- **THEN** the client draws exactly what it would draw with animations off
+
+### Requirement: Band switch
+When the viewed band changes to another band that is still in the layout, the client SHALL animate a vertical position from the old band to the new one. Band `i` in the layout SHALL be drawn in a region as tall as the client terminal, starting at row `i` times the terminal's height less the drawn vertical position. Each band's tiles SHALL be cut at the edges of its region. The band being left SHALL be drawn with the camera it was drawn with when the switch started. A switch made while another is running SHALL continue from the drawn vertical position. When bands are added or removed above the viewed one during a switch, the drawn vertical position SHALL shift with them, so that no band jumps on screen.
+
+#### Scenario: Switch down
+- **WHEN** the terminal is 80×24, the client views B1 at rest and views the band below, B2
+- **THEN** the first frame shows B1 only
+- **AND** a later frame shows the bottom part of B1 above the top part of B2
+- **AND** within `400 / s` ms, where `s` is the value of `animation_speed`, only B2 is shown
+
+#### Scenario: Two switches in a row
+- **WHEN** the client views B1 of B1, B2 and B3, views the band below, and views the band below again before the first slide ends
+- **THEN** the slide continues downward without a jump and ends showing B3
+
+#### Scenario: Old band removed
+- **WHEN** the client switches from B1 to B2 and the last window of B1 exits before the slide ends
+- **THEN** the client shows B2 at rest from the next frame

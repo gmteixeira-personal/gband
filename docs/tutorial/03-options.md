@@ -17,6 +17,16 @@ gband.set {
 }
 ```
 
+Scrolling, band switches and resizes animate.
+Make them run twice as fast:
+
+```lua
+gband.opt.animation_speed = 2
+```
+
+The speed goes from 0.1 to 10.
+`gband.opt.animations = false` turns the animations off instead, and `GBAND_ANIMATIONS=off` before you attach turns them off for that client whatever the option holds.
+
 Options are set while the configuration loads, so set them at the top level of `user/init.lua`, never inside a binding.
 An invalid value is reported at its line and the option keeps its default.
 [Options](../plugins.md#options-gbandopt) lists every option of the client and the server.

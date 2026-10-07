@@ -47,7 +47,8 @@ gband follows niri's scrollable tiling model instead, with bands in place of nir
   Opening a window in it adds a new empty band below, and a band other than the last is removed when its last window closes.
 
 Scrolling, band switches, moving windows and resizes animate.
-Set `GBAND_ANIMATIONS=off` before you attach to turn the animations off.
+`gband.opt.animations = false` turns the animations off, and `gband.opt.animation_speed` makes them faster or slower; see [Options](docs/plugins.md#options-gbandopt).
+Set `GBAND_ANIMATIONS=off` before you attach to turn the animations off, whatever the `animations` option holds.
 
 Each window shows its name on its top border; see [Window names](#window-names).
 Set `GBAND_WINDOW_TITLES=off` before you attach to draw no names, whatever the `window_titles` option holds.
@@ -318,6 +319,8 @@ The client options, set in `user/init.lua`, and their defaults:
 | `center_focused_column` | `"never"`, `"always"` or `"on-overflow"` | `"never"` |
 | `loop_bands` | `true` or `false`: whether focus goes round from a band's last column to its first, drawing a long enough band as a loop | `true` |
 | `window_titles` | `true` or `false`: whether windows show their names on their top borders | `true` |
+| `animations` | `true` or `false`: whether the client animates changes of the layout and the view | `true` |
+| `animation_speed` | how fast animations run, from `0.1` to `10`, `2` being twice as fast as `1` | `1` |
 | `tile_border_sides` | the sides of a tiled window's border that are drawn: a list of `"top"`, `"right"`, `"bottom"` and `"left"` | `{ "top", "right", "bottom", "left" }` |
 | `tile_border_chars` | the border's characters: `"plain"`, `"rounded"`, `"double"`, `"thick"`, or a list of eight one-cell strings | `"rounded"` |
 | `focused_tile_border_chars` | the focused tiled window border's characters, with the same sides | `"rounded"` |

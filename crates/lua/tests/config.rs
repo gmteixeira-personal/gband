@@ -558,6 +558,16 @@ fn no_binding_in_the_defaults_file() {
 }
 
 #[test]
+fn animation_options_in_the_defaults_file() {
+    let scratch = Scratch::new("defaults-animations");
+    prepare(&scratch.dir()).unwrap();
+    let text = fs::read_to_string(defaults_file(&scratch.dir(), gband_lua::Side::Client)).unwrap();
+    let lines: Vec<&str> = text.lines().collect();
+    assert!(lines.contains(&"gband.opt.animations = true"), "{text}");
+    assert!(lines.contains(&"gband.opt.animation_speed = 1"), "{text}");
+}
+
+#[test]
 fn copied_defaults_follow_the_saved_style() {
     let (scratch, saved) = with_saved_style("copied-direct", "direct");
     prepare(&scratch.dir()).unwrap();
