@@ -21,6 +21,7 @@ pub(crate) fn install(lua: &Lua, gband: &Table) -> mlua::Result<()> {
     gband.set("view", lua.create_function(view)?)?;
     let window = lua.create_table()?;
     window.set("focus", lua.create_function(focus)?)?;
+    window.set("minimize", lua.create_function(minimize)?)?;
     window.set("set_width", lua.create_function(set_width)?)?;
     window.set("set_height", lua.create_function(set_height)?)?;
     window.set("set_position", lua.create_function(set_position)?)?;
@@ -450,6 +451,9 @@ fn layout(lua: &Lua, (): ()) -> mlua::Result<Table> {
                 plugin_windows::plugin_window_of(lua, record.window)?,
             )?;
             set_names(&item, &state, record.window)?;
+            if state.minimized.contains(&record.window) {
+                item.set("minimized", true)?;
+            }
             floating.push(item)?;
         }
         entry.set("floating", floating)?;
@@ -500,6 +504,20 @@ fn focus(lua: &Lua, target: Value) -> mlua::Result<()> {
     dispatching(lua, what)?;
     let window = checked(lua, what, window(lua, &target))?;
     let action = Action::View(ViewAction::FocusWindow(window));
+    api::queue(lua, Dispatch::Action(action), what)
+}
+
+fn minimize(lua: &Lua, target: Value) -> mlua::Result<()> {
+    let what = "gband.window.minimize";
+    dispatching(lua, what)?;
+    let window = checked(lua, what, window(lua, &target))?;
+    if ui::current_state(lua).layout.floating(window).is_none() {
+        return Err(ConfigError::raise(
+            lua,
+            format!("{what}: window {window} is not a floating window"),
+        ));
+    }
+    let action = Action::View(ViewAction::Minimize(Some(window)));
     api::queue(lua, Dispatch::Action(action), what)
 }
 

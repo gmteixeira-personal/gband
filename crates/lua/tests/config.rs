@@ -757,6 +757,7 @@ fn every_action_is_named() {
         "focus_band_up",
         "center_column",
         "switch_focus_floating_tiled",
+        "minimize_window",
         "open_window",
         "close_window",
         "consume_or_expel_left",
@@ -809,6 +810,25 @@ fn built_in_descriptions() {
         "for _, action in ipairs(gband.action.list()) do if action.name == 'cycle_column_width' then return action.desc end end",
     );
     assert_eq!(desc, "cycle the width of the window's column");
+}
+
+#[test]
+fn minimize_description_and_no_target() {
+    let config = loaded("minimize", JOB);
+    let desc: String = eval(
+        &config,
+        "for _, action in ipairs(gband.action.list()) do if action.name == 'minimize_window' then return action.desc end end",
+    );
+    assert_eq!(desc, "minimize the focused floating window");
+    let outcome = run_job(&config, "gband.action.minimize_window({ window = 1 })");
+    assert!(outcome.dispatched.is_empty(), "{:?}", outcome.dispatched);
+    let [error] = outcome.errors.as_slice() else {
+        panic!("{:?}", outcome.errors);
+    };
+    assert!(
+        error.message.contains("`minimize_window` takes no target"),
+        "{error}"
+    );
 }
 
 #[test]

@@ -267,6 +267,35 @@ fn moving_a_floating_box_is_a_layout_change() {
 }
 
 #[test]
+fn minimizing_changes_focus_and_not_the_layout() {
+    let (_scratch, mut client) = recording(
+        "minimize",
+        "gband.bind('alt+m', gband.action.minimize_window)
+gband.bind('alt+n', function() gband.window.minimize(2) end)",
+    );
+    let (mut layout, windows) = layout_of(3);
+    for &window in &windows[1..] {
+        layout.apply(
+            SessionAction::ToggleFloating {
+                window,
+                after: None,
+                floating: None,
+            },
+            Size::new(80, 24),
+            &LayoutOptions::default(),
+        );
+    }
+    client.receive([shown(&layout), ServerMessage::Focus(windows[2])]);
+    client.clear();
+    client.press("alt+m");
+    assert_eq!(client.log(), ["FocusChanged previous=3,window=2"]);
+    client.receive([ServerMessage::Focus(windows[0])]);
+    client.clear();
+    client.press("alt+n");
+    assert!(client.log().is_empty(), "{:?}", client.log());
+}
+
+#[test]
 fn heights_alone_are_no_layout_change() {
     let (_scratch, mut client) = recording("layout-heights", "");
     let (mut layout, windows) = layout_of(2);

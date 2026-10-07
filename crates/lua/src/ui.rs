@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -38,6 +38,7 @@ pub struct ViewState {
     pub ribbon: Size,
     pub states: Arc<WindowStates>,
     pub names: Arc<WindowNames>,
+    pub minimized: BTreeSet<WindowId>,
 }
 
 pub type WindowStates = BTreeMap<WindowId, BTreeMap<String, Data>>;

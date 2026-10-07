@@ -403,6 +403,7 @@ The actions in `gband.action`:
 | `focus_band_down`, `focus_band_up` | view the band below or above |
 | `center_column` | scroll the view so the focused column sits in its middle, or move the focused floating window to the middle of the screen |
 | `switch_focus_floating_tiled` | move focus between the band's floating windows and its tiled windows |
+| `minimize_window` | hide the focused floating window from this client until it is focused again |
 | `open_window` | open a window running your shell right of the focused column |
 | `close_window` | close the focused floating plugin window, such as the key list, when one has focus, otherwise the focused window |
 | `consume_or_expel_left`, `consume_or_expel_right` | move the focused window into or out of the neighbouring column |
@@ -472,6 +473,11 @@ The width keys change the box's width by the same steps as a column's, and the h
 Ctrl+Space then Ctrl with `h`, `l`, `j` or `k`, or with an arrow key, moves the box a tenth of the screen; on a tiled window the same keys swap its column with the next column, or the window with the next window in its column.
 
 Each client stacks floating windows in its own order, with the one it focused last on top, and draws its floating plugin windows above them.
+
+`minimize_window` hides the focused floating window, and `gband.window.minimize` hides a floating window by number.
+A minimized window is hidden only on the client that minimized it: other clients still draw it, and its program keeps its size.
+No key is bound to it by default, since the default key styles have no window list to bring it back.
+`gband.window.focus` brings it back, on top of the other floating windows.
 
 ### Key list
 

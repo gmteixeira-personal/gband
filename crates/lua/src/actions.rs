@@ -23,7 +23,7 @@ const fn builtin(name: &'static str, action: Action, desc: &'static str) -> Buil
     BuiltinAction { name, action, desc }
 }
 
-pub const ACTIONS: [BuiltinAction; 29] = [
+pub const ACTIONS: [BuiltinAction; 30] = [
     builtin(
         "focus_column_left",
         Action::View(ViewAction::FocusLeft),
@@ -63,6 +63,11 @@ pub const ACTIONS: [BuiltinAction; 29] = [
         "switch_focus_floating_tiled",
         Action::View(ViewAction::SwitchLayer),
         "switch focus between floating and tiled windows",
+    ),
+    builtin(
+        "minimize_window",
+        Action::View(ViewAction::Minimize(None)),
+        "minimize the focused floating window",
     ),
     builtin(
         "open_window",

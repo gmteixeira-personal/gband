@@ -2320,3 +2320,184 @@ fn tile_with_floating_false_fills_after() {
         [toggle(windows[2], Some(windows[1]), Some(false))]
     );
 }
+
+fn minimizing(name: &str) -> (Mouse, Vec<WindowId>) {
+    let (mut layout, windows) = columns_of(3, None);
+    float(&mut layout, windows[2], Proportion::ONE_HALF, 12, 10, 4);
+    let mut mouse = Mouse::new(
+        name,
+        "gband.keymap.set('root', 'alt+m', gband.action.minimize_window)",
+        layout,
+    );
+    dispatch(
+        &mut mouse.display,
+        Action::View(ViewAction::FocusWindow(windows[2])),
+    );
+    (mouse, windows)
+}
+
+#[test]
+fn minimize_by_name_sends_no_action_and_a_shown_message_without_it() {
+    let (mut mouse, windows) = minimizing("minimize-by-name");
+    assert_eq!(
+        mouse.display.report_shown(),
+        Some(ClientMessage::Shown(vec![
+            windows[0], windows[1], windows[2]
+        ]))
+    );
+    assert_eq!(mouse.key("alt+m"), [Step::Nothing]);
+    assert_eq!(mouse.display.focused(), Some(windows[0]));
+    assert_eq!(
+        mouse.display.report_shown(),
+        Some(ClientMessage::Shown(vec![windows[0], windows[1]]))
+    );
+}
+
+#[test]
+fn minimized_floating_window_over_a_tile() {
+    let (mut mouse, windows) = minimizing("minimize-target");
+    let now = mouse.now;
+    assert_eq!(
+        mouse.display.hit(15, 6, now).target,
+        Target::Window(windows[2])
+    );
+    mouse.key("alt+m");
+    assert_eq!(
+        mouse.display.hit(15, 6, now).target,
+        Target::Window(windows[0])
+    );
+}
+
+#[test]
+fn minimizing_the_dragged_window_ends_the_gesture() {
+    let (mut layout, windows) = columns_of(2, None);
+    float(&mut layout, windows[1], Proportion::ONE_HALF, 12, 10, 4);
+    let mut mouse = dragging("minimize-drag", layout);
+    let left = MouseButton::Left;
+    mouse.event(MouseKind::Press(left), 20, 6, Modifiers::NONE);
+    mouse.event(MouseKind::Motion(Some(left)), 22, 6, Modifiers::NONE);
+    mouse.now += Duration::from_millis(40);
+    mouse.controls.flush(&mut mouse.display, mouse.now);
+    dispatch(
+        &mut mouse.display,
+        Action::View(ViewAction::Minimize(Some(windows[1]))),
+    );
+    let mut steps = mouse.event(MouseKind::Motion(Some(left)), 30, 6, Modifiers::NONE);
+    steps.extend(mouse.event(MouseKind::Release(left), 30, 6, Modifiers::NONE));
+    mouse.now += Duration::from_millis(40);
+    steps.extend(mouse.controls.flush(&mut mouse.display, mouse.now));
+    assert!(sent(&steps).is_empty(), "{steps:?}");
+}
+
+fn two_floating(name: &str, source: &str) -> (Mouse, Vec<WindowId>) {
+    let (mut layout, windows) = columns_of(3, None);
+    float(&mut layout, windows[1], Proportion::ONE_HALF, 12, 10, 4);
+    float(&mut layout, windows[2], Proportion::ONE_HALF, 12, 14, 6);
+    let mut mouse = Mouse::new(name, source, layout);
+    dispatch(
+        &mut mouse.display,
+        Action::View(ViewAction::FocusWindow(windows[2])),
+    );
+    mouse.display.report_shown();
+    (mouse, windows)
+}
+
+#[test]
+fn minimize_an_unfocused_floating_window_by_number() {
+    let (mut mouse, windows) = two_floating(
+        "minimize-unfocused",
+        "gband.bind('alt+m', function() gband.window.minimize(2) end)",
+    );
+    assert_eq!(mouse.key("alt+m"), [Step::Nothing]);
+    assert_eq!(mouse.display.focused(), Some(windows[2]));
+    assert_eq!(
+        mouse.display.report_shown(),
+        Some(ClientMessage::Shown(vec![windows[0], windows[2]]))
+    );
+}
+
+#[test]
+fn minimize_the_focused_window_by_number() {
+    let (mut mouse, _) = two_floating(
+        "minimize-focused",
+        "gband.bind('alt+m', function() gband.window.minimize(2) gband.window.minimize(3) end)",
+    );
+    mouse.key("alt+m");
+    let view: String =
+        mouse.eval("local v = gband.view() return v.window .. ' ' .. tostring(v.floating)");
+    assert_eq!(view, "1 false");
+}
+
+#[test]
+fn minimize_a_window_of_another_band_by_number() {
+    let mut layout = Layout::new();
+    let first = layout.allocate_window();
+    layout.open(
+        first,
+        layout.bands()[0].id,
+        None,
+        None,
+        &LayoutOptions::default(),
+    );
+    let other = layout.allocate_window();
+    layout.open(
+        other,
+        layout.bands()[1].id,
+        None,
+        None,
+        &LayoutOptions::default(),
+    );
+    layout.apply(
+        SessionAction::ToggleFloating {
+            window: other,
+            after: None,
+            floating: None,
+        },
+        AREA,
+        &LayoutOptions::default(),
+    );
+    let mut mouse = Mouse::new(
+        "minimize-other-band",
+        &format!(
+            "gband.bind('alt+m', function() gband.window.minimize({other}) gband.band.view(2) end)"
+        ),
+        layout,
+    );
+    mouse.key("alt+m");
+    let view: String =
+        mouse.eval("local v = gband.view() return v.band .. ' ' .. tostring(v.window)");
+    assert_eq!(view, "2 nil");
+}
+
+#[test]
+fn restore_with_focus_by_number() {
+    let (mut mouse, windows) = two_floating(
+        "minimize-restore",
+        "gband.bind('alt+m', function() gband.window.minimize(2) end)
+gband.bind('alt+f', function() gband.window.focus(2) end)",
+    );
+    mouse.key("alt+m");
+    let minimized: bool = mouse.eval("return gband.layout().bands[1].floating[1].minimized");
+    assert!(minimized);
+    mouse.key("alt+f");
+    assert_eq!(mouse.display.focused(), Some(windows[1]));
+    let now = mouse.now;
+    assert_eq!(
+        mouse.display.hit(20, 8, now).target,
+        Target::Window(windows[1])
+    );
+    let minimized: Option<bool> =
+        mouse.eval("return gband.layout().bands[1].floating[1].minimized");
+    assert_eq!(minimized, None);
+}
+
+#[test]
+fn minimize_then_focus_in_one_function() {
+    let (mut mouse, windows) = two_floating(
+        "minimize-then-focus",
+        "gband.bind('alt+m', function() gband.window.minimize(3) gband.window.focus(3) end)",
+    );
+    mouse.key("alt+m");
+    assert_eq!(mouse.display.focused(), Some(windows[2]));
+    assert_eq!(mouse.display.report_shown(), None);
+}
