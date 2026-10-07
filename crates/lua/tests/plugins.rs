@@ -377,6 +377,61 @@ fn server_api_in_the_client() {
 }
 
 #[test]
+fn core_primitives_in_the_server() {
+    let scratch = Scratch::new("core-in-server");
+    let file = scratch.server("local a = 1\ngband.core.owner()");
+    let error = scratch.load_server().err().unwrap();
+    assert_error_at(&error, &file, 2, "`gband.core`");
+    assert!(error.message.contains("client"), "{error}");
+}
+
+fn bundled_loader(config: &Config, name: &str) -> (mlua::Function, String) {
+    config
+        .runtime
+        .lua()
+        .load(
+            "local name = ...\n\
+             for _, search in ipairs(package.searchers) do\n\
+               local loader, data = search(name)\n\
+               if type(loader) == 'function' then return loader, data end\n\
+             end",
+        )
+        .call(name)
+        .unwrap()
+}
+
+#[test]
+fn bundled_chunk_receives_nothing_private() {
+    let scratch = Scratch::new("bundled-private");
+    let config = scratch.loaded();
+    let (loader, path) = bundled_loader(&config, "gband.sidebar");
+    assert_eq!(path, "gband/sidebar.lua");
+    assert_eq!(loader.info().source.as_deref(), Some("@gband/sidebar.lua"));
+}
+
+#[test]
+fn bundled_chunk_arguments() {
+    let scratch = Scratch::new("bundled-arguments");
+    let probe = scratch.user_file("lua/probe.lua", "return { ... }");
+    scratch.write("probe = require('probe')");
+    let config = scratch.loaded();
+    let probed: Vec<String> = global(&config, "probe");
+    assert_eq!(probed, ["probe".to_owned(), probe.display().to_string()]);
+    let (loader, path) = bundled_loader(&config, "gband.keyform");
+    assert_eq!(path, "gband/keyform.lua");
+    assert_eq!(loader.info().source.as_deref(), Some("@gband/keyform.lua"));
+    let passed: mlua::Function = config
+        .runtime
+        .lua()
+        .load(
+            "return function(loader, data) return loader('gband.keyform', data)('ctrl+space') end",
+        )
+        .eval()
+        .unwrap();
+    assert_eq!(passed.call::<String>((loader, path)).unwrap(), "C-space");
+}
+
+#[test]
 fn view_action_in_the_server() {
     let scratch = Scratch::new("view-action");
     let file = scratch.server("local a = gband.action.focus_column_left");
@@ -817,11 +872,17 @@ fn bundled_module_shadowed() {
 }
 
 #[test]
-fn api_chunks_are_not_modules() {
+fn api_module_is_a_module() {
     let scratch = Scratch::new("bundled-api");
-    scratch.write("found = pcall(require, 'gband.hl')");
+    scratch.write(
+        "local hl = require('gband.hl')\n\
+         loaded = hl == package.loaded['gband.hl']\n\
+         drawn = hl.drawn",
+    );
     let config = scratch.loaded();
-    assert!(!global::<bool>(&config, "found"));
+    assert!(global::<bool>(&config, "loaded"));
+    let drawn: mlua::Function = global(&config, "drawn");
+    assert_eq!(drawn.info().source.as_deref(), Some("@gband/hl.lua"));
 }
 
 #[test]
@@ -849,7 +910,7 @@ fn test_side() -> (gband_lua::Lua, Arc<Mutex<String>>) {
 }
 
 #[test]
-fn test_side_holds_only_the_side_and_version() {
+fn test_side_holds_only_the_side_the_version_and_core() {
     let (lua, printed) = test_side();
     lua.load("print(gband.side, gband.api_version)")
         .exec()
@@ -862,7 +923,23 @@ fn test_side_holds_only_the_side_and_version() {
         )
         .eval()
         .unwrap();
-    assert_eq!(fields, ["api_version", "side"]);
+    assert_eq!(fields, ["api_version", "core", "side"]);
+}
+
+#[test]
+fn test_primitives() {
+    let (lua, _) = test_side();
+    let error = lua
+        .load("local a = 1\nreturn gband.core.owner")
+        .set_name("@spec_test.lua")
+        .exec()
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("spec_test.lua:2:"), "{error}");
+    assert!(
+        error.contains("`gband.core.owner` is a client API"),
+        "{error}"
+    );
 }
 
 #[test]

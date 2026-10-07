@@ -333,3 +333,17 @@ fn theme_sets_a_bars_base() {
     clean(&run_job(&config, "gband.hl.set('Bar', { bg = 236 })"));
     assert_eq!(bars(&config)[0].base.bg, Some(Color::Index(236)));
 }
+
+#[test]
+fn reloads_keep_bars_drawn() {
+    let scratch = Scratch::new("reload-bar");
+    scratch.write("gband.bar.add({ id = 'clock', side = 'right', size = 5, lines = { '12:00' } })");
+    for _ in 0..2 {
+        let config = scratch.loaded();
+        clean(&config.runtime.set_state(terminal(80, 24)));
+        clean(&config.runtime.refresh_plugins());
+        let shown = bars(&config);
+        assert_eq!(shown.len(), 1);
+        assert_eq!(texts(&shown[0])[0], "12:00");
+    }
+}

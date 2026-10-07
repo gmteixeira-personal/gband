@@ -1196,3 +1196,40 @@ fn truncate_at_a_wide_character() {
     let config = scratch.loaded();
     assert_eq!(global::<String>(&config, "cut"), "日…");
 }
+
+#[test]
+fn focus_before_the_layout_holds_the_window() {
+    let client = Client::new("win-focus-early", "");
+    client.run("win = gband.win.open({ kind = 'tiled', focus = false })");
+    let win: u32 = client.global("win");
+    clean(
+        &client
+            .config
+            .runtime
+            .plugin_window_opened(win, Some(WindowId(5))),
+    );
+    let outcome = run_job(&client.config, "gband.win.focus(win)");
+    clean(&outcome);
+    assert_eq!(
+        outcome.dispatched,
+        [Dispatch::Action(Action::View(ViewAction::FocusWindow(
+            WindowId(5)
+        )))]
+    );
+}
+
+#[test]
+fn reloads_keep_plugin_windows_drawn() {
+    let scratch = Scratch::new("reload-plugin-window");
+    scratch.write(JOB);
+    for _ in 0..2 {
+        let config = scratch.loaded();
+        clean(&config.runtime.set_state(state()));
+        clean(&run_job(&config, "gband.win.open({ lines = { 'hi' } })"));
+        let frames = config.runtime.take_frames();
+        assert!(
+            matches!(frames.as_slice(), [(_, Some(Frame::Floating(_)))]),
+            "{frames:?}"
+        );
+    }
+}

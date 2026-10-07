@@ -224,9 +224,10 @@ Much of gband is itself written in Lua:
 - the APIs for bars, plugin windows, highlight groups and colorschemes
 
 These parts are written in Lua on purpose, to serve as examples of the API.
-Their source is in [crates/lua/src/runtime/gband/](crates/lua/src/runtime/gband/).
-The key styles, the key list, the error list and the themes use only the API that your configuration and plugins have, so you can copy one and change it.
-The default configuration and both key styles are also written to `defaults/` in the configuration directory; see [Configuration](#configuration).
+Their source is in [crates/lua/src/runtime/gband/](crates/lua/src/runtime/gband/), and gband writes a copy of every file to `defaults/lua/gband/` and `defaults/colors/` in the configuration directory; see [Configuration](#configuration).
+Every bundled file, the APIs included, uses only the documented API that your configuration and plugins have.
+To change or replace one, copy it from `defaults/lua/gband/` to `user/lua/gband/`, or from `defaults/colors/` to `user/colors/`, and edit the copy; it takes the bundled file's place at the next reload.
+The [plugin guide](docs/plugins.md) documents the whole API, including the primitives in `gband.core` that the bundled Lua is built on, and how `gband.api_version` changes between releases.
 
 Every part comes with sensible defaults, so gband needs no configuration until you want to change something.
 
@@ -237,6 +238,7 @@ gband creates the directory when it starts, with two folders in it:
 
 - `defaults/init.lua` holds the full default client configuration, and `defaults/server.lua` the default server configuration.
   `defaults/keystyle/modal.lua` and `defaults/keystyle/direct.lua` hold the bindings of the two key styles.
+  `defaults/lua/gband/` holds every Lua module bundled with gband, such as `defaults/lua/gband/sidebar.lua`, and `defaults/colors/` every bundled theme, such as `defaults/colors/nord.lua`; copy one into `user/` to change it, as [Scripting](#scripting) describes.
   gband owns these files: it writes each when it is missing and overwrites it when its content differs from the defaults of the running build.
   Edits to them have no effect.
 - `user/` holds your configuration.

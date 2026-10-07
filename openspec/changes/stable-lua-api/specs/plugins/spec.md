@@ -43,8 +43,8 @@ The first file found SHALL be loaded, and errors in it SHALL name its path and l
 - **THEN** `require("gband.sidebar")` loads `user/lua/gband/sidebar.lua`
 
 #### Scenario: API module is a module
-- **WHEN** no runtimepath entry holds `lua/gband/hl.lua` and `user/init.lua` calls `local hl, path = require("gband.hl")`
-- **THEN** `path` is `gband/hl.lua`, and `hl.drawn` is a function
+- **WHEN** no runtimepath entry holds `lua/gband/hl.lua` and `user/init.lua` calls `local hl = require("gband.hl")`
+- **THEN** `hl` is the table `package.loaded["gband.hl"]` holds, and `hl.drawn` is a function defined in `gband/hl.lua`
 
 #### Scenario: Bundled chunk arguments
 - **WHEN** `user/lua/probe.lua` returns `{ ... }`, and `user/init.lua` compares what `require("probe")` returns with what the bundled `gband.keyform` chunk receives

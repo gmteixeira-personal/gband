@@ -1,4 +1,4 @@
-local host = ...
+local core = gband.core
 
 local NAMED = {
   black = 0, red = 1, green = 2, yellow = 3, blue = 4, magenta = 5, cyan = 6, white = 7,
@@ -125,10 +125,10 @@ local function cycle_from(name, layer, spec)
 end
 
 local function changed(name)
-  if host.loading() or internal.quiet then
+  if core.loading() or internal.quiet then
     return
   end
-  host.emit("HighlightChanged", { group = name })
+  core.emit("HighlightChanged", { group = name })
 end
 
 local function store(layer, name, spec)
@@ -177,7 +177,7 @@ local function resolve(name)
       local key = table.concat(members, ",")
       if not warned[key] then
         warned[key] = true
-        host.warn("highlight link cycle through " .. table.concat(members, ", "))
+        core.warn("highlight link cycle through " .. table.concat(members, ", "))
       end
       break
     end
@@ -200,10 +200,6 @@ local function resolve(name)
     end
   end
   return style
-end
-
-function internal.resolve(name)
-  return resolve(name)
 end
 
 function internal.drawn(name)
@@ -235,8 +231,6 @@ function internal.restore(saved)
     group.explicit = saved[name]
   end
 end
-
-host.hl = internal
 
 gband.hl = {}
 
@@ -274,10 +268,12 @@ gband.hl.default("WindowBorder", { dim = true })
 gband.hl.default("WindowBorderFocused", { fg = "#b1b9f9", bold = true })
 gband.hl.default("ErrorBanner", { fg = "red", reverse = true })
 
-host.client_styles(function()
+core.provide("styles", function()
   return {
     border = internal.drawn("WindowBorder"),
     border_focused = internal.drawn("WindowBorderFocused"),
     banner = internal.drawn("ErrorBanner"),
   }
 end)
+
+return internal

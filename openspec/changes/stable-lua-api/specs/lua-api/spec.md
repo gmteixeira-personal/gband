@@ -47,6 +47,7 @@ The client SHALL provide the table `gband.core`, holding the primitives below. E
 | `next_window()` | returns a plugin window number never returned before in this client |
 | `present_window(id, frame)`, `forget_window(id)` | set, or remove, what the client draws for the plugin window `id` |
 | `request(entry)` | asks the server to open or close a tiled plugin window's drawn window |
+| `focus_window(window)` | focuses the window `window` as `gband.window.focus` does, without checking that the client's layout holds it yet |
 | `parse_key(name)` | returns the canonical form of the key name `name`, or nil when it is not a key name |
 | `border(spec)` | returns a border spec in its canonical form, or nil and a message |
 | `width(value)` | returns a column width as a numerator and a denominator, or nil and a message |
@@ -75,6 +76,10 @@ The frame, entry, slot and bar tables SHALL have the fields the API documentatio
 #### Scenario: Timer
 - **WHEN** a binding function starts `gband.core.timer(100, fn)` and cancels it after `fn` ran twice
 - **THEN** `fn` runs no more
+
+#### Scenario: Focus before the layout holds the window
+- **WHEN** the client reports that a tiled plugin window's drawn window is window 5, the layout the client last gave Lua does not hold window 5, and a binding function calls `gband.win.focus` on the plugin window
+- **THEN** the client focuses window 5 and reports no error
 
 #### Scenario: Several state functions
 - **WHEN** two plugins each call `gband.core.on_state` and the viewed band changes
@@ -151,7 +156,7 @@ Every Lua file bundled with gband SHALL use only the documented API, and none SH
 - every bundled colorscheme;
 - on the test side, `gband.test`.
 
-A copy of any of these files, placed where the runtimepath finds it first, SHALL behave as the bundled file does: a module at `lua/<path>.lua` of a runtimepath entry, and a colorscheme at `colors/<name>.lua`.
+A copy of any of these files, placed where the runtimepath finds it first, SHALL behave as the bundled file does: a module at `lua/<path>.lua` of a runtimepath entry, and a colorscheme at `colors/<name>.lua`. The one difference is the settings capability's theme list, which names every colorscheme on the runtimepath, so a copy of the alias `catppuccin` is listed where the bundled alias is not.
 
 #### Scenario: Copied sidebar
 - **WHEN** `user/lua/gband/sidebar.lua` holds the bundled sidebar's text, the default configuration is in use, and an error is reported
@@ -167,7 +172,7 @@ A copy of any of these files, placed where the runtimepath finds it first, SHALL
 - **THEN** every group and the palette resolve as they do with the bundled `nord`
 
 #### Scenario: Every bundled file copied
-- **WHEN** gband's Lua spec suite runs with every bundled module copied into `user/lua/` and every bundled colorscheme into `user/colors/` of each case's configuration directory
+- **WHEN** gband's Lua spec suite runs with every bundled module copied into `user/lua/` and every bundled colorscheme other than the alias `catppuccin` into `user/colors/` of each case's configuration directory
 - **THEN** every case passes, with the same screens as without the copies
 
 ### Requirement: Bundled sources on disk

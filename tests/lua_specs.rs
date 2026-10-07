@@ -2,9 +2,20 @@ use std::path::Path;
 use std::process::Command;
 
 const GBAND: &str = env!("CARGO_BIN_EXE_gband");
+const BUNDLED_COPIES: &str = gband_harness::runner::BUNDLED_COPIES;
 
 fn gband_test(directory: &Path, args: &[&str]) {
-    let output = Command::new(GBAND)
+    run(directory, args, false);
+}
+
+fn run(directory: &Path, args: &[&str], copies: bool) {
+    let mut command = Command::new(GBAND);
+    if copies {
+        command.env(BUNDLED_COPIES, "1");
+    } else {
+        command.env_remove(BUNDLED_COPIES);
+    }
+    let output = command
         .arg("test")
         .args(args)
         .current_dir(directory)
@@ -92,4 +103,25 @@ fn example_plugin_hello() {
 #[test]
 fn example_plugin_window() {
     gband_test(&root().join("examples/plugins/window"), &[]);
+}
+
+#[test]
+fn bundled_copies() {
+    gband_test(root(), &["tests/lua/bundled_copies_spec.lua"]);
+}
+
+#[test]
+fn every_case_with_bundled_copies() {
+    let mut specs: Vec<String> = std::fs::read_dir(root().join("tests/lua"))
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|name| name.ends_with("_spec.lua"))
+        .map(|name| format!("tests/lua/{name}"))
+        .collect();
+    specs.sort();
+    let specs: Vec<&str> = specs.iter().map(String::as_str).collect();
+    run(root(), &specs, true);
+    for example in ["agent-status", "hello", "window"] {
+        run(&root().join("examples/plugins").join(example), &[], true);
+    }
 }

@@ -1,6 +1,12 @@
 use mlua::{Function, IntoLuaMulti, Lua, MultiValue, Table};
 
-pub(crate) const API: [(&str, &str); 7] = [
+pub(crate) const KEY_STYLES: [(&str, &str); 2] = [
+    ("modal", include_str!("runtime/gband/keystyle/modal.lua")),
+    ("direct", include_str!("runtime/gband/keystyle/direct.lua")),
+];
+
+pub(crate) const MODULES: [(&str, &str); 17] = [
+    ("prelude.lua", include_str!("runtime/gband/prelude.lua")),
     ("hl.lua", include_str!("runtime/gband/hl.lua")),
     ("palette.lua", include_str!("runtime/gband/palette.lua")),
     (
@@ -11,14 +17,6 @@ pub(crate) const API: [(&str, &str); 7] = [
     ("win.lua", include_str!("runtime/gband/win.lua")),
     ("settings.lua", include_str!("runtime/gband/settings.lua")),
     ("keystyle.lua", include_str!("runtime/gband/keystyle.lua")),
-];
-
-pub(crate) const KEY_STYLES: [(&str, &str); 2] = [
-    ("modal", include_str!("runtime/gband/keystyle/modal.lua")),
-    ("direct", include_str!("runtime/gband/keystyle/direct.lua")),
-];
-
-const MODULES: [(&str, &str); 9] = [
     ("theme.lua", include_str!("runtime/gband/theme.lua")),
     (
         "theme/catppuccin.lua",
@@ -96,6 +94,28 @@ pub(crate) fn themes() -> impl Iterator<Item = &'static str> {
 
 const ROOT: &str = "gband";
 
+pub fn files() -> impl Iterator<Item = (String, &'static str)> {
+    let modules = MODULES
+        .iter()
+        .map(|(file, source)| (format!("lua/{ROOT}/{file}"), *source));
+    let colors = COLORS
+        .iter()
+        .map(|(name, source)| (format!("colors/{name}.lua"), *source));
+    modules.chain(colors)
+}
+
+pub fn is_alias(file: &str) -> bool {
+    ALIASES
+        .iter()
+        .any(|alias| file == format!("colors/{alias}.lua"))
+}
+
+pub(crate) fn is_key_style(file: &str) -> bool {
+    KEY_STYLES
+        .iter()
+        .any(|(style, _)| file == format!("lua/{ROOT}/keystyle/{style}.lua"))
+}
+
 pub(crate) fn chunk(lua: &Lua, path: &str, source: &str) -> mlua::Result<Function> {
     lua.load(source)
         .set_name(format!("@{ROOT}/{path}"))
@@ -110,9 +130,7 @@ pub(crate) fn colorscheme(lua: &Lua, name: &str) -> mlua::Result<Option<Function
         .transpose()
 }
 
-const BIND: &str = "local chunk, host = ...\nreturn function() return chunk(host) end";
-
-fn search(lua: &Lua, name: &str, host: Option<&Table>) -> mlua::Result<MultiValue> {
+fn search(lua: &Lua, name: &str) -> mlua::Result<MultiValue> {
     let Some(relative) = name
         .strip_prefix(ROOT)
         .and_then(|rest| rest.strip_prefix('.'))
@@ -122,20 +140,15 @@ fn search(lua: &Lua, name: &str, host: Option<&Table>) -> mlua::Result<MultiValu
     let relative = relative.replace('.', "/");
     for candidate in [format!("{relative}.lua"), format!("{relative}/init.lua")] {
         if let Some((file, source)) = MODULES.iter().find(|(file, _)| *file == candidate) {
-            let loader = lua
-                .load(BIND)
-                .set_name("=bundled")
-                .call::<Function>((chunk(lua, file, source)?, host))?;
-            return (loader, format!("{ROOT}/{file}")).into_lua_multi(lua);
+            return (chunk(lua, file, source)?, format!("{ROOT}/{file}")).into_lua_multi(lua);
         }
     }
     format!("\n\tno bundled module '{name}'").into_lua_multi(lua)
 }
 
-pub(crate) fn install_searcher(lua: &Lua, position: i64, host: Option<Table>) -> mlua::Result<()> {
+pub(crate) fn install_searcher(lua: &Lua, position: i64) -> mlua::Result<()> {
     let searchers: Table = lua.globals().get::<Table>("package")?.get("searchers")?;
     let insert: Function = lua.globals().get::<Table>("table")?.get("insert")?;
-    let searcher =
-        lua.create_function(move |lua, name: String| search(lua, &name, host.as_ref()))?;
+    let searcher = lua.create_function(|lua, name: String| search(lua, &name))?;
     insert.call::<()>((searchers, position, searcher))
 }

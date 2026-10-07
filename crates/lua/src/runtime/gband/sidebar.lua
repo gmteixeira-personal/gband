@@ -1,4 +1,4 @@
-local host = ...
+local core = gband.core
 
 gband.hl.default("SidebarMode", { bold = true })
 gband.hl.default("SidebarBand", { dim = true })
@@ -77,19 +77,19 @@ local function draw()
   if not placed then
     return
   end
-  local state = host.state()
+  local state = core.state()
   local info = gband.bar.info(BAR)
   local height = info.height or state.height
   if height == 0 then
-    host.error_item(false)
+    core.error_marker(false)
     return
   end
   local lines, marker = lines_for(state, height)
   gband.bar.set_lines(BAR, lines)
-  host.error_item(marker and info.shown)
+  core.error_marker(marker and info.shown)
 end
 
-host.on_state(draw)
+core.on_state(draw)
 
 local function clicked(ev)
   if ev.button ~= "left" or ev.target ~= "outside" then
@@ -151,7 +151,7 @@ return {
     gband.on("MousePressed", clicked)
     gband.on("MouseScrolled", scrolled)
     placed = true
-    if not host.loading() then
+    if not core.loading() then
       draw()
     end
   end,

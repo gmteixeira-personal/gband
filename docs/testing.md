@@ -57,9 +57,13 @@ It works from inside one of your own gband windows too.
 ## Test files
 
 A test file runs in a Lua state of its own, the test side.
-There `gband.side` is `"test"`, `gband.api_version` is `1`, and every other field of `gband` is an error naming the side that has it: test code drives gband from outside, so it reaches the client and the server only through the case handle.
+There `gband.side` is `"test"`, `gband.api_version` is `1`, `gband.core` holds the test primitives below, and every other field of `gband` is an error naming the side that has it: test code drives gband from outside, so it reaches the client and the server only through the case handle.
 `print` writes its line to standard output.
 `require` also finds modules in the test file's own directory.
+
+### The test module: `require("gband.test")`
+
+The module returns a table, `t` in these examples, holding `case`, which registers a case, and the assertions `eq`, `ok` and `match`.
 
 ```lua
 local t = require("gband.test")
@@ -77,7 +81,7 @@ A case passes when `fn` returns, and fails when it raises an error or runs longe
 A failing case does not stop the next one.
 When the file's top level raises an error or runs longer than 30 seconds, the file fails and none of its cases run.
 
-### Assertions
+#### Assertions
 
 | function | fails when |
 |---|---|
@@ -90,6 +94,17 @@ A failing assertion raises an error at the line of its call, naming the expected
 ```
 tests/window_spec.lua:9: expected 4, got 3
 ```
+
+### Test primitives: `gband.core`
+
+`gband.test` is a bundled Lua module built on two primitives of the test side, which a replacement for it can use too:
+
+| primitive | effect |
+|---|---|
+| `gband.core.register(name, timeout, fn)` | adds the case `name`, with a time limit of `timeout` seconds or the default when nil, to run `fn` with the case handle after the file's top level returns; it checks nothing, so `t.case` checks the name, the options and the function first |
+| `gband.core.wrap(wrapper)` | sets the function the runner passes each handle function through. The runner calls `wrapper(raw)` for each raw handle function and uses its result; a raw function returns `true` and its results, or `false`, the error message and whether the message already names its location. `gband.test` gives a wrapper that raises the message at the line of the call |
+
+Reading a client primitive such as `gband.core.owner` on the test side is an error naming the client.
 
 ## The case
 
@@ -107,6 +122,7 @@ Call it once, before any other function of the handle.
 | `files` | a table from paths relative to the configuration directory to contents, such as `{ ["user/lua/extra.lua"] = "..." }` | none |
 | `plugins` | a list of further plugin directories for this case, relative to the test file's directory | none |
 | `env` | environment variables to set, or to remove with `false` | none |
+| `bundled_copies` | whether every module and colorscheme bundled with gband, other than the alias `catppuccin`, is copied into `user/lua/` and `user/colors/` before the start, so the case runs on the copies | `false`, or `true` when `GBAND_TEST_BUNDLED_COPIES` is set and not empty |
 | `time` | the frozen instant: Unix seconds, `"YYYY-MM-DD HH:MM:SS"` in UTC, or `false` for the real time | `"2025-01-01 12:00:00"` |
 
 A `config` replaces the default configuration, as `user/init.lua` does, so set up the sidebar, the plugins and the bindings the case needs.

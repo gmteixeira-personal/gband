@@ -1,4 +1,4 @@
-local host = ...
+local core = gband.core
 
 gband.hl.default("SettingsLabel", { dim = true })
 
@@ -60,8 +60,6 @@ local function write(file, text)
   end
 end
 
-host.setting = { read = read, write = write }
-
 local function is_name(value)
   return type(value) == "string" and value:match(NAME) ~= nil
 end
@@ -84,11 +82,11 @@ end
 
 local function themes()
   local names, seen = {}, {}
-  for _, name in ipairs(host.bundled_themes) do
+  for _, name in ipairs(core.bundled_themes) do
     names[#names + 1] = name
     seen[name] = true
   end
-  for _, name in ipairs(host.colorschemes()) do
+  for _, name in ipairs(core.colorschemes()) do
     if is_name(name) and not seen[name] then
       names[#names + 1] = name
       seen[name] = true
@@ -98,10 +96,10 @@ local function themes()
 end
 
 local function save(line, file, text)
-  host.settings_reopen(line)
+  core.reopen_settings(line)
   local ok, reason = pcall(write, file, text)
   if not ok then
-    host.settings_reopen(nil)
+    core.reopen_settings(nil)
     error(reason, 0)
   end
 end
@@ -363,11 +361,11 @@ local function show(line)
   end
 end
 
-host.settings_hooks({ open = show })
+core.provide("settings", { open = show })
 
 gband.settings = {
   open = function()
-    if host.loading() then
+    if core.loading() then
       error("gband.settings.open cannot be called while the configuration loads", 2)
     end
     show(nil)
@@ -377,3 +375,5 @@ gband.settings = {
   interactive_on_new = interactive_on_new,
   themes = themes,
 }
+
+return { read = read, write = write }

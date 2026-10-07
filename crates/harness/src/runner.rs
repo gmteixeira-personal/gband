@@ -233,6 +233,7 @@ fn message(error: &mlua::Error) -> String {
 }
 
 const WRAP: &str = "gband.test.wrap";
+pub const BUNDLED_COPIES: &str = "GBAND_TEST_BUNDLED_COPIES";
 
 fn fail(text: impl Into<String>) -> mlua::Error {
     mlua::Error::runtime(text.into())
@@ -318,9 +319,9 @@ fn new_state(
         format!("{directory}/?.lua;{directory}/?/init.lua;{path}"),
     )?;
     let registered = Arc::new(Mutex::new(Vec::new()));
-    let host = lua.create_table()?;
+    let core: Table = lua.globals().get::<Table>("gband")?.raw_get("core")?;
     let cases = Arc::clone(&registered);
-    host.set(
+    core.set(
         "register",
         lua.create_function(
             move |_, (name, timeout, function): (String, Option<f64>, Function)| {
@@ -333,9 +334,12 @@ fn new_state(
             },
         )?,
     )?;
+    core.set(
+        "wrap",
+        lua.create_function(|lua, wrapper: Function| lua.set_named_registry_value(WRAP, wrapper))?,
+    )?;
     let module = lua.load(MODULE).set_name("=gband.test").into_function()?;
-    let loaded: Value = module.call(&host)?;
-    lua.set_named_registry_value(WRAP, host.get::<Function>("wrap")?)?;
+    let loaded: Value = module.call(())?;
     let preload: Table = package.get("preload")?;
     let loaded = lua.create_function(move |_, ()| Ok(loaded.clone()))?;
     preload.set("gband.test", loaded)?;
@@ -350,6 +354,16 @@ fn new_state(
         },
     )?;
     Ok((lua, registered))
+}
+
+pub fn test_side(directory: &Path) -> mlua::Result<Lua> {
+    let file = TestFile {
+        name: String::new(),
+        path: directory.join("test_side.lua"),
+        source: Vec::new(),
+        standard_input: false,
+    };
+    new_state(&file, &Arc::new(Mutex::new(Deadline::default()))).map(|(lua, _)| lua)
 }
 
 fn run_file(run: &Arc<Run>, file: &TestFile, filter: Option<&str>, totals: &mut Totals) {
@@ -773,6 +787,16 @@ fn start(_: &Lua, context: &Context, opts: Value) -> mlua::Result<MultiValue> {
             )));
         }
     };
+    let bundled_copies = match field("bundled_copies")? {
+        Value::Nil => std::env::var_os(BUNDLED_COPIES).is_some_and(|value| !value.is_empty()),
+        Value::Boolean(copies) => copies,
+        other => {
+            return Err(fail(format!(
+                "`bundled_copies` of g.start must be a boolean, found {}",
+                other.type_name()
+            )));
+        }
+    };
     context.slot().started = true;
     let setup = Setup {
         executable: context.run.executable.clone(),
@@ -782,6 +806,7 @@ fn start(_: &Lua, context: &Context, opts: Value) -> mlua::Result<MultiValue> {
         keystyle,
         theme,
         window_titles,
+        bundled_copies,
         files,
         plugins,
         env,

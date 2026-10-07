@@ -4,7 +4,7 @@ use std::io::{self, ErrorKind};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use crate::Side;
+use crate::{Side, bundled};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Locations {
@@ -81,11 +81,21 @@ pub fn key_style_file(dir: &Path, style: &str) -> PathBuf {
 }
 
 pub fn prepare(dir: &Path) -> io::Result<()> {
-    fs::create_dir_all(dir.join("defaults").join("keystyle"))?;
+    let defaults = dir.join("defaults");
+    fs::create_dir_all(defaults.join("keystyle"))?;
+    fs::create_dir_all(defaults.join("lua").join("gband"))?;
+    fs::create_dir_all(defaults.join("colors"))?;
     fs::create_dir_all(dir.join("user"))?;
     write_defaults(&defaults_file(dir, Side::Client), Side::Client.defaults())?;
     for (style, content) in crate::KEY_STYLES {
         write_defaults(&key_style_file(dir, style), content)?;
+    }
+    for (file, content) in bundled::files().filter(|(file, _)| !bundled::is_key_style(file)) {
+        let path = defaults.join(file);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        write_defaults(&path, content)?;
     }
     write_defaults(&defaults_file(dir, Side::Server), Side::Server.defaults())
 }
@@ -225,13 +235,43 @@ mod tests {
         }
         assert_eq!(
             entries(&dir.join("defaults")),
-            ["init.lua", "keystyle", "server.lua"]
+            ["colors", "init.lua", "keystyle", "lua", "server.lua"]
         );
         assert_eq!(
             entries(&dir.join("defaults").join("keystyle")),
             ["direct.lua", "modal.lua"]
         );
         assert!(entries(&dir.join("user")).is_empty());
+    }
+
+    #[test]
+    fn sources_written() {
+        let scratch = Scratch::new("sources");
+        let dir = scratch.dir();
+        prepare(&dir).unwrap();
+        let defaults = dir.join("defaults");
+        for (file, content) in bundled::files() {
+            let path = defaults.join(&file);
+            if bundled::is_key_style(&file) {
+                assert!(!path.exists(), "{}", path.display());
+            } else {
+                assert_eq!(fs::read_to_string(&path).unwrap(), content, "{file}");
+            }
+        }
+        for module in ["sidebar.lua", "win.lua", "prelude.lua", "keylist.lua"] {
+            assert!(defaults.join("lua").join("gband").join(module).is_file());
+        }
+        for theme in ["nord.lua", "gruvbox.lua"] {
+            assert!(defaults.join("colors").join(theme).is_file());
+        }
+        assert!(
+            defaults
+                .join("lua")
+                .join("gband")
+                .join("theme")
+                .join("catppuccin.lua")
+                .is_file()
+        );
     }
 
     #[test]
@@ -249,10 +289,16 @@ mod tests {
         let scratch = Scratch::new("edited");
         let dir = scratch.dir();
         prepare(&dir).unwrap();
+        let sidebar = dir
+            .join("defaults")
+            .join("lua")
+            .join("gband")
+            .join("sidebar.lua");
         let edited = [
             defaults_file(&dir, Side::Client),
             key_style_file(&dir, "modal"),
             defaults_file(&dir, Side::Server),
+            sidebar.clone(),
         ];
         for file in &edited {
             fs::write(file, "gband.set { prefix = 'ctrl+b' }").unwrap();
@@ -268,9 +314,14 @@ mod tests {
             fs::read_to_string(key_style_file(&dir, "modal")).unwrap(),
             crate::KEY_STYLES[0].1
         );
+        let bundled = bundled::files()
+            .find(|(file, _)| file == "lua/gband/sidebar.lua")
+            .unwrap()
+            .1;
+        assert_eq!(fs::read_to_string(&sidebar).unwrap(), bundled);
         assert_eq!(
             entries(&dir.join("defaults")),
-            ["init.lua", "keystyle", "server.lua"]
+            ["colors", "init.lua", "keystyle", "lua", "server.lua"]
         );
         assert_eq!(
             entries(&dir.join("defaults").join("keystyle")),

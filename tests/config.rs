@@ -138,6 +138,89 @@ fn first_run() {
         assert!(!log.contains("cannot prepare"), "{log}");
         assert!(!log.contains("configuration error"), "{log}");
     }
+    let defaults = env.config_dir().join("defaults");
+    for file in [
+        "lua/gband/sidebar.lua",
+        "lua/gband/win.lua",
+        "lua/gband/prelude.lua",
+        "lua/gband/keylist.lua",
+        "colors/nord.lua",
+        "colors/gruvbox.lua",
+    ] {
+        assert_eq!(
+            fs::read_to_string(defaults.join(file)).unwrap(),
+            bundled(file),
+            "{file}"
+        );
+    }
+}
+
+fn bundled(file: &str) -> &'static str {
+    gband_lua::bundled_files()
+        .find(|(path, _)| path == file)
+        .unwrap_or_else(|| panic!("{file} is not bundled"))
+        .1
+}
+
+fn sidebar_letter(screen: &Grid) -> String {
+    first_row(screen)
+        .chars()
+        .next()
+        .map(String::from)
+        .unwrap_or_default()
+}
+
+const SIDEBAR: &str = "lua/gband/sidebar.lua";
+const ROOT_LETTER: &str = "    return \"I\"\n";
+
+#[test]
+fn edited_bundled_sources_are_restored() {
+    let env = TestEnv::new("config-sources-restored");
+    let copy = env.config_dir().join("defaults").join(SIDEBAR);
+    fs::create_dir_all(copy.parent().unwrap()).unwrap();
+    fs::write(&copy, "error('edited')\n").unwrap();
+    let client = Attached::start(&env, 80, 24);
+    client.wait_for_prompt();
+    assert_eq!(fs::read_to_string(&copy).unwrap(), bundled(SIDEBAR));
+    client.wait_for("the sidebar", |screen| sidebar_letter(screen) == "I");
+}
+
+#[test]
+fn copies_have_no_effect() {
+    let env = TestEnv::new("config-copies-no-effect");
+    let client = Attached::start(&env, 80, 24);
+    client.wait_for_prompt();
+    client.wait_for("the sidebar", |screen| sidebar_letter(screen) == "I");
+    let copy = env.config_dir().join("defaults").join(SIDEBAR);
+    let edited = bundled(SIDEBAR).replacen(ROOT_LETTER, "    return \"i\"\n", 1);
+    assert_ne!(edited, bundled(SIDEBAR));
+    fs::write(&copy, edited).unwrap();
+    let seen = reloads(&env, "client");
+    env.write_config(DEFAULTS);
+    wait_for_reload(&env, "client", seen);
+    client.wait_for_prompt();
+    thread::sleep(Duration::from_millis(300));
+    client.wait_for("the bundled sidebar", |screen| {
+        sidebar_letter(screen) == "I"
+    });
+}
+
+#[test]
+fn copy_to_override() {
+    let env = TestEnv::new("config-copy-override");
+    let client = Attached::start(&env, 80, 24);
+    client.wait_for_prompt();
+    client.wait_for("the sidebar", |screen| sidebar_letter(screen) == "I");
+    let source = fs::read_to_string(env.config_dir().join("defaults").join(SIDEBAR)).unwrap();
+    let edited = source.replacen(ROOT_LETTER, "    return \"i\"\n", 1);
+    assert_ne!(edited, source);
+    let copy = env.config_dir().join("user").join(SIDEBAR);
+    fs::create_dir_all(copy.parent().unwrap()).unwrap();
+    fs::write(&copy, edited).unwrap();
+    let seen = reloads(&env, "client");
+    env.write_config(DEFAULTS);
+    wait_for_reload(&env, "client", seen);
+    client.wait_for("the copied sidebar", |screen| sidebar_letter(screen) == "i");
 }
 
 struct Writable<'a>(&'a Path);

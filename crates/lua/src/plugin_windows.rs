@@ -10,10 +10,11 @@ use mlua::{Function, IntoLuaMulti, Lua, MultiValue, RegistryKey, Table, Value};
 
 use crate::api::{self, Dispatch, PluginWindowRequest};
 use crate::border::{Border, BorderChars, Sides};
+use crate::check;
 use crate::control;
 use crate::events::{button_name, direction_name};
 use crate::keys::{key_name, parse_key};
-use crate::ui::{self, Style, strip};
+use crate::ui::{self, Style, named, strip};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Run {
@@ -105,70 +106,81 @@ struct Presented(BTreeMap<u32, Option<Frame>>);
 #[derive(Default)]
 struct Hooks(Option<RegistryKey>);
 
-pub(crate) fn install(lua: &Lua, host: &Table) -> mlua::Result<()> {
+pub(crate) fn install(lua: &Lua, core: &Table) -> mlua::Result<()> {
     lua.set_app_data(Counter(Arc::new(AtomicU32::new(1))));
     lua.set_app_data(Presented::default());
     lua.set_app_data(Hooks::default());
-    host.set(
+    core.set(
         "next_window",
         lua.create_function(|lua, ()| Ok(counter(lua).fetch_add(1, Ordering::Relaxed)))?,
     )?;
-    host.set(
+    core.set(
         "present_window",
-        lua.create_function(|lua, (id, frame): (u32, Table)| {
-            let frame = read_frame(&frame)?;
+        lua.create_function(|lua, (id, frame): (Value, Value)| {
+            let what = named("present_window");
+            let id: u32 = check::integer(lua, &what, &id, "a plugin window number")?;
+            let frame = check::table(lua, &what, &frame, "a frame table")?;
+            let frame = check::checked(lua, &what, read_frame(&frame))?;
             presented(lua).0.insert(id, Some(frame));
             Ok(())
         })?,
     )?;
-    host.set(
+    core.set(
         "forget_window",
-        lua.create_function(|lua, id: u32| {
+        lua.create_function(|lua, id: Value| {
+            let id: u32 =
+                check::integer(lua, &named("forget_window"), &id, "a plugin window number")?;
             presented(lua).0.insert(id, None);
             Ok(())
         })?,
     )?;
-    host.set("request", lua.create_function(request)?)?;
-    host.set(
+    core.set("request", lua.create_function(request)?)?;
+    core.set(
         "parse_key",
-        lua.create_function(|_, name: String| Ok(parse_key(&name).ok().map(key_name)))?,
-    )?;
-    host.set(
-        "window_hooks",
-        lua.create_function(|lua, table: Table| {
-            let key = lua.create_registry_value(table)?;
-            lua.app_data_mut::<Hooks>()
-                .expect("the window hooks are installed with the runtime")
-                .0 = Some(key);
-            Ok(())
+        lua.create_function(|lua, name: Value| {
+            let name = check::text(lua, &named("parse_key"), &name, "a key name as a string")?;
+            Ok(parse_key(&name).ok().map(key_name))
         })?,
     )?;
-    host.set(
+    core.set(
         "dispatching",
         lua.create_function(|lua, ()| Ok(api::in_callback(lua)))?,
     )?;
-    host.set("open_target", lua.create_function(open_target)?)?;
-    host.set(
-        "border",
-        lua.create_function(|lua, table: Table| match border_table(&table) {
-            Ok(border) => border_value(lua, &border)?.into_lua_multi(lua),
-            Err(message) => (Value::Nil, message).into_lua_multi(lua),
+    core.set(
+        "focus_window",
+        lua.create_function(|lua, window: Value| {
+            let what = named("focus_window");
+            let window: u32 = check::integer(lua, &what, &window, "a window number")?;
+            let action = Action::View(ViewAction::FocusWindow(WindowId(window)));
+            api::queue(lua, Dispatch::Action(action), &what)
         })?,
     )?;
-    host.set(
+    core.set("open_target", lua.create_function(open_target)?)?;
+    core.set(
+        "border",
+        lua.create_function(|lua, spec: Value| {
+            let table = check::table(lua, &named("border"), &spec, "a border table")?;
+            match border_table(&table) {
+                Ok(border) => border_value(lua, &border)?.into_lua_multi(lua),
+                Err(message) => (Value::Nil, message).into_lua_multi(lua),
+            }
+        })?,
+    )?;
+    core.set(
         "width",
         lua.create_function(|lua, value: Value| match control::width(&value) {
             Ok(width) => (width.num, width.den).into_lua_multi(lua),
             Err(message) => (Value::Nil, message).into_lua_multi(lua),
         })?,
     )?;
-    host.set(
-        "focus_window",
-        lua.create_function(|lua, window: u32| {
-            let action = Action::View(ViewAction::FocusWindow(WindowId(window)));
-            api::queue(lua, Dispatch::Action(action), "gband.win.focus")
-        })?,
-    )?;
+    Ok(())
+}
+
+pub(crate) fn provide(lua: &Lua, implementation: Table) -> mlua::Result<()> {
+    let key = lua.create_registry_value(implementation)?;
+    lua.app_data_mut::<Hooks>()
+        .expect("the window hooks are installed with the runtime")
+        .0 = Some(key);
     Ok(())
 }
 
@@ -201,37 +213,63 @@ fn open_target(lua: &Lua, (band, after): (Value, Value)) -> mlua::Result<MultiVa
     }
 }
 
-fn request(lua: &Lua, entry: Table) -> mlua::Result<()> {
-    let plugin_window: u32 = entry.get("id")?;
-    let request = match entry.get::<String>("op")?.as_str() {
-        "open" => {
-            let band: Option<u32> = entry.get("band")?;
-            let after: Option<u32> = entry.get("after")?;
-            let num: Option<u32> = entry.get("num")?;
-            let den: Option<u32> = entry.get("den")?;
-            PluginWindowRequest::Open {
-                plugin_window,
-                target: band.map(|band| (BandId(band), after.map(WindowId))),
-                width: num.zip(den).map(|(num, den)| Proportion::new(num, den)),
-                focus: entry.get("focus")?,
-            }
-        }
-        _ => PluginWindowRequest::Close { plugin_window },
-    };
+fn request(lua: &Lua, entry: Value) -> mlua::Result<()> {
+    let what = named("request");
+    let entry = check::table(lua, &what, &entry, "a request entry table")?;
+    let request = check::checked(lua, &what, read_request(&entry))?;
     api::queue(lua, Dispatch::PluginWindow(request), "gband.win")
 }
 
-pub(crate) fn read_runs(lines: &Table) -> mlua::Result<Vec<Vec<Run>>> {
+const POSITIVE: &str = "a positive integer";
+
+fn read_request(entry: &Table) -> Result<PluginWindowRequest, String> {
+    let plugin_window = check::whole_field(entry, "id", "a plugin window number")?;
+    match check::text_field(entry, "op", "`open` or `close`")?.as_str() {
+        "open" => {
+            let band: Option<u32> = check::optional_whole_field(entry, "band", "a band number")?;
+            let after: Option<u32> =
+                check::optional_whole_field(entry, "after", "a window number")?;
+            let num: Option<u32> = check::optional_whole_field(entry, "num", POSITIVE)?;
+            let den: Option<u32> = check::optional_whole_field(entry, "den", POSITIVE)?;
+            if num == Some(0) || den == Some(0) {
+                return Err(format!(
+                    "the fields `num` and `den` must each be {POSITIVE}"
+                ));
+            }
+            Ok(PluginWindowRequest::Open {
+                plugin_window,
+                target: band.map(|band| (BandId(band), after.map(WindowId))),
+                width: num.zip(den).map(|(num, den)| Proportion::new(num, den)),
+                focus: check::optional_boolean_field(entry, "focus", "a boolean")?.unwrap_or(false),
+            })
+        }
+        "close" => Ok(PluginWindowRequest::Close { plugin_window }),
+        other => Err(format!(
+            "the field `op` must be `open` or `close`, found `{other}`"
+        )),
+    }
+}
+
+pub(crate) fn read_runs(owner: &Table) -> Result<Vec<Vec<Run>>, String> {
+    let lines = check::table_field(owner, "lines", "a list of lines")?;
     lines
-        .sequence_values::<Table>()
-        .map(|line| {
-            line?
-                .sequence_values::<Table>()
-                .map(|run| {
-                    let run = run?;
+        .sequence_values::<Value>()
+        .enumerate()
+        .map(|(row, line)| {
+            let at = |reason: String| format!("line {}: {reason}", row + 1);
+            let Value::Table(line) = line.map_err(|error| error.to_string())? else {
+                return Err(at("a line must be a list of runs".to_owned()));
+            };
+            line.sequence_values::<Value>()
+                .enumerate()
+                .map(|(index, run)| {
+                    let at = |reason: String| at(format!("run {}: {reason}", index + 1));
+                    let Value::Table(run) = run.map_err(|error| error.to_string())? else {
+                        return Err(at("a run must be a table".to_owned()));
+                    };
                     Ok(Run {
-                        text: strip(&run.get::<mlua::LuaString>("text")?.to_string_lossy()),
-                        style: ui::style(&run.get("style")?)?,
+                        text: strip(&check::text_field(&run, "text", "a string").map_err(at)?),
+                        style: ui::style_field(&run, "style").map_err(at)?,
                     })
                 })
                 .collect()
@@ -293,47 +331,57 @@ fn border_value(lua: &Lua, border: &Border) -> mlua::Result<Table> {
     Ok(table)
 }
 
-fn read_border(value: Value) -> mlua::Result<Option<Border>> {
+fn read_border(value: Value) -> Result<Option<Border>, String> {
     Ok(match value {
         Value::Nil | Value::Boolean(false) => None,
         Value::Boolean(true) => Some(Border::default()),
-        Value::Table(table) => Some(border_table(&table).map_err(mlua::Error::runtime)?),
+        Value::Table(table) => {
+            Some(border_table(&table).map_err(|reason| format!("the field `border`: {reason}"))?)
+        }
         other => {
-            return Err(mlua::Error::runtime(format!(
-                "a frame border must be a boolean or a table, found {}",
+            return Err(format!(
+                "the field `border` must be a boolean or a table, found {}",
                 other.type_name()
-            )));
+            ));
         }
     })
 }
 
-fn read_frame(frame: &Table) -> mlua::Result<Frame> {
-    let base = ui::style(&frame.get("base")?)?;
-    let lines = read_runs(&frame.get("lines")?)?;
-    Ok(match frame.get::<String>("kind")?.as_str() {
-        "floating" => Frame::Floating(FloatingFrame {
-            row: frame.get("row")?,
-            col: frame.get("col")?,
-            width: frame.get("width")?,
-            height: frame.get("height")?,
-            border: read_border(frame.get("border")?)?,
-            title: frame
-                .get::<Option<mlua::LuaString>>("title")?
-                .map(|title| strip(&title.to_string_lossy())),
-            base,
-            border_style: ui::style(&frame.get("border_style")?)?,
-            title_style: ui::style(&frame.get("title_style")?)?,
-            lines,
-            z: frame.get("z")?,
-            focused: frame.get("focused")?,
-        }),
-        _ => Frame::Tiled(TiledFrame {
-            cols: frame.get("cols")?,
-            rows: frame.get("rows")?,
-            base,
-            lines,
-        }),
-    })
+const CELLS: &str = "an integer from 0 to 65535";
+
+fn read_frame(frame: &Table) -> Result<Frame, String> {
+    let base = ui::style_field(frame, "base")?;
+    let lines = read_runs(frame)?;
+    Ok(
+        match check::text_field(frame, "kind", "`floating` or `tiled`")?.as_str() {
+            "floating" => Frame::Floating(FloatingFrame {
+                row: check::whole_field(frame, "row", CELLS)?,
+                col: check::whole_field(frame, "col", CELLS)?,
+                width: check::whole_field(frame, "width", CELLS)?,
+                height: check::whole_field(frame, "height", CELLS)?,
+                border: read_border(frame.get("border").map_err(|error| error.to_string())?)?,
+                title: check::optional_text_field(frame, "title", "a string")?
+                    .map(|title| strip(&title)),
+                base,
+                border_style: ui::style_field(frame, "border_style")?,
+                title_style: ui::style_field(frame, "title_style")?,
+                lines,
+                z: check::whole_field(frame, "z", "a non-negative integer")?,
+                focused: check::boolean_field(frame, "focused", "a boolean")?,
+            }),
+            "tiled" => Frame::Tiled(TiledFrame {
+                cols: check::whole_field(frame, "cols", CELLS)?,
+                rows: check::whole_field(frame, "rows", CELLS)?,
+                base,
+                lines,
+            }),
+            other => {
+                return Err(format!(
+                    "the field `kind` must be `floating` or `tiled`, found `{other}`"
+                ));
+            }
+        },
+    )
 }
 
 fn hook(lua: &Lua, name: &str) -> mlua::Result<Option<Function>> {

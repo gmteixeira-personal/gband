@@ -5,6 +5,7 @@ mod border;
 mod bridge;
 mod bundled;
 mod callbacks;
+mod check;
 mod clock;
 mod commands;
 mod control;
@@ -37,6 +38,7 @@ pub use crate::api::{Binding, Chord, Dispatch, PluginWindowRequest, WindowInput}
 pub use crate::bars::{Bar, BarSide, Columns, Slot};
 pub use crate::border::{Border, BorderChars, CharSet, Sides};
 pub use crate::bridge::{base64, clipboard_sequence, notification};
+pub use crate::bundled::{files as bundled_files, is_alias as is_bundled_alias};
 pub use crate::callbacks::CallbackId;
 pub use crate::clock::freeze as freeze_time;
 pub use crate::directory::{

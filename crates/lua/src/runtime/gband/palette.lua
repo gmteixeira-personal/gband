@@ -1,4 +1,4 @@
-local host = ...
+local core = gband.core
 
 local FIELDS = {
   fg = true, bg = true,
@@ -24,9 +24,9 @@ function gband.palette.set(spec)
     end
     parsed[field] = value:lower()
   end
-  host.palette.set(parsed)
+  core.palette.set(parsed)
 end
 
 function gband.palette.get()
-  return host.palette.get()
+  return core.palette.get()
 end

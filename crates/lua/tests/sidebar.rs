@@ -115,7 +115,7 @@ fn rows_follow_the_pushed_state() {
     state.error = Some("broken".to_owned());
     let bar = presented(&config, state);
     assert_eq!(shown_rows(&bar).last(), Some(&(23, "!".to_owned())));
-    assert!(config.runtime.error_item_shown());
+    assert!(config.runtime.error_marker_shown());
 }
 
 #[test]

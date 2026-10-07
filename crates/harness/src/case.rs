@@ -37,6 +37,7 @@ pub struct Setup {
     pub keystyle: Option<String>,
     pub theme: Option<String>,
     pub window_titles: bool,
+    pub bundled_copies: bool,
     pub files: Vec<(String, String)>,
     pub plugins: Vec<PathBuf>,
     pub env: Vec<(OsString, Option<OsString>)>,
@@ -141,6 +142,13 @@ fn prepare(env: &mut TestEnv, setup: &Setup, socket: &Path) -> Result<(), String
             &config.join("user").join("theme.lua"),
             &format!("return \"{theme}\"\n"),
         )?;
+    }
+    if setup.bundled_copies {
+        for (file, contents) in
+            gband_lua::bundled_files().filter(|(file, _)| !gband_lua::is_bundled_alias(file))
+        {
+            write_file(&config.join("user").join(file), contents)?;
+        }
     }
     if let Some(source) = &setup.config {
         write_file(&env.user_lua(), source)?;

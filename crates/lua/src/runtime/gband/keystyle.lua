@@ -1,4 +1,4 @@
-local host = ...
+local core = gband.core
 
 local FILE = "user/keystyle.lua"
 
@@ -9,11 +9,11 @@ local function is_style(value)
 end
 
 local function saved()
-  return host.setting.read(FILE, is_style)
+  return require("gband.settings").read(FILE, is_style)
 end
 
 local function use(style)
-  if not host.loading() then
+  if not core.loading() then
     error("gband.keystyle.use can only be called while the configuration loads", 2)
   end
   if used then

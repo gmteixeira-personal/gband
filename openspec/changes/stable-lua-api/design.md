@@ -9,7 +9,7 @@ See proposal.md for the motivation. The state this change starts from:
   - `settings.lua` writes `host.setting`, holding `read` and `write`, and `keystyle.lua` reads it.
   - `colorscheme.lua` defines `host.start_theme`.
 - `host.timer`, `host.cancel` and `host.events` exist in Rust, and timers fire from the client loop through `ui::fire_timers`, but no Lua calls them.
-- `host.focus_window` queues the same `FocusWindow` view action as the public `gband.window.focus`.
+- `host.focus_window` queues the same `FocusWindow` view action as the public `gband.window.focus`, but without its check that the window is in the layout. The client can report a plugin window's drawn window before the runtime's layout holds it, so `gband.win.focus` needs the unchecked form.
 - The test side gets its own `host` from `crates/harness/src/runner.rs`. It holds `register`, a Rust function, and `wrap`, which `test.lua` defines and Rust reads back.
 - The Rust crate exposes the runtime's state to the client crate through methods such as `take_frames`, `take_bars`, `take_client_styles`, `take_palette`, `error_item_shown`, `take_settings_reopen` and `open_settings`. That interface sits between two Rust crates, not between Rust and Lua, and stays as it is.
 
@@ -43,7 +43,7 @@ Alternatives considered:
 | `error_item` | `gband.core.error_marker` | renamed for what it records |
 | `settings_reopen` | `gband.core.reopen_settings` | renamed to read as a verb |
 | `window_hooks`, `bar_hooks`, `settings_hooks`, `client_styles` | `gband.core.provide("windows" \| "bars" \| "settings" \| "styles", …)` | one documented registration call |
-| `focus_window` | `gband.window.focus` | `win.lua` checks its own arguments first, so its error texts keep the `gband.win.focus` label |
+| `focus_window` | `gband.core.focus_window` | not `gband.window.focus`, which rejects a window the layout does not hold yet; `win.lua` checks its own arguments first, so its error texts keep the `gband.win.focus` label |
 | `host.hl` | exports `drawn`, `snapshot`, `restore`, `clear` and `quiet` of `require("gband.hl")` | written by `hl.lua`, read by `bar.lua`, `win.lua` and `colorscheme.lua` |
 | `host.setting` | exports `read` and `write` of `require("gband.settings")` | also lets plugins save their own value files |
 | `host.start_theme` | export `start` of `require("gband.colorscheme")` | called by the prelude |

@@ -1,4 +1,5 @@
-local host = ...
+local core = gband.core
+local hl = require("gband.hl")
 
 gband.hl.default("PluginWindow", {})
 gband.hl.default("PluginWindowBorder", { fg = 8 })
@@ -35,13 +36,13 @@ local function touch(win)
 end
 
 local function require_dispatch(name)
-  if not host.dispatching() then
+  if not core.dispatching() then
     error(name .. " can only be called inside a binding function or another callback", 3)
   end
 end
 
 local function require_loaded(name)
-  if host.loading() then
+  if core.loading() then
     error(name .. " cannot be called while the configuration loads", 3)
   end
 end
@@ -84,7 +85,7 @@ local function normalise_lines(lines)
 end
 
 local function ribbon()
-  local state = host.state()
+  local state = core.state()
   return state.ribbon.cols, state.ribbon.rows
 end
 
@@ -188,8 +189,8 @@ local function render(win)
   if cols == nil then
     return
   end
-  local base = host.hl.drawn("PluginWindow")
-  local cursor = win.cursorline and host.hl.drawn("PluginWindowCursorLine") or nil
+  local base = hl.drawn("PluginWindow")
+  local cursor = win.cursorline and hl.drawn("PluginWindowCursorLine") or nil
   local plain, highlighted = {}, {}
   local lines = {}
   for row = 0, rows - 1 do
@@ -199,7 +200,7 @@ local function render(win)
     local row_base = on_cursor and over(base, cursor) or base
     local function style(group)
       if not cache[group] then
-        local merged = over(base, host.hl.drawn(group))
+        local merged = over(base, hl.drawn(group))
         cache[group] = on_cursor and over(merged, cursor) or merged
       end
       return cache[group]
@@ -207,16 +208,16 @@ local function render(win)
     lines[#lines + 1] = row_runs(win.lines[index] or {}, cols, row_base, style)
   end
   if win.kind == "tiled" then
-    host.present_window(win.id, { kind = "tiled", cols = cols, rows = rows, base = base, lines = lines })
+    core.present_window(win.id, { kind = "tiled", cols = cols, rows = rows, base = base, lines = lines })
     return
   end
   local placed = win.placed
-  local border_style = over(base, host.hl.drawn("PluginWindowBorder"))
+  local border_style = over(base, hl.drawn("PluginWindowBorder"))
   local title = nil
   if win.border and win.title then
     title = cut(clean(win.title), math.max(0, placed.width - 2))
   end
-  host.present_window(win.id, {
+  core.present_window(win.id, {
     kind = "floating",
     row = placed.row,
     col = placed.col,
@@ -226,7 +227,7 @@ local function render(win)
     title = title,
     base = base,
     border_style = border_style,
-    title_style = over(border_style, host.hl.drawn("PluginWindowTitle")),
+    title_style = over(border_style, hl.drawn("PluginWindowTitle")),
     lines = lines,
     z = win.z,
     focused = focused_float == win.id,
@@ -236,7 +237,7 @@ end
 local function callback(win, field, ...)
   local fn = win[field]
   if fn then
-    host.call(win.owner, nil, fn, win.id, ...)
+    core.call(win.owner, nil, fn, win.id, ...)
   end
 end
 
@@ -272,9 +273,9 @@ local function close(win, run_callback, request)
   if focused_float == win.id then
     focused_float = nil
   end
-  host.forget_window(win.id)
+  core.forget_window(win.id)
   if request and win.kind == "tiled" then
-    host.request({ op = "close", id = win.id })
+    core.request({ op = "close", id = win.id })
   end
   if run_callback then
     callback(win, "on_close")
@@ -300,7 +301,7 @@ local function check_border(opts, default)
   if type(value) ~= "table" then
     error("`border` must be a boolean or a border table", 3)
   end
-  local border, reason = host.border(value)
+  local border, reason = core.border(value)
   if not border then
     error("`border`: " .. reason, 3)
   end
@@ -366,7 +367,7 @@ local function check_keys(opts)
     error("`keys` must be a table from key names to functions", 3)
   end
   for name, fn in pairs(opts.keys) do
-    local canonical = type(name) == "string" and host.parse_key(name) or nil
+    local canonical = type(name) == "string" and core.parse_key(name) or nil
     if not canonical then
       error("invalid key name `" .. tostring(name) .. "` in `keys`", 3)
     end
@@ -389,7 +390,7 @@ function api.open(opts)
     error("gband.win.open expects a table of options", 2)
   end
   local kind = opts.kind or "floating"
-  local removed = type(kind) == "string" and host.removed('kind = "' .. kind .. '"')
+  local removed = type(kind) == "string" and core.removed('kind = "' .. kind .. '"')
   if removed then
     error(removed, 2)
   end
@@ -403,7 +404,7 @@ function api.open(opts)
   end
   local win = {
     kind = kind,
-    owner = host.owner(),
+    owner = core.owner(),
     lines = lines,
     top = 1,
     cursor = 1,
@@ -424,20 +425,20 @@ function api.open(opts)
     win.border = check_border(opts, true)
     win.title = check_title(opts)
   else
-    local ok, band, after = host.open_target(opts.band, opts.after)
+    local ok, band, after = core.open_target(opts.band, opts.after)
     if not ok then
       error("gband.win.open: " .. band, 2)
     end
     request = { op = "open", band = band, after = after, focus = focus }
     if opts.column_width ~= nil then
-      local num, den = host.width(opts.column_width)
+      local num, den = core.width(opts.column_width)
       if not num then
         error("`column_width`: " .. den, 2)
       end
       request.num, request.den = num, den
     end
   end
-  win.id = host.next_window()
+  win.id = core.next_window()
   wins[win.id] = win
   if kind == "floating" then
     place(win)
@@ -450,7 +451,7 @@ function api.open(opts)
     touch(win)
   else
     request.id = win.id
-    host.request(request)
+    core.request(request)
     clamp(win)
   end
   return win.id
@@ -507,7 +508,7 @@ function api.focus(id)
   end
   unfocus()
   if win.window then
-    host.focus_window(win.window)
+    core.focus_window(win.window)
   end
 end
 
@@ -546,7 +547,7 @@ local function is_focused(win)
   if win.kind == "floating" then
     return focused_float == win.id
   end
-  return focused_float == nil and win.window ~= nil and host.state().window == win.window
+  return focused_float == nil and win.window ~= nil and core.state().window == win.window
 end
 
 function api.info(id)
@@ -633,7 +634,7 @@ function hooks.key(id, name, text)
   local fn = win.keys[name]
   if fn then
     hold(id)
-    host.call(win.owner, nil, fn, id)
+    core.call(win.owner, nil, fn, id)
     return
   end
   if text and win.on_input then
@@ -658,7 +659,7 @@ local function focus_from_mouse(win)
   end
   unfocus()
   if win.window then
-    host.focus_window(win.window)
+    core.focus_window(win.window)
   end
 end
 
@@ -677,7 +678,7 @@ function hooks.mouse(id, event)
     if win.kind == "floating" and event.kind ~= "scroll" then
       hold(id)
     end
-    host.call(win.owner, nil, win.on_mouse, id, event)
+    core.call(win.owner, nil, win.on_mouse, id, event)
     return
   end
   if event.kind == "scroll" then
@@ -781,7 +782,7 @@ function hooks.focused()
   if focused_float then
     return focused_float
   end
-  local window = host.state().window
+  local window = core.state().window
   if window == nil then
     return nil
   end
@@ -799,7 +800,7 @@ end
 
 function hooks.flush()
   for id, win in pairs(wins) do
-    if win.owner and host.failed(win.owner) then
+    if win.owner and core.failed(win.owner) then
       close(win, false, true)
     end
   end
@@ -813,9 +814,9 @@ function hooks.flush()
   end
 end
 
-host.window_hooks(hooks)
+core.provide("windows", hooks)
 
-host.after_event(function(name)
+core.after_event(function(name)
   if name == "FocusChanged" or name == "BandChanged" then
     if held == nil or held ~= focused_float then
       unfocus()
