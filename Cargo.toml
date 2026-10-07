@@ -6,6 +6,7 @@ resolver = "3"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.89"
+license-file = "LICENSE"
 
 [workspace.dependencies]
 gband-core = { path = "crates/core" }
@@ -46,6 +47,7 @@ name = "gband"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+license-file.workspace = true
 
 [dependencies]
 gband-core.workspace = true

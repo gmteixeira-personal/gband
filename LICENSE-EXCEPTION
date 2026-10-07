@@ -1,0 +1,22 @@
+gband Plugin Exception
+Additional permission under GNU GPL version 3 section 7
+
+As a special exception, the copyright holders of gband give you
+permission to write, license and distribute a Plugin under terms of
+your choice, including proprietary terms. A Plugin is not a work based
+on gband, even when gband loads and runs it.
+
+"Plugin" means Lua code that gband loads at run time, such as a plugin
+directory, an init file, a colorscheme or a module one of these
+requires, and that interacts with gband only through the Lua API. A
+Plugin may require the API modules gband provides, such as
+require("gband.hl"), but contains no code copied from gband apart from
+code gband licenses under other terms.
+
+"Lua API" means the gband table and the gband.* modules that gband
+provides to Lua code in the client and in the server, as documented in
+docs/plugins.md.
+
+If you modify gband, you may extend this exception to your version,
+but you are not obliged to do so. If you do not wish to do so, delete
+this exception statement from your version.

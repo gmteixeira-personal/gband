@@ -692,3 +692,9 @@ Never commit to `main` directly or branch from it.
 ## Acknowledgements
 
 The layout model comes from [niri](https://github.com/YaLTeR/niri), a scrollable-tiling Wayland compositor.
+
+## License
+
+gband is licensed under the [GNU General Public License, version 3](LICENSE) or any later version.
+A [plugin exception](LICENSE-EXCEPTION) lets plugins, init files and colorschemes carry any license, proprietary included, as long as they use gband only through its Lua API.
+The tutorial, the examples and the default configuration are licensed under the [MIT License](LICENSE-MIT), so you can copy them into your own configuration freely.

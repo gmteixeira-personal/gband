@@ -3,6 +3,7 @@ name = "gband-client"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+license-file.workspace = true
 
 [dependencies]
 gband-core.workspace = true
