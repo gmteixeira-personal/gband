@@ -648,6 +648,9 @@ impl Display {
         self.focused_tile_chars = options.focused_tile_border_chars.clone();
         self.focused_floating_chars = options.focused_floating_border_chars.clone();
         self.window_titles = options.window_titles;
+        self.presentation.set_animations(options.animations);
+        self.presentation
+            .set_speed(options.animation_speed, Instant::now());
         let looping = std::mem::replace(&mut self.loop_bands, options.loop_bands);
         if let Some(view) = &mut self.view {
             view.set_center_focused_column(self.policy);

@@ -572,18 +572,104 @@ fn kill_server_ends_a_session_of_two_windows() {
     wait_until(|| !env.socket().exists(), "the socket to be removed");
 }
 
+fn defaults_with_animations(animations: bool) -> String {
+    gband_lua::DEFAULTS.replace(
+        "gband.opt.animations = true",
+        &format!("gband.opt.animations = {animations}"),
+    )
+}
+
+fn tile_lefts(screen: &Grid) -> Vec<u16> {
+    tiles(screen).iter().map(|tile| tile.left).collect()
+}
+
+fn scrolled_to_the_third_column(screen: &Grid) -> bool {
+    let tiles = tiles(screen);
+    tile_lefts(screen) == [2, 41]
+        && tiles[1].focused
+        && screen.contents().lines().any(|row| {
+            row.chars()
+                .take(41)
+                .collect::<String>()
+                .contains("second-window")
+        })
+}
+
+fn camera_moves_through_frames(env: &TestEnv, animations: Option<&str>) -> bool {
+    let mut client =
+        Attached::start_with(
+            env,
+            GBAND,
+            &["attach"],
+            80,
+            24,
+            |command| match animations {
+                Some(value) => command.env("GBAND_ANIMATIONS", value),
+                None => command.env_remove("GBAND_ANIMATIONS"),
+            },
+        );
+    client.wait_for_prompt();
+    client.shell_pid(env);
+    client.send(b"\x00n");
+    client.wait_for("the second tile focused right of the first", second_focused);
+    client.wait_for_prompt();
+    client.shell_pid(env);
+    client.run("echo second-window");
+    client.wait_for_line("second-window");
+    client.send(b"\x00n");
+    let deadline = std::time::Instant::now() + TIMEOUT;
+    let mut moved = false;
+    loop {
+        {
+            let screen = client.screen();
+            if scrolled_to_the_third_column(&screen) {
+                break;
+            }
+            let lefts = tile_lefts(&screen);
+            moved |= !lefts.is_empty() && lefts != [1, 40] && lefts != [2, 41];
+            assert!(
+                std::time::Instant::now() < deadline,
+                "timed out waiting for the third column; tiles {:?}; screen:\n{}",
+                tiles(&screen),
+                screen.contents()
+            );
+        }
+        thread::sleep(Duration::from_millis(1));
+    }
+    client.wait_for_prompt();
+    client.shell_pid(env);
+    moved
+}
+
 #[test]
 fn unknown_animations_value_is_logged() {
     let env = TestEnv::new("animations-unknown");
-    let mut client = Attached::start_with(&env, GBAND, &["attach"], 80, 24, |command| {
-        command.env("GBAND_ANIMATIONS", "fast");
-    });
-    client.wait_for_prompt();
-    client.shell_pid(&env);
+    env.write_config(&defaults_with_animations(false));
+    assert!(!camera_moves_through_frames(&env, Some("fast")));
     assert!(
         env.log_text("client")
             .contains("GBAND_ANIMATIONS value \"fast\"")
     );
+}
+
+#[test]
+fn animations_off_by_the_option() {
+    let env = TestEnv::new("animations-option-off");
+    env.write_config(&defaults_with_animations(false));
+    assert!(!camera_moves_through_frames(&env, None));
+}
+
+#[test]
+fn environment_overrides_the_animations_option() {
+    let env = TestEnv::new("animations-environment-override");
+    env.write_config(&defaults_with_animations(true));
+    assert!(!camera_moves_through_frames(&env, Some("off")));
+}
+
+#[test]
+fn animations_on_by_default() {
+    let env = TestEnv::new("animations-on-by-default");
+    assert!(camera_moves_through_frames(&env, None));
 }
 
 #[test]

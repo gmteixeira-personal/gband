@@ -52,6 +52,7 @@ None.
 - crates/lua/src/options.rs
 - crates/lua/src/defaults.lua
 - crates/lua/tests/options.rs
+- crates/lua/tests/config.rs
 - crates/client/src/animation.rs
 - crates/client/src/lib.rs
 - crates/client/tests/animation.rs

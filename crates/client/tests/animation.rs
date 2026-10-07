@@ -118,6 +118,71 @@ fn spring_retarget_mid_flight_keeps_its_value_and_velocity() {
     assert_eq!(spring.drawn(turn + ms(400)), 0);
 }
 
+fn spring_at(speed: f64, start: Instant) -> Spring {
+    let mut spring = Spring::at_rest(0.0, start);
+    spring.set_speed(speed, start);
+    spring.retarget(40.0, start);
+    spring
+}
+
+#[test]
+fn spring_at_speed_one_reaches_its_target() {
+    let start = Instant::now();
+    let spring = spring_at(1.0, start);
+    assert_eq!(spring.drawn(start), 0);
+    assert!((1..40).contains(&spring.drawn(start + ms(50))));
+    assert!(spring.is_at_rest(start + ms(400)));
+    assert_eq!(spring.drawn(start + ms(400)), 40);
+}
+
+#[test]
+fn spring_twice_as_fast() {
+    let start = Instant::now();
+    let spring = spring_at(2.0, start);
+    assert_eq!(spring.drawn(start), 0);
+    assert_eq!(spring.drawn(start + ms(25)), 17);
+    assert!(!spring.is_at_rest(start + ms(75)));
+    assert!(spring.is_at_rest(start + ms(200)));
+    assert_eq!(spring.value(start + ms(200)), 40.0);
+}
+
+#[test]
+fn spring_half_as_fast() {
+    let start = Instant::now();
+    let spring = spring_at(0.5, start);
+    assert_eq!(spring.drawn(start + ms(100)), 17);
+    assert!(!spring.is_at_rest(start + ms(200)));
+    assert!(spring.is_at_rest(start + ms(800)));
+    assert_eq!(spring.value(start + ms(800)), 40.0);
+}
+
+#[test]
+fn spring_speed_changed_mid_flight() {
+    let start = Instant::now();
+    let mut spring = spring_at(1.0, start);
+    let turn = (0..400)
+        .map(|millis| start + ms(millis))
+        .find(|&now| spring.drawn(now) >= 20)
+        .unwrap();
+    let unchanged = spring;
+    let velocity = spring.velocity(turn);
+    spring.set_speed(2.0, turn);
+    assert_eq!(spring.drawn(turn), unchanged.drawn(turn));
+    assert_eq!(spring.velocity(turn), velocity);
+    assert!(spring.is_at_rest(turn + ms(200)));
+    assert_eq!(spring.drawn(turn + ms(200)), 40);
+}
+
+#[test]
+fn spring_at_rest_takes_a_new_speed_without_moving() {
+    let start = Instant::now();
+    let mut spring = Spring::at_rest(40.0, start);
+    spring.set_speed(2.0, start + ms(10));
+    assert!(spring.is_at_rest(start + ms(10)));
+    spring.retarget(0.0, start + ms(10));
+    assert!(spring.is_at_rest(start + ms(210)));
+}
+
 #[test]
 fn camera_move_glides_to_its_target() {
     let tiles = vec![tile(1, 0, 40), tile(2, 40, 40), tile(3, 80, 40)];
@@ -274,6 +339,92 @@ fn disabled_presentation_always_draws_the_targets() {
     presentation.update(now, &targets(2, &[1, 2], 0, vec![]));
     assert_eq!(presentation.drawn(now).bands, [band(2, 0)]);
     assert!(!presentation.is_animating(now));
+}
+
+#[test]
+fn presentation_turned_off_by_the_option_always_draws_the_targets() {
+    let mut presentation = Presentation::new(Animations::On);
+    presentation.set_animations(false);
+    let now = Instant::now();
+    presentation.update(now, &targets(1, &[1, 2], 0, vec![tile(1, 0, 40)]));
+    presentation.update(now, &targets(1, &[1, 2], 40, vec![tile(1, 0, 53)]));
+    assert_eq!(camera(&presentation, now), 40);
+    assert_eq!(drawn_tile(&presentation, now, 1).unwrap().width, 53);
+    assert!(!presentation.is_animating(now));
+}
+
+#[test]
+fn environment_overrides_the_option() {
+    let mut presentation = Presentation::new(Animations::Off);
+    presentation.set_animations(true);
+    let now = Instant::now();
+    presentation.update(now, &targets(1, &[1, 2], 0, vec![tile(1, 0, 40)]));
+    presentation.update(now, &targets(1, &[1, 2], 40, vec![tile(1, 0, 40)]));
+    assert_eq!(camera(&presentation, now), 40);
+    assert!(!presentation.is_animating(now));
+}
+
+#[test]
+fn turned_off_by_a_reload_mid_flight() {
+    let tiles = vec![tile(1, 0, 40), tile(2, 40, 40), tile(3, 80, 40)];
+    let mut presentation = settled(1, &[1, 2], 0, tiles.clone());
+    let start = Instant::now();
+    let moved = targets(1, &[1, 2], 40, tiles);
+    presentation.update(start, &moved);
+    let reload = start + ms(50);
+    assert!((1..40).contains(&camera(&presentation, reload)));
+    presentation.set_animations(false);
+    let next = reload + ms(16);
+    presentation.update(next, &moved);
+    assert_eq!(camera(&presentation, next), 40);
+    assert!(!presentation.is_animating(next));
+}
+
+#[test]
+fn turned_back_on_moves_nothing_at_its_target() {
+    let tiles = vec![tile(1, 0, 40), tile(2, 40, 40)];
+    let mut presentation = settled(1, &[1, 2], 0, tiles.clone());
+    presentation.set_animations(false);
+    let start = Instant::now();
+    let moved = targets(1, &[1, 2], 40, tiles.clone());
+    presentation.update(start, &moved);
+    presentation.set_animations(true);
+    presentation.update(start + ms(16), &moved);
+    assert_eq!(camera(&presentation, start + ms(16)), 40);
+    assert!(!presentation.is_animating(start + ms(16)));
+    presentation.update(start + ms(32), &targets(1, &[1, 2], 0, tiles));
+    assert!(presentation.is_animating(start + ms(48)));
+}
+
+#[test]
+fn speed_changed_on_a_moving_camera() {
+    let tiles = vec![tile(1, 0, 40), tile(2, 40, 40), tile(3, 80, 40)];
+    let mut presentation = settled(1, &[1, 2], 0, tiles.clone());
+    let start = Instant::now();
+    let moved = targets(1, &[1, 2], 40, tiles);
+    presentation.update(start, &moved);
+    let reload = start + ms(50);
+    let before = camera(&presentation, reload);
+    let unchanged = presentation.clone();
+    presentation.set_speed(2.0, reload);
+    assert_eq!(camera(&presentation, reload), before);
+    let end = reload + ms(200);
+    presentation.update(end, &moved);
+    assert_eq!(camera(&presentation, end), 40);
+    assert!(!presentation.is_animating(end));
+    assert!(unchanged.is_animating(end - ms(50)));
+}
+
+#[test]
+fn faster_presentation_settles_sooner() {
+    let tiles = vec![tile(1, 0, 40), tile(2, 40, 40), tile(3, 80, 40)];
+    let mut presentation = settled(1, &[1, 2], 0, tiles.clone());
+    presentation.set_speed(2.0, Instant::now());
+    let start = Instant::now();
+    presentation.update(start, &targets(1, &[1, 2], 40, tiles));
+    assert!(presentation.is_animating(start + ms(25)));
+    assert_eq!(camera(&presentation, start + ms(200)), 40);
+    assert!(!presentation.is_animating(start + ms(200)));
 }
 
 #[test]

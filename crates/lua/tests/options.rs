@@ -207,6 +207,8 @@ fn list_holds_built_in_and_declared_options() {
     assert_eq!(
         names,
         [
+            "animation_speed",
+            "animations",
             "center_focused_column",
             "floating_border_chars",
             "floating_border_sides",
@@ -235,6 +237,30 @@ fn list_holds_built_in_and_declared_options() {
     );
     assert_eq!(prefix[1], "ctrl+space");
     assert!(!prefix[3].is_empty());
+    let animations: Vec<String> = eval(
+        &config,
+        "for _, o in ipairs(gband.opt.list()) do if o.name == 'animations' then return { o.type, tostring(o.default), o.desc } end end",
+    );
+    assert_eq!(
+        animations,
+        [
+            "boolean",
+            "true",
+            "whether the client animates changes of the layout and the view"
+        ]
+    );
+    let speed: Vec<String> = eval(
+        &config,
+        "for _, o in ipairs(gband.opt.list()) do if o.name == 'animation_speed' then return { o.type, tostring(o.default), o.desc } end end",
+    );
+    assert_eq!(
+        speed,
+        [
+            "number",
+            "1.0",
+            "how fast animations run, 2 being twice as fast as 1"
+        ]
+    );
     let server = Scratch::new("list-server");
     let config = server.loaded_server();
     let names: Vec<String> = eval(
@@ -358,6 +384,84 @@ fn window_titles_of_the_wrong_type() {
         .write("gband.set({ window_titles = false })\ngband.set({ window_titles = \"no\" })");
     let error = scratch.load().err().expect("a wrong type fails the load");
     assert_error_at(&error, &path, 2, "window_titles");
+}
+
+#[test]
+fn animation_options_by_default() {
+    let config = gband_lua::defaults(gband_lua::Side::Client);
+    assert!(config.errors.is_empty(), "{:?}", config.errors);
+    assert!(eval::<bool>(&config, "return gband.opt.animations"));
+    assert_eq!(
+        eval::<f64>(&config, "return gband.opt.animation_speed"),
+        1.0
+    );
+    assert!(config.options.animations);
+    assert_eq!(config.options.animation_speed, 1.0);
+}
+
+#[test]
+fn animation_options_read_back() {
+    let scratch = Scratch::new("animation-options-read-back");
+    scratch.write(
+        "gband.opt.animation_speed = 1.5\ngband.set({ animations = false })\nspeed = gband.opt.animation_speed\nanimating = gband.opt.animations",
+    );
+    let config = scratch.loaded();
+    assert!(config.errors.is_empty(), "{:?}", config.errors);
+    assert_eq!(global::<f64>(&config, "speed"), 1.5);
+    assert!(!global::<bool>(&config, "animating"));
+    assert_eq!(config.options.animation_speed, 1.5);
+    assert!(!config.options.animations);
+}
+
+#[test]
+fn animation_speed_out_of_range() {
+    for (index, speed) in ["0", "0.09", "10.5", "-1", "0/0", "'fast'"]
+        .into_iter()
+        .enumerate()
+    {
+        let scratch = Scratch::new(&format!("animation-speed-out-of-range-{index}"));
+        let path = scratch.write(&format!(
+            "gband.opt.animation_speed = 2\ngband.opt.animation_speed = {speed}\nspeed = gband.opt.animation_speed"
+        ));
+        let config = scratch.loaded();
+        let [error] = config.errors.as_slice() else {
+            panic!("{speed}: {:?}", config.errors);
+        };
+        assert_error_at(error, &path, 2, "animation_speed");
+        assert_eq!(global::<f64>(&config, "speed"), 1.0, "{speed}");
+    }
+}
+
+#[test]
+fn animation_speed_at_its_bounds() {
+    for speed in [0.1, 10.0] {
+        let scratch = Scratch::new(&format!("animation-speed-bound-{speed}"));
+        scratch.write(&format!("gband.opt.animation_speed = {speed}"));
+        let config = scratch.loaded();
+        assert!(config.errors.is_empty(), "{:?}", config.errors);
+        assert_eq!(config.options.animation_speed, speed);
+    }
+}
+
+#[test]
+fn animations_of_the_wrong_type() {
+    let scratch = Scratch::new("animations-wrong-type");
+    let path = scratch
+        .write("gband.opt.animations = false\n\ngband.opt.animations = \"no\"\nanimating = gband.opt.animations");
+    let config = scratch.loaded();
+    let error = error_naming(&config.errors, "animations");
+    assert_error_at(error, &path, 3, "animations");
+    assert!(global::<bool>(&config, "animating"));
+    assert!(config.options.animations);
+}
+
+#[test]
+fn animation_options_belong_to_the_client() {
+    let scratch = Scratch::new("animations-on-the-server");
+    let path = scratch.server("gband.opt.animations = false");
+    let config = scratch.loaded_server();
+    let error = error_naming(&config.errors, "animations");
+    assert_error_at(error, &path, 1, "client");
 }
 
 #[test]

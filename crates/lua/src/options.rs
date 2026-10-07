@@ -30,13 +30,15 @@ pub enum NotifyStyle {
     None,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Options {
     pub prefix: Key,
     pub layout: LayoutOptions,
     pub center_focused_column: CenterFocusedColumn,
     pub loop_bands: bool,
     pub window_titles: bool,
+    pub animations: bool,
+    pub animation_speed: f64,
     pub notify_style: NotifyStyle,
     pub tile_border: Border,
     pub floating_border: Border,
@@ -61,6 +63,8 @@ impl Default for Options {
             center_focused_column: CenterFocusedColumn::default(),
             loop_bands: true,
             window_titles: true,
+            animations: true,
+            animation_speed: 1.0,
             notify_style: NotifyStyle::default(),
             tile_border: rounded(),
             floating_border: rounded(),
@@ -97,6 +101,12 @@ impl Options {
         }
         if let Some(window_titles) = patch.window_titles {
             self.window_titles = window_titles;
+        }
+        if let Some(animations) = patch.animations {
+            self.animations = animations;
+        }
+        if let Some(AnimationSpeed(speed)) = patch.animation_speed {
+            self.animation_speed = speed;
         }
         if let Some(style) = patch.notify_style {
             self.notify_style = style;
@@ -141,6 +151,8 @@ impl Options {
             "center_focused_column" => self.center_focused_column = defaults.center_focused_column,
             "loop_bands" => self.loop_bands = defaults.loop_bands,
             "window_titles" => self.window_titles = defaults.window_titles,
+            "animations" => self.animations = defaults.animations,
+            "animation_speed" => self.animation_speed = defaults.animation_speed,
             "notify_style" => self.notify_style = defaults.notify_style,
             "tile_border_sides" => self.tile_border.sides = defaults.tile_border.sides,
             "tile_border_chars" => self.tile_border.chars = defaults.tile_border.chars,
@@ -170,6 +182,8 @@ impl Options {
             "center_focused_column" => lua.to_value(&self.center_focused_column),
             "loop_bands" => self.loop_bands.into_lua(lua),
             "window_titles" => self.window_titles.into_lua(lua),
+            "animations" => self.animations.into_lua(lua),
+            "animation_speed" => self.animation_speed.into_lua(lua),
             "notify_style" => lua.to_value(&self.notify_style),
             "tile_border_sides" => self.tile_border.sides.to_lua(lua),
             "tile_border_chars" => self.tile_border.chars.to_lua(lua),
@@ -185,11 +199,13 @@ impl Options {
     }
 }
 
-const CLIENT_NAMES: [&str; 14] = [
+const CLIENT_NAMES: [&str; 16] = [
     "prefix",
     "center_focused_column",
     "loop_bands",
     "window_titles",
+    "animations",
+    "animation_speed",
     "notify_style",
     "tile_border_sides",
     "tile_border_chars",
@@ -239,7 +255,7 @@ pub(crate) fn check_name(lua: &Lua, name: &str) -> Result<(), String> {
     Err(foreign(lua, name).unwrap_or_else(|| format!("unknown option `{name}`")))
 }
 
-const BUILTIN: [(&str, &str, &str); 16] = [
+const BUILTIN: [(&str, &str, &str); 18] = [
     ("prefix", "string", "the key that starts a key sequence"),
     (
         "default_column_width",
@@ -270,6 +286,16 @@ const BUILTIN: [(&str, &str, &str); 16] = [
         "window_titles",
         "boolean",
         "whether windows show their names on their top borders",
+    ),
+    (
+        "animations",
+        "boolean",
+        "whether the client animates changes of the layout and the view",
+    ),
+    (
+        "animation_speed",
+        "number",
+        "how fast animations run, 2 being twice as fast as 1",
     ),
     (
         "tile_border_sides",
@@ -741,6 +767,8 @@ pub struct OptionsPatch {
     center_focused_column: Option<CenterFocusedColumn>,
     loop_bands: Option<bool>,
     window_titles: Option<bool>,
+    animations: Option<bool>,
+    animation_speed: Option<AnimationSpeed>,
     notify_style: Option<NotifyStyle>,
     tile_border_sides: Option<Sides>,
     tile_border_chars: Option<BorderChars>,
@@ -785,6 +813,25 @@ impl<'de> Deserialize<'de> for HeightStep {
         step(value, HEIGHT_STEP_LIMIT)
             .map(HeightStep)
             .map_err(de::Error::custom)
+    }
+}
+
+const ANIMATION_SPEEDS: std::ops::RangeInclusive<f64> = 0.1..=10.0;
+
+#[derive(Debug)]
+struct AnimationSpeed(f64);
+
+impl<'de> Deserialize<'de> for AnimationSpeed {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = deserializer.deserialize_f64(Number)?;
+        if ANIMATION_SPEEDS.contains(&value) {
+            return Ok(AnimationSpeed(value));
+        }
+        Err(de::Error::custom(format!(
+            "expected a speed at least {} and at most {}, found {value}",
+            ANIMATION_SPEEDS.start(),
+            ANIMATION_SPEEDS.end()
+        )))
     }
 }
 

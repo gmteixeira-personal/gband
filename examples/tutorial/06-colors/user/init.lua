@@ -17,6 +17,8 @@ gband.set {
   height_step = 1/20,
 }
 
+gband.opt.animation_speed = 2
+
 gband.keymap.mode("resize", { label = "resize" })
 gband.keymap.set("resize", "h", gband.action.shrink_column_width, { desc = "narrower" })
 gband.keymap.set("resize", "l", gband.action.grow_column_width, { desc = "wider" })

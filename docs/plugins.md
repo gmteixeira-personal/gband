@@ -342,7 +342,7 @@ Each built-in option belongs to one side, and each process knows only its own si
 
 | side | options |
 |---|---|
-| client | `prefix`, `center_focused_column`, `loop_bands`, `window_titles`, `notify_style`, `tile_border_sides`, `tile_border_chars`, `focused_tile_border_chars`, `floating_border_sides`, `floating_border_chars`, `focused_floating_border_chars`, `width_step`, `height_step`, `mouse_mod` |
+| client | `prefix`, `center_focused_column`, `loop_bands`, `window_titles`, `animations`, `animation_speed`, `notify_style`, `tile_border_sides`, `tile_border_chars`, `focused_tile_border_chars`, `floating_border_sides`, `floating_border_chars`, `focused_floating_border_chars`, `width_step`, `height_step`, `mouse_mod` |
 | server | `default_column_width`, `width_presets` |
 
 ```lua
@@ -355,6 +355,11 @@ local presets = gband.opt.width_presets
 
 `window_titles`, `true` by default, draws each window's name on its top border; `false` draws none, while the names are still kept and `gband.layout()` still holds them.
 The client reads `GBAND_WINDOW_TITLES` when it starts: `off` draws no names whatever `window_titles` holds, unset or `on` leaves the option in charge, and any other value is logged as a warning and read as unset.
+
+`animations`, `true` by default, animates scrolling, band switches, moving windows and resizes; `false` draws every change at once.
+`animation_speed`, `1` by default, scales how fast every animation runs: `2` is twice as fast and `0.5` half as fast, from `0.1` to `10`.
+The client reads `GBAND_ANIMATIONS` when it starts: `off` turns animations off whatever `animations` holds, unset or `on` leaves the option in charge, and any other value is logged as a warning and read as unset.
+A reload that turns `animations` off draws every moving part at its target on the next frame, and a reload that changes `animation_speed` carries every moving part on from where it is drawn, at the new speed.
 
 An invalid value is reported at the line of the assignment, does not fail the load, and resets the option to its default.
 Setting an option of the other side is reported naming the side that owns it, and reading one returns nil.

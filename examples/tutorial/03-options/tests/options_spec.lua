@@ -40,6 +40,12 @@ t.case("the resize steps are a twentieth", function(g)
   t.eq(g.client("return gband.layout().bands[1].columns[1].width"), 0.55)
 end)
 
+t.case("animations run twice as fast", function(g)
+  chapter.start(g, { size = "40x8", env = { SHELL = "/bin/cat" } })
+  t.eq(g.client("return gband.opt.animation_speed"), 2)
+  t.eq(g.client("return gband.opt.animations"), true)
+end)
+
 t.case("the sidebar follows the settings window", function(g)
   chapter.start(g, { size = "40x8", env = { SHELL = "/bin/cat" } })
   t.match(g.screen().row(0), "^I")

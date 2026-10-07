@@ -9,6 +9,7 @@ pub const ANIMATIONS_VARIABLE: &str = "GBAND_ANIMATIONS";
 pub const FRAME: Duration = Duration::from_millis(16);
 const SETTLE: Duration = Duration::from_millis(400);
 const STIFFNESS: f64 = 800.0;
+pub const DEFAULT_SPEED: f64 = 1.0;
 const REST_DISTANCE: f64 = 0.5;
 const REST_SPEED: f64 = 10.0;
 
@@ -23,8 +24,23 @@ pub fn parse_animations(value: Option<&str>) -> Animations {
         None | Some("on") => Animations::On,
         Some("off") => Animations::Off,
         Some(other) => {
-            tracing::warn!("{ANIMATIONS_VARIABLE} value {other:?} is not on or off, using on");
+            tracing::warn!("{ANIMATIONS_VARIABLE} value {other:?} is not on or off, ignoring it");
             Animations::On
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Pace {
+    omega: f64,
+    settle: Duration,
+}
+
+impl Pace {
+    fn new(speed: f64) -> Self {
+        Self {
+            omega: STIFFNESS.sqrt() * speed,
+            settle: SETTLE.div_f64(speed),
         }
     }
 }
@@ -35,16 +51,43 @@ pub struct Spring {
     velocity: f64,
     target: f64,
     start: Instant,
+    pace: Pace,
 }
 
 impl Spring {
     pub fn at_rest(target: f64, now: Instant) -> Self {
+        Self::resting(target, now, Pace::new(DEFAULT_SPEED))
+    }
+
+    fn resting(target: f64, now: Instant, pace: Pace) -> Self {
         Self {
             from: target,
             velocity: 0.0,
             target,
             start: now,
+            pace,
         }
+    }
+
+    pub fn set_speed(&mut self, speed: f64, now: Instant) {
+        self.repace(Pace::new(speed), now);
+    }
+
+    fn repace(&mut self, pace: Pace, now: Instant) {
+        if pace == self.pace {
+            return;
+        }
+        *self = if self.is_at_rest(now) {
+            Self::resting(self.target, now, pace)
+        } else {
+            Self {
+                from: self.value(now),
+                velocity: self.velocity(now),
+                target: self.target,
+                start: now,
+                pace,
+            }
+        };
     }
 
     pub fn target(&self) -> f64 {
@@ -70,7 +113,7 @@ impl Spring {
     }
 
     pub fn is_at_rest(&self, now: Instant) -> bool {
-        if now.saturating_duration_since(self.start) >= SETTLE {
+        if now.saturating_duration_since(self.start) >= self.pace.settle {
             return true;
         }
         let elapsed = self.elapsed(now);
@@ -87,6 +130,7 @@ impl Spring {
             velocity: self.velocity(now),
             target,
             start: now,
+            pace: self.pace,
         };
     }
 
@@ -96,7 +140,7 @@ impl Spring {
     }
 
     pub fn snap(&mut self, now: Instant) {
-        *self = Self::at_rest(self.target, now);
+        *self = Self::resting(self.target, now, self.pace);
     }
 
     fn elapsed(&self, now: Instant) -> f64 {
@@ -104,14 +148,14 @@ impl Spring {
     }
 
     fn raw_value(&self, t: f64) -> f64 {
-        let omega = STIFFNESS.sqrt();
+        let omega = self.pace.omega;
         let displacement = self.from - self.target;
         self.target
             + (displacement + (self.velocity + omega * displacement) * t) * (-omega * t).exp()
     }
 
     fn raw_velocity(&self, t: f64) -> f64 {
-        let omega = STIFFNESS.sqrt();
+        let omega = self.pace.omega;
         let displacement = self.from - self.target;
         (self.velocity - omega * (self.velocity + omega * displacement) * t) * (-omega * t).exp()
     }
@@ -167,12 +211,12 @@ struct TileSprings {
 }
 
 impl TileSprings {
-    fn at_rest(tile: &Tile, now: Instant) -> Self {
+    fn at_rest(tile: &Tile, now: Instant, pace: Pace) -> Self {
         Self {
-            x: Spring::at_rest(f64::from(tile.x), now),
-            y: Spring::at_rest(f64::from(tile.y), now),
-            width: Spring::at_rest(f64::from(tile.width), now),
-            height: Spring::at_rest(f64::from(tile.height), now),
+            x: Spring::resting(f64::from(tile.x), now, pace),
+            y: Spring::resting(f64::from(tile.y), now, pace),
+            width: Spring::resting(f64::from(tile.width), now, pace),
+            height: Spring::resting(f64::from(tile.height), now, pace),
         }
     }
 
@@ -183,19 +227,29 @@ impl TileSprings {
         self.height.retarget(f64::from(tile.height), now);
     }
 
-    fn placed(tile: &DrawnTile, now: Instant) -> Self {
+    fn placed(tile: &DrawnTile, now: Instant, pace: Pace) -> Self {
         Self {
-            x: Spring::at_rest(tile.x as f64, now),
-            y: Spring::at_rest(tile.y as f64, now),
-            width: Spring::at_rest(f64::from(tile.width), now),
-            height: Spring::at_rest(f64::from(tile.height), now),
+            x: Spring::resting(tile.x as f64, now, pace),
+            y: Spring::resting(tile.y as f64, now, pace),
+            width: Spring::resting(f64::from(tile.width), now, pace),
+            height: Spring::resting(f64::from(tile.height), now, pace),
         }
     }
 
     fn snap(&mut self, now: Instant) {
-        for spring in [&mut self.x, &mut self.y, &mut self.width, &mut self.height] {
+        for spring in self.springs_mut() {
             spring.snap(now);
         }
+    }
+
+    fn repace(&mut self, pace: Pace, now: Instant) {
+        for spring in self.springs_mut() {
+            spring.repace(pace, now);
+        }
+    }
+
+    fn springs_mut(&mut self) -> [&mut Spring; 4] {
+        [&mut self.x, &mut self.y, &mut self.width, &mut self.height]
     }
 
     fn target(&self) -> [i64; 4] {
@@ -249,6 +303,7 @@ pub struct Drawn {
 
 #[derive(Clone, Debug)]
 struct Shown {
+    pace: Pace,
     band: BandId,
     bands: Vec<BandId>,
     band_height: u16,
@@ -276,16 +331,20 @@ pub struct Hold {
 
 #[derive(Clone, Debug)]
 pub struct Presentation {
-    animations: Animations,
+    environment: Animations,
+    animations: bool,
+    pace: Pace,
     snap: bool,
     shown: Option<Shown>,
     hold: Hold,
 }
 
 impl Presentation {
-    pub fn new(animations: Animations) -> Self {
+    pub fn new(environment: Animations) -> Self {
         Self {
-            animations,
+            environment,
+            animations: true,
+            pace: Pace::new(DEFAULT_SPEED),
             snap: true,
             shown: None,
             hold: Hold::default(),
@@ -294,6 +353,20 @@ impl Presentation {
 
     pub fn snap(&mut self) {
         self.snap = true;
+    }
+
+    pub fn set_animations(&mut self, animations: bool) {
+        if !animations {
+            self.snap = true;
+        }
+        self.animations = animations;
+    }
+
+    pub fn set_speed(&mut self, speed: f64, now: Instant) {
+        self.pace = Pace::new(speed);
+        if let Some(shown) = &mut self.shown {
+            shown.repace(self.pace, now);
+        }
     }
 
     pub fn hold(&mut self, hold: Hold) {
@@ -305,7 +378,7 @@ impl Presentation {
             && let Some(springs) = shown.tiles.get_mut(&window)
         {
             let target = springs.target();
-            *springs = TileSprings::placed(&tile, now);
+            *springs = TileSprings::placed(&tile, now, self.pace);
             shown.parked.insert(window, target);
         }
     }
@@ -319,23 +392,27 @@ impl Presentation {
                 shown.leaving.push(peek);
             }
             let top = shown.top(shown.band).unwrap_or(0.0);
-            shown.vertical = Spring::at_rest(held.top as f64, now);
+            shown.vertical = Spring::resting(held.top as f64, now, self.pace);
             shown.vertical.retarget(top, now);
         }
     }
 
     pub fn release(&mut self, window: WindowId, tile: DrawnTile, now: Instant) {
         if let Some(shown) = &mut self.shown {
-            shown.tiles.insert(window, TileSprings::placed(&tile, now));
+            shown
+                .tiles
+                .insert(window, TileSprings::placed(&tile, now, self.pace));
             shown.parked.remove(&window);
         }
     }
 
     pub fn update(&mut self, now: Instant, targets: &Targets) {
-        let snap = std::mem::take(&mut self.snap) || self.animations == Animations::Off;
+        let snap = std::mem::take(&mut self.snap)
+            || !self.animations
+            || self.environment == Animations::Off;
         match &mut self.shown {
             Some(shown) if !snap => shown.update(now, targets),
-            _ => self.shown = Some(Shown::at_rest(now, targets)),
+            _ => self.shown = Some(Shown::at_rest(now, targets, self.pace)),
         }
         if let Some(shown) = &mut self.shown {
             if self.hold.camera {
@@ -347,7 +424,7 @@ impl Presentation {
                 }
             }
             if let Some(held) = self.hold.vertical {
-                shown.vertical = Spring::at_rest(held.top as f64, now);
+                shown.vertical = Spring::resting(held.top as f64, now, self.pace);
                 shown.leaving.clear();
             }
         }
@@ -412,22 +489,32 @@ impl Presentation {
 }
 
 impl Shown {
-    fn at_rest(now: Instant, targets: &Targets) -> Self {
+    fn at_rest(now: Instant, targets: &Targets, pace: Pace) -> Self {
         Self {
+            pace,
             band: targets.band,
             bands: targets.bands.clone(),
             band_height: targets.band_height,
             focused: targets.focused,
-            camera: Spring::at_rest(targets.camera as f64, now),
+            camera: Spring::resting(targets.camera as f64, now, pace),
             strip: targets.strip,
-            vertical: Spring::at_rest(targets.top(targets.band).unwrap_or(0.0), now),
+            vertical: Spring::resting(targets.top(targets.band).unwrap_or(0.0), now, pace),
             tiles: targets
                 .tiles
                 .iter()
-                .map(|tile| (tile.window, TileSprings::at_rest(tile, now)))
+                .map(|tile| (tile.window, TileSprings::at_rest(tile, now, pace)))
                 .collect(),
             parked: HashMap::new(),
             leaving: Vec::new(),
+        }
+    }
+
+    fn repace(&mut self, pace: Pace, now: Instant) {
+        self.pace = pace;
+        self.camera.repace(pace, now);
+        self.vertical.repace(pace, now);
+        for springs in self.tiles.values_mut() {
+            springs.repace(pace, now);
         }
     }
 
@@ -455,7 +542,7 @@ impl Shown {
                     .push((self.band, self.camera.drawn(now), self.strip));
             }
             self.leaving.retain(|&(band, _, _)| band != targets.band);
-            self.camera = Spring::at_rest(targets.camera as f64, now);
+            self.camera = Spring::resting(targets.camera as f64, now, self.pace);
             self.tiles.clear();
             self.parked.clear();
             self.retarget_tiles(now, targets);
@@ -482,6 +569,7 @@ impl Shown {
     }
 
     fn retarget_tiles(&mut self, now: Instant, targets: &Targets) {
+        let pace = self.pace;
         self.tiles
             .retain(|window, _| targets.tiles.iter().any(|tile| tile.window == *window));
         self.parked
@@ -503,7 +591,7 @@ impl Shown {
             self.tiles
                 .entry(tile.window)
                 .and_modify(|springs| springs.retarget(tile, now))
-                .or_insert_with(|| TileSprings::at_rest(tile, now));
+                .or_insert_with(|| TileSprings::at_rest(tile, now, pace));
         }
     }
 }

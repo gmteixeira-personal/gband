@@ -11,6 +11,17 @@ gband.opt.prefix = "ctrl+space"
 gband.opt.center_focused_column = "never"
 gband.opt.loop_bands = true
 gband.opt.window_titles = true
+```
+
+```lua defaults/init.lua
+gband.opt.animations = true
+gband.opt.animation_speed = 1
+```
+
+These two set the animation options to their declared defaults: animations on, at the speed where every motion settles within 400 ms.
+`GBAND_ANIMATIONS=off` still turns them off for one client, whatever these lines say.
+
+```lua defaults/init.lua
 gband.opt.notify_style = "osc9"
 gband.opt.tile_border_sides = { "top", "right", "bottom", "left" }
 gband.opt.tile_border_chars = "rounded"
