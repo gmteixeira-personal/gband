@@ -63,12 +63,14 @@ None.
 - crates/lua/src/actions.rs
 - crates/lua/src/control.rs
 - crates/lua/tests/control.rs
+- crates/lua/tests/plugin_windows.rs
 - crates/lua/tests/server.rs
 - crates/protocol/src/message.rs
 - crates/protocol/tests/messages.rs
 - crates/server/tests/events.rs
 - crates/server/tests/resize.rs
 - crates/server/tests/scripting.rs
+- crates/server/tests/sync.rs
 - crates/server/tests/windows.rs
 - docs/plugins.md
 - docs/tutorial/02-actions.md
