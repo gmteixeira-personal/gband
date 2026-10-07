@@ -84,12 +84,17 @@ The target of `grow_column_width`, `shrink_column_width`, `grow_window_height` a
 
 `send_prefix` SHALL accept a target holding `window`, and send the prefix key to that window.
 
-A target passed to a view action or to `detach` SHALL be an error. Each of these SHALL also be an error at the line of the call:
+`drag_resize_window` SHALL accept a target holding `edges`, a list of edge names. Each name SHALL be `"left"`, `"right"`, `"top"` or `"bottom"`. The gesture the action starts SHALL move exactly the edges the list names, as the mouse capability's "Resize by dragging" defines. The order of the names SHALL NOT matter. The target SHALL NOT change when the action starts a gesture. It SHALL start one only while the client handles a mouse press, as the mouse capability's "Drag gestures" defines. Called with no target, `drag_resize_window` SHALL pick its edges from the press's cell, as "Resize by dragging" defines.
+
+A target passed to a view action, or to a client action other than `send_prefix` and `drag_resize_window`, SHALL be an error. These client actions are `detach`, `drag_window` and `drag_band`. Each of these SHALL also be an error at the line of the call:
 - A target that is not a table.
 - A field the action does not take.
 - A `step` out of its range.
 - A window or band number not in the client's layout.
 - An `after` window not in `band`, or a floating `after` window for `open_window` or `gband.spawn`, or, for `toggle_window_floating`, an `after` that is not a tiled window of `window`'s band.
+- For `drag_resize_window`, a target without `edges`, an `edges` that is not a list of strings, an empty list, a name that is not an edge name, a name given twice, both `"left"` and `"right"`, or both `"top"` and `"bottom"`.
+
+A call that raises one of these errors SHALL dispatch nothing.
 
 Calling an action value with no target SHALL resolve it against the view, as the actions capability defines.
 
@@ -140,6 +145,43 @@ Calling an action value with no target SHALL resolve it against the view, as the
 #### Scenario: Step out of range
 - **WHEN** line 4 of a binding function's file calls `gband.action.grow_window_height({ step = 2 })`
 - **THEN** the call raises an error at line 4 naming `step`, and nothing is sent
+
+#### Scenario: Resize by named edges
+- **WHEN** navigation mode binds `rightmouse` to a function that calls `gband.action.drag_resize_window({ edges = { "bottom" } })`, the screen area is 80×24, a floating window's box is 30×12 at column 10 and row 4, and the user drags with the right button from column 12 and row 15 to column 8 and row 18
+- **THEN** the box is 30 cells wide at column 10 and row 4, and 15 rows high
+
+#### Scenario: Order of edge names
+- **WHEN** a binding function calls `gband.action.drag_resize_window({ edges = { "top", "left" } })` while the client handles a mouse press
+- **THEN** the gesture moves the left and top edges, as it does for `{ edges = { "left", "top" } }`
+
+#### Scenario: Named edges from a key
+- **WHEN** navigation mode binds `r` to a function that calls `gband.action.drag_resize_window({ edges = { "right" } })` and the user presses `r`
+- **THEN** no error is shown and nothing changes
+
+#### Scenario: Opposite edges
+- **WHEN** line 5 of `user/init.lua` holds a binding function for `rightmouse` that calls `gband.action.drag_resize_window({ edges = { "left", "right" } })`, and the user presses the right button on a window
+- **THEN** the client shows an error at `user/init.lua` line 5 naming `left` and `right`
+- **AND** no gesture starts and nothing is sent to the server
+
+#### Scenario: Empty edge list
+- **WHEN** a binding function calls `gband.action.drag_resize_window({ edges = {} })`
+- **THEN** the call raises an error naming `edges`, and nothing is dispatched
+
+#### Scenario: Unknown edge name
+- **WHEN** a binding function calls `gband.action.drag_resize_window({ edges = { "middle" } })`
+- **THEN** the call raises an error naming `middle`, and nothing is dispatched
+
+#### Scenario: Edge named twice
+- **WHEN** a binding function calls `gband.action.drag_resize_window({ edges = { "top", "top" } })`
+- **THEN** the call raises an error naming `top`, and nothing is dispatched
+
+#### Scenario: Other field beside edges
+- **WHEN** a binding function calls `gband.action.drag_resize_window({ edges = { "top" }, window = 1 })`
+- **THEN** the call raises an error naming `window`, and nothing is dispatched
+
+#### Scenario: Target on another drag action
+- **WHEN** a binding function calls `gband.action.drag_window({ edges = { "left" } })`
+- **THEN** the call raises an error naming `drag_window`, and nothing is dispatched
 
 ### Requirement: Focus and view by number
 `gband.window.focus(window)` SHALL dispatch a view action that focuses the named window, as the layout-view capability defines. `gband.band.view(band)` SHALL dispatch a view action that views the named band, as the layout-view capability defines. A number that names no window or band in the client's layout SHALL be an error at the line of the call.
