@@ -13,6 +13,20 @@ const BRACKETED: Modes = Modes {
     ..Modes::DEFAULT
 };
 
+const OTHER_KEYS: Modes = Modes {
+    modify_other_keys: 1,
+    ..Modes::DEFAULT
+};
+const EVERY_OTHER_KEY: Modes = Modes {
+    modify_other_keys: 2,
+    ..Modes::DEFAULT
+};
+const ALT_SHIFT: Modifiers = Modifiers {
+    shift: true,
+    alt: true,
+    ctrl: false,
+};
+
 const SHIFT_ALT_CTRL: Modifiers = Modifiers {
     shift: true,
     alt: true,
@@ -106,6 +120,76 @@ fn editing_keys() {
         (KeyCode::Escape, Modifiers::NONE, NORMAL, b"\x1b"),
         (KeyCode::Escape, Modifiers::SHIFT, NORMAL, b"\x1b"),
     ]);
+}
+
+#[test]
+fn editing_keys_with_modify_other_keys() {
+    for modes in [OTHER_KEYS, EVERY_OTHER_KEY] {
+        check(&[
+            (KeyCode::Enter, Modifiers::NONE, modes, b"\r"),
+            (KeyCode::Enter, Modifiers::SHIFT, modes, b"\x1b[27;2;13~"),
+            (KeyCode::Enter, Modifiers::CTRL, modes, b"\x1b[27;5;13~"),
+            (KeyCode::Enter, CTRL_SHIFT, modes, b"\x1b[27;6;13~"),
+            (KeyCode::Tab, Modifiers::NONE, modes, b"\t"),
+            (KeyCode::Tab, Modifiers::SHIFT, modes, b"\t"),
+            (KeyCode::Tab, Modifiers::CTRL, modes, b"\x1b[27;5;9~"),
+            (KeyCode::Tab, CTRL_SHIFT, modes, b"\x1b[27;6;9~"),
+            (KeyCode::BackTab, Modifiers::NONE, modes, b"\x1b[Z"),
+            (KeyCode::BackTab, Modifiers::SHIFT, modes, b"\x1b[Z"),
+            (KeyCode::Backspace, Modifiers::NONE, modes, b"\x7f"),
+            (
+                KeyCode::Backspace,
+                Modifiers::SHIFT,
+                modes,
+                b"\x1b[27;2;127~",
+            ),
+            (
+                KeyCode::Backspace,
+                Modifiers::CTRL,
+                modes,
+                b"\x1b[27;5;127~",
+            ),
+            (KeyCode::Escape, Modifiers::NONE, modes, b"\x1b"),
+            (KeyCode::Escape, Modifiers::SHIFT, modes, b"\x1b"),
+            (KeyCode::Escape, Modifiers::CTRL, modes, b"\x1b"),
+            (KeyCode::Char('a'), Modifiers::CTRL, modes, b"\x01"),
+            (KeyCode::Char('1'), Modifiers::CTRL, modes, b"1"),
+            (KeyCode::Up, Modifiers::CTRL, modes, b"\x1b[1;5A"),
+        ]);
+    }
+}
+
+#[test]
+fn levels_other_than_one_and_two_keep_legacy_bytes() {
+    let unknown = Modes {
+        modify_other_keys: 3,
+        ..Modes::DEFAULT
+    };
+    check(&[
+        (KeyCode::Enter, Modifiers::CTRL, unknown, b"\r"),
+        (KeyCode::Backspace, Modifiers::CTRL, unknown, b"\x08"),
+        (KeyCode::Tab, Modifiers::CTRL, unknown, b"\t"),
+    ]);
+}
+
+#[test]
+fn alt_with_modify_other_keys() {
+    for modes in [OTHER_KEYS, EVERY_OTHER_KEY] {
+        check(&[
+            (KeyCode::Enter, Modifiers::ALT, modes, b"\x1b\r"),
+            (KeyCode::Enter, ALT_CTRL, modes, b"\x1b[27;7;13~"),
+            (KeyCode::Enter, ALT_SHIFT, modes, b"\x1b[27;4;13~"),
+            (KeyCode::Enter, SHIFT_ALT_CTRL, modes, b"\x1b[27;8;13~"),
+            (KeyCode::Tab, Modifiers::ALT, modes, b"\x1b\t"),
+            (KeyCode::Tab, ALT_SHIFT, modes, b"\x1b\t"),
+            (KeyCode::Tab, ALT_CTRL, modes, b"\x1b[27;7;9~"),
+            (KeyCode::Backspace, Modifiers::ALT, modes, b"\x1b\x7f"),
+            (KeyCode::Backspace, ALT_CTRL, modes, b"\x1b[27;7;127~"),
+            (KeyCode::Escape, Modifiers::ALT, modes, b"\x1b\x1b"),
+            (KeyCode::Char('x'), Modifiers::ALT, modes, b"\x1bx"),
+            (KeyCode::Char('a'), ALT_CTRL, modes, b"\x1b\x01"),
+        ]);
+    }
 }
 
 #[test]
