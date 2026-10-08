@@ -131,6 +131,58 @@ fn prefix_key_twice_sends_one_ctrl_space() {
 }
 
 #[test]
+fn ctrl_enter_reaches_a_program_that_asked_for_modify_other_keys() {
+    let env = TestEnv::new("modify-other-keys");
+    let mut client = Attached::start(&env, 80, 24);
+    client.wait_for_prompt();
+    client.shell_pid(&env);
+    client.run("clear; printf '\\033[>4;1m'; cat -v");
+    thread::sleep(Duration::from_millis(300));
+    client.send(b"\x1b[27;5;13~");
+    thread::sleep(Duration::from_millis(200));
+    client.send(b"\r");
+    client.wait_for_line("^[[27;5;13~");
+}
+
+#[test]
+fn reattach_keeps_modify_other_keys() {
+    let env = TestEnv::new("reattach-modify-other-keys");
+    let mut first = Attached::start(&env, 80, 24);
+    first.wait_for_prompt();
+    first.shell_pid(&env);
+    first.run("clear; printf '\\033[>4;1m'; cat -v");
+    thread::sleep(Duration::from_millis(300));
+    first.kill();
+
+    let mut second = Attached::start(&env, 80, 24);
+    thread::sleep(Duration::from_millis(300));
+    second.send(b"\x1b[27;5;13~");
+    thread::sleep(Duration::from_millis(200));
+    second.send(b"\r");
+    second.wait_for_line("^[[27;5;13~");
+}
+
+#[test]
+fn ctrl_enter_is_enter_without_modify_other_keys() {
+    let env = TestEnv::new("legacy-ctrl-enter");
+    let mut client = Attached::start(&env, 80, 24);
+    client.wait_for_prompt();
+    client.shell_pid(&env);
+    client.run("clear; cat -v");
+    thread::sleep(Duration::from_millis(300));
+    client.send(b"\x1b[27;5;13~");
+    thread::sleep(Duration::from_millis(200));
+    client.send(b"x");
+    client.wait_for_line("x");
+    assert!(
+        client
+            .focused_lines()
+            .iter()
+            .all(|line| !line.contains("27;5;13"))
+    );
+}
+
+#[test]
 fn ctrl_a_reaches_the_window_and_unbound_keys_are_discarded() {
     let env = TestEnv::new("prefix-ctrl-a");
     let mut client = Attached::start(&env, 80, 24);

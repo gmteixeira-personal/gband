@@ -9,6 +9,11 @@ const ALT_SHIFT: Modifiers = Modifiers {
     alt: true,
     ctrl: false,
 };
+const ALT_CTRL: Modifiers = Modifiers {
+    shift: false,
+    alt: true,
+    ctrl: true,
+};
 
 fn every_modifiers() -> Vec<Modifiers> {
     (0..8)
@@ -313,6 +318,108 @@ fn higher_modifier_bits_are_dropped() {
         (b"\x1b[1;13A", vec![key(KeyCode::Up, Modifiers::CTRL)]),
         (b"\x1b[3;17~", vec![plain(KeyCode::Delete)]),
     ]);
+}
+
+#[test]
+fn ghostty_ctrl_enter() {
+    check(&[(b"\x1b[27;5;13~", vec![key(KeyCode::Enter, Modifiers::CTRL)])]);
+}
+
+#[test]
+fn csi_u_ctrl_enter() {
+    check(&[(b"\x1b[13;5u", vec![key(KeyCode::Enter, Modifiers::CTRL)])]);
+}
+
+#[test]
+fn modified_character() {
+    check(&[
+        (
+            b"\x1b[27;5;49~",
+            vec![key(KeyCode::Char('1'), Modifiers::CTRL)],
+        ),
+        (
+            b"\x1b[49;5u",
+            vec![key(KeyCode::Char('1'), Modifiers::CTRL)],
+        ),
+        (
+            b"\x1b[27;2;65~",
+            vec![key(KeyCode::Char('A'), Modifiers::SHIFT)],
+        ),
+        (
+            b"\x1b[233;3u",
+            vec![key(KeyCode::Char('é'), Modifiers::ALT)],
+        ),
+    ]);
+}
+
+#[test]
+fn coded_keys() {
+    let ctrl_shift = Modifiers {
+        shift: true,
+        alt: false,
+        ctrl: true,
+    };
+    check(&[
+        (b"\x1b[13u", vec![plain(KeyCode::Enter)]),
+        (b"\x1b[9u", vec![plain(KeyCode::Tab)]),
+        (b"\x1b[127u", vec![plain(KeyCode::Backspace)]),
+        (b"\x1b[27u", vec![escape()]),
+        (b"\x1b[97u", vec![char('a')]),
+        (
+            b"\x1b[27;2;13~",
+            vec![key(KeyCode::Enter, Modifiers::SHIFT)],
+        ),
+        (b"\x1b[27;5;9~", vec![key(KeyCode::Tab, Modifiers::CTRL)]),
+        (b"\x1b[27;6;9~", vec![key(KeyCode::Tab, ctrl_shift)]),
+        (
+            b"\x1b[27;5;127~",
+            vec![key(KeyCode::Backspace, Modifiers::CTRL)],
+        ),
+        (b"\x1b[27;3;27~", vec![key(KeyCode::Escape, Modifiers::ALT)]),
+        (
+            b"\x1b[127;5u",
+            vec![key(KeyCode::Backspace, Modifiers::CTRL)],
+        ),
+        (b"\x1b[27;7;13~", vec![key(KeyCode::Enter, ALT_CTRL)]),
+        (b"\x1b[13;69u", vec![key(KeyCode::Enter, Modifiers::CTRL)]),
+    ]);
+}
+
+#[test]
+fn shift_tab_in_the_modify_other_keys_form() {
+    check(&[
+        (b"\x1b[27;2;9~", vec![plain(KeyCode::BackTab)]),
+        (b"\x1b[9;2u", vec![plain(KeyCode::BackTab)]),
+    ]);
+}
+
+#[test]
+fn control_code_is_no_key() {
+    check(&[
+        (b"\x1b[27;5;1~a", vec![char('a')]),
+        (b"\x1b[1;5ua", vec![char('a')]),
+        (b"\x1b[155ua", vec![char('a')]),
+        (b"\x1b[55296ua", vec![char('a')]),
+    ]);
+}
+
+#[test]
+fn kitty_sub_parameters_are_no_key() {
+    check(&[
+        (b"\x1b[13:13;5ua", vec![char('a')]),
+        (b"\x1b[13;5:1ua", vec![char('a')]),
+        (b"\x1b[27;5:3;13~a", vec![char('a')]),
+    ]);
+}
+
+#[test]
+fn modify_other_keys_form_split_across_reads() {
+    let ctrl_enter = vec![key(KeyCode::Enter, Modifiers::CTRL)];
+    let (inputs, held) = pushed(&[b"\x1b[27;5"]);
+    assert_eq!(inputs, []);
+    assert!(held);
+    assert_eq!(decoded(&[b"\x1b[27;5", b";13~"]), ctrl_enter);
+    assert_eq!(decoded(&[b"\x1b[13;", b"5u"]), ctrl_enter);
 }
 
 #[test]
@@ -694,6 +801,10 @@ const APPLICATION: Modes = Modes {
     application_cursor: true,
     ..Modes::DEFAULT
 };
+const OTHER_KEYS: Modes = Modes {
+    modify_other_keys: 1,
+    ..Modes::DEFAULT
+};
 
 fn every_code() -> Vec<KeyCode> {
     let mut codes = vec![
@@ -740,7 +851,7 @@ fn is_control_alias(key: Key) -> bool {
 
 #[test]
 fn encoded_keys_decode_to_the_same_bytes() {
-    for modes in [NORMAL, APPLICATION] {
+    for modes in [NORMAL, APPLICATION, OTHER_KEYS] {
         for original in every_key() {
             let bytes = encode_key(original, modes);
             let inputs = decoded(&[&bytes]);
@@ -902,6 +1013,11 @@ fn samples() -> Vec<Vec<u8>> {
             every_key()
                 .into_iter()
                 .map(|key| encode_key(key, APPLICATION)),
+        )
+        .chain(
+            every_key()
+                .into_iter()
+                .map(|key| encode_key(key, OTHER_KEYS)),
         )
         .collect();
     for event in every_mouse_event() {

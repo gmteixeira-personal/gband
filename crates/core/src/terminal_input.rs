@@ -255,6 +255,10 @@ fn sequence(params: &[u8], end: u8) -> Option<TerminalInput> {
         (b'I', []) => Some(TerminalInput::Focus(true)),
         (b'O', []) => Some(TerminalInput::Focus(false)),
         (letter, []) => cursor_key(letter).map(|code| key(code, Modifiers::NONE)),
+        (b'~', [27, parameter, code]) | (b'u', [code, parameter]) => {
+            coded_key(*code, modifiers(*parameter))
+        }
+        (b'u', [code]) => coded_key(*code, Modifiers::NONE),
         (b'~', [number]) => tilde_key(*number).map(|code| key(code, Modifiers::NONE)),
         (b'~', [number, parameter]) => {
             tilde_key(*number).map(|code| key(code, modifiers(*parameter)))
@@ -283,6 +287,18 @@ fn modifiers(parameter: u32) -> Modifiers {
         alt: bits & 2 != 0,
         ctrl: bits & 4 != 0,
     }
+}
+
+fn coded_key(code: u32, modifiers: Modifiers) -> Option<TerminalInput> {
+    let code = match code {
+        13 => KeyCode::Enter,
+        9 if modifiers == Modifiers::SHIFT => return Some(key(KeyCode::BackTab, Modifiers::NONE)),
+        9 => KeyCode::Tab,
+        127 => KeyCode::Backspace,
+        27 => KeyCode::Escape,
+        _ => KeyCode::Char(char::from_u32(code).filter(|c| !c.is_control())?),
+    };
+    Some(key(code, modifiers))
 }
 
 fn tilde_key(number: u32) -> Option<KeyCode> {

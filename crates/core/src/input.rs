@@ -175,6 +175,7 @@ pub struct Modes {
     pub bracketed_paste: bool,
     pub mouse_tracking: MouseTracking,
     pub mouse_encoding: MouseEncoding,
+    pub modify_other_keys: u8,
 }
 
 impl Modes {
@@ -183,6 +184,7 @@ impl Modes {
         bracketed_paste: false,
         mouse_tracking: MouseTracking::None,
         mouse_encoding: MouseEncoding::Default,
+        modify_other_keys: 0,
     };
 }
 
@@ -192,6 +194,9 @@ const PASTE_END: &[u8] = b"\x1b[201~";
 
 pub fn encode_key(key: Key, modes: Modes) -> Vec<u8> {
     let modifiers = key.modifiers;
+    if let Some(code) = modified_other_key(key, modes) {
+        return format!("\x1b[27;{};{code}~", modifiers.parameter()).into_bytes();
+    }
     match key.code {
         KeyCode::Char(c) => alt_prefixed(modifiers, encode_char(c, modifiers.ctrl)),
         KeyCode::Enter => alt_prefixed(modifiers, b"\r".to_vec()),
@@ -333,6 +338,19 @@ fn control_code(c: char) -> Option<u8> {
         '^' | '6' => Some(0x1e),
         '_' | '/' | '7' => Some(0x1f),
         '?' | '8' => Some(0x7f),
+        _ => None,
+    }
+}
+
+fn modified_other_key(key: Key, modes: Modes) -> Option<u8> {
+    if !matches!(modes.modify_other_keys, 1 | 2) {
+        return None;
+    }
+    let Modifiers { shift, ctrl, .. } = key.modifiers;
+    match key.code {
+        KeyCode::Enter if shift || ctrl => Some(13),
+        KeyCode::Backspace if shift || ctrl => Some(127),
+        KeyCode::Tab if ctrl => Some(9),
         _ => None,
     }
 }

@@ -28,6 +28,8 @@ Keep a `modify_other_keys: u8` in `Callbacks`. Set it in `unhandled_csi` for `(S
 
 The alternative was to fork or patch vt100 to model the mode. That is more code to own for one byte of state.
 
+vte dispatches a CSI with no parameter as one parameter of 0, so `\e[>m` and `\e[>0m` reach the callbacks identically. Both clear the level. In xterm, `\e[>0m` resets only modifyKeyboard, but no program is known to write it while expecting modifyOtherKeys to survive, and telling the two apart would need a second byte-level scanner.
+
 ### Detect a full reset at the byte level in `Vt100::process`
 
 A full reset never reaches the callbacks, so `Vt100::process` scans each chunk for ESC directly followed by `c`, which is exactly when vte dispatches RIS. On a match it clears the level. A flag carries a chunk-final ESC into the next chunk, so a reset split across PTY reads is still seen.

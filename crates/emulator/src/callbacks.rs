@@ -16,6 +16,7 @@ pub struct Callbacks {
     pub records: Option<Vec<Record>>,
     pub title: Option<String>,
     pub title_changed: bool,
+    pub modify_other_keys: u8,
     title_stack: Vec<Option<String>>,
 }
 
@@ -43,6 +44,14 @@ impl Callbacks {
     fn pop_title(&mut self) {
         if let Some(title) = self.title_stack.pop() {
             self.set_title(title);
+        }
+    }
+
+    fn set_modify_other_keys(&mut self, params: &[&[u16]]) {
+        match params {
+            [] | [[0 | 4]] => self.modify_other_keys = 0,
+            [[4], [level @ 0..=2]] => self.modify_other_keys = *level as u8,
+            _ => {}
         }
     }
 }
@@ -149,6 +158,10 @@ impl vt100::Callbacks for Callbacks {
     ) {
         if let Some(reply) = query_reply(screen, i1, i2, params, c) {
             self.write_back.extend_from_slice(reply.as_bytes());
+            return;
+        }
+        if (i1, i2, c) == (Some(b'>'), None, 'm') {
+            self.set_modify_other_keys(params);
             return;
         }
         if (i1, i2, c) == (None, None, 't')
@@ -406,6 +419,89 @@ mod tests {
         assert_eq!(replies("\x1b[?7727$p"), "\x1b[?7727;0$y");
         assert_eq!(replies("\x1b[?6$p"), "\x1b[?6;0$y");
         assert_eq!(replies("\x1b[4$p"), "\x1b[4;0$y");
+    }
+
+    fn modify_other_keys(chunks: &[&[u8]]) -> u8 {
+        let mut grid = Grid::new(Size::new(80, 24));
+        for chunk in chunks {
+            grid.process(chunk);
+        }
+        grid.modes().modify_other_keys
+    }
+
+    #[test]
+    fn modify_other_keys_starts_at_zero() {
+        assert_eq!(modify_other_keys(&[]), 0);
+    }
+
+    #[test]
+    fn modify_other_keys_levels() {
+        assert_eq!(modify_other_keys(&[b"\x1b[>4;1m"]), 1);
+        assert_eq!(modify_other_keys(&[b"\x1b[>4;2m"]), 2);
+        assert_eq!(modify_other_keys(&[b"\x1b[>4;1m\x1b[>4;0m"]), 0);
+    }
+
+    #[test]
+    fn modify_other_keys_resets_without_a_value() {
+        assert_eq!(modify_other_keys(&[b"\x1b[>4;2m\x1b[>4m"]), 0);
+        assert_eq!(modify_other_keys(&[b"\x1b[>4;2m\x1b[>m"]), 0);
+        assert_eq!(modify_other_keys(&[b"\x1b[>4;2m\x1b[>0m"]), 0);
+    }
+
+    #[test]
+    fn modify_other_keys_ignores_unknown_levels_and_resources() {
+        assert_eq!(modify_other_keys(&[b"\x1b[>4;1m\x1b[>4;7m"]), 1);
+        assert_eq!(modify_other_keys(&[b"\x1b[>4;1m\x1b[>1;2m"]), 1);
+        assert_eq!(modify_other_keys(&[b"\x1b[>4;1m\x1b[>4;1;2m"]), 1);
+    }
+
+    #[test]
+    fn modify_other_keys_is_not_logged_or_answered() {
+        assert_eq!(replies("\x1b[>4;1m\x1b[>4;9m\x1b[>4m\x1b[>m\x1b[>1;2m"), "");
+    }
+
+    #[test]
+    fn full_reset_clears_modify_other_keys() {
+        assert_eq!(modify_other_keys(&[b"\x1b[>4;1m\x1bc"]), 0);
+        assert_eq!(modify_other_keys(&[b"\x1b[>4;1m\x1b", b"c"]), 0);
+        assert_eq!(modify_other_keys(&[b"\x1b[>4;1m", b"\x1b", b"c"]), 0);
+        assert_eq!(modify_other_keys(&[b"\x1b[>4;1m\x1b]0;title\x1bc"]), 0);
+        assert_eq!(modify_other_keys(&[b"\x1b[>4;1m\x1b]0;tit", b"le\x1bc"]), 0);
+    }
+
+    #[test]
+    fn modify_other_keys_after_a_full_reset_in_the_same_chunk() {
+        assert_eq!(modify_other_keys(&[b"\x1b[>4;2m\x1bc\x1b[>4;1m"]), 1);
+        assert_eq!(modify_other_keys(&[b"\x1b[>4;2m\x1b", b"c\x1b[>4;1m"]), 1);
+    }
+
+    #[test]
+    fn c_without_escape_keeps_modify_other_keys() {
+        assert_eq!(modify_other_keys(&[b"\x1b[>4;1m", b"c"]), 1);
+        assert_eq!(modify_other_keys(&[b"\x1b[>4;1m\x1b", b"[1m", b"c"]), 1);
+    }
+
+    #[test]
+    fn modify_other_keys_leaves_cells_attributes_and_write_back() {
+        let mut plain = Grid::new(Size::new(80, 24));
+        plain.process(b"\x1b[1mx");
+        let mut grid = Grid::new(Size::new(80, 24));
+        grid.process(b"\x1b[1m\x1b[>4;1mx");
+        assert_eq!(grid.modes().modify_other_keys, 1);
+        assert!(grid.screen().cell(0, 0).unwrap().bold());
+        assert_eq!(grid.contents(), plain.contents());
+        assert_eq!(grid.cursor(), plain.cursor());
+        assert_eq!(grid.snapshot(), plain.snapshot());
+        assert!(grid.take_write_back().is_empty());
+    }
+
+    #[test]
+    fn snapshot_leaves_modify_other_keys_out() {
+        let mut grid = Grid::new(Size::new(80, 24));
+        grid.process(b"\x1b[>4;1m");
+        let mut copy = Grid::new(Size::new(80, 24));
+        copy.process(&grid.snapshot());
+        assert_eq!(copy.modes().modify_other_keys, 0);
     }
 
     #[test]

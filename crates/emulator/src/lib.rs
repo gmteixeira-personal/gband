@@ -30,6 +30,7 @@ pub type Grid = Vt100;
 
 pub struct Vt100 {
     parser: vt100::Parser<Callbacks>,
+    escape_pending: bool,
 }
 
 impl Vt100 {
@@ -70,11 +71,28 @@ impl Emulator for Vt100 {
                 0,
                 Callbacks::default(),
             ),
+            escape_pending: false,
         }
     }
 
     fn process(&mut self, bytes: &[u8]) {
-        self.parser.process(bytes);
+        let mut rest = bytes;
+        while !rest.is_empty() {
+            let reset = if self.escape_pending && rest[0] == b'c' {
+                Some(1)
+            } else {
+                rest.windows(2)
+                    .position(|pair| pair == b"\x1bc")
+                    .map(|at| at + 2)
+            };
+            let end = reset.unwrap_or(rest.len());
+            self.parser.process(&rest[..end]);
+            self.escape_pending = rest[end - 1] == 0x1b;
+            if reset.is_some() {
+                self.parser.callbacks_mut().modify_other_keys = 0;
+            }
+            rest = &rest[end..];
+        }
     }
 
     fn resize(&mut self, size: Size) {
@@ -103,6 +121,7 @@ impl Emulator for Vt100 {
                 vt100::MouseProtocolEncoding::Utf8 => MouseEncoding::Utf8,
                 vt100::MouseProtocolEncoding::Sgr => MouseEncoding::Sgr,
             },
+            modify_other_keys: self.parser.callbacks().modify_other_keys,
         }
     }
 

@@ -21,6 +21,7 @@ None.
 
 - `input-encoding`: the encoding depends on a third window input mode, modifyOtherKeys. Editing keys with Shift or Ctrl get the modifyOtherKeys encoding while that mode is on. The decoder for the user's terminal reads the `\x1b[27;m;code~` and CSI u forms.
 - `terminal-emulator`: every grid reports its program's modifyOtherKeys level.
+- `session-server`: "Snapshot on attach" leaves the modifyOtherKeys level out of a snapshot, since the server encodes keys with its own grid.
 
 ## Impact
 
