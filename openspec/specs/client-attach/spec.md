@@ -222,6 +222,8 @@ With the modal key style, the bindings SHALL be: Ctrl+Space as the prefix, no bi
 
 With the direct key style, the bindings SHALL be: Ctrl+Space as the prefix, no binding in `root`, no mode, and in `prefix` every row of the table above except Escape and Enter, in the same order. `n` SHALL be bound to open window and Ctrl+Space to send the prefix key, each to the action itself, with that action's description. Every other row SHALL be bound as with the modal key style. Each key after the prefix key SHALL end the key sequence, as in any table that is not a mode, so `root` is active again after it. Any other key, Escape and Enter included, SHALL be discarded together with the prefix key.
 
+With the floating key style, the bindings SHALL be: Ctrl+Space as the prefix, no key binding in `root`, no mode, and in `prefix` the bindings that the floating-key-style capability's "Floating bindings" gives, in its order. The floating preset's handler of `KeyTableChanged` SHALL make `root` active again as soon as the prefix key makes `prefix` active, and SHALL open the window list, as that capability's "Leader" defines. The keys that follow SHALL therefore reach the window list, and a key bound in `prefix` SHALL run from the window list as its "Window list" defines.
+
 A binding to an action SHALL dispatch it. A binding to a Lua function SHALL run the function, as the configuration capability defines. A view action SHALL change this client's view as the layout-view capability defines, and SHALL send nothing to the server, except `center_column` on the floating layer, which sends the placing the layout-view capability defines. A session action SHALL be sent to the server as an action naming the focused window, resolved as the actions capability defines, except close window while a floating plugin window is focused, which closes that floating plugin window in the client. Open window SHALL name the viewed band and the tiled window this client focused most recently there, or no window when there is none. Any other session action, and sending the prefix key, SHALL do nothing when no window is focused, except close window while a floating plugin window is focused. A character key SHALL match a binding by its character, Ctrl and Alt, so a `D` matches whether or not the terminal reports Shift with it.
 
 Where a scenario of this requirement names no key style, the modal key style is saved.
@@ -445,6 +447,15 @@ Where a scenario of this requirement names no key style, the modal key style is 
 - **WHEN** the client's 80×24 terminal sets the screen area, the client has no bar, a floating window is focused with its box starting at column 20, and the user presses Ctrl+Space then Ctrl+L
 - **THEN** the box is drawn from column 28
 
+#### Scenario: Floating key style
+- **WHEN** the floating key style is saved, no `user/init.lua` exists, and the user presses Ctrl+Space
+- **THEN** `gband.keymap.label("prefix")` returns `prefix`, the window list is open and focused, and `root` is active
+- **AND** a following Escape closes the window list, and `echo hi` and Enter then print `hi` in the focused window
+
+#### Scenario: Prefix binding from the window list
+- **WHEN** the floating key style is saved, no `user/init.lua` exists, and the user presses Ctrl+Space then Shift+D
+- **THEN** the client detaches
+
 ### Requirement: Report shown windows
 The client SHALL send the server a shown message naming its shown windows, as the layout-view capability defines them, once it has received the first layout after attaching. It SHALL send a new shown message whenever its shown windows change, whether a layout, a focus message, a view action or a change of its terminal's size changed them. It SHALL NOT send a shown message that names the same windows as the last one it sent.
 
@@ -461,9 +472,9 @@ The client SHALL send the server a shown message naming its shown windows, as th
 - **THEN** it sends no shown message
 
 ### Requirement: Default mouse bindings
-With no configuration file, both key styles SHALL make the same mouse bindings, in addition to the key bindings that "Key bindings" defines for each style. "No binding in `root`" there SHALL apply to keys only. Every mouse event that no binding takes in interactive mode SHALL take the mouse capability's defaults.
+With no configuration file, every key style SHALL make mouse bindings, in addition to the key bindings that "Key bindings" defines for each style. "No binding in `root`" and "no key binding in `root`" there SHALL apply to keys only. Every mouse event that no binding takes in interactive mode SHALL take the mouse capability's defaults.
 
-Both key styles SHALL bind these mouse names in `root`, in this order, each to the action its row names:
+Every key style SHALL bind these mouse names in `root`, in this order, each to the action its row names:
 
 | mouse name | Lua binding | action | kind |
 |---|---|---|---|
@@ -475,7 +486,9 @@ Both key styles SHALL bind these mouse names in `root`, in this order, each to t
 
 `mod` stands for the modifiers that the `mouse_mod` option names, Alt by default, as the configuration capability defines.
 
-Both key styles SHALL also bind these mouse names in `prefix`, after its key bindings, in this order, each to the action its row names:
+The floating key style SHALL then bind `leftmouse` and `rightmouse` in `root`, as the floating-key-style capability's "Floating bindings" defines. It SHALL bind no mouse name in `prefix`, because its `prefix` table is active only until its leader handler runs.
+
+The modal and direct key styles SHALL also bind these mouse names in `prefix`, after its key bindings, in this order, each to the action its row names:
 
 | mouse name after the prefix | Lua binding | action | kind |
 |---|---|---|---|
@@ -489,7 +502,7 @@ Both key styles SHALL also bind these mouse names in `prefix`, after its key bin
 | `mod+wheelup` | `prefix mod+wheelup` | view the band above | view |
 | any other press | — | discard the press | — |
 
-With the modal key style, each of these keeps navigation mode active, and a discarded press leaves it active. With the direct key style, each ends the key sequence, as any key after the prefix key does, and so does a discarded press. An unbound wheel step goes to its target in either style and leaves the active table unchanged, as the mouse capability defines.
+With the modal key style, each of these keeps navigation mode active, and a discarded press leaves it active. With the direct key style, each ends the key sequence, as any key after the prefix key does, and so does a discarded press. An unbound wheel step goes to its target in every style and leaves the active table unchanged, as the mouse capability defines.
 
 #### Scenario: Drag a floating window in navigation mode
 - **WHEN** the default configuration is in use, navigation mode is active, and the user drags a floating window 6 cells right with the left button
@@ -508,7 +521,7 @@ With the modal key style, each of these keeps navigation mode active, and a disc
 - **THEN** the second band is viewed and navigation mode stays active
 
 #### Scenario: Alt drag moves a window in interactive mode
-- **WHEN** the default configuration is in use with either key style, interactive mode is active, and the user drags a floating window 6 cells right with the left button and Alt held
+- **WHEN** the default configuration is in use with any key style, interactive mode is active, and the user drags a floating window 6 cells right with the left button and Alt held
 - **THEN** the floating window's box moves 6 cells right and interactive mode stays active
 
 #### Scenario: Alt drag in navigation mode
@@ -516,7 +529,7 @@ With the modal key style, each of these keeps navigation mode active, and a disc
 - **THEN** the floating window's box moves 6 cells right and navigation mode stays active
 
 #### Scenario: Alt wheel switches bands
-- **WHEN** the default configuration is in use with either key style, interactive mode is active, two bands hold windows, the first is viewed, and the user turns the wheel down with Alt held over `htop` with mouse reporting
+- **WHEN** the default configuration is in use with any key style, interactive mode is active, two bands hold windows, the first is viewed, and the user turns the wheel down with Alt held over `htop` with mouse reporting
 - **THEN** the second band is viewed and `htop` receives nothing
 
 #### Scenario: Drag after the prefix with the direct key style
@@ -527,6 +540,14 @@ With the modal key style, each of these keeps navigation mode active, and a disc
 #### Scenario: Other press after the prefix with the direct key style
 - **WHEN** the direct key style is saved, no `user/init.lua` exists, and the user presses Ctrl+Space, clicks with the left button and Ctrl held on an unfocused window, then types `x`
 - **THEN** focus does not change, and the focused window receives `x`
+
+#### Scenario: Plain left drag on a title bar with the floating key style
+- **WHEN** the floating key style is saved, no `user/init.lua` exists, and the user drags a floating window by its top border 6 cells right with the left button and no modifier
+- **THEN** the floating window's box moves 6 cells right and `root` stays active
+
+#### Scenario: No mouse binding after the prefix with the floating key style
+- **WHEN** the floating key style is saved, no `user/init.lua` exists, and `gband.keymap.list("prefix")` is read
+- **THEN** it holds no mouse name
 
 ### Requirement: Input to the server
 The client SHALL send each key press and repeat that the key bindings do not consume to the server as a key naming the focused window, each paste as a paste naming the focused window, and each change of its reported size, as "Ribbon area beside the bars" defines it, as a resize carrying the reported size. While a plugin window is focused, the plugin-windows capability SHALL take the keys and the pastes instead, whether or not a window is focused. Otherwise, keys and pastes SHALL be dropped while no window is focused. Keys the input-encoding capability cannot represent SHALL be dropped. On attach, the client SHALL send its reported size as the terminal size its hello carries, as the wire-protocol capability defines the hello. Its bars SHALL already be placed for that report, as the configuration loaded before the handshake adds them.
@@ -612,11 +633,11 @@ The reported size SHALL change when the terminal changes size and when the bars 
 - **THEN** this client draws the 80-column tile from screen column 20, cut after column 79
 
 ### Requirement: Ribbon presentation
-After the handshake, the client SHALL take the terminal full screen in raw mode with bracketed paste enabled. It SHALL keep its own grid of every window, as the wire-protocol capability defines, and its own view, as the layout-view capability defines. It SHALL draw only the viewed band, except during a band switch, when it SHALL draw the bands the animations capability places on screen. It SHALL draw the ribbon in the ribbon area and each shown bar where the bars capability places it. It SHALL draw the viewed band's floating windows over the tiles, in its stacking order, as the floating-windows capability defines. It SHALL draw the floating plugin windows it opened over the floating windows, as the plugin-windows capability defines. While the configuration capability shows a configuration error and the sidebar's error marker, as the sidebar capability defines, is not drawn, the client SHALL draw that error over the ribbon area's bottom row, after the tiles, the floating windows and the floating plugin windows.
+After the handshake, the client SHALL take the terminal full screen in raw mode with bracketed paste enabled. It SHALL keep its own grid of every window, as the wire-protocol capability defines, and its own view, as the layout-view capability defines. It SHALL draw only the viewed band, except during a band switch, when it SHALL draw the bands the animations capability places on screen. It SHALL draw the ribbon in the ribbon area and each shown bar where the bars capability places it. It SHALL draw the viewed band's floating windows over the tiles, in its stacking order, as the floating-windows capability defines, and SHALL NOT draw a floating window it has minimized. It SHALL draw the floating plugin windows it opened over the floating windows, as the plugin-windows capability defines. While the configuration capability shows a configuration error and the sidebar's error marker, as the sidebar capability defines, is not drawn, the client SHALL draw that error over the ribbon area's bottom row, after the tiles, the floating windows and the floating plugin windows.
 
 Each window SHALL be drawn in its tile, as the layout capability's tile geometry gives it for the screen area in the latest layout. A tile SHALL be drawn at its strip position less the viewed band's camera position, counted from the ribbon area's left column, from the ribbon area's top row. While an animation runs, the tile's position and size, the camera and the band's top row SHALL be the drawn values the animations capability defines. At rest they equal the values above. Each tile SHALL show a one-cell border around the window's grid, which is drawn from its top-left corner. The border SHALL be drawn with the client's tile border options, as the borders capability defines. The focused window's border SHALL be drawn in a style distinct from the other borders.
 
-Each floating window SHALL be drawn in its box, as the floating-windows capability places it for the screen area in the latest layout, from the ribbon area's top-left cell, whatever the camera. Its box SHALL show a one-cell border drawn with the client's floating border options, as the borders capability defines, in the style of a tile's border and in the focused style when it is the focused window, and its grid SHALL be drawn, cut and blanked inside the border as a tile's is. A box that crosses the ribbon area's edge SHALL be cut there, as a tile is.
+Each floating window that the client has not minimized, as the floating-windows capability defines, SHALL be drawn in its box, as the floating-windows capability places it for the screen area in the latest layout, from the ribbon area's top-left cell, whatever the camera. Its box SHALL show a one-cell border drawn with the client's floating border options, as the borders capability defines, in the style of a tile's border and in the focused style when it is the focused window, and its grid SHALL be drawn, cut and blanked inside the border as a tile's is. A box that crosses the ribbon area's edge SHALL be cut there, as a tile is.
 
 A window's grid MAY differ in size from its tile's interior while the server has not yet resized the window. The border SHALL still follow the tile, at its drawn size while an animation runs. A grid larger than the interior SHALL be cut at the interior's right and bottom edges, and interior cells the grid does not cover SHALL be blank.
 
@@ -697,3 +718,7 @@ The terminal's cursor SHALL sit where the focused window's cursor is. It SHALL b
 #### Scenario: Cursor under a floating window
 - **WHEN** a tiled window is focused and its cursor sits in a cell that a floating window covers
 - **THEN** the cursor is hidden
+
+#### Scenario: Minimized floating window over two tiles
+- **WHEN** the viewed band holds two columns of width 1/2 and a floating window whose box covers both, and the client has minimized that window
+- **THEN** the client draws the two tiles and no part of the box

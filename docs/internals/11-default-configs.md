@@ -42,7 +42,7 @@ gband.keystyle.use()
 ```
 
 The key bindings come from the saved key style, or the modal one, through `gband.keystyle.use` of [08](08-key-styles.md).
-Called with no argument, it follows the settings window's `keys` line.
+Called with no argument, it follows the settings window's `keys` line, and with the floating style the preset also sets up the desktop plugin, so the default configuration never names it.
 A `user/init.lua` that binds its own keys after this line keeps them, since a later binding of the same key replaces the preset's.
 
 ```lua defaults/init.lua
@@ -88,7 +88,7 @@ Following the client from start to the first key:
 1. The executable installs `gband`, with `gband.core`, and requires `gband.prelude` ([00](00-boundary.md)).
 2. The prelude installs `gband.hl`, `gband.palette`, `gband.colorscheme`, `gband.bar`, `gband.win`, `gband.settings` and `gband.keystyle`, and each registers its provider ([02](02-highlights.md) to [08](08-key-styles.md)).
 3. The prelude loads the saved theme, which sets the palette and the highlight groups ([01](01-themes.md), [03](03-colorschemes.md)).
-4. `defaults/init.lua` sets the options, requires the key style preset, which sets up the key list and the prompt ([08](08-key-styles.md), [10](10-keylist-and-prompt.md)), and sets up the error list and the sidebar ([09](09-sidebar-and-errors.md)).
+4. `defaults/init.lua` sets the options, requires the key style preset, which sets up the key list and the prompt, and with the floating style the desktop plugin ([08](08-key-styles.md), [10](10-keylist-and-prompt.md)), and sets up the error list and the sidebar ([09](09-sidebar-and-errors.md)).
 5. The client flushes the providers: `gband.bar` places and presents the sidebar, which draws itself in `on_resize`.
 6. On `Attached`, the settings window opens on a first start ([07](07-settings.md)).
 

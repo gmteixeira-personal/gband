@@ -175,7 +175,7 @@ A reload that turns animations off SHALL draw every animated quantity at its tar
 - **THEN** the next frame the client draws shows the camera at its target
 
 ### Requirement: Floating windows at rest
-The client SHALL draw every floating window at its box, as the client-attach capability places it, in every frame, without animating its position or size. A window that moves from a column to the floating layer SHALL be drawn at its box from the first frame. A window that moves from the floating layer to a column SHALL be drawn at its tile position from the first frame, as a window new to the band is. The tiles of the other windows SHALL move as "Tile movement" defines.
+The client SHALL draw every floating window that it has not minimized at its box, as the client-attach capability places it, in every frame, without animating its position or size. A window that the client minimizes SHALL NOT be drawn from the first frame after it is minimized. A window that the client restores SHALL be drawn at its box from the first frame after it is restored. A window that moves from a column to the floating layer SHALL be drawn at its box from the first frame. A window that moves from the floating layer to a column SHALL be drawn at its tile position from the first frame, as a window new to the band is. The tiles of the other windows SHALL move as "Tile movement" defines.
 
 #### Scenario: Float a window between two columns
 - **WHEN** the viewed band holds columns A, B and C, and B's only window is floated
@@ -185,6 +185,11 @@ The client SHALL draw every floating window at its box, as the client-attach cap
 #### Scenario: Move a floating window
 - **WHEN** a floating window is moved right by one step
 - **THEN** the next frame draws its box at the new column
+
+#### Scenario: Minimize and restore at once
+- **WHEN** animations are on, the viewed band holds column A with P1 and floating window P3, the client focuses P3 and minimizes it
+- **THEN** the next frame draws no part of P3, and A's tile does not move
+- **AND** when the client focuses P3 again, the next frame draws P3 at its box
 
 ### Requirement: Drawing during a gesture
 While a drag gesture runs, as the mouse capability defines, the client SHALL draw the lifted tile, the floating box or floating plugin window being moved or resized, the slid camera, and the bands at the drawn vertical position a vertical band drag sets, at the positions the gesture sets, with no animation. A layout that a gesture's own changes cause SHALL draw the gesture's window at its target at once, and SHALL animate the other windows as any layout change does.

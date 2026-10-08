@@ -37,6 +37,11 @@ gband.unbind("prefix D")
 Bindings made after `gband.keystyle.use()` replace the style's binding for the same key, so the style is a base to build on.
 [Key styles](../plugins.md#key-styles-gbandkeystyle) says what each style binds.
 
+The floating style binds far less after the prefix key, because its windows float and the mouse drives them.
+Its prefix key opens the window list, and a key that its `prefix` table binds, such as `D` or `?`, runs from that list.
+A key you bind in `prefix` becomes a shortcut of the list too.
+Its `leftmouse` and `rightmouse` bindings in `root` act only on a floating window's border and empty ribbon, and return `false` for every other click, so a click in a window still focuses it and reaches the program, as the next section explains.
+
 ## Modes
 
 In a table that is not a mode, the next key ends the sequence.

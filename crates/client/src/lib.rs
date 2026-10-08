@@ -560,7 +560,7 @@ impl Display {
             }
         }
         if let Some(window) = self.pointer.gesture().and_then(Gesture::window)
-            && !self.layout.contains(window)
+            && self.hidden(window)
         {
             self.pointer.held = Held::Free;
             self.pointer.sends = None;
@@ -574,10 +574,18 @@ impl Display {
             self.pointer.floating = None;
         }
         if let Some(selection) = self.pointer.selection
-            && !self.layout.contains(selection.window)
+            && self.hidden(selection.window)
         {
             self.pointer.selection = None;
         }
+    }
+
+    fn hidden(&self, window: WindowId) -> bool {
+        !self.layout.contains(window)
+            || self
+                .view
+                .as_ref()
+                .is_some_and(|view| view.minimized().contains(&window))
     }
 
     pub fn is_ready(&self) -> bool {
@@ -788,6 +796,11 @@ impl Display {
             ribbon: self.ribbon_size(),
             states: Arc::clone(&self.states),
             names: Arc::clone(&self.shown_names),
+            minimized: self
+                .view
+                .as_ref()
+                .map(|view| view.minimized().clone())
+                .unwrap_or_default(),
         }
     }
 
@@ -1710,8 +1723,10 @@ fn plugin_window_step(display: &mut Display, request: PluginWindowRequest) -> St
             focus,
         } => {
             let target = target.or_else(|| {
-                let view = display.view.as_ref()?;
-                Some((view.band(), view.focused()))
+                match display.view.as_ref()?.resolve(SessionCommand::OpenWindow)? {
+                    SessionAction::OpenWindow { band, after, .. } => Some((band, after)),
+                    _ => None,
+                }
             });
             let Some((band, after)) = target else {
                 return Step::Nothing;
@@ -1760,6 +1775,7 @@ pub fn dispatch(display: &mut Display, action: Action) -> Step {
         }
         Action::View(action) => {
             display.view_action(action);
+            display.end_gesture_for_layout();
             None
         }
         Action::Session(command) => display
@@ -1855,6 +1871,7 @@ async fn attach(
         draw(terminal, &mut display, now)?;
         if let Some(channel) = &mut channel
             && !display.is_animating(now)
+            && controls.next_flush(&display).is_none()
         {
             channel.drawn(connection.sent).await?;
         }

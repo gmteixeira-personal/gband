@@ -11,13 +11,14 @@ local function config(opts)
   )
 end
 
-local function logged(g, text)
-  for _, line in ipairs(g.log("client")) do
-    if line:find(text, 1, true) then
-      return true
+local function wait_logged(g, text)
+  g.wait(function()
+    for _, line in ipairs(g.log("client")) do
+      if line:find(text, 1, true) then
+        return true
+      end
     end
-  end
-  return false
+  end)
 end
 
 t.case("greet opens a window that prints the greeting", function(g)
@@ -36,14 +37,14 @@ end)
 t.case("say logs the greeting", function(g)
   g.start({ config = config() })
   t.eq(g.client([[return gband.cmd.run("hello.say", { who = "tests" })]]), true)
-  t.ok(logged(g, "hello, tests"), "the client log holds the greeting")
+  wait_logged(g, "hello, tests")
 end)
 
 t.case("focus changes are printed", function(g)
   g.start({ config = config() })
   g.keys("ctrl+space enter")
   g.settle()
-  t.ok(logged(g, "focused window\t2"), "the client log holds the focus change")
+  wait_logged(g, "focused window\t2")
 end)
 
 t.case("the greeting is an option", function(g)

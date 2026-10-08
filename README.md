@@ -15,11 +15,12 @@ gband is written in Rust.
 - **Circular bands.** Focus goes round from a band's last column to its first, and a long enough band is drawn as a loop.
 - **Animated.** Scrolling, band switches, moving windows and resizes animate.
 - **Fully scriptable.** The configuration, key bindings and plugins are Lua, in the client and in the server; see [Scripting](#scripting).
-- **Written in Lua, as examples.** The key styles, the key list, the sidebar, the settings window and the themes are Lua code, written that way so you can read how they use the API.
+- **Written in Lua, as examples.** The key styles, the desktop, the key list, the sidebar, the settings window and the themes are Lua code, written that way so you can read how they use the API.
 - **Themes.** gband bundles 15 themes, previews each one as you move through the theme list, and loads colorschemes of your own; see [Settings](#settings).
 - **User friendly.** The settings window opens on the first start to pick a theme, the sidebar and a key style.
   Ctrl+Space then `?` lists every key and runs the one you choose.
   The mouse focuses, moves and resizes windows, and selects text.
+  The floating key style makes gband a desktop like MS Windows: every window floats, with minimize, maximize and close buttons on its title bar, and one list holds every window.
   Saving the configuration reloads it at once, and an error names its file and line while the last working configuration stays loaded.
 - **Sensible defaults.** gband needs no configuration file: the defaults bind the keys, set up the sidebar and apply the `default` theme.
 
@@ -85,7 +86,7 @@ Run `gband` again to attach to it.
 - `gband kill-server` stops the server and every session.
 
 Keys typed in gband go to the focused window: this is interactive mode.
-The prefix key, Ctrl+Space, gives the keys below their gband meaning, in one of two key styles:
+The prefix key, Ctrl+Space, gives the keys below their gband meaning, in one of three key styles:
 
 - **modal**: Ctrl+Space enters navigation mode, and the sidebar shows `N`.
   Each key below acts and navigation mode stays active, so `l` `l` `l` moves three columns and `=` `=` widens the column twice.
@@ -95,10 +96,14 @@ The prefix key, Ctrl+Space, gives the keys below their gband meaning, in one of 
 - **direct**: Ctrl+Space then one key acts once, and the keys that follow reach the window again, as in tmux.
   Ctrl+Space `l` `l` moves one column and types `l`.
   Escape, Enter and any other key with no binding after Ctrl+Space are discarded.
+- **floating**: every window floats, as on a desktop like MS Windows, and Ctrl+Space opens the window list.
+  Each floating window has `[_][□][X]` on its title bar to minimize, maximize and close it, and its border moves and resizes it with the left button; see [Mouse](#mouse).
+  The window list holds `New window`, `Settings` and every window; `j`, `k` and the arrows move, Enter picks, and Escape or `q` closes it.
+  Its keys from the table below, such as `D`, `:`, `?` and `s`, run from the list, and Ctrl+Space again sends Ctrl+Space to the window.
 
 The key style is chosen in the settings window, which Ctrl+Space then `s` opens; see [Settings](#settings).
 
-Both styles bind the same keys after Ctrl+Space:
+The modal and direct styles bind the same keys after Ctrl+Space; the floating style binds only `n`, which opens a floating window, `?`, `:`, `N`, `s`, `D` and Ctrl+Space:
 
 | key | action |
 |---|---|
@@ -139,12 +144,13 @@ It has these lines:
 |---|---|
 | `theme` | the active theme |
 | `sidebar` | `on` or `off` |
-| `keys` | the key style, `modal` or `direct` |
+| `keys` | the key style, `modal`, `direct` or `floating` |
 | `I on new` | `on` or `off`: whether `n` in navigation mode returns to interactive mode; `off` until saved `on`; shown with the modal key style only |
 
 `j`, `k` and the up and down arrows move between the lines.
 On `theme`, `l` or Right loads the next theme and `h` or Left the one before, and Enter opens the theme list.
-On `sidebar`, `keys` and `I on new`, Enter, `h`, `l`, Left and Right switch to the other value.
+On `sidebar` and `I on new`, Enter, `h`, `l`, Left and Right switch to the other value.
+On `keys`, Enter, `l` and Right pick the next style of `modal`, `direct` and `floating`, and `h` and Left the one before.
 Escape or `q` closes the box and saves nothing.
 
 Each change is saved at once.
@@ -177,13 +183,14 @@ In interactive mode:
 - When the window's program asked for the mouse, such as `htop` or `less --mouse`, the click, its drags and its release go to the program. Hold Ctrl and Alt to select text instead.
 - Otherwise a left drag selects text, shown reversed. Releasing copies it to gband's copy buffer and to your terminal's clipboard with OSC 52.
 - A right click pastes the copy buffer into the window under the pointer.
+  With the floating key style, a right click on a floating window's border opens its window menu, `Close`, `Maximize`, `Minimize`, `Tile left` and `Tile right`, and one on empty ribbon opens the window list.
 - In a plugin window, such as the key list, a click moves the cursor line.
 
 With Alt held, the wheel views the band below or above, one band per flick.
 Every other turn of the wheel reaches the window under the pointer, in every mode, and the program receives it when it asked for the mouse.
 gband keeps no scrollback, so the wheel scrolls nothing of its own; over a plugin window it scrolls the lines.
 
-Both key styles drag windows the way niri does with its modifier held: with Alt held in any mode, or with no modifier in navigation mode or after Ctrl+Space.
+Every key style drags windows the way niri does with its modifier held, with Alt held; the modal and direct styles also drag with no modifier in navigation mode or after Ctrl+Space.
 
 | button | drag |
 |---|---|
@@ -196,6 +203,10 @@ Both key styles drag windows the way niri does with its modifier held: with Alt 
 | Alt with a drag or the wheel | acts in interactive and navigation mode | acts at any time |
 | Ctrl+Space then a drag | acts, and navigation mode stays active | acts once, and the keys that follow reach the window |
 | Ctrl+Space then Alt with a drag or the wheel | acts, and navigation mode stays active | acts once |
+
+The floating key style drags a floating window by its border with the left button and no modifier: the top border moves it, a side or the bottom resizes that edge, and a corner, with the cell beside it, resizes both of its edges.
+A press on a title bar button acts when the button is released on it.
+Every other plain click keeps its interactive-mode meaning.
 
 Some Linux desktops, such as Xfce, take Alt with a drag to move their own windows, so the terminal never sees it.
 Pick another modifier for every one of these bindings in `user/init.lua`:
@@ -219,7 +230,7 @@ The Lua prompt, Ctrl+Space then `:`, runs one line of Lua while gband runs.
 
 Much of gband is itself written in Lua:
 
-- the modal and direct key styles
+- the modal, direct and floating key styles, and the desktop the floating style sets up
 - the key list, the Lua prompt and the rename box
 - the sidebar and the error list
 - the settings window and the theme list
@@ -241,13 +252,13 @@ gband keeps its configuration in `$XDG_CONFIG_HOME/gband/`, or `~/.config/gband/
 gband creates the directory when it starts, with two folders in it:
 
 - `defaults/init.lua` holds the full default client configuration, and `defaults/server.lua` the default server configuration.
-  `defaults/keystyle/modal.lua` and `defaults/keystyle/direct.lua` hold the bindings of the two key styles.
+  `defaults/keystyle/modal.lua`, `defaults/keystyle/direct.lua` and `defaults/keystyle/floating.lua` hold the bindings of the three key styles.
   `defaults/lua/gband/` holds every Lua module bundled with gband, such as `defaults/lua/gband/sidebar.lua`, and `defaults/colors/` every bundled theme, such as `defaults/colors/nord.lua`; copy one into `user/` to change it, as [Scripting](#scripting) describes.
   gband owns these files: it writes each when it is missing and overwrites it when its content differs from the defaults of the running build.
   Edits to them have no effect.
 - `user/` holds your configuration.
   gband creates it empty.
-  The settings window saves each setting in a file of its own: `user/theme.lua` holds `return "<theme>"`, `user/sidebar.lua` and `user/interactive_on_new.lua` hold `return true` or `return false`, and `user/keystyle.lua` holds `return "modal"` or `return "direct"`.
+  The settings window saves each setting in a file of its own: `user/theme.lua` holds `return "<theme>"`, `user/sidebar.lua` and `user/interactive_on_new.lua` hold `return true` or `return false`, and `user/keystyle.lua` holds `return "modal"`, `return "direct"` or `return "floating"`.
   gband only reads a value from these files and never runs them as configuration, and nothing writes `user/init.lua`.
   Delete `user/theme.lua`, `user/sidebar.lua` and `user/keystyle.lua` to be offered the settings window again.
 
@@ -403,6 +414,7 @@ The actions in `gband.action`:
 | `focus_band_down`, `focus_band_up` | view the band below or above |
 | `center_column` | scroll the view so the focused column sits in its middle, or move the focused floating window to the middle of the screen |
 | `switch_focus_floating_tiled` | move focus between the band's floating windows and its tiled windows |
+| `minimize_window` | hide the focused floating window from this client until it is focused again |
 | `open_window` | open a window running your shell right of the focused column |
 | `close_window` | close the focused floating plugin window, such as the key list, when one has focus, otherwise the focused window |
 | `consume_or_expel_left`, `consume_or_expel_right` | move the focused window into or out of the neighbouring column |
@@ -473,9 +485,14 @@ Ctrl+Space then Ctrl with `h`, `l`, `j` or `k`, or with an arrow key, moves the 
 
 Each client stacks floating windows in its own order, with the one it focused last on top, and draws its floating plugin windows above them.
 
+`minimize_window` hides the focused floating window, and `gband.window.minimize` hides a floating window by number.
+A minimized window is hidden only on the client that minimized it: other clients still draw it, and its program keeps its size.
+The modal and direct key styles bind no key to it, since they have no window list to bring it back; the floating key style minimizes from a window's `[_]` button and its window list brings it back.
+`gband.window.focus` brings it back, on top of the other floating windows.
+
 ### Key list
 
-Ctrl+Space then `?` opens a list of the navigation keys in a box titled `navigation keys`, or `prefix keys` with the direct key style, over the windows, each with its description, and returns to interactive mode so the list takes the keys that follow.
+Ctrl+Space then `?` opens a list of the navigation keys in a box titled `navigation keys`, or `prefix keys` with the direct and floating key styles, over the windows, each with its description, and returns to interactive mode so the list takes the keys that follow.
 Pressing a line's key selects that line and runs its binding, an action or a function, on the window behind the list, which stays open for the next choice: `l` focuses the column to the right, and `j` and `k` focus the window below and above.
 A binding that opens another box, such as `s` or `:`, closes the list, and that box takes the keys.
 Up and Down move through the list, PageUp, PageDown, Home and End jump through it, and Enter runs the selected line.
@@ -483,7 +500,7 @@ Lines whose key is one of these, and the line of the prefix key, run only throug
 The list's own `?` line shows dimmed, and pressing `?` or Enter on it only selects it.
 `q` runs its line, close the window, which closes the list; Escape, or Ctrl+Space then `q`, close it too.
 
-The list is a plugin bundled with gband, set up by both key styles.
+The list is a plugin bundled with gband, set up by every key style.
 A `user/init.lua` that calls no `gband.keystyle.use()` sets it up and binds it itself:
 
 ```lua
@@ -504,7 +521,7 @@ It runs with an instruction budget of its own: an endless loop stops only the li
 A syntax error, a runtime error or a stop by the instruction limit is reported like any configuration error, as `prompt:1: <message>`, so the sidebar shows `!`.
 Return values are dropped; `gband.notify(tostring(value))` shows one.
 
-The prompt is a plugin bundled with gband, set up by both key styles.
+The prompt is a plugin bundled with gband, set up by every key style.
 A `user/init.lua` that calls no `gband.keystyle.use()` sets it up and binds it itself:
 
 ```lua
@@ -581,6 +598,7 @@ The viewed band's label is bold, and the others are dim, or in the theme's muted
 A label is the band's position, so the labels stay `1`, `2`, `3` after a band is removed.
 Bands that do not fit above the last row, and bands past the 35th, are not shown.
 With the direct key style, the sidebar shows `P` after the prefix key until the key sequence ends.
+With the floating key style, the first row shows `⊞` instead of the mode, and clicking it opens the window list.
 Clicking a band's label with the left button views that band, in any mode.
 Turning the wheel over the sidebar views the band below or above the viewed band, one band per step, in any mode.
 

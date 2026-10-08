@@ -162,7 +162,7 @@ Every Lua file bundled with gband SHALL use only the documented API, and none SH
 - the default client and server configurations;
 - the prelude and the API modules;
 - the key style presets;
-- the bundled plugins `gband.sidebar`, `gband.keylist`, `gband.errors` and `gband.prompt`;
+- the bundled plugins `gband.sidebar`, `gband.keylist`, `gband.errors`, `gband.prompt` and `gband.desktop`;
 - the modules `gband.theme`, `gband.theme.catppuccin` and `gband.keyform`;
 - every bundled colorscheme;
 - on the test side, `gband.test`.
@@ -185,6 +185,10 @@ A copy of any of these files, placed where the runtimepath finds it first, SHALL
 #### Scenario: Every bundled file copied
 - **WHEN** gband's Lua spec suite runs with every bundled module copied into `user/lua/` and every bundled colorscheme other than the alias `catppuccin` into `user/colors/` of each case's configuration directory
 - **THEN** every case passes, with the same screens as without the copies
+
+#### Scenario: Copied desktop plugin
+- **WHEN** `user/lua/gband/desktop.lua` holds the bundled desktop plugin's text, `user/keystyle.lua` holds `return "floating"`, no `user/init.lua` exists, and a floating window is drawn
+- **THEN** its top border shows `[_][□][X]` and Ctrl+Space opens the window list, exactly as with the bundled plugin
 
 ### Requirement: Bundled sources on disk
 Each process SHALL write the text of every bundled module to `defaults/lua/gband/` of the configuration directory, at the module's path, except the key style presets: a module `gband.a.b` goes to `defaults/lua/gband/a/b.lua`. This includes the prelude and the API modules. It SHALL write every bundled colorscheme to `defaults/colors/<name>.lua`. It SHALL write them as the configuration capability's "Configuration directory" writes the files under `defaults`. They SHALL be copies for the user to read: loading SHALL use the built-in text, never these files. `defaults` SHALL NOT be a runtimepath entry.

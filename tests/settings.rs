@@ -266,6 +266,84 @@ fn switch_the_key_style() {
     });
 }
 
+fn switch_key_style(name: &str, saved: &str, key: &[u8], expected: &str) {
+    let env = TestEnv::new(name);
+    env.save_key_style(saved);
+    let mut client = opened(&env);
+    press(&mut client, b"jj", 2);
+    let before = reloads(&env);
+    client.send(key);
+    reopened(&client, &env, before, 2, &format!("keys     {expected}"));
+    assert_eq!(
+        user_file(&env, "keystyle.lua"),
+        Some(format!("return \"{expected}\"\n"))
+    );
+    assert_eq!(
+        position(&client.screen(), LABELS[3]).is_some(),
+        expected == "modal"
+    );
+}
+
+#[test]
+fn window_with_the_floating_style() {
+    let env = TestEnv::new("settings-floating-window");
+    env.save_key_style("floating");
+    let client = opened(&env);
+    let screen = client.screen();
+    assert_eq!(
+        line_text(&screen, LABELS[2]).as_deref(),
+        Some("keys     floating")
+    );
+    assert!(position(&screen, LABELS[3]).is_none());
+    assert_eq!(position(&screen, LABELS[0]), Some((10, 26)));
+    assert_eq!(position(&screen, "└"), Some((13, 25)));
+}
+
+#[test]
+fn switch_to_the_floating_style() {
+    switch_key_style("settings-to-floating", "direct", b"\r", "floating");
+}
+
+#[test]
+fn back_from_the_modal_style() {
+    switch_key_style("settings-back-from-modal", "modal", b"h", "floating");
+}
+
+#[test]
+fn forward_from_the_floating_style() {
+    switch_key_style(
+        "settings-forward-from-floating",
+        "floating",
+        b"\x1b[C",
+        "modal",
+    );
+}
+
+#[test]
+fn windows_float_after_switching_the_style() {
+    let env = TestEnv::new("settings-floating-windows");
+    let mut client = labelled(&env);
+    new_window(&mut client);
+    client.send(b"s");
+    client.wait_for("the settings window", |screen| {
+        settings_open(screen) && cursor_line(screen) == Some(0)
+    });
+    press(&mut client, b"jj", 2);
+    let before = reloads(&env);
+    client.send(b"h");
+    reopened(&client, &env, before, 2, "keys     floating");
+    assert_eq!(
+        user_file(&env, "keystyle.lua").as_deref(),
+        Some("return \"floating\"\n")
+    );
+    client.wait_for("both windows floating", |screen| {
+        let contents = screen.contents();
+        contents.matches('╰').count() == 2
+            && contents.contains("[_][□][X]")
+            && tiles(screen).iter().all(|tile| tile.top > 0)
+    });
+}
+
 #[test]
 fn pick_a_theme_from_the_list() {
     let env = TestEnv::new("settings-theme-list");

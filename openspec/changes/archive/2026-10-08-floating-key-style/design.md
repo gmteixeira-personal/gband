@@ -25,7 +25,7 @@ See proposal.md for the motivation. This change starts after the five prerequisi
 - One window list, whatever opens it.
 
 **Non-Goals:**
-- Any Rust, protocol or harness change beyond packaging the two new Lua files.
+- Any Rust, protocol or harness change beyond packaging the two new Lua files and the client fix that "Tiled plugin windows beside a floating focus" describes.
 - Keyboard moving and resizing of floating windows, a double click on a title bar, and edge snapping by dragging.
 - Changing what the modal and direct styles bind.
 
@@ -42,7 +42,10 @@ The leader handler stays in the preset, because the plugin may be set up under a
 The mouse functions are registered actions bound to `leftmouse` and `rightmouse`, so `gband.keymap.list("root")` names them and a user can rebind them. A registered action bound to a mouse name receives the payload and can decline, as mouse-binding-fallthrough defines.
 
 ### Packaging is not API
-The only Rust edits add the two files to `MODULES` and the preset to `KEY_STYLES` in `crates/lua/src/bundled.rs`, change the length in the type of `KEY_STYLES` in `crates/lua/src/lib.rs`, and update the `first_run` unit test in `crates/lua/src/directory.rs`, which lists `defaults/keystyle/`. `directory.rs` already iterates `KEY_STYLES` and the bundled files, so it writes `defaults/keystyle/floating.lua` and `defaults/lua/gband/desktop.lua` with no new code. The lua-api capability's "Bundled sources on disk" already excludes every preset and includes every module, so it needs no delta.
+Besides one client fix, described below, the only Rust edits add the two files to `MODULES` and the preset to `KEY_STYLES` in `crates/lua/src/bundled.rs`, change the length in the type of `KEY_STYLES` in `crates/lua/src/lib.rs`, and update the `first_run` unit test in `crates/lua/src/directory.rs`, which lists `defaults/keystyle/`. `directory.rs` already iterates `KEY_STYLES` and the bundled files, so it writes `defaults/keystyle/floating.lua` and `defaults/lua/gband/desktop.lua` with no new code. The lua-api capability's "Bundled sources on disk" already excludes every preset and includes every module, so it needs no delta.
+
+### Tiled plugin windows beside a floating focus
+With every window floating, the focused window is nearly always floating. `gband.win.open({ kind = "tiled" })` without `band` or `after` then opened nothing: the client named the focused window as `after`, and `after` must be tiled, so the server dropped the request. The plugin-windows capability already says the default resolves "as open window resolves against the view", which floating-target defines as the tiled window this client focused most recently in the viewed band. The client now resolves the default through the same path as `open_window`, in `crates/client/src/lib.rs`. No spec changes, and `tests/lua/floating_target_spec.lua` gains a case with the modal style.
 
 ### The API version stays 2
 The change adds a style name to `use` and `saved`, the function `gband.keystyle.current`, a plugin, its actions and groups. `use("floating")` was an error, and the API version rule treats an addition that makes a former error valid as adding. `saved()` returning `"floating"` for a file that holds it is the same kind of widening: no file that returned `"modal"` or `"direct"` returns something else. The settings window's keys are interface, not API. So `gband.api_version` stays at the value mouse-binding-fallthrough set.
@@ -61,12 +64,16 @@ The floating preset declares no mode and binds seven keys in `prefix`, so the pr
 ### Which windows float, and when
 `toggle_window_floating({ window = id, floating = true })` is idempotent and ordered by the server, so every client that uses the style can float every window it sees appear, with no owner to pick:
 
-- `WindowOpened` for a window that the client's layout holds tiled. This covers `gband.spawn`, a binding that calls `open_window` without `floating`, a plugin's `open_window`, and a window that a client with another key style opens.
+- `WindowOpened` for a window that the client's layout holds tiled and does not mark with `plugin_window`, while no tiled plugin window of this client awaits its window. This covers `gband.spawn`, a binding that calls `open_window` without `floating`, a plugin's `open_window`, and a window that a client with another key style opens.
 - `Attached`: every tiled window that runs a program, in every band. This is how a new session's first window floats, and how windows from before the attach float.
 - `ConfigReloaded`: the same sweep, since the style may have just been chosen in the settings window. Every client of the configuration directory reloads together, and their requests now agree.
 - The style's own new windows open with `open_window({ floating = true })` and need no request.
 
-A window runs a program when its `gband.layout()` table holds `name`. A tiled plugin window's drawn window has none, so it stays tiled: its plugin chose a tile, and a floating plugin window is the plugin's way to float.
+A window runs a program when its `gband.layout()` table holds `name`. A tiled plugin window's drawn window has none, so the sweeps leave it tiled: its plugin chose a tile, and a floating plugin window is the plugin's way to float.
+
+`WindowOpened` cannot read `name`: the server sends a window's name in its own message after the layout that adds the window, and the client emits `WindowOpened` while it applies that layout. The rule instead leaves out what this client knows to be its own tiled plugin window: a window marked `plugin_window`, and any window that opens while one of its tiled plugin windows has no window yet, since the client may learn the mapping after the layout. The drawn window of another client's tiled plugin window looks like a spawned window at that moment, so it floats. It gets no buttons and `desktop.press` declines its border, because it has no `name`.
+
+- *Alternative*: send a window's name before the layout that adds it, and keep it in the client until the window arrives. Rejected for this change: it reorders server messages and changes the client's name handling, for a case that needs two clients and a third-party tiled plugin window.
 
 No rule floats a window when it is focused or on a later layout. With `WindowOpened` in every client, a tiled window that runs a program appears only when someone tiles a floating one, with a binding of their own or from a client with another style. That is a deliberate choice, and floating the window again when it is focused, or on any later layout, would fight it. Such a window floats again at the next attach or reload of a floating-style client, as the sweep defines.
 
@@ -165,6 +172,7 @@ No delta modifies a requirement that a prerequisite modifies. In particular, mou
 ## Risks / Trade-offs
 
 - [A floating-style client in a session floats the windows of a modal or direct user too, as they open and at each of its attaches and reloads] → Stated in the docs. A window that user tiles afterwards stays tiled until the floating-style client attaches or reloads again.
+- [Another client's tiled plugin window floats when it opens, because `WindowOpened` cannot tell it from a spawned window] → It shows no buttons and its border presses keep their defaults. Its user can tile it again, and it stays tiled until the next attach or reload of a floating-style client, whose sweep leaves it alone since it has no `name`.
 - [Several floating-style clients each send a float, a refit or a cascade placement for the same window] → The server floats a window once, and the refit and the cascade compute the same absolute boxes from the same layout, so the requests agree. A client whose layout is older sends a request that the later layouts already satisfy, which changes nothing.
 - [The `KeyTableChanged` handler depends on the event order: `prefix` must be reported before the next key is read] → The client emits the event while it handles the prefix key. The "Leader opens the list" and "Table changes of the leader" scenarios test it end to end.
 - [The cascade runs out of room in a short screen area, and the next window keeps the centred box] → The window list reaches every window, and the cascade starts again from the free cells as windows close or move.

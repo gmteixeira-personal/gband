@@ -618,6 +618,18 @@ fn floating_window_over_two_tiles() {
 }
 
 #[test]
+fn minimized_floating_window_is_not_drawn() {
+    let (mut fixture, windows) = Fixture::new(Size::new(80, 24), 3, 80);
+    floating_at(&mut fixture, windows[2], 20, 6, 80);
+    fixture.write(windows[0], b"left side of the screen");
+    fixture.write(windows[1], b"right side of the screen");
+    fixture.write(windows[2], b"floating");
+    fixture.act(ViewAction::Minimize(Some(windows[2])), 80);
+    assert_eq!(fixture.view.focused(), Some(windows[0]));
+    assert_snapshot!(fixture.render(Size::new(80, 24)));
+}
+
+#[test]
 fn floating_window_ignores_the_camera() {
     let (mut fixture, windows) = Fixture::new(Size::new(80, 24), 4, 80);
     floating_at(&mut fixture, windows[3], 20, 6, 80);

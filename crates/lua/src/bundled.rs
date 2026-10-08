@@ -1,11 +1,15 @@
 use mlua::{Function, IntoLuaMulti, Lua, MultiValue, Table};
 
-pub(crate) const KEY_STYLES: [(&str, &str); 2] = [
+pub(crate) const KEY_STYLES: [(&str, &str); 3] = [
     ("modal", include_str!("runtime/gband/keystyle/modal.lua")),
     ("direct", include_str!("runtime/gband/keystyle/direct.lua")),
+    (
+        "floating",
+        include_str!("runtime/gband/keystyle/floating.lua"),
+    ),
 ];
 
-pub(crate) const MODULES: [(&str, &str); 17] = [
+pub(crate) const MODULES: [(&str, &str); 19] = [
     ("prelude.lua", include_str!("runtime/gband/prelude.lua")),
     ("hl.lua", include_str!("runtime/gband/hl.lua")),
     ("palette.lua", include_str!("runtime/gband/palette.lua")),
@@ -28,6 +32,8 @@ pub(crate) const MODULES: [(&str, &str); 17] = [
     ("keylist.lua", include_str!("runtime/gband/keylist.lua")),
     ("keystyle/modal.lua", KEY_STYLES[0].1),
     ("keystyle/direct.lua", KEY_STYLES[1].1),
+    ("keystyle/floating.lua", KEY_STYLES[2].1),
+    ("desktop.lua", include_str!("runtime/gband/desktop.lua")),
     ("sidebar.lua", include_str!("runtime/gband/sidebar.lua")),
 ];
 

@@ -121,9 +121,9 @@ The bundled files live inside the executable, but each process writes a copy of 
 | path under `~/.config/gband/` | what it is |
 |---|---|
 | `defaults/init.lua`, `defaults/server.lua` | the default client and server configurations |
-| `defaults/lua/gband/<name>.lua` | the prelude, the API modules and the bundled plugins |
+| `defaults/lua/gband/<name>.lua` | the prelude, the API modules and the bundled plugins, such as `defaults/lua/gband/desktop.lua` |
 | `defaults/lua/gband/theme/catppuccin.lua` | the color tables of the catppuccin themes |
-| `defaults/keystyle/modal.lua`, `defaults/keystyle/direct.lua` | the two key style presets |
+| `defaults/keystyle/modal.lua`, `defaults/keystyle/direct.lua`, `defaults/keystyle/floating.lua` | the three key style presets |
 | `defaults/colors/<name>.lua` | the bundled colorschemes |
 
 The copies are for reading.
@@ -136,7 +136,7 @@ A quote names the copy it comes from, such as `defaults/lua/gband/bar.lua`, and 
 Because `require` searches the runtimepath first, a file of the same name under `user/` replaces a bundled one:
 
 - Copy `defaults/lua/gband/sidebar.lua` to `user/lua/gband/sidebar.lua` and edit it. The next reload runs your copy instead of the bundled sidebar.
-- Copy `defaults/keystyle/direct.lua` to `user/lua/gband/keystyle/direct.lua` to change the direct key style. The presets are the modules `gband.keystyle.modal` and `gband.keystyle.direct`, so the copy goes under `lua/gband/`.
+- Copy `defaults/keystyle/direct.lua` to `user/lua/gband/keystyle/direct.lua` to change the direct key style. The presets are the modules `gband.keystyle.modal`, `gband.keystyle.direct` and `gband.keystyle.floating`, so the copy goes under `lua/gband/`.
 - Copy `defaults/colors/gruvbox.lua` to `user/colors/gruvbox.lua` to change that theme.
 
 A replaced module owns everything it installs.
@@ -152,7 +152,7 @@ The copies are written from these files of gband's repository, for contributors 
 |---|---|
 | `init.lua` | `crates/lua/src/defaults.lua` |
 | `server.lua` | `crates/lua/src/defaults_server.lua` |
-| `keystyle/modal.lua`, `keystyle/direct.lua` | `crates/lua/src/runtime/gband/keystyle/` |
+| `keystyle/modal.lua`, `keystyle/direct.lua`, `keystyle/floating.lua` | `crates/lua/src/runtime/gband/keystyle/` |
 | `lua/gband/<file>` | `crates/lua/src/runtime/gband/<file>` |
 | `colors/<name>.lua` | `crates/lua/src/runtime/gband/colors/<name>.lua` |
 

@@ -65,7 +65,7 @@ pub mod plain {
 
 pub const DEFAULTS: &str = include_str!("defaults.lua");
 pub const DEFAULTS_SERVER: &str = include_str!("defaults_server.lua");
-pub const KEY_STYLES: [(&str, &str); 2] = bundled::KEY_STYLES;
+pub const KEY_STYLES: [(&str, &str); 3] = bundled::KEY_STYLES;
 pub const BUDGET: u64 = 100_000_000;
 const TEST_SIDE: &str = "the test side loads no configuration and has no counterpart";
 

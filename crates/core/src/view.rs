@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 use serde::{Deserialize, Serialize};
 
@@ -18,6 +18,7 @@ pub enum ViewAction {
     ViewBand(BandId),
     SwitchLayer,
     CenterColumn,
+    Minimize(Option<WindowId>),
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -68,6 +69,7 @@ pub struct View {
     bands: HashMap<BandId, BandView>,
     position: Location,
     recency: HashMap<WindowId, u64>,
+    minimized: BTreeSet<WindowId>,
     tick: u64,
     policy: CenterFocusedColumn,
     loop_bands: bool,
@@ -85,6 +87,7 @@ impl View {
             bands: HashMap::new(),
             position: Location::default(),
             recency: HashMap::new(),
+            minimized: BTreeSet::new(),
             tick: 0,
             policy,
             loop_bands: true,
@@ -110,6 +113,14 @@ impl View {
 
     pub fn focused(&self) -> Option<WindowId> {
         self.bands.get(&self.band).and_then(BandView::focused)
+    }
+
+    pub fn minimized(&self) -> &BTreeSet<WindowId> {
+        &self.minimized
+    }
+
+    fn available(&self, band: &Band, window: WindowId) -> bool {
+        band.holds(window) && !self.minimized.contains(&window)
     }
 
     pub fn layer(&self) -> Layer {
@@ -247,6 +258,7 @@ impl View {
             .floating
             .iter()
             .enumerate()
+            .filter(|(_, floating)| !self.minimized.contains(&floating.window))
             .map(|(index, floating)| {
                 (
                     self.recency.get(&floating.window).copied(),
@@ -285,7 +297,8 @@ impl View {
         let floating = boxes(band, scene.area)
             .into_iter()
             .filter(|placed| {
-                placed.width > 0
+                !self.minimized.contains(&placed.window)
+                    && placed.width > 0
                     && placed.height > 0
                     && placed.x < scene.viewport.cols
                     && placed.y < scene.viewport.rows
@@ -298,6 +311,7 @@ impl View {
         match action {
             ViewAction::FocusWindow(window) => return self.focus_window(window, scene),
             ViewAction::ViewBand(band) => return self.view_band(band, scene),
+            ViewAction::Minimize(window) => return self.minimize(window, scene),
             _ => {}
         }
         let previous = self.focused();
@@ -363,7 +377,7 @@ impl View {
                 };
                 self.enter(target);
             }
-            ViewAction::FocusWindow(_) | ViewAction::ViewBand(_) => {}
+            ViewAction::FocusWindow(_) | ViewAction::ViewBand(_) | ViewAction::Minimize(_) => {}
         }
         self.settle(scene, previous, heading);
     }
@@ -380,6 +394,19 @@ impl View {
         self.settle(scene, previous, None);
     }
 
+    fn minimize(&mut self, window: Option<WindowId>, scene: Scene<'_>) {
+        let previous = self.focused();
+        let Some(window) = window.or(previous) else {
+            return;
+        };
+        if !matches!(scene.layout.place(window), Some(Place::Floating { .. }))
+            || !self.minimized.insert(window)
+        {
+            return;
+        }
+        self.settle(scene, previous, None);
+    }
+
     pub fn focus_window(&mut self, window: WindowId, scene: Scene<'_>) {
         let index = match scene.layout.place(window) {
             Some(Place::Tiled(location)) => location.band,
@@ -387,6 +414,7 @@ impl View {
             None => return,
         };
         let previous = self.focused();
+        self.minimized.remove(&window);
         let band = &scene.layout.bands()[index];
         let heading = if self.recency.contains_key(&window) {
             None
@@ -406,6 +434,8 @@ impl View {
         let layout = scene.layout;
         self.bands.retain(|&id, _| layout.band_index(id).is_some());
         self.recency.retain(|&window, _| layout.contains(window));
+        self.minimized
+            .retain(|&window| matches!(layout.place(window), Some(Place::Floating { .. })));
 
         let index = match layout.band_index(self.band) {
             Some(index) => index,
@@ -418,7 +448,7 @@ impl View {
         let band = &layout.bands()[index];
         let state = *self.bands.entry(band.id).or_default();
         let target = match state.focused() {
-            Some(window) if band.holds(window) => Some(window),
+            Some(window) if self.available(band, window) => Some(window),
             Some(_) => match state.layer {
                 Layer::Tiled => self.clamped(band).or_else(|| self.top_floating(band)),
                 Layer::Floating => self
@@ -432,11 +462,12 @@ impl View {
             Some(window) => self.focus(band, window),
             None => self.clear_focus(),
         }
+        let minimized = &self.minimized;
         let state = self.bands.entry(band.id).or_default();
         state.tiled = state.tiled.filter(|&window| band.locate(window).is_some());
-        state.floating = state
-            .floating
-            .filter(|&window| band.floating_index(window).is_some());
+        state.floating = state.floating.filter(|&window| {
+            band.floating_index(window).is_some() && !minimized.contains(&window)
+        });
         self.position = match state.tiled.and_then(|window| layout.locate(window)) {
             Some(location) => location,
             None => Location {
@@ -453,7 +484,7 @@ impl View {
         let state = *self.bands.entry(band.id).or_default();
         let target = state
             .focused()
-            .filter(|&window| band.holds(window))
+            .filter(|&window| self.available(band, window))
             .or_else(|| band.first_window())
             .or_else(|| self.top_floating(band));
         if let Some(window) = target {
@@ -464,7 +495,9 @@ impl View {
     fn floating_target(&self, band: &Band, state: BandView) -> Option<WindowId> {
         state
             .floating
-            .filter(|&window| band.floating_index(window).is_some())
+            .filter(|&window| {
+                band.floating_index(window).is_some() && !self.minimized.contains(&window)
+            })
             .or_else(|| self.top_floating(band))
     }
 
@@ -514,7 +547,9 @@ impl View {
         placed
             .iter()
             .enumerate()
-            .filter(|(_, candidate)| candidate.window != focused)
+            .filter(|(_, candidate)| {
+                candidate.window != focused && !self.minimized.contains(&candidate.window)
+            })
             .filter_map(|(index, candidate)| {
                 let (cx, cy) = centre(candidate);
                 let (along, across) = match action {

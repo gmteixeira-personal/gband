@@ -26,15 +26,15 @@ That is the point: every line from here on is one you chose.
 [Load order](../plugins.md#load-order) lists what runs before and after your file.
 
 Start with the key bindings.
-gband bundles two key styles, and `gband.keystyle.use()` makes the bindings of the one saved in the settings window, or of the modal style when none is saved:
+gband bundles three key styles, modal, direct and floating, and `gband.keystyle.use()` makes the bindings of the one saved in the settings window, or of the modal style when none is saved:
 
 ```lua
 gband.keystyle.use()
 ```
 
-Save, and Ctrl+Space works again: it enters navigation mode, where `h`, `j`, `k` and `l` move focus and `n` opens a window.
+Save, and Ctrl+Space works again: with the modal style it enters navigation mode, where `h`, `j`, `k` and `l` move focus and `n` opens a window.
 Ctrl+Space then `?` lists every key.
-[Key styles](../plugins.md#key-styles-gbandkeystyle) describes both styles, and chapter 01 binds keys of your own.
+[Key styles](../plugins.md#key-styles-gbandkeystyle) describes the three styles, and chapter 01 binds keys of your own.
 
 Next, set up two plugins that gband bundles, the error list and the sidebar:
 
@@ -44,7 +44,7 @@ gband.plugin("gband.sidebar")
 ```
 
 The sidebar is the column on the left.
-Its first row shows the mode, `I` for interactive and `N` for navigation, and the rows below list the bands.
+Its first row shows the mode, `I` for interactive and `N` for navigation, or `⊞` with the floating style, and the rows below list the bands.
 [The sidebar](../plugins.md#the-sidebar-gbandsidebar) describes every row.
 
 The error list has no key yet.

@@ -592,6 +592,73 @@ mod tests {
     }
 
     #[test]
+    fn floating_keys_follow_the_spec() {
+        let config = with_saved_style("floating");
+        assert!(config.errors.is_empty(), "{:?}", config.errors);
+        let owned = |entries: &[(&str, Option<&str>, &str)]| {
+            entries
+                .iter()
+                .map(|(key, action, desc)| {
+                    (key.to_string(), action.map(str::to_owned), desc.to_string())
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            table_entries(&config, PREFIX),
+            owned(&[
+                ("n", None, "open a floating window"),
+                ("?", Some("keylist.open"), "list the keys"),
+                (":", Some("prompt.open"), "run Lua"),
+                ("N", Some("prompt.rename"), "rename the window"),
+                ("s", None, "settings"),
+                ("D", Some("detach"), "detach"),
+                (
+                    "prefix",
+                    Some("send_prefix"),
+                    "send the prefix key to the focused window"
+                ),
+            ])
+        );
+        assert_eq!(
+            table_entries(&config, ROOT),
+            owned(&[
+                (
+                    "mod+leftmouse",
+                    Some("drag_window"),
+                    "move the window with the mouse"
+                ),
+                (
+                    "mod+rightmouse",
+                    Some("drag_resize_window"),
+                    "resize the window with the mouse"
+                ),
+                (
+                    "mod+middlemouse",
+                    Some("drag_band"),
+                    "slide the band or switch bands with the mouse"
+                ),
+                (
+                    "mod+wheeldown",
+                    Some("focus_band_down"),
+                    "view the band below"
+                ),
+                ("mod+wheelup", Some("focus_band_up"), "view the band above"),
+                (
+                    "leftmouse",
+                    Some("desktop.press"),
+                    "move, resize or press a button of a floating window"
+                ),
+                (
+                    "rightmouse",
+                    Some("desktop.menu"),
+                    "open the menu for the cell under the pointer"
+                ),
+            ])
+        );
+        assert!(config.modes.is_empty());
+    }
+
+    #[test]
     fn presets_keep_parity() {
         let modal = with_saved_style("modal");
         let direct = with_saved_style("direct");

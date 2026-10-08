@@ -512,12 +512,18 @@ fn prefix_keys(config: &Config) -> Vec<String> {
 
 #[test]
 fn every_default_binding_is_described() {
-    let (_scratch, direct) = with_saved_style("described-direct", "direct");
-    for (config, count) in [
-        (gband_lua::defaults(gband_lua::Side::Client), 48),
-        (direct, 46),
+    let (_direct_scratch, direct) = with_saved_style("described-direct", "direct");
+    let (_floating_scratch, floating) = with_saved_style("described-floating", "floating");
+    for (config, count, open) in [
+        (
+            gband_lua::defaults(gband_lua::Side::Client),
+            48,
+            "open a window",
+        ),
+        (direct, 46, "open a window"),
+        (floating, 7, "open a floating window"),
     ] {
-        assert_described(&config, count);
+        assert_described(&config, count, open);
     }
 }
 
@@ -542,6 +548,27 @@ fn direct_style_from_the_saved_choice() {
         binding(&config, ("prefix", Chord::Prefix)),
         Some(Binding::Action(Action::Client(ClientAction::SendPrefix)))
     );
+    assert_eq!(bar_ids(&config), ["sidebar"]);
+}
+
+#[test]
+fn floating_style_from_the_saved_choice() {
+    let (_scratch, config) = with_saved_style("saved-floating", "floating");
+    let label: String = eval(&config, "return gband.keymap.label('prefix')");
+    assert_eq!(label, "prefix");
+    assert!(config.modes.is_empty());
+    assert_eq!(
+        prefix_keys(&config),
+        ["n", "?", ":", "N", "s", "D", "prefix"]
+    );
+    let mut root = MOD_ROWS.map(str::to_owned).to_vec();
+    root.extend(["leftmouse".to_owned(), "rightmouse".to_owned()]);
+    assert_eq!(root_keys(&config), root);
+    let has_list: bool = eval(
+        &config,
+        "for _, a in ipairs(gband.action.list()) do if a.name == 'desktop.list' then return true end end return false",
+    );
+    assert!(has_list);
     assert_eq!(bar_ids(&config), ["sidebar"]);
 }
 
@@ -580,20 +607,21 @@ fn copied_defaults_follow_the_saved_style() {
     assert_eq!(config.modes, saved.modes);
 }
 
-fn assert_described(config: &Config, count: usize) {
+fn assert_described(config: &Config, count: usize, open: &str) {
     let undescribed: Vec<String> = eval(
         config,
-        "local descs = {}
+        &format!(
+            "local descs = {{}}
          for _, action in ipairs(gband.action.list()) do descs[action.name] = action.desc end
-         local functions = {
-           n = 'open a window',
+         local functions = {{
+           n = '{open}',
            escape = 'interactive mode',
            enter = 'interactive mode',
            prefix = 'send the prefix key',
            s = 'settings',
-         }
-         local wrong = {}
-         for _, table in ipairs({ 'prefix', 'root' }) do
+         }}
+         local wrong = {{}}
+         for _, table in ipairs({{ 'prefix', 'root' }}) do
            for _, entry in ipairs(gband.keymap.list(table)) do
              local expected = entry.action and descs[entry.action] or functions[entry.key]
              if entry.desc == nil or entry.desc ~= expected then
@@ -601,7 +629,8 @@ fn assert_described(config: &Config, count: usize) {
              end
            end
          end
-         return wrong",
+         return wrong"
+        ),
     );
     assert!(undescribed.is_empty(), "{undescribed:?}");
     let listed: usize = eval(config, "return #gband.keymap.list('prefix')");
@@ -757,6 +786,7 @@ fn every_action_is_named() {
         "focus_band_up",
         "center_column",
         "switch_focus_floating_tiled",
+        "minimize_window",
         "open_window",
         "close_window",
         "consume_or_expel_left",
@@ -809,6 +839,25 @@ fn built_in_descriptions() {
         "for _, action in ipairs(gband.action.list()) do if action.name == 'cycle_column_width' then return action.desc end end",
     );
     assert_eq!(desc, "cycle the width of the window's column");
+}
+
+#[test]
+fn minimize_description_and_no_target() {
+    let config = loaded("minimize", JOB);
+    let desc: String = eval(
+        &config,
+        "for _, action in ipairs(gband.action.list()) do if action.name == 'minimize_window' then return action.desc end end",
+    );
+    assert_eq!(desc, "minimize the focused floating window");
+    let outcome = run_job(&config, "gband.action.minimize_window({ window = 1 })");
+    assert!(outcome.dispatched.is_empty(), "{:?}", outcome.dispatched);
+    let [error] = outcome.errors.as_slice() else {
+        panic!("{:?}", outcome.errors);
+    };
+    assert!(
+        error.message.contains("`minimize_window` takes no target"),
+        "{error}"
+    );
 }
 
 #[test]

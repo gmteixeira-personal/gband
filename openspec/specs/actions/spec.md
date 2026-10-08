@@ -110,6 +110,7 @@ Every built-in action SHALL have one Lua name, under which `gband.action` holds 
 | `focus_band_up` | view the band above | view |
 | `center_column` | center the focused column | view |
 | `switch_focus_floating_tiled` | switch focus between floating and tiled windows | view |
+| `minimize_window` | minimize the focused floating window | view |
 | `open_window` | open a window running the user's shell | session |
 | `close_window` | close the window | session |
 | `consume_or_expel_left` | consume or expel the window to the left | session |
@@ -132,7 +133,7 @@ Every built-in action SHALL have one Lua name, under which `gband.action` holds 
 | `drag_resize_window` | resize the window with the mouse | client |
 | `drag_band` | slide the band or switch bands with the mouse | client |
 
-A width action named after a window's column SHALL act on the box of a floating window, as the floating-windows capability defines.
+A width action named after a window's column SHALL act on the box of a floating window, as the floating-windows capability defines. `minimize_window` SHALL minimize the focused window in this client's view, as the floating-windows capability defines, and SHALL leave the view unchanged when the focused window is tiled or no window is focused.
 
 Actions that the configuration capability's `gband.action.register` adds SHALL sit beside the built-in actions in `gband.action` and in `gband.action.list()`, and SHALL NOT take a built-in action's name.
 
@@ -151,3 +152,11 @@ Actions that the configuration capability's `gband.action.register` adds SHALL s
 #### Scenario: Toggle floating by name
 - **WHEN** a binding names `gband.action.toggle_window_floating` and its keys are pressed with tiled window 3 focused
 - **THEN** window 3 floats and stays focused
+
+#### Scenario: Minimize by name
+- **WHEN** a binding names `gband.action.minimize_window` and its keys are pressed with floating window 3 focused
+- **THEN** the client does not draw window 3 and sends the server no action
+
+#### Scenario: Minimize description
+- **WHEN** `gband.action.list()` is read
+- **THEN** the entry named `minimize_window` has the description `minimize the focused floating window`

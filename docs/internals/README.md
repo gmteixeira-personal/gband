@@ -28,7 +28,7 @@ The colorschemes other than `gruvbox`, and the color tables of the catppuccin th
 - [05 · Plugin windows](05-plugin-windows.md): the state, drawing and API of `gband.win`
 - [06 · The windows provider](06-window-provider.md): how `gband.win` receives keys, clicks and sizes
 - [07 · Settings](07-settings.md): `gband.settings` and the settings provider
-- [08 · Key styles](08-key-styles.md): `gband.keystyle` and the modal and direct presets
+- [08 · Key styles](08-key-styles.md): `gband.keystyle`, the modal, direct and floating presets, and the bundled plugin `gband.desktop`
 - [09 · The sidebar and the error list](09-sidebar-and-errors.md): the bundled plugins `gband.sidebar` and `gband.errors`
 - [10 · The key list and the prompt](10-keylist-and-prompt.md): `gband.keylist`, `gband.prompt` and `gband.keyform`
 - [11 · The default configurations](11-default-configs.md): `defaults/init.lua` and `defaults/server.lua`

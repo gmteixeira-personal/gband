@@ -67,6 +67,16 @@ fn floating_target() {
 }
 
 #[test]
+fn minimize() {
+    gband_test(root(), &["tests/lua/minimize_spec.lua"]);
+}
+
+#[test]
+fn floating_key_style() {
+    gband_test(root(), &["tests/lua/floating_spec.lua"]);
+}
+
+#[test]
 fn bundled_key_list() {
     gband_test(root(), &["tests/lua/keylist_spec.lua"]);
 }
