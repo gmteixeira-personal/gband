@@ -389,6 +389,22 @@ fn window_with_the_direct_style() {
 }
 
 #[test]
+fn window_with_the_floating_style() {
+    let settings = Settings::new(
+        "window-floating",
+        &[("keystyle.lua", "return \"floating\"\n")],
+    );
+    settings.open();
+    let frame = settings.frame();
+    assert_eq!(frame.lines.len(), 3);
+    assert_eq!(text(&frame.lines[2]), "keys     floating");
+    assert_eq!(
+        (frame.col, frame.row, frame.width, frame.height),
+        (24, 9, 31, 5)
+    );
+}
+
+#[test]
 fn saved_values_shown() {
     let settings = Settings::new(
         "window-saved",
@@ -490,6 +506,43 @@ fn switch_the_key_style() {
     );
     assert_eq!(settings.config.runtime.take_settings_reopen(), Some(3));
     assert_eq!(settings.user_names(), ["keystyle.lua"]);
+}
+
+fn step_key_style(name: &str, saved: &str, key: &str, expected: &str) {
+    let saved = format!("return \"{saved}\"\n");
+    let settings = Settings::new(name, &[("keystyle.lua", &saved)]);
+    settings.open();
+    clean(&settings.press("down"));
+    clean(&settings.press("down"));
+    clean(&settings.press(key));
+    assert_eq!(
+        settings.file("keystyle.lua"),
+        Some(format!("return \"{expected}\"\n")),
+        "{key}"
+    );
+    assert_eq!(settings.config.runtime.take_settings_reopen(), Some(3));
+}
+
+#[test]
+fn switch_to_the_floating_style() {
+    step_key_style("keys-to-floating", "direct", "enter", "floating");
+}
+
+#[test]
+fn back_from_the_modal_style() {
+    step_key_style("keys-back-from-modal", "modal", "h", "floating");
+    step_key_style("keys-back-from-modal-left", "modal", "left", "floating");
+}
+
+#[test]
+fn forward_from_the_floating_style() {
+    step_key_style("keys-forward-from-floating", "floating", "right", "modal");
+    step_key_style("keys-forward-from-floating-l", "floating", "l", "modal");
+}
+
+#[test]
+fn back_from_the_floating_style() {
+    step_key_style("keys-back-from-floating", "floating", "h", "direct");
 }
 
 #[test]

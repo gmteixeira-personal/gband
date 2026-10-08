@@ -127,6 +127,8 @@ Call it once, before any other function of the handle.
 
 A `config` replaces the default configuration, as `user/init.lua` does, so set up the sidebar, the plugins and the bindings the case needs.
 
+`keystyle` takes no `"floating"`: a case saves the floating style with a `files` entry, `files = { ["user/keystyle.lua"] = 'return "floating"\n' }`.
+
 The key style and the theme are saved before `files` are written, so a case with the default configuration starts with no settings window open, and a `files` entry for `user/keystyle.lua` or `user/theme.lua` replaces the saved file.
 Start with `keystyle = false` and `theme = false` to see the settings window that a first start offers.
 

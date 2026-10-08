@@ -2,10 +2,10 @@ local core = gband.core
 
 local FILE = "user/keystyle.lua"
 
-local used = false
+local used
 
 local function is_style(value)
-  return value == "modal" or value == "direct"
+  return value == "modal" or value == "direct" or value == "floating"
 end
 
 local function saved()
@@ -23,14 +23,19 @@ local function use(style)
     style = saved() or "modal"
   end
   if not is_style(style) then
-    error('gband.keystyle.use expects "modal" or "direct", got `' .. tostring(style) .. "`", 2)
+    error('gband.keystyle.use expects "modal", "direct" or "floating", got `' .. tostring(style) .. "`", 2)
   end
-  used = true
+  used = style
   require("gband.keystyle." .. style)
   return style
+end
+
+local function current()
+  return used
 end
 
 gband.keystyle = {
   use = use,
   saved = saved,
+  current = current,
 }

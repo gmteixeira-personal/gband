@@ -512,7 +512,8 @@ When two bindings of one table match the same mouse event, such as `mod+leftmous
 A function bound to a button runs with one argument, the `MousePressed` payload, and a function bound to a wheel name with the `MouseScrolled` payload.
 The drag actions `drag_window`, `drag_resize_window` and `drag_band` start a gesture when a mouse press runs them, from its binding or a function it calls, and do nothing at any other time.
 `drag_resize_window` moves the edges nearest the press, by thirds of the box, or the edges its target names, as [Action targets](#action-targets) describes.
-Both key styles bind them to `mod+leftmouse`, `mod+rightmouse` and `mod+middlemouse` in `root` and in `prefix`, and to `leftmouse`, `rightmouse` and `middlemouse` in `prefix`, and bind `mod+wheeldown` and `mod+wheelup` to `focus_band_down` and `focus_band_up` in both tables.
+The modal and direct key styles bind them to `mod+leftmouse`, `mod+rightmouse` and `mod+middlemouse` in `root` and in `prefix`, and to `leftmouse`, `rightmouse` and `middlemouse` in `prefix`, and bind `mod+wheeldown` and `mod+wheelup` to `focus_band_down` and `focus_band_up` in both tables.
+The floating key style binds the same five `mod+` names in `root` only, then `leftmouse` to `desktop.press` and `rightmouse` to `desktop.menu`, and binds no mouse name in `prefix`, as [The desktop](#the-desktop-gbanddesktop) describes.
 With no binding, Ctrl and Alt held together select text over a program that asked for the mouse, and Alt alone reaches the program.
 `drag_band`, and `drag_window` pressed on empty ribbon, slide the band sideways or switch bands vertically, whichever axis the drag starts on, and never both in one drag.
 
@@ -553,7 +554,7 @@ Declaring a mode again replaces its label, and `gband.keymap.set` and `gband.key
 
 While a mode is active, a bound key runs its binding, any other key is discarded, and neither reaches a window or a plugin window.
 The mode stays active after each key and emits no `KeyTableChanged`, until a binding enters another table.
-The modal key style makes `prefix` a mode labelled `navigation`, and leaves it with Escape, Enter, `n`, `?`, `:` and the prefix key; the direct key style declares no mode.
+The modal key style makes `prefix` a mode labelled `navigation`, and leaves it with Escape, Enter, `n`, `?`, `:` and the prefix key; the direct and floating key styles declare no mode.
 A mode of your own:
 
 ```lua
@@ -899,13 +900,15 @@ On a bar of height `h`, counting rows from 0:
 
 | row | shows | group |
 |---|---|---|
-| 0 | the mode letter | `SidebarMode` |
+| 0 | the mode letter, or `⊞` with the floating key style | `SidebarMode` |
 | 1 | nothing | `Bar` |
 | 2 to `h - 2` | one band label each, in layout order | `SidebarBandActive` for the viewed band, `SidebarBand` for the others |
 | `h - 1` | `!` while the client reports an error, otherwise nothing | `SidebarError` |
 
 The mode letter is `I` while the active key table is `root`.
 For any other table it is the first character of `gband.keymap.label(table)`, uppercased when it is an ASCII lowercase letter: navigation mode shows `N`, the direct key style's `prefix` shows `P`, and a mode labelled `resize` shows `R`.
+While `gband.keystyle.current()` returns `floating`, row 0 shows the apps character `⊞` instead, whatever table is active, so a mode of your own shows no letter there.
+A configuration that requires `gband.keystyle.floating` by name, without `gband.keystyle.use`, keeps the mode letter.
 
 A band's label is its position in the layout, counted from 1, not its number: `1` to `9`, then `a` to `z` for positions 10 to 35.
 The empty last band has a label too, so a new session shows `1` and `2`.
@@ -920,20 +923,21 @@ The sidebar redraws in the frame that follows a change of the viewed band, the b
 
 A press of the left button on a band's label views that band, as `gband.band.view` does, whatever key table is active.
 The sidebar does this from its own `MousePressed` handler, since a press on a bar cell reaches handlers with the target `outside`.
+A press of the left button on `⊞` dispatches `desktop.list`, which opens the window list, when `gband.action` holds it.
 Any other press on the sidebar does nothing.
 
 ## The key list: `gband.keylist`
 
 gband also bundles the key list, module `gband.keylist`, plugin `keylist`.
 Its `setup` takes no options, and registers the action `keylist.open`, described as `list the keys`.
-Both key style presets set it up before their key bindings and bind Ctrl+Space then `?` to it:
+Every key style preset sets it up before its key bindings and binds Ctrl+Space then `?` to it:
 
 ```lua
 gband.plugin("gband.keylist")
 gband.keymap.set("prefix", "?", gband.action["keylist.open"], { desc = "list the keys" })
 ```
 
-`keylist.open` opens a focused floating plugin window titled with `gband.keymap.label("prefix")` and ` keys`, `navigation keys` with the modal key style and `prefix keys` with the direct one, centred in the ribbon, with its cursor line on the first line.
+`keylist.open` opens a focused floating plugin window titled with `gband.keymap.label("prefix")` and ` keys`, `navigation keys` with the modal key style and `prefix keys` with the direct and floating ones, centred in the ribbon, with its cursor line on the first line.
 It enters `root` as it opens, and as it focuses an open list, so the keys that follow reach the list and not navigation mode.
 It holds one line per binding of the `prefix` table, in the order `gband.keymap.list("prefix")` gives them when it opens: the key in its short form, as "Key form" describes, such as `C-space` for the prefix key, padded to two cells more than the widest key, then the binding's description, its action's description when it has none, its action's name when that is empty too, or `function`.
 The plugin window is as wide as its longest line plus its border and as high as its lines plus its border, at most 15 rows, and the ribbon caps both.
@@ -973,7 +977,7 @@ keyform("ctrl+space") -- "C-space"
 
 gband also bundles the Lua prompt, module `gband.prompt`, plugin `prompt`.
 Its `setup` takes no options, and registers the actions `prompt.open`, described as `run Lua`, and `prompt.rename`, described as `rename the window`.
-Both key style presets set it up right after the key list, before their key bindings, and bind Ctrl+Space then `:` to `prompt.open`, right after `?`, and Ctrl+Space then `N` to `prompt.rename`, right after `:`:
+Every key style preset sets it up right after the key list, before its key bindings, and binds Ctrl+Space then `:` to `prompt.open`, right after `?`, and Ctrl+Space then `N` to `prompt.rename`, right after `:`:
 
 ```lua
 gband.plugin("gband.prompt")
@@ -1012,28 +1016,116 @@ At most one of the two prompts is open: opening either closes the other first, d
 
 The prompt gives `PromptCursor` the default `{ reverse = true }` when its module is first required.
 
+## The desktop: `gband.desktop`
+
+gband also bundles the desktop, module `gband.desktop`, plugin `desktop`, which turns gband into a desktop like MS Windows: every window floats, a window's border moves and resizes it, its title bar has buttons, and one list holds every window.
+The floating key style sets it up after the key list and the Lua prompt.
+Its `setup` takes no options, raises an error naming any field it is given, and registers these actions:
+
+| action | description | effect |
+|---|---|---|
+| `desktop.list` | `list the windows` | opens the window list centred in the ribbon, or focuses it when it is open |
+| `desktop.leader` | `open the window list, or send the prefix key from it` | while the window list is the focused plugin window, closes it and runs `gband.keymap.run("prefix", "prefix")`; otherwise acts as `desktop.list` |
+| `desktop.press` | `move, resize or press a button of a floating window` | the left press on a border, below |
+| `desktop.menu` | `open the menu for the cell under the pointer` | the right press, below |
+
+`desktop.press` and `desktop.menu` act only when a mouse binding runs them, and do nothing from a key or `gband.keymap.run`.
+Setting the plugin up under another key style works too, and floats windows there as well: a modal configuration can bind `prefix w` to `desktop.list`.
+
+**Windows float.**
+A window runs a program when its `gband.layout()` table holds `name`.
+The plugin floats a window with `toggle_window_floating({ window = id, floating = true })`:
+
+- on `WindowOpened`, when the layout holds the window tiled, does not mark it with `plugin_window`, and no tiled plugin window of this client still waits for its window. A window's name reaches the client only after its `WindowOpened`, so the drawn window of another client's tiled plugin window floats too, with no buttons;
+- on `Attached` and on `ConfigReloaded`, every tiled window that runs a program, in every band, in layout order.
+
+It floats nothing else, so a window that someone tiles afterwards stays tiled until the next attach or reload of a floating-style client.
+The layout is shared: while a client with the floating style is attached, every client sees these windows float, whatever its key style, and so do the boxes that maximize, restore and tile set.
+The server floats each window once, so several floating-style clients agree.
+
+Every first float and every `open_window({ floating = true })` gives the same centred box, so the plugin cascades: the first time a window it saw open, or that its sweep named, floats, and another floating window of its band has the same top-left cell, it moves the window two columns right and one row down, again until the cell is free, as long as the box still fits in the screen area.
+Otherwise the window keeps its box.
+A window the user moves later is never placed again.
+
+**Title bar buttons.**
+A decorations provider gives every floating window that runs a program `[_][□][X]`: minimize, maximize and close.
+While the window counts as maximized, `[❐]` replaces `[□]` and restores it.
+They take the box's columns `w − 11` to `w − 3`; a box narrower than 13 cells shows none.
+`□` is East Asian ambiguous width, as gband's border characters are; copy the plugin and use `▢` if your terminal draws it wide.
+
+**Left press on a border.**
+`desktop.press` takes a press only on the border of a floating window that runs a program, and declines every other press, which then takes the interactive defaults: focus, forward to the program, select.
+For a press at `box_col` `x` and `box_row` `y` of a `w`×`h` box, the first rule that matches applies:
+
+1. a button: nothing happens until the left button is released on the same button of the same window, which then acts; a release elsewhere does nothing;
+2. a corner zone, the corner cell and the cell beside it along each side, checked top-left, top-right, bottom-left, bottom-right: `drag_resize_window` with that corner's two edges;
+3. the rest of the top border: `drag_window`;
+4. the rest of the left, right or bottom border: `drag_resize_window` with that one edge.
+
+The top edge resizes only from a corner, since the top border is the title bar.
+Alt with a drag still moves and resizes any window from its content, through the `mod+` bindings.
+
+**Right press.**
+`desktop.menu` opens the window menu on the border of a floating window that runs a program, and the window list on empty ribbon, at the pointer, without changing the focused window.
+It declines every other press, so a right click in content still pastes, and a right press on a bar belongs to that bar.
+
+**Maximize, restore and tile.**
+Maximize gives a window the whole screen area, Tile left and Tile right its left or right half at full height, with `gband.window.set_width`, `set_height` and `set_position` in that order.
+Whether a window is maximized or tiled is read from its box, so the `[❐]` glyph survives a reload and another client's moves.
+The box to restore is kept per window in this client only; a reload forgets it, and Restore then centres a box of half the screen area's width and height.
+When `LayoutChanged` reports another screen area size, from any client's resize or attach, each maximized or tiled window gets the box of its state for the new size.
+
+**The menus.**
+The window list and the window menu are borderless floating plugin windows that draw their own frame in `PluginWindowBorder`, `PluginWindowTitle`, `PluginWindow` and `PluginWindowCursorLine`.
+At most one is open.
+
+| key | effect |
+|---|---|
+| `j`, Down / `k`, Up | the next or previous entry |
+| PageDown, PageUp | a page down or up |
+| Home, End | the first or last entry |
+| Enter | pick the entry |
+| Escape, `q` | close the menu |
+
+A left press selects an entry and the release on it picks it, the wheel moves the selection, and a press anywhere else closes the menu and still takes its own effect.
+
+The window list, titled `windows`, holds `New window`, which opens a floating window running your shell, `Settings`, then every window that runs a program, by its shown name, in layout order across every band.
+Windows in two or more bands start with the band's sidebar label, and a window this client minimized ends with ` (minimized)` in `DesktopMinimized`; picking a window focuses it, viewing its band and restoring it.
+Its `[□]` gives it the ribbon's height and `[❐]` gives its height back, its `[X]` closes it, and its bottom border shows `? keys` while `prefix` binds `?`.
+Any other key that `prefix` binds closes the list and runs that binding, so with the floating preset `D` detaches, `:` opens the Lua prompt, `?` opens the key list and `N` renames the focused window.
+
+The window menu, titled with the window's name, holds `Close`, `Maximize` or `Restore`, `Minimize`, `Tile left` and `Tile right`, and closes when its window leaves the layout.
+
+**The leader.**
+The floating preset's `prefix` is not a mode, so the prefix key makes it active; its `KeyTableChanged` handler then returns to `root` and dispatches `desktop.leader`, so the prefix key opens the window list and the keys that follow reach it.
+Pressing the prefix key again from the list sends it to the focused window, as the other styles' prefix key twice does.
+
+The plugin defines `DesktopButton` as `{ bold = true }`, `DesktopClose` as `{ fg = 1, bold = true }` and `DesktopMinimized` as `{ dim = true }` when its module is first required.
+
 ## Key styles: `gband.keystyle`
 
-gband bundles two key style presets, the modules `gband.keystyle.modal` and `gband.keystyle.direct`.
-Each is a file of plain top-level calls, as a `user/init.lua` is: it sets up `gband.keylist` and `gband.prompt`, whose actions it binds, then makes its bindings in `prefix`, and binds nothing in `root`.
+gband bundles three key style presets, the modules `gband.keystyle.modal`, `gband.keystyle.direct` and `gband.keystyle.floating`.
+Each is a file of plain top-level calls, as a `user/init.lua` is: it sets up `gband.keylist` and `gband.prompt`, whose actions it binds, then makes its bindings in `prefix`, and binds no key in `root`.
 The modal preset declares `prefix` a mode labelled `navigation` and binds Escape and Enter to return to interactive mode.
 Its `n` opens a window and returns to interactive mode only when `gband.settings.interactive_on_new()` returned `true` when the preset loaded, and otherwise leaves navigation mode active.
 The direct preset declares no mode, so each key after the prefix key acts once; it binds `n` to `open_window` and the prefix key to `send_prefix` directly.
 Both bind Ctrl+Space then `s` to `gband.settings.open`, described `settings`, right after `:`.
-gband writes copies of both to `defaults/keystyle/` for you to read; loading never reads the copies.
+The floating preset also sets up `gband.desktop`, declares no mode, and binds only `n` (a floating window), `?`, `:`, `N`, `s`, `D` and the prefix key in `prefix`, and `leftmouse` and `rightmouse` in `root`, as "The desktop" describes.
+gband writes copies of all three to `defaults/keystyle/` for you to read; loading never reads the copies.
 
 `gband.keystyle` is a client API:
 
 | function | effect |
 |---|---|
-| `gband.keystyle.use(style)` | makes the bindings of `"modal"` or `"direct"` by requiring `gband.keystyle.<style>`, and returns the style's name; with no argument it uses the saved style, or `"modal"` when none is saved |
-| `gband.keystyle.saved()` | the saved style, `"modal"` or `"direct"`, or nil |
+| `gband.keystyle.use(style)` | makes the bindings of `"modal"`, `"direct"` or `"floating"` by requiring `gband.keystyle.<style>`, and returns the style's name; with no argument it uses the saved style, or `"modal"` when none is saved |
+| `gband.keystyle.saved()` | the saved style, `"modal"`, `"direct"` or `"floating"`, or nil |
+| `gband.keystyle.current()` | the style `use` picked in this load, or nil when it was not called; requiring a preset by name does not change it |
 
 `use` runs only while the configuration loads, and once per load; any other style, a second call and a call after loading are errors at the line of the call.
 Bindings made after it replace the preset's binding for the same key.
 The default configuration calls `gband.keystyle.use()` with no argument, so the saved style applies where a configuration does the same: a `user/init.lua` that binds its own keys keeps them, and the settings window's `keys` line then only saves the style.
 
-`saved` reads `user/keystyle.lua` as a text chunk with an empty environment, and returns its value when it is `"modal"` or `"direct"`.
+`saved` reads `user/keystyle.lua` as a text chunk with an empty environment, and returns its value when it is `"modal"`, `"direct"` or `"floating"`.
 It returns nil when `gband.config_dir` is nil, and when the file is missing, does not compile, raises an error or returns anything else; it reports nothing.
 The file is never run as configuration, a plugin file or a module.
 The settings window's `keys` line saves it, as "Settings" describes.
@@ -1067,7 +1159,7 @@ It holds these lines, each a label in `SettingsLabel` padded to 9 cells, then th
 |---|---|---|---|
 | `theme` | the name `gband.colorscheme()` returns | opens the theme list | `l` and Right load the theme after the active one in `themes()`, `h` and Left the one before, and save it |
 | `sidebar` | `off` when `sidebar()` returns `false`, `on` otherwise | saves the other value | the same as Enter |
-| `keys` | the style `gband.keystyle.saved()` returns, or `modal` | saves the other style | the same as Enter |
+| `keys` | the style `gband.keystyle.saved()` returns, or `modal` | saves the next style of `modal`, `direct`, `floating`, wrapping | `l` and Right save the next style, as Enter does, `h` and Left the previous one |
 | `I on new` | `on` when `interactive_on_new()` returns `true`, `off` otherwise | saves the other value | the same as Enter |
 
 The `theme` line wraps at both ends of the list, and an active colorscheme missing from it steps to the first or the last theme.

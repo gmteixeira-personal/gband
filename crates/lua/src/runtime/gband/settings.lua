@@ -7,6 +7,7 @@ local LABEL_WIDTH = 9
 local WIDTH = 31
 local THEME, SIDEBAR, KEYS, INTERACTIVE_ON_NEW = 1, 2, 3, 4
 local LABELS = { "theme", "sidebar", "keys", "I on new" }
+local KEY_STYLES = { "modal", "direct", "floating" }
 local THEME_FILE = "user/theme.lua"
 local SIDEBAR_FILE = "user/sidebar.lua"
 local KEYSTYLE_FILE = "user/keystyle.lua"
@@ -189,8 +190,9 @@ local function toggle_sidebar()
   save(SIDEBAR, SIDEBAR_FILE, "return " .. next_value .. "\n")
 end
 
-local function toggle_keys()
-  local next_style = key_style() == "modal" and "direct" or "modal"
+local function step_keys(direction)
+  local at = index_of(KEY_STYLES, key_style()) or 1
+  local next_style = KEY_STYLES[(at - 1 + direction) % #KEY_STYLES + 1]
   save(KEYS, KEYSTYLE_FILE, 'return "' .. next_style .. '"\n')
 end
 
@@ -207,7 +209,7 @@ local function change(direction)
     elseif line == SIDEBAR then
       toggle_sidebar()
     elseif line == KEYS then
-      toggle_keys()
+      step_keys(direction)
     elseif line == INTERACTIVE_ON_NEW then
       toggle_interactive_on_new()
     end
@@ -223,7 +225,7 @@ local function enter(win)
   elseif line == SIDEBAR then
     toggle_sidebar()
   elseif line == KEYS then
-    toggle_keys()
+    step_keys(1)
   elseif line == INTERACTIVE_ON_NEW then
     toggle_interactive_on_new()
   end

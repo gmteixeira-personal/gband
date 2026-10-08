@@ -1723,8 +1723,10 @@ fn plugin_window_step(display: &mut Display, request: PluginWindowRequest) -> St
             focus,
         } => {
             let target = target.or_else(|| {
-                let view = display.view.as_ref()?;
-                Some((view.band(), view.focused()))
+                match display.view.as_ref()?.resolve(SessionCommand::OpenWindow)? {
+                    SessionAction::OpenWindow { band, after, .. } => Some((band, after)),
+                    _ => None,
+                }
             });
             let Some((band, after)) = target else {
                 return Step::Nothing;

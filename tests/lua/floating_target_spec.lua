@@ -54,3 +54,19 @@ t.case("layout changed on resize", function(g)
   g.settle()
   t.eq(g.client("return record"), "100x30")
 end)
+
+t.case("tiled plugin window beside the last tiled focus", function(g)
+  g.start({
+    config = [[
+      gband.bind("f5", function() gband.action.open_window({ floating = true }) end)
+      gband.bind("f6", function() gband.win.open({ kind = "tiled", lines = { "hi" } }) end)
+    ]],
+  })
+  g.keys("f5")
+  g.settle()
+  t.ok(g.client("return gband.view().floating"))
+  g.keys("f6")
+  g.settle()
+  t.eq(shape(g.client("return gband.layout()")), "1|3 floating 2")
+  t.eq(#g.client("return gband.win.list()"), 1)
+end)

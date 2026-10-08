@@ -79,11 +79,11 @@ It SHALL bind no key in `root` and no mouse name in `prefix`. Last, it SHALL reg
 ### Requirement: Windows float
 A window SHALL run a program when its table in `gband.layout()` holds `name`. The desktop plugin SHALL float a tiled window that runs a program by dispatching `toggle_window_floating` with the target `{ window = <number>, floating = true }`, which floats a tiled window and leaves a floating window as it is, as the lua-control capability's "Action targets" defines. It SHALL dispatch it in these cases:
 
-- When `WindowOpened` runs, for the opened window, when the client's layout holds it tiled.
-- When `Attached` runs, for every tiled window of the layout, in every band, in layout order.
-- When `ConfigReloaded` runs, for every tiled window of the layout, in every band, in layout order.
+- When `WindowOpened` runs, for the opened window, when the client's layout holds it tiled, the layout does not mark it with `plugin_window`, and no tiled plugin window that this client opened still awaits its window, as `gband.win.info` gives it with `window` nil.
+- When `Attached` runs, for every tiled window of the layout that runs a program, in every band, in layout order.
+- When `ConfigReloaded` runs, for every tiled window of the layout that runs a program, in every band, in layout order.
 
-It SHALL NOT float a tiled window that runs no program, such as the drawn window of a tiled plugin window. It SHALL NOT float a window in any other case. A window that a binding or another client tiles after it floated SHALL therefore stay tiled until the next attach or reload of a client that uses the floating style. The window list's `New window` and the floating preset's `n` SHALL open their window floating.
+A window's `name` reaches the client after the `WindowOpened` that reports the window, so the first case cannot read it. It SHALL therefore also float the drawn window of a tiled plugin window that another client opened, which runs no program and shows no buttons. The `Attached` and `ConfigReloaded` sweeps SHALL NOT float a tiled window that runs no program, and no case SHALL float the drawn window of a tiled plugin window that this client opened. It SHALL NOT float a window in any other case. A window that a binding or another client tiles after it floated SHALL therefore stay tiled until the next attach or reload of a client that uses the floating style. The window list's `New window` and the floating preset's `n` SHALL open their window floating.
 
 Every client that uses the floating style SHALL send these requests. The server floats each window once, whichever request arrives first, as the floating-windows capability's "Float a window" defines. Floating a window changes the shared layout, so every client attached to the session SHALL see it float, whatever key style that client uses. A window that a client with another key style opens SHALL float too, while a client with the floating style is attached.
 
@@ -106,6 +106,10 @@ The plugin SHALL place each window that it saw open with `WindowOpened`, or that
 #### Scenario: Drawn window stays tiled
 - **WHEN** the floating style is in use and a binding function opens a tiled plugin window with `gband.win.open({ kind = "tiled", lines = { "hi" } })`
 - **THEN** its drawn window stays in a column of the viewed band
+
+#### Scenario: Another client's tiled plugin window
+- **WHEN** a first client uses the floating style, and a second client attached to the same session uses the modal style and opens a tiled plugin window
+- **THEN** the plugin window's drawn window floats, and its top border shows no button
 
 #### Scenario: Window of a client with another style
 - **WHEN** a first client uses the floating style, and a second client attached to the same session uses the modal style and presses Ctrl+Space then `n`
