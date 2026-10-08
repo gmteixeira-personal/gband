@@ -2102,3 +2102,427 @@ fn attach_again_after_minimizing() {
     assert!(again.minimized().is_empty());
     assert_eq!(again.stacking(scene(&layout)), [floated[0]]);
 }
+
+#[test]
+fn counter_rises_with_each_focus() {
+    let (layout, windows) = row_of_columns(2);
+    let mut view = View::new(scene(&layout));
+    act(
+        &mut view,
+        &layout,
+        &[ViewAction::FocusRight, ViewAction::FocusLeft],
+    );
+    assert_eq!(view.last_focus().get(&windows[0]), Some(&3));
+    assert_eq!(view.last_focus().get(&windows[1]), Some(&2));
+}
+
+#[test]
+fn never_focused_has_no_last_focus() {
+    let (layout, windows, floated) = with_floating(1, 1);
+    let view = View::new(scene(&layout));
+    assert_eq!(view.last_focus().get(&windows[0]), Some(&1));
+    assert_eq!(view.last_focus().get(&floated[0]), None);
+}
+
+#[test]
+fn viewing_a_band_records_a_focus() {
+    let (mut layout, windows) = row_of_columns(1);
+    let below = open(&mut layout, 1, None);
+    let mut view = View::new(scene(&layout));
+    act(
+        &mut view,
+        &layout,
+        &[ViewAction::BandDown, ViewAction::BandUp],
+    );
+    assert_eq!(view.last_focus().get(&windows[0]), Some(&3));
+    assert_eq!(view.last_focus().get(&below), Some(&2));
+}
+
+fn minimized_beneath(layout: &mut Layout, floated: &[WindowId]) -> View {
+    overlapping(layout, floated);
+    let mut view = View::new(scene(layout));
+    act(
+        &mut view,
+        layout,
+        &[
+            ViewAction::FocusWindow(floated[0]),
+            ViewAction::FocusWindow(floated[1]),
+            ViewAction::Minimize(Some(floated[0])),
+        ],
+    );
+    view
+}
+
+#[test]
+fn peek_a_minimized_window() {
+    let (mut layout, _, floated) = with_floating(1, 2);
+    let mut view = minimized_beneath(&mut layout, &floated);
+    let before = view.last_focus().clone();
+    act(&mut view, &layout, &[ViewAction::Peek(floated[0])]);
+    assert_eq!(view.focused(), Some(floated[0]));
+    assert_eq!(view.peeked(), Some(floated[0]));
+    assert_eq!(view.layer(), Layer::Floating);
+    assert_eq!(view.stacking(scene(&layout)), [floated[1], floated[0]]);
+    assert!(view.minimized().contains(&floated[0]));
+    assert!(!view.hidden(floated[0]));
+    assert_eq!(view.last_focus(), &before);
+}
+
+#[test]
+fn focus_elsewhere_hides_it_again() {
+    let (mut layout, _, floated) = with_floating(1, 2);
+    let mut view = minimized_beneath(&mut layout, &floated);
+    act(
+        &mut view,
+        &layout,
+        &[
+            ViewAction::Peek(floated[0]),
+            ViewAction::FocusWindow(floated[1]),
+        ],
+    );
+    assert_eq!(view.focused(), Some(floated[1]));
+    assert_eq!(view.peeked(), None);
+    assert_eq!(view.stacking(scene(&layout)), [floated[1]]);
+    assert!(view.hidden(floated[0]));
+}
+
+#[test]
+fn focus_the_peeked_window() {
+    let (mut layout, _, floated) = with_floating(1, 2);
+    let mut view = minimized_beneath(&mut layout, &floated);
+    act(&mut view, &layout, &[ViewAction::Peek(floated[0])]);
+    let band = view.band();
+    act(&mut view, &layout, &[ViewAction::FocusWindow(floated[0])]);
+    assert_eq!(view.focused(), Some(floated[0]));
+    assert_eq!(view.band(), band);
+    assert_eq!(view.peeked(), None);
+    assert!(view.minimized().is_empty());
+    assert_eq!(view.stacking(scene(&layout)), [floated[1], floated[0]]);
+    let highest = view.last_focus().values().max().copied();
+    assert_eq!(view.last_focus().get(&floated[0]).copied(), highest);
+}
+
+#[test]
+fn peek_in_another_band() {
+    let (mut layout, windows) = row_of_columns(1);
+    let second = open(&mut layout, 1, None);
+    let fifth = open(&mut layout, 1, Some(second));
+    let mut view = View::new(scene(&layout));
+    act(
+        &mut view,
+        &layout,
+        &[
+            ViewAction::BandDown,
+            ViewAction::FocusRight,
+            ViewAction::BandUp,
+        ],
+    );
+    assert_eq!(view.focused(), Some(windows[0]));
+    act(&mut view, &layout, &[ViewAction::Peek(second)]);
+    assert_eq!(view.band(), layout.bands()[1].id);
+    assert_eq!(view.focused(), Some(second));
+    act(
+        &mut view,
+        &layout,
+        &[
+            ViewAction::ViewBand(layout.bands()[0].id),
+            ViewAction::ViewBand(layout.bands()[1].id),
+        ],
+    );
+    assert_eq!(view.focused(), Some(fifth));
+}
+
+#[test]
+fn moving_focus_from_a_peek() {
+    let (layout, windows) = row_of_columns(3);
+    let mut view = View::new(scene(&layout));
+    act(
+        &mut view,
+        &layout,
+        &[ViewAction::Peek(windows[1]), ViewAction::FocusRight],
+    );
+    assert_eq!(view.focused(), Some(windows[2]));
+    assert_eq!(view.peeked(), None);
+    assert_eq!(view.last_focus().get(&windows[1]), None);
+}
+
+#[test]
+fn view_the_viewed_band() {
+    let (mut layout, windows) = row_of_columns(1);
+    float(&mut layout, windows[0]);
+    let mut view = View::new(scene(&layout));
+    act(&mut view, &layout, &[ViewAction::Minimize(None)]);
+    assert_eq!(view.focused(), None);
+    act(&mut view, &layout, &[ViewAction::Peek(windows[0])]);
+    assert_eq!(view.focused(), Some(windows[0]));
+    assert_eq!(view.stacking(scene(&layout)), [windows[0]]);
+    let band = view.band();
+    act(&mut view, &layout, &[ViewAction::ViewBand(band)]);
+    assert_eq!(view.focused(), None);
+    assert_eq!(view.peeked(), None);
+    assert!(view.stacking(scene(&layout)).is_empty());
+}
+
+#[test]
+fn peeked_window_closes() {
+    let (mut layout, windows, floated) = with_floating(1, 1);
+    let mut view = View::new(scene(&layout));
+    act(&mut view, &layout, &[ViewAction::Peek(floated[0])]);
+    layout.remove(floated[0]);
+    view.sync(scene(&layout));
+    assert_eq!(view.focused(), Some(windows[0]));
+    assert_eq!(view.layer(), Layer::Tiled);
+    assert_eq!(view.peeked(), None);
+    assert_eq!(view.last_focus().get(&windows[0]), Some(&1));
+}
+
+#[test]
+fn reload_ends_the_peek() {
+    let (mut layout, _, floated) = with_floating(1, 2);
+    let mut view = minimized_beneath(&mut layout, &floated);
+    act(&mut view, &layout, &[ViewAction::Peek(floated[0])]);
+    let before = view.last_focus().clone();
+    view.end_peek(scene(&layout));
+    assert_eq!(view.focused(), Some(floated[1]));
+    assert_eq!(view.peeked(), None);
+    assert_eq!(view.stacking(scene(&layout)), [floated[1]]);
+    assert_eq!(view.last_focus(), &before);
+}
+
+#[test]
+fn peek_a_tiled_window() {
+    let (layout, windows) = row_of_columns(3);
+    let mut view = view_with(&layout, CenterFocusedColumn::Never);
+    view.set_loop_bands(false);
+    view.sync(scene(&layout));
+    assert_eq!(view.camera(), 0);
+    act(&mut view, &layout, &[ViewAction::Peek(windows[2])]);
+    assert_eq!(view.focused(), Some(windows[2]));
+    assert_eq!(view.layer(), Layer::Tiled);
+    assert_eq!(view.camera(), 40);
+    let band = view.band();
+    act(&mut view, &layout, &[ViewAction::ViewBand(band)]);
+    assert_eq!(view.focused(), Some(windows[0]));
+    assert_eq!(view.camera(), 0);
+}
+
+#[test]
+fn two_clients_peek_independently() {
+    let (mut layout, _, floated) = with_floating(1, 2);
+    overlapping(&mut layout, &floated);
+    let focus_both = [
+        ViewAction::FocusWindow(floated[0]),
+        ViewAction::FocusWindow(floated[1]),
+    ];
+    let mut first = View::new(scene(&layout));
+    let mut second = View::new(scene(&layout));
+    act(&mut first, &layout, &focus_both);
+    act(&mut second, &layout, &focus_both);
+    act(&mut first, &layout, &[ViewAction::Peek(floated[0])]);
+    assert_eq!(first.focused(), Some(floated[0]));
+    assert_eq!(first.stacking(scene(&layout)), [floated[1], floated[0]]);
+    assert_eq!(second.focused(), Some(floated[1]));
+    assert_eq!(second.stacking(scene(&layout)), [floated[0], floated[1]]);
+}
+
+#[test]
+fn peeked_column_closed() {
+    let (mut layout, windows) = row_of_columns(3);
+    let mut view = View::new(scene(&layout));
+    act(&mut view, &layout, &[ViewAction::Peek(windows[1])]);
+    layout.remove(windows[1]);
+    view.sync(scene(&layout));
+    assert_eq!(view.focused(), Some(windows[0]));
+}
+
+#[test]
+fn peeked_minimized_window_shown() {
+    let (layout, windows, floated) = with_floating(1, 1);
+    let mut view = View::new(scene(&layout));
+    act(
+        &mut view,
+        &layout,
+        &[
+            ViewAction::Minimize(Some(floated[0])),
+            ViewAction::Peek(floated[0]),
+        ],
+    );
+    assert_eq!(view.shown(scene(&layout)), [windows[0], floated[0]]);
+    act(&mut view, &layout, &[ViewAction::FocusWindow(windows[0])]);
+    assert_eq!(view.shown(scene(&layout)), [windows[0]]);
+}
+
+#[test]
+fn viewed_band_ends_a_peek() {
+    let (layout, windows) = row_of_columns(2);
+    let mut view = View::new(scene(&layout));
+    act(
+        &mut view,
+        &layout,
+        &[
+            ViewAction::Peek(windows[1]),
+            ViewAction::ViewBand(layout.bands()[0].id),
+        ],
+    );
+    assert_eq!(view.focused(), Some(windows[0]));
+    assert_eq!(view.peeked(), None);
+    assert_eq!(view.last_focus().get(&windows[0]), Some(&1));
+}
+
+#[test]
+fn peek_keeps_the_remembered_layer() {
+    let (mut layout, windows, floated) = with_floating(1, 1);
+    open(&mut layout, 1, None);
+    let mut view = View::new(scene(&layout));
+    act(
+        &mut view,
+        &layout,
+        &[
+            ViewAction::Peek(floated[0]),
+            ViewAction::BandDown,
+            ViewAction::BandUp,
+        ],
+    );
+    assert_eq!(view.layer(), Layer::Tiled);
+    assert_eq!(view.focused(), Some(windows[0]));
+}
+
+#[test]
+fn peek_a_minimized_window_beside_a_tiled_window() {
+    let (layout, _, floated) = with_floating(1, 1);
+    let mut view = View::new(scene(&layout));
+    act(
+        &mut view,
+        &layout,
+        &[
+            ViewAction::Minimize(Some(floated[0])),
+            ViewAction::Peek(floated[0]),
+        ],
+    );
+    assert_eq!(view.layer(), Layer::Floating);
+    assert_eq!(view.focused(), Some(floated[0]));
+}
+
+#[test]
+fn tile_the_peeked_window() {
+    let (mut layout, _, floated) = with_floating(1, 1);
+    let mut view = View::new(scene(&layout));
+    act(&mut view, &layout, &[ViewAction::Peek(floated[0])]);
+    tile(&mut layout, floated[0]);
+    view.sync(scene(&layout));
+    assert_eq!(view.peeked(), Some(floated[0]));
+    assert_eq!(view.focused(), Some(floated[0]));
+    assert_eq!(view.layer(), Layer::Tiled);
+}
+
+#[test]
+fn peeked_floating_window_closes() {
+    let (mut layout, _, floated) = with_floating(1, 3);
+    let mut view = View::new(scene(&layout));
+    act(
+        &mut view,
+        &layout,
+        &[
+            ViewAction::FocusWindow(floated[1]),
+            ViewAction::FocusWindow(floated[2]),
+            ViewAction::Peek(floated[0]),
+        ],
+    );
+    layout.remove(floated[0]);
+    view.sync(scene(&layout));
+    assert_eq!(view.focused(), Some(floated[2]));
+    assert_eq!(view.layer(), Layer::Floating);
+}
+
+#[test]
+fn peeked_window_on_top_and_back_in_its_place() {
+    let (mut layout, _, floated) = with_floating(1, 3);
+    overlapping(&mut layout, &floated);
+    let mut view = View::new(scene(&layout));
+    act(
+        &mut view,
+        &layout,
+        &[
+            ViewAction::FocusWindow(floated[2]),
+            ViewAction::FocusWindow(floated[1]),
+            ViewAction::FocusWindow(floated[0]),
+            ViewAction::Peek(floated[2]),
+        ],
+    );
+    assert_eq!(
+        view.stacking(scene(&layout)),
+        [floated[1], floated[0], floated[2]]
+    );
+    act(&mut view, &layout, &[ViewAction::Peek(floated[1])]);
+    assert_eq!(
+        view.stacking(scene(&layout)),
+        [floated[2], floated[0], floated[1]]
+    );
+}
+
+#[test]
+fn peek_does_not_restore() {
+    let (mut layout, _, floated) = with_floating(1, 2);
+    let mut view = minimized_beneath(&mut layout, &floated);
+    act(&mut view, &layout, &[ViewAction::Peek(floated[0])]);
+    assert_eq!(view.stacking(scene(&layout)), [floated[1], floated[0]]);
+    assert!(view.minimized().contains(&floated[0]));
+}
+
+#[test]
+fn minimize_the_peeked_window() {
+    let (layout, windows, floated) = with_floating(1, 1);
+    let mut view = View::new(scene(&layout));
+    act(
+        &mut view,
+        &layout,
+        &[ViewAction::Peek(floated[0]), ViewAction::Minimize(None)],
+    );
+    assert!(view.minimized().contains(&floated[0]));
+    assert!(view.stacking(scene(&layout)).is_empty());
+    assert_eq!(view.focused(), Some(windows[0]));
+    assert_eq!(view.layer(), Layer::Tiled);
+}
+
+#[test]
+fn minimize_a_peeked_minimized_window() {
+    let (layout, windows, floated) = with_floating(1, 1);
+    let mut view = View::new(scene(&layout));
+    act(
+        &mut view,
+        &layout,
+        &[
+            ViewAction::Minimize(Some(floated[0])),
+            ViewAction::Peek(floated[0]),
+            ViewAction::Minimize(None),
+        ],
+    );
+    assert!(view.minimized().contains(&floated[0]));
+    assert!(view.stacking(scene(&layout)).is_empty());
+    assert_eq!(view.focused(), Some(windows[0]));
+    assert_eq!(view.layer(), Layer::Tiled);
+}
+
+#[test]
+fn peek_a_window_the_layout_does_not_hold() {
+    let (layout, windows) = row_of_columns(2);
+    let mut view = View::new(scene(&layout));
+    act(&mut view, &layout, &[ViewAction::Peek(WindowId(99))]);
+    assert_eq!(view.focused(), Some(windows[0]));
+    assert_eq!(view.peeked(), None);
+}
+
+#[test]
+fn attach_starts_the_focus_order_again() {
+    let (layout, windows) = row_of_columns(2);
+    let mut view = View::new(scene(&layout));
+    act(
+        &mut view,
+        &layout,
+        &[ViewAction::FocusRight, ViewAction::FocusLeft],
+    );
+    let again = View::new(scene(&layout));
+    assert_eq!(again.last_focus().get(&windows[0]), Some(&1));
+    assert_eq!(again.last_focus().get(&windows[1]), None);
+    assert_eq!(again.peeked(), None);
+}

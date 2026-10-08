@@ -12,6 +12,7 @@ Chapter 01 already used it to find the focused window.
 `gband.layout()` describes every band, column and window of the session.
 Each band has `id`, `columns` and `floating`; each column has `windows`; each window has `id`.
 A floating window this client minimized also has `minimized = true`.
+Each window this client has focused has `last_focus`, a number that is higher for a more recent focus, so sorting by it lists windows by recent use.
 Its `cols` and `rows` give the size of the screen area, and `LayoutChanged` runs when they change, whichever client changed them.
 Walking it answers which band a window is in, or nil when the window has left the layout:
 
@@ -46,6 +47,9 @@ An action that the running callback dispatched takes effect after the callback r
 - `gband.window.minimize(window)` hides a floating window from this client until it is focused again.
 - `gband.window.rename(window, name)` sets the name its border shows.
 - `gband.band.view(band)` views a band.
+
+`gband.window.focus(window, { peek = true })` shows a window on top, minimized or not, without recording the focus or restoring the window, and `gband.view().peek` is true until focus moves on.
+A list can preview the window it has selected this way, and focusing the window that was focused before the peek undoes it.
 
 `toggle` now ignores a window that is not in the layout, and names a marked window after its mark:
 

@@ -39,6 +39,8 @@ pub struct ViewState {
     pub states: Arc<WindowStates>,
     pub names: Arc<WindowNames>,
     pub minimized: BTreeSet<WindowId>,
+    pub last_focus: BTreeMap<WindowId, u64>,
+    pub peek: bool,
 }
 
 pub type WindowStates = BTreeMap<WindowId, BTreeMap<String, Data>>;

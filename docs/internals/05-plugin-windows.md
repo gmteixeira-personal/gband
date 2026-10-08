@@ -25,7 +25,7 @@ Their defaults use only attributes and palette index 8, so they work with any pa
 
 ```lua defaults/lua/gband/win.lua
 local COMMON = {
-  kind = true, lines = true, focus = true, cursorline = true,
+  kind = true, lines = true, focus = true, cursorline = true, hover = true,
   keys = true, on_input = true, on_close = true, on_resize = true, on_mouse = true,
 }
 local FLOATING = { row = true, col = true, width = true, height = true, border = true, title = true }
@@ -45,7 +45,7 @@ local stack = 0
 `wins` maps each window's id to its record.
 `dirty` is the set of ids whose frame must be presented again, so one change to one window redraws only that window.
 `focused_float` is the id of the floating window that has focus, or nil when a terminal window or a tiled plugin window has it.
-`held` is the floating window the mouse is moving or resizing, which [06](06-window-provider.md) uses.
+`held` is the floating window whose own key, input or mouse code is running, which keeps its focus when that code moves the focus elsewhere, as [06](06-window-provider.md) describes.
 `stack` counts upwards to give each raised floating window a higher `z` than every other.
 
 ## Small helpers
@@ -319,12 +319,15 @@ The two caches keep one merged style per group for plain rows and one for the cu
 
 ```lua defaults/lua/gband/win.lua
   if win.kind == "tiled" then
-    core.present_window(win.id, { kind = "tiled", cols = cols, rows = rows, base = base, lines = lines })
+    core.present_window(win.id, {
+      kind = "tiled", cols = cols, rows = rows, base = base, lines = lines, hover = win.hover,
+    })
     return
   end
 ```
 
 A tiled frame holds its lines and size; the client draws it in the window the server opened for it.
+`hover` tells the client to report pointer moves over the window, which it does only for a frame that sets it.
 
 ```lua defaults/lua/gband/win.lua
   local placed = win.placed
@@ -347,11 +350,12 @@ A tiled frame holds its lines and size; the client draws it in the window the se
     lines = lines,
     z = win.z,
     focused = focused_float == win.id,
+    hover = win.hover,
   })
 end
 ```
 
-A floating frame also carries its box, border, title and their styles, its `z`, and whether it has focus, which the client shows with the border.
+A floating frame also carries its box, border, title and their styles, its `z`, whether it has focus, which the client shows with the border, and `hover` as a tiled frame does.
 The border style lays `PluginWindowBorder` over the content style, and the title lays `PluginWindowTitle` over the border style, so a title by default is the border's color in bold.
 
 ## Callbacks, focus and closing
@@ -589,6 +593,7 @@ An old plugin that passes `kind = "pane"` is told to write `kind = "tiled"`, rat
     top = 1,
     cursor = 1,
     cursorline = check_boolean(opts, "cursorline", false),
+    hover = check_boolean(opts, "hover", false),
     keys = check_keys(opts),
     on_input = check_function(opts, "on_input"),
     on_close = check_function(opts, "on_close"),
@@ -598,6 +603,7 @@ An old plugin that passes `kind = "pane"` is told to write `kind = "tiled"`, rat
 ```
 
 The record starts at the first line with the cursor on it.
+`hover` is read once here and never changed, since `gband.win.set_config` takes only the box, border and title.
 `owner` is the plugin whose code opened the window, which every callback then runs as.
 
 ```lua defaults/lua/gband/win.lua
@@ -797,6 +803,7 @@ function api.info(id)
     line_count = #win.lines,
     cols = cols,
     rows = rows,
+    hover = win.hover,
   }
   if win.kind == "floating" then
     local placed = win.placed

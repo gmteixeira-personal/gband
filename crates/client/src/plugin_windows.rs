@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt::Write as _;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU32;
@@ -26,6 +26,7 @@ pub enum Opened {
 pub struct PluginWindows {
     counter: Arc<AtomicU32>,
     floats: BTreeMap<u32, FloatingFrame>,
+    hovers: BTreeSet<u32>,
     pending: BTreeMap<u32, bool>,
     windows: BTreeMap<WindowId, u32>,
     sizes: HashMap<WindowId, Size>,
@@ -42,6 +43,7 @@ impl PluginWindows {
         Self {
             counter: Arc::new(AtomicU32::new(1)),
             floats: BTreeMap::new(),
+            hovers: BTreeSet::new(),
             pending: BTreeMap::new(),
             windows: BTreeMap::new(),
             sizes: HashMap::new(),
@@ -64,6 +66,10 @@ impl PluginWindows {
             self.floats.iter().map(|(&id, frame)| (id, frame)).collect();
         floats.sort_by_key(|(_, frame)| frame.z);
         floats
+    }
+
+    pub fn hovers(&self, plugin_window: u32) -> bool {
+        self.hovers.contains(&plugin_window)
     }
 
     pub fn plugin_window_of(&self, window: WindowId) -> Option<u32> {
@@ -128,6 +134,7 @@ impl PluginWindows {
 
     pub fn close_all(&mut self) -> Vec<ClientMessage> {
         self.floats.clear();
+        self.hovers.clear();
         self.sizes.clear();
         for orphaned in self.pending.values_mut() {
             *orphaned = true;
@@ -141,6 +148,16 @@ impl PluginWindows {
     pub fn present(&mut self, frames: Vec<(u32, Option<Frame>)>) -> Vec<ClientMessage> {
         let mut contents = Vec::new();
         for (plugin_window, frame) in frames {
+            let hover = match &frame {
+                Some(Frame::Floating(frame)) => frame.hover,
+                Some(Frame::Tiled(frame)) => frame.hover,
+                None => false,
+            };
+            if hover {
+                self.hovers.insert(plugin_window);
+            } else {
+                self.hovers.remove(&plugin_window);
+            }
             match frame {
                 None => {
                     self.floats.remove(&plugin_window);
@@ -253,6 +270,7 @@ mod tests {
                 vec![run("C-h", key), run(" left", base), run("  ", base)],
                 vec![run("next", cursor), run("      ", cursor)],
             ],
+            hover: false,
         };
         let mut grid = Grid::new(Size::new(10, 3));
         grid.process(b"old contents\r\nmore");

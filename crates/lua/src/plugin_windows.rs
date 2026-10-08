@@ -36,6 +36,7 @@ pub struct FloatingFrame {
     pub lines: Vec<Vec<Run>>,
     pub z: u64,
     pub focused: bool,
+    pub hover: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -52,6 +53,7 @@ pub enum PluginMouseKind {
     Release(MouseButton),
     Drag(MouseButton),
     Scroll(WheelDirection),
+    Move,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -73,6 +75,7 @@ impl PluginMouse {
                 event.set("direction", direction_name(direction))?;
                 ("scroll", None)
             }
+            PluginMouseKind::Move => ("move", None),
         };
         event.set("kind", kind)?;
         event.set("button", button.map(button_name))?;
@@ -92,6 +95,7 @@ pub struct TiledFrame {
     pub rows: u16,
     pub base: Style,
     pub lines: Vec<Vec<Run>>,
+    pub hover: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -354,6 +358,7 @@ const CELLS: &str = "an integer from 0 to 65535";
 fn read_frame(frame: &Table) -> Result<Frame, String> {
     let base = ui::style_field(frame, "base")?;
     let lines = read_runs(frame)?;
+    let hover = check::optional_boolean_field(frame, "hover", "a boolean")?.unwrap_or(false);
     Ok(
         match check::text_field(frame, "kind", "`floating` or `tiled`")?.as_str() {
             "floating" => Frame::Floating(FloatingFrame {
@@ -370,12 +375,14 @@ fn read_frame(frame: &Table) -> Result<Frame, String> {
                 lines,
                 z: check::whole_field(frame, "z", "a non-negative integer")?,
                 focused: check::boolean_field(frame, "focused", "a boolean")?,
+                hover,
             }),
             "tiled" => Frame::Tiled(TiledFrame {
                 cols: check::whole_field(frame, "cols", CELLS)?,
                 rows: check::whole_field(frame, "rows", CELLS)?,
                 base,
                 lines,
+                hover,
             }),
             other => {
                 return Err(format!(

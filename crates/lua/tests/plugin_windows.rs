@@ -1122,6 +1122,99 @@ fn click_a_line_runs_on_mouse() {
 }
 
 #[test]
+fn invalid_hover() {
+    let client = Client::new("win-invalid-hover", "");
+    let outcome = run_job(&client.config, "gband.win.open({ hover = 'yes' })");
+    let [error] = outcome.errors.as_slice() else {
+        panic!("{:?}", outcome.errors);
+    };
+    assert!(error.message.contains("hover"), "{error}");
+}
+
+#[test]
+fn hover_is_fixed_at_open() {
+    let client = Client::new("win-hover-fixed", "");
+    client.run("win = gband.win.open({})");
+    client.frames();
+    let outcome = run_job(
+        &client.config,
+        "gband.win.set_config(win, { hover = true })",
+    );
+    let [error] = outcome.errors.as_slice() else {
+        panic!("{:?}", outcome.errors);
+    };
+    assert!(error.message.contains("hover"), "{error}");
+    assert!(client.frames().is_empty());
+    assert!(!client.eval::<bool>("return gband.win.info(win).hover"));
+}
+
+#[test]
+fn info_of_a_floating_plugin_window_holds_hover() {
+    let client = Client::new("win-info-hover", "");
+    client.run("win = gband.win.open({ width = 40, height = 11 })");
+    let info: Table = client.eval("return gband.win.info(win)");
+    assert_eq!(info.get::<String>("kind").unwrap(), "floating");
+    assert_eq!(info.get::<Option<bool>>("hover").unwrap(), Some(false));
+}
+
+#[test]
+fn info_of_a_hover_window() {
+    let client = Client::new("win-info-hover-tiled", "");
+    client.run("win = gband.win.open({ kind = 'tiled', hover = true })");
+    let info: Table = client.eval("return gband.win.info(win)");
+    assert_eq!(info.get::<String>("kind").unwrap(), "tiled");
+    assert_eq!(info.get::<Option<bool>>("hover").unwrap(), Some(true));
+}
+
+#[test]
+fn frames_hold_hover_only_when_asked() {
+    let client = Client::new("win-hover-frames", "");
+    client.run("gband.win.open({})");
+    assert!(!client.float().hover);
+    client.run("gband.win.open({ hover = true })");
+    assert!(client.float().hover);
+    client.run("win = gband.win.open({ kind = 'tiled', hover = true })");
+    let win: u32 = client.global("win");
+    clean(
+        &client
+            .config
+            .runtime
+            .plugin_window_opened(win, Some(WindowId(5))),
+    );
+    clean(&client.config.runtime.window_resized(win, Size::new(18, 22)));
+    let frames = client.frames();
+    let [(_, Some(Frame::Tiled(frame)))] = frames.as_slice() else {
+        panic!("{frames:?}");
+    };
+    assert!(frame.hover);
+}
+
+#[test]
+fn move_reaches_on_mouse() {
+    let client = Client::new("win-on-mouse-move", "");
+    client.run(&format!(
+        "win = gband.win.open({{ hover = true, lines = {}, on_mouse = function(_, e) got = {{ kind = e.kind, button = tostring(e.button), line = e.line }} end }})",
+        numbered(5)
+    ));
+    let win: u32 = client.global("win");
+    clean(&client.mouse(win, PluginMouseKind::Move, 2));
+    let got: String = client.eval("return table.concat({ got.kind, got.button, got.line }, ',')");
+    assert_eq!(got, "move,nil,3");
+}
+
+#[test]
+fn move_without_on_mouse_keeps_the_cursor() {
+    let client = Client::new("win-move-cursor", "");
+    client.run(&format!(
+        "win = gband.win.open({{ hover = true, cursorline = true, lines = {} }})",
+        numbered(5)
+    ));
+    let win: u32 = client.global("win");
+    clean(&client.mouse(win, PluginMouseKind::Move, 2));
+    assert_eq!(client.eval::<u32>("return gband.win.info(win).cursor"), 1);
+}
+
+#[test]
 fn on_mouse_receives_the_box_cell() {
     let client = Client::new("win-on-mouse-box", "");
     client.run(

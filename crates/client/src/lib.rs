@@ -581,11 +581,7 @@ impl Display {
     }
 
     fn hidden(&self, window: WindowId) -> bool {
-        !self.layout.contains(window)
-            || self
-                .view
-                .as_ref()
-                .is_some_and(|view| view.minimized().contains(&window))
+        !self.layout.contains(window) || self.view.as_ref().is_some_and(|view| view.hidden(window))
     }
 
     pub fn is_ready(&self) -> bool {
@@ -801,6 +797,20 @@ impl Display {
                 .as_ref()
                 .map(|view| view.minimized().clone())
                 .unwrap_or_default(),
+            last_focus: self
+                .view
+                .as_ref()
+                .map(|view| {
+                    view.last_focus()
+                        .iter()
+                        .map(|(&window, &tick)| (window, tick))
+                        .collect()
+                })
+                .unwrap_or_default(),
+            peek: self
+                .view
+                .as_ref()
+                .is_some_and(|view| view.peeked().is_some()),
         }
     }
 
@@ -1520,7 +1530,9 @@ impl Controls {
                 self.refresh_pending = true;
                 let reopen = display.settings_line.take();
                 let mut steps = closed;
-                steps.extend(self.react(display, events, |_, _, _| {}));
+                steps.extend(self.react(display, events, |_, display, _| {
+                    display.with_view(View::end_peek);
+                }));
                 if let Some(line) = reopen {
                     steps.extend(self.react(display, Vec::new(), |controls, display, steps| {
                         let outcome = controls.runtime.open_settings(line);

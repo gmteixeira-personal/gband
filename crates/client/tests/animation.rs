@@ -947,3 +947,49 @@ fn minimize_and_restore_at_once() {
     draw(&mut display);
     assert_eq!(regions(&display), both);
 }
+
+#[test]
+fn peek_at_once() {
+    let mut layout = Layout::new();
+    let band = layout.bands()[0].id;
+    let p1 = layout.allocate_window();
+    let p3 = layout.allocate_window();
+    layout.open(p1, band, None, None, &LayoutOptions::default());
+    layout.open(p3, band, Some(p1), None, &LayoutOptions::default());
+    toggle(&mut layout, p3);
+    let mut display = Display::new(AREA, Animations::On);
+    display.apply(ServerMessage::Layout {
+        cols: AREA.cols,
+        rows: AREA.rows,
+        layout,
+    });
+    let regions = |display: &Display| -> Vec<(Option<WindowId>, RegionKind, i64, i64)> {
+        display
+            .regions()
+            .iter()
+            .map(|region| (region.window, region.kind, region.x, region.y))
+            .collect()
+    };
+    gband_client::dispatch(&mut display, Action::View(ViewAction::FocusWindow(p1)));
+    gband_client::dispatch(&mut display, Action::View(ViewAction::Minimize(Some(p3))));
+    draw(&mut display);
+    let tile_only = regions(&display);
+    assert!(tile_only.iter().all(|&(window, ..)| window == Some(p1)));
+    gband_client::dispatch(&mut display, Action::View(ViewAction::Peek(p3)));
+    draw(&mut display);
+    let peeked = regions(&display);
+    assert!(
+        peeked
+            .iter()
+            .any(|&(window, kind, ..)| window == Some(p3) && kind == RegionKind::Floating)
+    );
+    let tile: Vec<_> = peeked
+        .iter()
+        .copied()
+        .filter(|&(window, ..)| window == Some(p1))
+        .collect();
+    assert_eq!(tile, tile_only);
+    gband_client::dispatch(&mut display, Action::View(ViewAction::FocusWindow(p1)));
+    draw(&mut display);
+    assert_eq!(regions(&display), tile_only);
+}

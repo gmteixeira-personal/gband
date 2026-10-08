@@ -2501,3 +2501,222 @@ fn minimize_then_focus_in_one_function() {
     assert_eq!(mouse.display.focused(), Some(windows[2]));
     assert_eq!(mouse.display.report_shown(), None);
 }
+
+const PEEK: &str = "gband.bind('alt+m', function() gband.window.minimize(2) end)
+gband.bind('alt+p', function() gband.window.focus(2, { peek = true }) end)
+gband.bind('alt+t', function() gband.window.focus(2, { peek = false }) end)
+gband.bind('alt+f', function() gband.window.focus(2) end)
+gband.bind('alt+n', function() gband.window.focus(3) end)
+gband.bind('alt+1', function() gband.window.focus(1) end)
+gband.keymap.set('root', 'alt+leftmouse', gband.action.drag_window)
+";
+
+#[test]
+fn peeked_minimized_window_shown() {
+    let (mut mouse, windows) = two_floating("peek-shown", PEEK);
+    mouse.key("alt+m");
+    mouse.display.report_shown();
+    let steps = mouse.key("alt+p");
+    assert!(sent(&steps).is_empty(), "{steps:?}");
+    assert_eq!(mouse.display.focused(), Some(windows[1]));
+    assert_eq!(
+        mouse.display.report_shown(),
+        Some(ClientMessage::Shown(windows.clone()))
+    );
+    mouse.key("alt+n");
+    assert_eq!(
+        mouse.display.report_shown(),
+        Some(ClientMessage::Shown(vec![windows[0], windows[2]]))
+    );
+}
+
+#[test]
+fn peeked_minimized_window_over_a_tile() {
+    let (mut mouse, windows) = two_floating("peek-over-tile", PEEK);
+    mouse.key("alt+m");
+    let now = mouse.now;
+    assert_eq!(
+        mouse.display.hit(11, 5, now).target,
+        Target::Window(windows[0])
+    );
+    mouse.key("alt+p");
+    assert_eq!(
+        mouse.display.hit(11, 5, now).target,
+        Target::Window(windows[1])
+    );
+}
+
+#[test]
+fn peeked_window_over_a_higher_window() {
+    let (mut mouse, windows) = two_floating("peek-over-higher", PEEK);
+    mouse.key("alt+f");
+    mouse.key("alt+n");
+    let now = mouse.now;
+    assert_eq!(
+        mouse.display.hit(20, 8, now).target,
+        Target::Window(windows[2])
+    );
+    mouse.key("alt+p");
+    assert_eq!(
+        mouse.display.hit(20, 8, now).target,
+        Target::Window(windows[1])
+    );
+}
+
+#[test]
+fn drag_from_a_peeked_minimized_window_restores_it() {
+    let (mut mouse, windows) = two_floating("peek-drag", PEEK);
+    mouse.key("alt+m");
+    mouse.key("alt+p");
+    mouse.drag_with(MouseButton::Left, (11, 5), (12, 5), Modifiers::ALT);
+    assert_eq!(mouse.display.focused(), Some(windows[1]));
+    let minimized: Option<bool> =
+        mouse.eval("return gband.layout().bands[1].floating[1].minimized");
+    assert_eq!(minimized, None);
+    assert_eq!(mouse.eval::<Option<bool>>("return gband.view().peek"), None);
+}
+
+#[test]
+fn peek_a_minimized_window_by_number() {
+    let (mut mouse, windows) = two_floating("peek-by-number", PEEK);
+    mouse.key("alt+f");
+    mouse.key("alt+n");
+    mouse.key("alt+m");
+    mouse.key("alt+p");
+    assert_eq!(mouse.display.focused(), Some(windows[1]));
+    let now = mouse.now;
+    assert_eq!(
+        mouse.display.hit(20, 8, now).target,
+        Target::Window(windows[1])
+    );
+    let minimized: bool = mouse.eval("return gband.layout().bands[1].floating[1].minimized");
+    assert!(minimized);
+}
+
+#[test]
+fn peek_false_focuses() {
+    let (mut mouse, windows) = two_floating("peek-false", PEEK);
+    mouse.key("alt+m");
+    mouse.key("alt+t");
+    assert_eq!(mouse.display.focused(), Some(windows[1]));
+    let minimized: Option<bool> =
+        mouse.eval("return gband.layout().bands[1].floating[1].minimized");
+    assert_eq!(minimized, None);
+}
+
+#[test]
+fn peeked_focus_in_the_view() {
+    let (mut mouse, _) = two_floating("peeked-focus", PEEK);
+    mouse.key("alt+1");
+    mouse.key("alt+p");
+    let read = "local v = gband.view() return v.window .. ' ' .. tostring(v.floating) .. ' ' .. tostring(v.peek)";
+    assert_eq!(mouse.eval::<String>(read), "2 true true");
+    mouse.key("alt+1");
+    assert_eq!(mouse.eval::<String>(read), "1 false nil");
+}
+
+#[test]
+fn peek_keeps_the_last_focus() {
+    let (mut mouse, _) = two_floating("peek-last-focus", PEEK);
+    mouse.key("alt+f");
+    mouse.key("alt+n");
+    mouse.key("alt+p");
+    let newer: bool = mouse.eval(
+        "local f = gband.layout().bands[1].floating return f[2].last_focus > f[1].last_focus",
+    );
+    assert!(newer);
+}
+
+const RECORD_MOVE: &str = "log = {}
+function record(_, e)
+  local keys = {}
+  for _, k in ipairs({ 'kind', 'button', 'line', 'content_col', 'box_col', 'box_row' }) do
+    keys[#keys + 1] = k .. '=' .. tostring(e[k])
+  end
+  log[#log + 1] = table.concat(keys, ',')
+end
+gband.on('MouseDragged', function() dragged = true end)
+";
+
+fn hovering(name: &str, options: &str, source: &str) -> (Mouse, u32) {
+    let (layout, _) = columns_of(1, None);
+    let mut mouse = Mouse::new(
+        name,
+        &format!(
+            "{RECORD_MOVE}{source}gband.bind('alt+o', function() win = gband.win.open({{ col = 5, row = 3, width = 20, height = 10, lines = {{ 'a', 'b', 'c', 'd' }}, {options} }}) end)"
+        ),
+        layout,
+    );
+    mouse.key("alt+o");
+    let id = mouse.global("win");
+    (mouse, id)
+}
+
+impl Mouse {
+    fn hover(&mut self, cell: (u16, u16)) -> Vec<Step> {
+        self.event(MouseKind::Motion(None), cell.0, cell.1, Modifiers::NONE)
+    }
+
+    fn log(&self) -> Vec<String> {
+        self.global("log")
+    }
+}
+
+#[test]
+fn hover_a_line() {
+    let (mut mouse, id) = hovering("hover-line", "hover = true, on_mouse = record", "");
+    let focused = mouse.display.focused();
+    for cell in [(40, 12), (7, 6), (8, 6), (8, 6)] {
+        mouse.hover(cell);
+    }
+    assert_eq!(
+        mouse.log(),
+        [
+            "kind=move,button=nil,line=3,content_col=1,box_col=2,box_row=3",
+            "kind=move,button=nil,line=3,content_col=2,box_col=3,box_row=3",
+        ]
+    );
+    assert_eq!(mouse.display.focused(), focused);
+    assert!(mouse.eval::<bool>(&format!("return gband.win.info({id}).focused")));
+    assert_eq!(mouse.global::<Option<bool>>("dragged"), None);
+}
+
+#[test]
+fn no_move_without_hover() {
+    let (mut mouse, _) = hovering("hover-off", "on_mouse = record", "");
+    mouse.hover((7, 6));
+    mouse.hover((8, 6));
+    assert!(mouse.log().is_empty());
+}
+
+#[test]
+fn hover_in_a_mode() {
+    let (mut mouse, _) = hovering(
+        "hover-mode",
+        "hover = true, focus = false, on_mouse = record",
+        NAVIGATION,
+    );
+    mouse.key("ctrl+space");
+    mouse.hover((7, 6));
+    assert_eq!(mouse.log().len(), 1);
+    assert!(mouse.log()[0].starts_with("kind=move,"));
+    assert_eq!(mouse.controls.active_table(), "prefix");
+}
+
+#[test]
+fn hover_off_the_plugin_window() {
+    let (mut mouse, _) = hovering("hover-outside", "hover = true, on_mouse = record", "");
+    mouse.hover((30, 6));
+    mouse.hover((40, 6));
+    assert!(mouse.log().is_empty());
+}
+
+#[test]
+fn hover_without_on_mouse() {
+    let (mut mouse, id) = hovering("hover-plain", "hover = true, cursorline = true", "");
+    mouse.hover((7, 6));
+    assert_eq!(
+        mouse.eval::<i64>(&format!("return gband.win.info({id}).cursor")),
+        1
+    );
+}

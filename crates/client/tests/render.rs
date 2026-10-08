@@ -526,6 +526,7 @@ fn float(row: u16, col: u16, width: u16, height: u16, lines: &[&str]) -> Floatin
             .collect(),
         z: 1,
         focused: true,
+        hover: false,
     }
 }
 
@@ -626,6 +627,19 @@ fn minimized_floating_window_is_not_drawn() {
     fixture.write(windows[2], b"floating");
     fixture.act(ViewAction::Minimize(Some(windows[2])), 80);
     assert_eq!(fixture.view.focused(), Some(windows[0]));
+    assert_snapshot!(fixture.render(Size::new(80, 24)));
+}
+
+#[test]
+fn peeked_minimized_floating_window_is_drawn_on_top() {
+    let (mut fixture, windows) = Fixture::new(Size::new(80, 24), 3, 80);
+    floating_at(&mut fixture, windows[2], 20, 6, 80);
+    fixture.write(windows[0], b"left side of the screen");
+    fixture.write(windows[1], b"right side of the screen");
+    fixture.write(windows[2], b"floating");
+    fixture.act(ViewAction::Minimize(Some(windows[2])), 80);
+    fixture.act(ViewAction::Peek(windows[2]), 80);
+    assert_eq!(fixture.view.focused(), Some(windows[2]));
     assert_snapshot!(fixture.render(Size::new(80, 24)));
 }
 

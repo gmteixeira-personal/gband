@@ -490,6 +490,9 @@ A minimized window is hidden only on the client that minimized it: other clients
 The modal and direct key styles bind no key to it, since they have no window list to bring it back; the floating key style minimizes from a window's `[_]` button and its window list brings it back.
 `gband.window.focus` brings it back, on top of the other floating windows.
 
+`gband.window.focus(window, { peek = true })` shows a window on top, minimized or not, without changing the stacking order or restoring it, until focus moves on.
+`gband.layout()` gives each window `last_focus`, which rises each time this client focuses the window, so a script can list windows by recent use.
+
 ### Key list
 
 Ctrl+Space then `?` opens a list of the navigation keys in a box titled `navigation keys`, or `prefix keys` with the direct and floating key styles, over the windows, each with its description, and returns to interactive mode so the list takes the keys that follow.

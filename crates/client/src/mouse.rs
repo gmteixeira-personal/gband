@@ -852,6 +852,18 @@ impl Controls {
                 if button.is_some() {
                     return;
                 }
+                if let Some(plugin_window) = hit.target.plugin_window()
+                    && display.plugin_windows.hovers(plugin_window)
+                {
+                    self.plugin_mouse(
+                        display,
+                        plugin_window,
+                        PluginMouseKind::Move,
+                        hit,
+                        event,
+                        steps,
+                    );
+                }
                 let Some(window) = display.focused() else {
                     return;
                 };

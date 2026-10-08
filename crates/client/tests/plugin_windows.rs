@@ -1,14 +1,16 @@
 use std::fs;
+use std::time::Instant;
 
 use gband_client::animation::Animations;
 use gband_client::{Controls, Display, Step};
 use gband_core::geometry::Size;
+use gband_core::input::{Modifiers, MouseButton, MouseEvent, MouseKind, WheelDirection};
 use gband_core::layout::{
     BandId, Layout, LayoutOptions, Proportion, SessionAction, WindowContent, WindowId,
 };
 use gband_emulator::{Emulator, Grid};
 use gband_lua::keys::parse_key;
-use gband_lua::{Config, DEFAULTS, LoadOptions, Locations};
+use gband_lua::{Config, ConfigError, DEFAULTS, LoadOptions, Locations};
 use gband_protocol::{ClientMessage, ServerMessage};
 
 struct Scratch(gband_scratch::Scratch);
@@ -22,6 +24,10 @@ impl Scratch {
     }
 
     fn load(&self, source: &str) -> Config {
+        self.try_load(source).unwrap()
+    }
+
+    fn try_load(&self, source: &str) -> Result<Config, ConfigError> {
         let path = gband_lua::user_file(&self.0, gband_lua::Side::Client);
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(path.with_file_name("keystyle.lua"), "return \"modal\"\n").unwrap();
@@ -37,7 +43,7 @@ impl Scratch {
             config: self.0.to_path_buf(),
             plugins: None,
         };
-        gband_lua::load(&locations, gband_lua::Side::Client, &LoadOptions::default()).unwrap()
+        gband_lua::load(&locations, gband_lua::Side::Client, &LoadOptions::default())
     }
 }
 
@@ -136,6 +142,16 @@ impl Client {
 
     fn global<T: mlua::FromLua>(&self, name: &str) -> T {
         self.controls.runtime().lua().globals().get(name).unwrap()
+    }
+
+    fn eval<T: mlua::FromLua>(&self, source: &str) -> T {
+        self.controls.runtime().lua().load(source).eval().unwrap()
+    }
+
+    fn mouse(&mut self, kind: MouseKind, col: u16, row: u16) -> Vec<Step> {
+        let event = MouseEvent::new(kind, col, row, Modifiers::NONE);
+        self.controls
+            .mouse(&mut self.display, event, Instant::now())
     }
 }
 
@@ -636,4 +652,109 @@ fn focus_from_the_server_after_the_floats_own_key_keeps_it_focused() {
     no_input(&client.press("down"));
     client.receive(vec![ServerMessage::Focus(client.windows[1])]);
     assert_eq!(client.display.plugin_windows().focused_float(), None);
+}
+
+const HOVER: &str = "gband.bind('alt+o', function() win = gband.win.open({ col = 5, row = 3, width = 20, height = 10, lines = { 'a', 'b' }, hover = true, on_mouse = function(_, e) if e.kind == 'move' then gband.window.focus(2, { peek = true }) elseif e.kind == 'scroll' then gband.action.focus_column_right() end end }) end)
+gband.bind('alt+k', function() gband.window.focus(2, { peek = true }) end)
+";
+
+#[test]
+fn peek_from_a_hover() {
+    let mut client = Client::new("peek-hover", HOVER);
+    client.press("alt+o");
+    let plugin_window: u32 = client.global("win");
+    client.mouse(MouseKind::Motion(None), 7, 6);
+    assert_eq!(client.display.focused(), Some(client.windows[1]));
+    assert_eq!(client.display.focused_plugin_window(), Some(plugin_window));
+    client.press("ctrl+space");
+    client.press("h");
+    assert_eq!(client.display.focused(), Some(client.windows[0]));
+    assert_eq!(client.display.plugin_windows().focused_float(), None);
+}
+
+#[test]
+fn wheel_step_of_a_hover_window() {
+    let mut client = Client::new("wheel-hover", HOVER);
+    client.press("alt+o");
+    let plugin_window: u32 = client.global("win");
+    client.mouse(MouseKind::Wheel(WheelDirection::Down), 7, 6);
+    assert_eq!(client.display.focused(), Some(client.windows[1]));
+    assert_eq!(client.display.focused_plugin_window(), Some(plugin_window));
+}
+
+#[test]
+fn click_a_window_after_a_hover() {
+    let mut client = Client::new("click-after-hover", HOVER);
+    client.press("alt+o");
+    client.mouse(MouseKind::Motion(None), 7, 6);
+    client.mouse(MouseKind::Press(MouseButton::Left), 30, 18);
+    client.mouse(MouseKind::Release(MouseButton::Left), 30, 18);
+    assert_eq!(client.display.focused(), Some(client.windows[0]));
+    assert_eq!(client.display.plugin_windows().focused_float(), None);
+}
+
+#[test]
+fn wheel_step_without_hover_leaves_no_floating_plugin_window_focused() {
+    let mut client = Client::new(
+        "wheel-no-hover",
+        "gband.bind('alt+o', function() win = gband.win.open({ col = 5, row = 3, width = 20, height = 10, lines = { 'a' }, on_mouse = function(_, e) if e.kind == 'scroll' then gband.action.focus_column_right() end end }) end)\n",
+    );
+    client.press("alt+o");
+    let plugin_window: u32 = client.global("win");
+    assert_eq!(
+        client.display.plugin_windows().focused_float(),
+        Some(plugin_window)
+    );
+    client.mouse(MouseKind::Wheel(WheelDirection::Down), 7, 6);
+    assert_eq!(client.display.focused(), Some(client.windows[1]));
+    assert_eq!(client.display.plugin_windows().focused_float(), None);
+}
+
+const LAST_FOCUS: &str = "local parts = {} for _, c in ipairs(gband.layout().bands[1].columns) do for _, w in ipairs(c.windows) do parts[#parts + 1] = w.id .. '=' .. tostring(w.last_focus) end end return table.concat(parts, ' ')";
+
+#[test]
+fn reload_ends_the_peek() {
+    let mut client = Client::new("reload-peek", HOVER);
+    client.press("alt+k");
+    assert_eq!(client.display.focused(), Some(client.windows[1]));
+    let before: String = client.eval(LAST_FOCUS);
+    let config = client.scratch.load(HOVER);
+    client.controls.reload(&mut client.display, Ok(config));
+    assert_eq!(client.display.focused(), Some(client.windows[0]));
+    assert_eq!(
+        client.eval::<Option<bool>>("return gband.view().peek"),
+        None
+    );
+    assert_eq!(client.eval::<String>(LAST_FOCUS), before);
+}
+
+#[test]
+fn failed_reload_keeps_the_peek() {
+    let mut client = Client::new("failed-reload-peek", HOVER);
+    client.press("alt+k");
+    let broken = client
+        .scratch
+        .try_load(&format!("{HOVER}error('broken')\n"));
+    assert!(broken.is_err());
+    client.controls.reload(&mut client.display, broken);
+    assert_eq!(client.display.focused(), Some(client.windows[1]));
+    assert_eq!(
+        client.eval::<Option<bool>>("return gband.view().peek"),
+        Some(true)
+    );
+}
+
+const FOCUS_BY_NUMBER: &str = "gband.bind('alt+1', function() gband.window.focus(1) end)
+gband.bind('alt+2', function() gband.window.focus(2) end)
+";
+
+#[test]
+fn reload_keeps_the_focus_order() {
+    let mut client = Client::new("reload-focus-order", FOCUS_BY_NUMBER);
+    client.press("alt+2");
+    client.press("alt+1");
+    assert_eq!(client.eval::<String>(LAST_FOCUS), "1=3 2=2");
+    let config = client.scratch.load(FOCUS_BY_NUMBER);
+    client.controls.reload(&mut client.display, Ok(config));
+    assert_eq!(client.eval::<String>(LAST_FOCUS), "1=3 2=2");
 }

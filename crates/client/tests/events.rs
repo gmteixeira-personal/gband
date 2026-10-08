@@ -868,3 +868,79 @@ fn wheel_over_a_window_reaches_it_and_changes_no_focus() {
             .any(|line| line.starts_with("FocusChanged"))
     );
 }
+
+#[test]
+fn peek_into_another_band() {
+    let (_scratch, mut client) = recording(
+        "peek-band",
+        "gband.bind('alt+p', function() gband.window.focus(2, { peek = true }) end)",
+    );
+    let (mut layout, windows) = layout_of(1);
+    let below = layout.allocate_window();
+    let band = layout.bands()[1].id;
+    layout.open(below, band, None, None, &LayoutOptions::default());
+    client.receive([shown(&layout), ServerMessage::Focus(windows[0])]);
+    client.clear();
+    client.press("alt+p");
+    assert_eq!(
+        client.log(),
+        [
+            "BandChanged band=2,previous=1",
+            "FocusChanged previous=1,window=2"
+        ]
+    );
+}
+
+#[test]
+fn focus_the_peeked_window() {
+    let (_scratch, mut client) = recording(
+        "peek-focus",
+        "gband.bind('alt+m', function() gband.window.minimize(2) end)
+gband.bind('alt+p', function() gband.window.focus(2, { peek = true }) end)
+gband.bind('alt+f', function() gband.window.focus(2) end)",
+    );
+    let (mut layout, windows) = layout_of(3);
+    for &window in &windows[1..] {
+        layout.apply(
+            SessionAction::ToggleFloating {
+                window,
+                after: None,
+                floating: None,
+            },
+            Size::new(80, 24),
+            &LayoutOptions::default(),
+        );
+    }
+    client.receive([shown(&layout), ServerMessage::Focus(windows[2])]);
+    client.press("alt+m");
+    client.press("alt+p");
+    assert_eq!(client.display.focused(), Some(windows[1]));
+    client.clear();
+    client.press("alt+f");
+    assert_eq!(client.display.focused(), Some(windows[1]));
+    assert!(client.log().is_empty(), "{:?}", client.log());
+}
+
+#[test]
+fn hover_over_a_plugin_window_emits_no_mouse_event() {
+    let (_scratch, mut client) = recording(
+        "mouse-hover",
+        &format!(
+            "{MOUSE}gband.bind('alt+o', function() gband.win.open({{ col = 5, row = 3, width = 20, height = 10, focus = false, hover = true, on_mouse = function(_, e) moved = e.kind end }}) end)"
+        ),
+    );
+    let (layout, _) = layout_of(1);
+    client.receive([shown(&layout)]);
+    client.press("alt+o");
+    client.clear();
+    client.mouse(MouseKind::Motion(None), 7, 6);
+    let moved: Option<String> = client
+        .controls
+        .runtime()
+        .lua()
+        .globals()
+        .get("moved")
+        .unwrap();
+    assert_eq!(moved.as_deref(), Some("move"));
+    assert!(client.log().is_empty(), "{:?}", client.log());
+}
