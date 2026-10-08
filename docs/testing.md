@@ -127,6 +127,8 @@ Call it once, before any other function of the handle.
 
 A `config` replaces the default configuration, as `user/init.lua` does, so set up the sidebar, the plugins and the bindings the case needs.
 
+`keystyle` takes no `"floating"`: a case saves the floating style with a `files` entry, `files = { ["user/keystyle.lua"] = 'return "floating"\n' }`.
+
 The key style and the theme are saved before `files` are written, so a case with the default configuration starts with no settings window open, and a `files` entry for `user/keystyle.lua` or `user/theme.lua` replaces the saved file.
 Start with `keystyle = false` and `theme = false` to see the settings window that a first start offers.
 
@@ -293,7 +295,7 @@ Give `time = false` to `g.start` for the real time.
 
 1. the client has read and handled every byte written to its terminal, the case's keys and the terminal's own replies, and holds no unfinished escape sequence,
 2. the server has handled every message the client sent, applied the actions, run its Lua handlers and sent the changes,
-3. the client has handled every message the server sent, run its handlers, finished any animation and drawn the result,
+3. the client has handled every message the server sent, run its handlers, finished any animation, sent the window move or resize that a drag holds back for its next frame, and drawn the result,
 4. the runner has read the frame,
 
 and again for the effects of those effects, until a round changes nothing, up to ten rounds.

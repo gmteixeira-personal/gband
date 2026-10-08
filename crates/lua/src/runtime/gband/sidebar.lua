@@ -12,9 +12,18 @@ local MARKER_ROWS = 1
 local FIRST_BAND_ROW = 2
 local WHEEL = { down = "focus_band_down", up = "focus_band_up" }
 
+local APPS = "⊞"
+
 local placed = false
 
+local function floating_style()
+  return gband.keystyle.current() == "floating"
+end
+
 local function mode_letter(active)
+  if floating_style() then
+    return APPS
+  end
   if active == "root" then
     return "I"
   end
@@ -97,6 +106,13 @@ local function clicked(ev)
   end
   local info = gband.bar.info(BAR)
   if not info.shown or ev.col ~= info.col then
+    return
+  end
+  if ev.row == 0 and floating_style() and (info.height > 1 or core.state().error == nil) then
+    local list = gband.action["desktop.list"]
+    if list then
+      list()
+    end
     return
   end
   local position = position_at(ev.row, info.height)

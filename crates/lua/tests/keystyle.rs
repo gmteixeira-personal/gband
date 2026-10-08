@@ -223,9 +223,85 @@ fn bundled_plugins_set_up_by_the_preset() {
         assert!(names.contains(&"keylist.open".to_owned()), "{style}");
         assert!(names.contains(&"prompt.open".to_owned()), "{style}");
         assert!(!names.contains(&"errors.open".to_owned()), "{style}");
+        assert!(!names.contains(&"desktop.list".to_owned()), "{style}");
         let bars: i64 = eval(&config, "return #gband.bar.list()");
         assert_eq!(bars, 0, "{style}");
     }
+}
+
+fn floating_preset(name: &str) -> Config {
+    let scratch = Scratch::new(name);
+    scratch.write("gband.keystyle.use('floating')");
+    let config = scratch.loaded();
+    assert!(config.errors.is_empty(), "{:?}", config.errors);
+    config
+}
+
+fn root_entries(config: &Config) -> Vec<(String, Option<String>)> {
+    let entries: Vec<mlua::Table> = eval(config, "return gband.keymap.list('root')");
+    entries
+        .into_iter()
+        .map(|entry| (entry.get("key").unwrap(), entry.get("action").unwrap()))
+        .collect()
+}
+
+const FLOATING_ROOT: [&str; 7] = [
+    "mod+leftmouse",
+    "mod+rightmouse",
+    "mod+middlemouse",
+    "mod+wheeldown",
+    "mod+wheelup",
+    "leftmouse",
+    "rightmouse",
+];
+
+#[test]
+fn floating_prefix_bindings_in_order() {
+    let entries = prefix_entries(&floating_preset("keystyle-floating-prefix"));
+    let keys: Vec<&str> = entries.iter().map(|(key, _, _)| key.as_str()).collect();
+    assert_eq!(keys, ["n", "?", ":", "N", "s", "D", "prefix"]);
+    assert_eq!(
+        entries[0],
+        (
+            "n".to_owned(),
+            None,
+            Some("open a floating window".to_owned())
+        )
+    );
+}
+
+#[test]
+fn floating_root_bindings_in_order() {
+    let entries = root_entries(&floating_preset("keystyle-floating-root"));
+    let keys: Vec<&str> = entries.iter().map(|(key, _)| key.as_str()).collect();
+    assert_eq!(keys, FLOATING_ROOT);
+    assert_eq!(entries[5].1.as_deref(), Some("desktop.press"));
+    assert_eq!(entries[6].1.as_deref(), Some("desktop.menu"));
+}
+
+#[test]
+fn plugins_set_up_by_the_floating_preset() {
+    let config = floating_preset("keystyle-floating-plugins");
+    let names = action_names(&config);
+    for name in ["keylist.open", "prompt.open", "desktop.list"] {
+        assert!(names.contains(&name.to_owned()), "{name}");
+    }
+    assert!(!names.contains(&"errors.open".to_owned()));
+    let bars: i64 = eval(&config, "return #gband.bar.list()");
+    assert_eq!(bars, 0);
+}
+
+#[test]
+fn floating_preset_required_by_name() {
+    let scratch = Scratch::new("keystyle-floating-require");
+    scratch.write("require('gband.keystyle.floating')");
+    let config = scratch.loaded();
+    assert!(config.errors.is_empty(), "{:?}", config.errors);
+    let keys: Vec<String> = root_entries(&config)
+        .into_iter()
+        .map(|(key, _)| key)
+        .collect();
+    assert_eq!(keys[keys.len() - 2..], ["leftmouse", "rightmouse"]);
 }
 
 #[test]
@@ -246,10 +322,11 @@ fn preset_shadowed_by_a_user_module() {
 
 #[test]
 fn saved_style_reading() {
-    let cases: [(Option<&str>, Option<&str>); 6] = [
+    let cases: [(Option<&str>, Option<&str>); 7] = [
         (None, None),
         (Some("return 'modal'"), Some("modal")),
         (Some("return \"direct\"\n"), Some("direct")),
+        (Some("return \"floating\""), Some("floating")),
         (Some("return \"vi\""), None),
         (Some("error(\"boom\")"), None),
         (Some("return ("), None),
@@ -267,6 +344,37 @@ fn saved_style_reading() {
         let found: Option<String> = global(&config, "found");
         assert_eq!(found.as_deref(), expected, "{source:?}");
     }
+}
+
+#[test]
+fn floating_saved() {
+    let scratch = Scratch::new("keystyle-saved-floating");
+    save_style(&scratch, "return \"floating\"\n");
+    scratch.write(JOB);
+    let config = scratch.loaded();
+    clean(&run_job(&config, "found = gband.keystyle.saved()"));
+    assert_eq!(global::<String>(&config, "found"), "floating");
+}
+
+#[test]
+fn current_style_without_use() {
+    let scratch = Scratch::new("keystyle-current-without-use");
+    scratch.write(&format!("require('gband.keystyle.floating')\n{JOB}"));
+    let config = scratch.loaded();
+    assert!(config.errors.is_empty(), "{:?}", config.errors);
+    clean(&run_job(&config, "found = gband.keystyle.current()"));
+    let found: Option<String> = global(&config, "found");
+    assert_eq!(found, None);
+}
+
+#[test]
+fn current_style_after_the_saved_style() {
+    let scratch = Scratch::new("keystyle-current-saved");
+    save_style(&scratch, "return \"direct\"\n");
+    let config = scratch.loaded();
+    assert!(config.errors.is_empty(), "{:?}", config.errors);
+    let found: Option<String> = eval(&config, "return gband.keystyle.current()");
+    assert_eq!(found.as_deref(), Some("direct"));
 }
 
 #[test]
@@ -297,6 +405,18 @@ fn explicit_style() {
     assert_eq!(global::<String>(&config, "style"), "direct");
     assert_eq!(label(&config).as_deref(), Some("prefix"));
     assert!(config.modes.is_empty());
+}
+
+#[test]
+fn floating_style() {
+    let scratch = Scratch::new("keystyle-use-floating");
+    scratch.write("style = gband.keystyle.use('floating')");
+    let config = scratch.loaded();
+    assert!(config.errors.is_empty(), "{:?}", config.errors);
+    assert_eq!(global::<String>(&config, "style"), "floating");
+    assert_eq!(label(&config).as_deref(), Some("prefix"));
+    let current: Option<String> = eval(&config, "return gband.keystyle.current()");
+    assert_eq!(current.as_deref(), Some("floating"));
 }
 
 #[test]
@@ -339,6 +459,10 @@ fn unknown_style() {
     let path = scratch.write("local a = 1\nlocal b = 2\ngband.keystyle.use('vi')");
     let error = scratch.load().err().expect("loading fails");
     assert_error_at(&error, &path, 3, "vi");
+    assert!(
+        error.message.contains(r#""modal", "direct" or "floating""#),
+        "{error}"
+    );
 }
 
 #[test]

@@ -39,6 +39,24 @@ t.case("Copied prompt", function(g)
   t.eq(g.client("return gband.errors()"), { "prompt:1: boom" })
 end)
 
+t.case("Copied desktop plugin", function(g)
+  g.start({ bundled_copies = true, files = { ["user/keystyle.lua"] = 'return "floating"\n' } })
+  g.wait_text("│$")
+  g.settle()
+  t.ok(g.client([[
+    local file = io.open(gband.config_dir .. "/user/lua/gband/desktop.lua")
+    if file then
+      file:close()
+    end
+    return file ~= nil
+  ]]), "the desktop plugin is copied")
+  t.match(g.screen().row(2), "╭[─]*%[_%]%[□%]%[X%]─╮$")
+  g.keys("ctrl+space")
+  g.settle()
+  t.match(g.screen().text(), "┌windows[─]*%[□%]%[X%]─┐")
+  t.eq(g.client("return gband.keymap.current_table()"), "root")
+end)
+
 t.case("Copied theme", function(g)
   g.start({ size = "40x8", bundled_copies = true, config = 'gband.colorscheme("nord")' })
   g.wait_text("$")

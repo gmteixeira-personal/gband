@@ -21,10 +21,12 @@ local LABEL_WIDTH = 9
 local WIDTH = 31
 local THEME, SIDEBAR, KEYS, INTERACTIVE_ON_NEW = 1, 2, 3, 4
 local LABELS = { "theme", "sidebar", "keys", "I on new" }
+local KEY_STYLES = { "modal", "direct", "floating" }
 ```
 
 `NAME` is the colorscheme name rule of [03](03-colorschemes.md).
-The window has four lines, numbered by the four constants, and each line starts with its label padded to `LABEL_WIDTH` columns.
+The window has at most four lines, numbered by the four constants, and each line starts with its label padded to `LABEL_WIDTH` columns.
+`KEY_STYLES` is the order in which the `keys` line cycles through the three key styles of [08](08-key-styles.md).
 
 ```lua defaults/lua/gband/settings.lua
 local THEME_FILE = "user/theme.lua"
@@ -306,11 +308,14 @@ end
 ```
 
 ```lua defaults/lua/gband/settings.lua
-local function toggle_keys()
-  local next_style = key_style() == "modal" and "direct" or "modal"
+local function step_keys(direction)
+  local at = index_of(KEY_STYLES, key_style()) or 1
+  local next_style = KEY_STYLES[(at - 1 + direction) % #KEY_STYLES + 1]
   save(KEYS, KEYSTYLE_FILE, 'return "' .. next_style .. '"\n')
 end
 ```
+
+The `keys` line steps through `KEY_STYLES` as the theme line steps through the themes, wrapping at both ends, with `index_of` from above.
 
 ```lua defaults/lua/gband/settings.lua
 local function toggle_interactive_on_new()
@@ -319,7 +324,7 @@ local function toggle_interactive_on_new()
 end
 ```
 
-The other three lines only save.
+The lines after `theme` only save.
 The `I on new` toggle compares with `true` as the line does, so the first toggle of a setting never saved saves `true`.
 None of them changes anything directly: the reload that the save causes runs the default configuration again, which reads the new value.
 
@@ -332,7 +337,7 @@ local function change(direction)
     elseif line == SIDEBAR then
       toggle_sidebar()
     elseif line == KEYS then
-      toggle_keys()
+      step_keys(direction)
     elseif line == INTERACTIVE_ON_NEW then
       toggle_interactive_on_new()
     end
@@ -352,14 +357,14 @@ local function enter(win)
   elseif line == SIDEBAR then
     toggle_sidebar()
   elseif line == KEYS then
-    toggle_keys()
+    step_keys(1)
   elseif line == INTERACTIVE_ON_NEW then
     toggle_interactive_on_new()
   end
 end
 ```
 
-Enter on the theme line opens the theme list.
+Enter on the theme line opens the theme list, and on the `keys` line steps forward as `l` does.
 `open_list` is defined further down, after the functions it uses, so it is declared here first: `enter` captures the local, and by the time a key runs `enter` the local holds the function.
 
 ## The theme list

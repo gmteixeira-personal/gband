@@ -144,6 +144,7 @@ fn first_run() {
         "lua/gband/win.lua",
         "lua/gband/prelude.lua",
         "lua/gband/keylist.lua",
+        "lua/gband/desktop.lua",
         "colors/nord.lua",
         "colors/gruvbox.lua",
     ] {

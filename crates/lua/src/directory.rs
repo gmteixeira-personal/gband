@@ -239,7 +239,7 @@ mod tests {
         );
         assert_eq!(
             entries(&dir.join("defaults").join("keystyle")),
-            ["direct.lua", "modal.lua"]
+            ["direct.lua", "floating.lua", "modal.lua"]
         );
         assert!(entries(&dir.join("user")).is_empty());
     }
@@ -325,7 +325,7 @@ mod tests {
         );
         assert_eq!(
             entries(&dir.join("defaults").join("keystyle")),
-            ["direct.lua", "modal.lua"]
+            ["direct.lua", "floating.lua", "modal.lua"]
         );
     }
 

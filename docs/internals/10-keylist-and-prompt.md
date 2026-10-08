@@ -1,6 +1,6 @@
 # 10 · The key list and the prompt
 
-Both key styles set up two more bundled plugins before making their bindings: the key list, Ctrl+Space then `?`, and the Lua prompt, Ctrl+Space then `:`.
+Every key style sets up two more bundled plugins before making its bindings: the key list, Ctrl+Space then `?`, and the Lua prompt, Ctrl+Space then `:`.
 This chapter reads them, `defaults/lua/gband/keylist.lua` and `defaults/lua/gband/prompt.lua`, and the small module the key list shows keys with, `defaults/lua/gband/keyform.lua`, all in full.
 
 ## `gband.keyform`
@@ -289,7 +289,7 @@ A binding in `keys` wins over `gband.win`'s defaults, so with the default bindin
 end
 ```
 
-The title is the label of `prefix`: `navigation keys` with the modal style and `prefix keys` with the direct one, where `prefix` is not a mode.
+The title is the label of `prefix`: `navigation keys` with the modal style and `prefix keys` with the direct and floating ones, where `prefix` is not a mode.
 The window is tall enough for its lines, at least one, and at most 15 rows, borders included.
 
 ```lua defaults/lua/gband/keylist.lua
