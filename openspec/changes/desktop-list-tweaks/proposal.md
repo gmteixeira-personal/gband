@@ -13,6 +13,7 @@ The floating key style's window list works like a plain menu: moving through it 
 - **Keep or cancel.** Enter, a click and a shortcut keep the selected window, focused and recorded as `gband.window.focus` does. A `prefix` shortcut, the leader and a right press that opens another desktop menu also keep what the list shows. Escape, `q`, `[X]`, closing by other code and a press on empty ribbon or a bar cancel: the client views the band it viewed at opening again, as `gband.band.view` does, which ends a peek and returns focus to the window focused at opening. Peeks record nothing, so the band, the focused window, the stacking order of every band and the minimized windows are as they were. A press on a window focuses that window.
 - The window menu does not change.
 - **Hover only where it is used.** The window list opens with `hover = true`, so it receives pointer moves and stays focused through the previews its `on_mouse` causes. The window menu opens without it and keeps its behaviour.
+- **Hold passes to an opened window.** A floating plugin window that keeps focus after its own `keys` or hover `on_mouse` passes that hold to a floating plugin window it opens or focuses, so the settings window that `s` opens after cancelling a preview stays focused when the cancel's band view arrives.
 - This change does not raise `gband.api_version`, which stays 2: it adds no API, only a bundled plugin's behaviour and a group.
 
 ## Capabilities
@@ -23,13 +24,14 @@ None.
 ### Modified Capabilities
 - `floating-key-style`: "Title bar buttons" (the close button style), "Desktop menus" (`hover` on the window list only, entry cells, first shown row, wheel and closing for the window list), "Window list" (order, shortcuts, band labels, preview, keep and cancel, keys, pointer, wheel, rebuild), "Leader" (keeps what the list shows) and "Desktop groups" (`DesktopClose`, `DesktopShortcut`).
 - `sidebar`: "Apps character" shows `∷`, U+2237.
+- `plugin-windows`: "Focused plugin window" passes the focus that a floating plugin window holds after its own `keys` or hover `on_mouse` to a floating plugin window it opens or focuses, so the window list's `s` leaves the settings window focused after cancelling a preview.
 
 ## Impact
 
-- Lua: `crates/lua/src/runtime/gband/desktop.lua` and `crates/lua/src/runtime/gband/sidebar.lua`. No other bundled Lua changes: no colorscheme or theme sets `DesktopClose`.
-- Rust tests: `crates/lua/tests/desktop.rs`, `crates/lua/tests/sidebar.rs` and `tests/keystyle.rs`.
+- Lua: `crates/lua/src/runtime/gband/desktop.lua`, `crates/lua/src/runtime/gband/sidebar.lua` and `crates/lua/src/runtime/gband/win.lua`, which passes a held focus to a floating plugin window opened or focused while it lasts. No colorscheme or theme changes: none sets `DesktopClose`.
+- Rust tests: `crates/lua/tests/desktop.rs`, `crates/lua/tests/sidebar.rs`, `crates/lua/tests/plugin_windows.rs` and `tests/keystyle.rs`.
 - Lua tests: `tests/lua/floating_spec.lua`, `tests/lua/sidebar_spec.lua`, and the screenshots under `tests/lua/screenshots/floating_spec/`, `tests/lua/screenshots/sidebar_spec/` and `tests/lua/screenshots/settings_spec/` that show `⊞` or a red `[X]`.
-- Docs: `README.md`, `docs/plugins.md`, `docs/internals/08-key-styles.md`, `docs/internals/09-sidebar-and-errors.md`, `docs/tutorial/00-setup.md` and `docs/tutorial/01-keys.md`.
+- Docs: `README.md`, `docs/plugins.md`, `docs/internals/05-plugin-windows.md`, `docs/internals/08-key-styles.md`, `docs/internals/09-sidebar-and-errors.md`, `docs/tutorial/00-setup.md` and `docs/tutorial/01-keys.md`.
 - Depends on window-peek for `gband.window.focus(window, { peek = true })`, `last_focus` in `gband.layout()`, `peek` in `gband.view()`, the end of a peek when the client views the band it already views, a focus of the peeked window that emits no `FocusChanged`, and the `hover` option of `gband.win.open`, which brings the `on_mouse` kind `"move"` and keeps the window focused after its `on_mouse`.
 - No Rust code, protocol, server or dependency change.
 
@@ -46,8 +48,11 @@ None.
 - README.md
 - crates/lua/src/runtime/gband/desktop.lua
 - crates/lua/src/runtime/gband/sidebar.lua
+- crates/lua/src/runtime/gband/win.lua
 - crates/lua/tests/desktop.rs
+- crates/lua/tests/plugin_windows.rs
 - crates/lua/tests/sidebar.rs
+- docs/internals/05-plugin-windows.md
 - docs/internals/08-key-styles.md
 - docs/internals/09-sidebar-and-errors.md
 - docs/plugins.md

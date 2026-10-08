@@ -2,8 +2,9 @@ local hl = require("gband.hl")
 local key_form = require("gband.keyform")
 
 gband.hl.default("DesktopButton", { bold = true })
-gband.hl.default("DesktopClose", { fg = 1, bold = true })
+gband.hl.default("DesktopClose", { bold = true })
 gband.hl.default("DesktopMinimized", { dim = true })
+gband.hl.default("DesktopShortcut", { link = "KeyListKey" })
 
 local MINIMIZE, MAXIMIZE, RESTORE, CLOSE = "[_]", "[□]", "[❐]", "[X]"
 local LIST_TITLE = "windows"
@@ -13,10 +14,15 @@ local MENU_MIN_WIDTH = 16
 local MENU_HEIGHT = 7
 local HINT = "? keys"
 local LETTERS = "abcdefghijklmnopqrstuvwxyz"
+local DIGITS = "1234567890"
 local MENU_KEYS = {
   j = true, down = true, k = true, up = true, pagedown = true, pageup = true,
   home = true, ["end"] = true, enter = true, esc = true, q = true,
 }
+local LIST_KEYS = { n = true, s = true }
+for index = 1, #DIGITS do
+  LIST_KEYS[DIGITS:sub(index, index)] = true
+end
 local CORNERS = {
   { "left", "top" },
   { "right", "top" },
@@ -246,23 +252,50 @@ local function border_line(left, right, width, title, spans)
   return line
 end
 
+local function entry_cells(row, inner, style)
+  if inner < 2 then
+    return { { text = pad(gband.ui.truncate(row.label, inner), inner), hl = style } }
+  end
+  local band = row.band or ""
+  local room = inner - 2 - (row.band and gband.ui.width(band) + 1 or 0)
+  local label = gband.ui.truncate(row.label, math.max(0, room))
+  local rest = gband.ui.truncate(pad(label, math.max(0, inner - 2 - gband.ui.width(band))) .. band, inner - 2)
+  return {
+    { text = row.shortcut or " ", hl = row.shortcut and style ~= "PluginWindowCursorLine" and "DesktopShortcut" or style },
+    { text = " " .. pad(rest, inner - 2), hl = style },
+  }
+end
+
 local function row_line(row, width, selected)
   if row.separator then
     return { { text = "├" .. string.rep("─", math.max(0, width - 2)) .. "┤", hl = "PluginWindowBorder" } }
   end
   local inner = math.max(0, width - 4)
-  return {
-    { text = "│", hl = "PluginWindowBorder" },
-    {
-      text = " " .. pad(gband.ui.truncate(row.text, inner), inner) .. " ",
-      hl = selected and "PluginWindowCursorLine" or row.hl or "PluginWindow",
-    },
-    { text = "│", hl = "PluginWindowBorder" },
-  }
+  local style = selected and "PluginWindowCursorLine" or row.hl or "PluginWindow"
+  local line = { { text = "│", hl = "PluginWindowBorder" }, { text = " ", hl = style } }
+  if row.label then
+    for _, span in ipairs(entry_cells(row, inner, style)) do
+      line[#line + 1] = span
+    end
+  else
+    line[#line + 1] = { text = pad(gband.ui.truncate(row.text, inner), inner), hl = style }
+  end
+  line[#line + 1] = { text = " ", hl = style }
+  line[#line + 1] = { text = "│", hl = "PluginWindowBorder" }
+  return line
 end
 
 local function shown_rows()
   return math.max(1, gband.win.info(menu.win).height - 2)
+end
+
+local function reveal()
+  local shown = shown_rows()
+  if menu.selected < menu.top then
+    menu.top = menu.selected
+  elseif menu.selected > menu.top + shown - 1 then
+    menu.top = menu.selected - shown + 1
+  end
 end
 
 local function draw()
@@ -271,11 +304,6 @@ local function draw()
   end
   local info = gband.win.info(menu.win)
   local shown = math.max(0, info.height - 2)
-  if menu.selected < menu.top then
-    menu.top = menu.selected
-  elseif menu.selected > menu.top + shown - 1 then
-    menu.top = menu.selected - shown + 1
-  end
   menu.top = math.max(1, math.min(menu.top, #menu.rows - shown + 1))
   local lines = { border_line("┌", "┐", info.width, menu.title, menu.buttons()) }
   for offset = 0, shown - 1 do
@@ -293,9 +321,48 @@ local function entry_from(index, step)
   return menu.rows[index] and index or nil
 end
 
+local function opening_band(opening)
+  local bands = gband.layout().bands
+  for _, band in ipairs(bands) do
+    if band.id == opening.band then
+      return band.id
+    end
+  end
+  local band = bands[opening.position] or bands[#bands]
+  return band and band.id
+end
+
+local function view_opening(opening)
+  local band = opening_band(opening)
+  if band then
+    gband.band.view(band)
+  end
+  return band
+end
+
+local function preview(row)
+  local view = gband.view()
+  if row.window then
+    if view.window ~= row.window then
+      gband.window.focus(row.window, { peek = true })
+    end
+    menu.shown = { band = row.band_id, window = row.window }
+    return
+  end
+  local band = opening_band(menu.opening)
+  if band and (view.peek or view.band ~= band) then
+    gband.band.view(band)
+  end
+  menu.shown = { band = band, window = menu.opening.window }
+end
+
 local function select(index)
   if index then
     menu.selected = index
+    reveal()
+    if menu.kind == "list" then
+      preview(menu.rows[index])
+    end
     draw()
   end
 end
@@ -320,8 +387,23 @@ local function pick(index)
   if not row or row.separator then
     return
   end
+  local closed = menu
   close_menu()
-  row.act()
+  row.act(closed)
+end
+
+local function keep()
+  close_menu()
+  local view = gband.view()
+  if view.peek then
+    gband.window.focus(view.window)
+  end
+end
+
+local function cancel()
+  local closed = menu
+  close_menu()
+  view_opening(closed.opening)
 end
 
 local function own(fn)
@@ -355,11 +437,20 @@ local function on_mouse(win, event)
   if not (menu and menu.win == win) then
     return
   end
+  if event.kind == "move" then
+    local target = target_at(event)
+    if target and target.entry and target.entry ~= menu.selected then
+      select(target.entry)
+    end
+    return
+  end
   if event.kind == "scroll" then
-    if event.direction == "down" then
-      step(1)
-    elseif event.direction == "up" then
-      step(-1)
+    local by = event.direction == "down" and 1 or event.direction == "up" and -1 or 0
+    if menu.kind == "list" then
+      menu.top = math.max(1, math.min(menu.top + by, #menu.rows - shown_rows() + 1))
+      draw()
+    elseif by ~= 0 then
+      step(by)
     end
     return
   end
@@ -396,7 +487,11 @@ local function first_entry(rows)
 end
 
 local function open_menu(spec, at)
-  close_menu()
+  if list_open() then
+    keep()
+  else
+    close_menu()
+  end
   gband.keymap.enter("root")
   spec.selected = first_entry(spec.rows)
   spec.top = 1
@@ -411,8 +506,8 @@ local function open_menu(spec, at)
     home = own(function() select(entry_from(1, 1)) end),
     ["end"] = own(function() select(entry_from(#menu.rows, -1)) end),
     enter = own(function() pick(menu.selected) end),
-    escape = own(close_menu),
-    q = own(close_menu),
+    escape = own(spec.close),
+    q = own(spec.close),
   }
   for key, fn in pairs(spec.keys or {}) do
     keys[key] = own(fn)
@@ -426,6 +521,7 @@ local function open_menu(spec, at)
     row = at and math.max(0, at.row) or "center",
     keys = keys,
     on_mouse = on_mouse,
+    hover = spec.hover,
     on_resize = function(win)
       if menu and menu.win == win then
         draw()
@@ -433,7 +529,11 @@ local function open_menu(spec, at)
     end,
     on_close = function(win)
       if menu and menu.win == win then
+        local closed = menu
         menu = nil
+        if closed.opening then
+          view_opening(closed.opening)
+        end
       end
     end,
   })
@@ -448,7 +548,9 @@ end
 local function widest(rows)
   local found = 0
   for _, row in ipairs(rows) do
-    if row.text then
+    if row.width then
+      found = math.max(found, row.width)
+    elseif row.text then
       found = math.max(found, gband.ui.width(row.text))
     end
   end
@@ -465,51 +567,115 @@ local function band_label(position)
   return tostring(position)
 end
 
-local function list_rows(minimizing)
-  local layout = gband.layout()
+local function program_windows(layout)
   local found, bands = {}, 0
   for position, band in ipairs(layout.bands) do
     local before = #found
     for _, column in ipairs(band.columns) do
       for _, window in ipairs(column.windows) do
         if window.name then
-          found[#found + 1] = { position = position, window = window }
+          found[#found + 1] = { position = position, band = band.id, window = window }
         end
       end
     end
     for _, box in ipairs(band.floating) do
       if box.name then
-        found[#found + 1] = { position = position, window = box, minimized = box.minimized or box.id == minimizing }
+        found[#found + 1] = { position = position, band = band.id, window = box }
       end
     end
     if #found > before then
       bands = bands + 1
     end
   end
-  local rows = {
-    { key = "new", text = "New window", act = function() gband.action.open_window({ floating = true }) end },
-    { key = "settings", text = "Settings", act = function() gband.settings.open() end },
-  }
-  if #found > 0 then
-    rows[#rows + 1] = { separator = true }
+  return found, bands
+end
+
+local function recent_order(found)
+  local focused, order = {}, {}
+  for _, item in ipairs(found) do
+    if item.window.last_focus then
+      focused[#focused + 1] = item.window
+    end
+  end
+  table.sort(focused, function(a, b)
+    return a.last_focus > b.last_focus
+  end)
+  for _, window in ipairs(focused) do
+    order[#order + 1] = window.id
   end
   for _, item in ipairs(found) do
-    local id = item.window.id
-    local text = item.window.name
-    if bands >= 2 then
-      text = band_label(item.position) .. " " .. text
+    if not item.window.last_focus then
+      order[#order + 1] = item.window.id
     end
-    if item.minimized then
-      text = text .. " (minimized)"
-    end
-    rows[#rows + 1] = {
-      key = id,
-      text = text,
-      hl = item.minimized and "DesktopMinimized" or nil,
-      act = function() gband.window.focus(id) end,
-    }
   end
-  return rows
+  return order
+end
+
+local function list_entry(index, item, minimized, bands)
+  local id = item.window.id
+  local label = item.window.name .. (minimized and " (minimized)" or "")
+  local band = bands >= 2 and "band " .. band_label(item.position) or nil
+  return {
+    key = id,
+    window = id,
+    band_id = item.band,
+    shortcut = index <= #DIGITS and DIGITS:sub(index, index) or nil,
+    label = label,
+    band = band,
+    width = 2 + gband.ui.width(label) + (band and 1 + gband.ui.width(band) or 0),
+    hl = minimized and "DesktopMinimized" or nil,
+    act = function() gband.window.focus(id) end,
+  }
+end
+
+local function list_rows(order, minimizing)
+  local found, bands = program_windows(gband.layout())
+  order = order or recent_order(found)
+  local by_id, kept = {}, {}
+  for _, item in ipairs(found) do
+    by_id[item.window.id] = item
+  end
+  for _, id in ipairs(order) do
+    if by_id[id] then
+      kept[#kept + 1] = id
+      by_id[id].kept = true
+    end
+  end
+  for _, item in ipairs(found) do
+    if not item.kept then
+      kept[#kept + 1] = item.window.id
+    end
+  end
+  local rows = {
+    {
+      key = "new",
+      shortcut = "n",
+      label = "New window",
+      width = 2 + gband.ui.width("New window"),
+      act = function(closed)
+        local band = view_opening(closed.opening)
+        gband.action.open_window({ floating = true, band = band })
+      end,
+    },
+    {
+      key = "settings",
+      shortcut = "s",
+      label = "Settings",
+      width = 2 + gband.ui.width("Settings"),
+      act = function(closed)
+        view_opening(closed.opening)
+        gband.settings.open()
+      end,
+    },
+  }
+  if #kept > 0 then
+    rows[#rows + 1] = { separator = true }
+  end
+  for index, id in ipairs(kept) do
+    local item = by_id[id]
+    rows[#rows + 1] = list_entry(index, item, item.window.minimized or id == minimizing, bands)
+  end
+  return rows, kept
 end
 
 local function list_size(rows)
@@ -531,10 +697,21 @@ local function list_shortcuts()
   local keys = {}
   for _, binding in ipairs(gband.keymap.list("prefix")) do
     local key = binding.key
-    if key ~= "prefix" and not key_form.is_mouse(key) and not MENU_KEYS[key_form(key)] then
+    if key ~= "prefix" and not key_form.is_mouse(key) and not MENU_KEYS[key_form(key)] and not LIST_KEYS[key_form(key)] then
       keys[key] = function()
-        close_menu()
+        keep()
         gband.keymap.run("prefix", key)
+      end
+    end
+  end
+  for key in pairs(LIST_KEYS) do
+    keys[key] = function()
+      for index, row in ipairs(menu.rows) do
+        if row.shortcut == key then
+          select(index)
+          pick(index)
+          return
+        end
       end
     end
   end
@@ -560,9 +737,27 @@ local function show_list(at)
     gband.win.focus(menu.win)
     return
   end
-  local rows = list_rows()
+  local rows, order = list_rows()
   local width, height = list_size(rows)
-  local spec = { kind = "list", title = LIST_TITLE, rows = rows, width = width, height = height }
+  local view = gband.view()
+  local position = 1
+  for index, band in ipairs(gband.layout().bands) do
+    if band.id == view.band then
+      position = index
+    end
+  end
+  local spec = {
+    kind = "list",
+    title = LIST_TITLE,
+    rows = rows,
+    order = order,
+    width = width,
+    height = height,
+    hover = true,
+    opening = { band = view.band, position = position, window = view.window },
+    shown = { band = view.band, window = view.window },
+    close = cancel,
+  }
   function spec.buttons()
     return {
       { text = spec.restore and RESTORE or MAXIMIZE, hl = "DesktopButton" },
@@ -576,7 +771,7 @@ local function show_list(at)
     if button == 1 then
       toggle_list_height()
     else
-      close_menu()
+      cancel()
     end
   end
   spec.keys = list_shortcuts()
@@ -587,21 +782,29 @@ local function rebuild(minimizing)
   if not list_open() then
     return
   end
-  local chosen = menu.rows[menu.selected]
-  local key = chosen and chosen.key
-  menu.rows = list_rows(minimizing)
-  menu.selected = first_entry(menu.rows)
+  local before = menu.selected
+  local key = menu.rows[before].key
+  menu.rows, menu.order = list_rows(menu.order, minimizing)
+  local selected = nil
   for index, row in ipairs(menu.rows) do
-    if key ~= nil and row.key == key then
-      menu.selected = index
+    if row.key == key then
+      selected = index
     end
   end
+  if not selected then
+    local row = menu.rows[before]
+    selected = row and not row.separator and before or entry_from(#menu.rows, -1)
+  end
+  menu.selected = selected
   if not menu.restore then
     local width, height = list_size(menu.rows)
     local info = gband.win.info(menu.win)
     if width ~= info.width or height ~= info.height then
       gband.win.set_config(menu.win, { width = width, height = height })
     end
+  end
+  if selected ~= before or menu.rows[selected].key ~= key then
+    reveal()
   end
   draw()
 end
@@ -639,6 +842,7 @@ local function window_menu(id, at)
     rows = rows,
     width = math.min(cols, math.max(MENU_MIN_WIDTH, widest(rows) + 4, gband.ui.width(box.name) + 2)),
     height = math.min(MENU_HEIGHT, height),
+    close = close_menu,
   }
   function spec.buttons()
     return {}
@@ -768,12 +972,24 @@ local function dismiss(event)
   if event.target == "plugin_window" and event.plugin_window == menu.win then
     return
   end
+  local closed = menu
   close_menu()
+  if closed.kind ~= "list" then
+    return
+  end
+  if event.window then
+    gband.window.focus(event.window)
+    return
+  end
+  local view = gband.view()
+  if view.band == closed.shown.band and view.window == closed.shown.window then
+    view_opening(closed.opening)
+  end
 end
 
 local function leader()
   if list_open() and gband.view().plugin_window == menu.win then
-    close_menu()
+    keep()
     gband.keymap.run("prefix", "prefix")
     return
   end

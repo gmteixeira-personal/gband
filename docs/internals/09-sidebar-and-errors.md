@@ -35,10 +35,12 @@ Bands are labelled `1` to `9`, then `a` to `z`.
 Rows are counted from 0, as the mouse events count them: row 0 holds the mode letter, row 1 is empty, the bands start at row 2, and one row at the bottom is kept for the marker.
 
 ```lua defaults/lua/gband/sidebar.lua
-local APPS = "⊞"
+local APPS = "∷"
 ```
 
 `APPS` is the apps character that row 0 shows with the floating key style of [08](08-key-styles.md), in place of the mode letter.
+`∷`, U+2237, is East Asian ambiguous width: `gband.ui.width` counts it as one cell, as it counts every ambiguous character, and a terminal that draws such characters two cells wide already draws the borders wide too.
+`⸬`, U+2E2C, looks alike and has neutral width, for a copy of the sidebar whose fonts hold it.
 
 ```lua defaults/lua/gband/sidebar.lua
 local placed = false
@@ -73,7 +75,7 @@ local function mode_letter(active)
 end
 ```
 
-With the floating style, row 0 always shows `⊞`: its `prefix` table is active only until the leader handler returns to `root`, so a letter would always read `I`.
+With the floating style, row 0 always shows `∷`: its `prefix` table is active only until the leader handler returns to `root`, so a letter would always read `I`.
 Otherwise the mode letter is `I` in `root`, which the key styles call interactive mode.
 Otherwise it is the first character of the table's label, from `gband.keymap.label`, as a capital: `N` for the modal style's `navigation`.
 A table that is not a mode has no label, and `label` returns its name.
@@ -203,7 +205,7 @@ end
 
 A press that lands on no window has the target `outside`.
 When it is in the sidebar's column, on a band's row, the sidebar views that band.
-On row 0 with the floating style, while row 0 shows `⊞` and not the error marker of a one-row bar, it dispatches `desktop.list` to open the window list, and only when that action exists, so a sidebar without the desktop plugin costs nothing.
+On row 0 with the floating style, while row 0 shows `∷` and not the error marker of a one-row bar, it dispatches `desktop.list` to open the window list, and only when that action exists, so a sidebar without the desktop plugin costs nothing.
 
 ```lua defaults/lua/gband/sidebar.lua
 local function scrolled(ev)

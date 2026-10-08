@@ -194,6 +194,112 @@ local function open_list(g)
   return plugin_window(g)
 end
 
+local function last_focus(g, id)
+  return g.client([[
+    for _, band in ipairs(gband.layout().bands) do
+      for _, box in ipairs(band.floating) do
+        if box.id == ... then
+          return box.last_focus
+        end
+      end
+    end
+  ]], id)
+end
+
+local function most_recent(g)
+  return g.client([[
+    local found, best = nil, -1
+    for _, band in ipairs(gband.layout().bands) do
+      for _, box in ipairs(band.floating) do
+        if (box.last_focus or -1) > best then
+          found, best = box.id, box.last_focus
+        end
+      end
+    end
+    return found
+  ]])
+end
+
+local function over(g, upper, lower)
+  local a, b = box(g, upper), box(g, lower)
+  local left = g.client([[
+    local left = 0
+    for _, bar in ipairs(gband.bar.list()) do
+      if bar.shown and bar.side == "left" then
+        left = left + bar.width
+      end
+    end
+    return left
+  ]])
+  local function inside(p, q)
+    return p[3] > q[3] and p[3] < q[3] + q[1] - 1 and p[4] > q[4] and p[4] < q[4] + q[2] - 1
+  end
+  if inside(a, b) then
+    return g.screen().cell(a[4], left + a[3]).char == "╭"
+  end
+  if inside(b, a) then
+    return g.screen().cell(b[4], left + b[3]).char ~= "╭"
+  end
+  error("the boxes of windows " .. upper .. " and " .. lower .. " do not overlap by a corner")
+end
+
+local function list_closed(g)
+  return g.client([[
+    for _, id in ipairs(gband.win.list()) do
+      if gband.win.info(id).hover then
+        return false
+      end
+    end
+    return true
+  ]])
+end
+
+local function viewed_band(g)
+  return g.client([[
+    for position, band in ipairs(gband.layout().bands) do
+      if band.id == gband.view().band then
+        return position
+      end
+    end
+  ]])
+end
+
+local function focus_in_order(g, ids)
+  for _, id in ipairs(ids) do
+    g.client("gband.window.focus(...)", id)
+    g.settle()
+  end
+end
+
+local function named(g, names)
+  for id, name in pairs(names) do
+    g.client("local id, name = ... gband.window.rename(id, name)", id, name)
+  end
+  g.settle()
+end
+
+local function recent(g, opts)
+  opts = opts or {}
+  g.start({ config = opts.config or CONFIG })
+  prompts(g, 1)
+  open_window(g)
+  open_window(g)
+  named(g, { "notes", "logs", "mail" })
+  prompts(g, 3)
+  focus_in_order(g, { 1, 2, 3 })
+end
+
+local function two_bands(g)
+  g.start({ config = CONFIG })
+  prompts(g, 1)
+  open_window(g)
+  g.client("gband.action.focus_band_down()")
+  g.settle()
+  open_window(g)
+  named(g, { "notes", "logs", "mail" })
+  focus_in_order(g, { 3, 1, 2 })
+end
+
 t.case("first window of a new session", function(g)
   g.start({ files = SAVED })
   local record = g.client("return gband.layout().bands[1].floating[1]")
@@ -303,9 +409,25 @@ end)
 
 t.case("close button style", function(g)
   scene(g, { theme = "default" })
-  local cell = g.screen().cell(4, 56)
-  t.eq(cell.char, "X")
-  t.eq(cell.fg, 1)
+  local minimize = g.screen().cell(4, 49)
+  t.eq(minimize.char, "[")
+  t.ok(minimize.bold)
+  for col = 55, 57 do
+    local cell = g.screen().cell(4, col)
+    t.eq({ cell.fg, cell.bg, cell.bold }, { minimize.fg, minimize.bg, minimize.bold })
+    t.ok(cell.fg ~= 1)
+  end
+end)
+
+t.case("shortcuts follow the key list's style", function(g)
+  g.start({ config = CONFIG })
+  prompts(g, 1)
+  g.client('gband.hl.set("KeyListKey", { fg = 4, bold = true })')
+  local list = open_list(g)
+  t.eq(g.client('return gband.hl.get("DesktopShortcut", { resolve = true })'), { fg = 4, bold = true })
+  local cell = g.screen().cell(list.row + 2, list.left + list.col + 2)
+  t.eq(cell.char, "s")
+  t.eq(cell.fg, 4)
   t.ok(cell.bold)
 end)
 
@@ -446,11 +568,11 @@ t.case("desktop menu keys and wheel", function(g)
   g.client("gband.window.rename(1, 'notes')")
   g.settle()
   local list = open_list(g)
-  t.eq(entries(list), { "New window", "Settings", "-", "notes" })
-  t.eq(list.selected, "New window")
+  t.eq(entries(list), { "n New window", "s Settings", "-", "1 notes" })
+  t.eq(list.selected, "n New window")
   g.keys("j j")
   g.settle()
-  t.eq(plugin_window(g).selected, "notes")
+  t.eq(plugin_window(g).selected, "1 notes")
 
   g.keys("escape")
   g.settle()
@@ -460,10 +582,326 @@ t.case("desktop menu keys and wheel", function(g)
     return screen.text():find("│hi")
   end)
 
-  list = open_list(g)
-  g.mouse("scroll", "down", list.col + 5, list.row + 2)
+end)
+
+t.case("wheel moves the selection of the window menu", function(g)
+  scene(g, { parked = false })
+  click(g, 30, 4, "right")
+  local menu = plugin_window(g)
+  t.eq(menu.selected, "Close")
+  g.mouse("scroll", "down", menu.col + 5, menu.row + 2)
   g.settle()
-  t.eq(plugin_window(g).selected, "Settings")
+  t.eq(plugin_window(g).selected, "Maximize")
+end)
+
+t.case("hover only in the window list", function(g)
+  scene(g, { parked = false })
+  open_list(g)
+  t.eq(g.client("return gband.win.info(gband.view().plugin_window).hover"), true)
+  g.keys("escape")
+  g.settle()
+  click(g, 30, 4, "right")
+  t.eq(plugin_window(g).lines[1]:match("^┌(%a+)"), "notes")
+  t.eq(g.client("return gband.win.info(gband.view().plugin_window).hover"), false)
+end)
+
+t.case("most recent first", function(g)
+  recent(g)
+  t.eq(entries(open_list(g)), { "n New window", "s Settings", "-", "1 mail", "2 logs", "3 notes" })
+end)
+
+t.case("tenth window and after", function(g)
+  g.start({ config = CONFIG })
+  prompts(g, 1)
+  for _ = 2, 11 do
+    open_window(g)
+  end
+  local names = {}
+  for id = 1, 11 do
+    names[id] = "w" .. id
+  end
+  named(g, names)
+  focus_in_order(g, { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11 })
+  open_list(g)
+  g.keys("end")
+  g.settle()
+  local list = plugin_window(g)
+  local found = entries(list)
+  t.eq({ found[#found - 2], found[#found - 1], found[#found] }, { "9 w3", "0 w2", "  w1" })
+  t.eq(list.lines[#list.lines - 1], "│   w1                 │")
+end)
+
+t.case("preview by keys, then back to the opening state", function(g)
+  recent(g)
+  open_list(g)
+  g.keys("j j j")
+  g.settle()
+  local list = plugin_window(g)
+  t.eq(list.selected, "2 logs")
+  t.eq(focused(g), 2)
+  t.ok(over(g, 2, 3))
+  t.ok(last_focus(g, 3) > last_focus(g, 2))
+  g.expect_screenshot("logs")
+
+  g.keys("home")
+  g.settle()
+  t.eq(plugin_window(g).selected, "n New window")
+  t.eq(focused(g), 3)
+  t.ok(over(g, 3, 2))
+end)
+
+t.case("preview and restore a minimized window", function(g)
+  recent(g)
+  g.client("gband.window.minimize(1)")
+  g.settle()
+  open_list(g)
+  g.keys("j j j j")
+  g.settle()
+  t.eq(plugin_window(g).selected, "3 notes (minimized)")
+  t.eq(focused(g), 1)
+  t.ok(over(g, 1, 2))
+  t.ok(over(g, 1, 3))
+  t.ok(minimized(g, 1))
+  g.expect_screenshot("notes")
+
+  g.keys("enter")
+  g.settle()
+  t.ok(list_closed(g))
+  t.ok(not minimized(g, 1))
+  t.eq(focused(g), 1)
+  t.ok(over(g, 1, 2))
+  t.ok(over(g, 1, 3))
+end)
+
+t.case("press on the previewed window keeps it", function(g)
+  recent(g)
+  g.client("gband.window.minimize(1)")
+  g.settle()
+  open_list(g)
+  g.keys("j j j j")
+  g.settle()
+  click(g, 22, 5)
+  t.ok(list_closed(g))
+  t.eq(focused(g), 1)
+  t.ok(not minimized(g, 1))
+  t.ok(over(g, 1, 2))
+  t.ok(over(g, 1, 3))
+end)
+
+t.case("preview a window in another band, then a new window", function(g)
+  two_bands(g)
+  open_list(g)
+  g.keys("end")
+  g.settle()
+  local list = plugin_window(g)
+  t.eq(entries(list), {
+    "n New window",
+    "s Settings",
+    "-",
+    "1 logs        band 1",
+    "2 notes       band 1",
+    "3 mail        band 2",
+  })
+  t.eq(list.selected, "3 mail        band 2")
+  t.eq(viewed_band(g), 2)
+  t.eq(focused(g), 3)
+  g.expect_screenshot("mail")
+
+  g.keys("n")
+  g.settle()
+  t.ok(list_closed(g))
+  t.eq(viewed_band(g), 1)
+  local band = g.client("local floating = gband.layout().bands[1].floating return { #floating, floating[#floating].id }")
+  t.eq(band[1], 3)
+  t.eq(focused(g), band[2])
+end)
+
+t.case("preview by the pointer", function(g)
+  recent(g)
+  local list = open_list(g)
+  t.eq({ list.left + list.col, list.row, list.width, list.height }, { 28, 8, 24, 8 })
+  g.mouse("move", nil, 35, 13)
+  g.settle()
+  list = plugin_window(g)
+  t.eq(list.selected, "2 logs")
+  t.eq(focused(g), 2)
+  t.ok(over(g, 2, 3))
+  g.expect_screenshot("logs")
+
+  g.mouse("move", nil, 35, 11)
+  g.settle()
+  t.eq(plugin_window(g).selected, "2 logs")
+  g.mouse("move", nil, 35, 8)
+  g.settle()
+  t.eq(plugin_window(g).selected, "2 logs")
+end)
+
+t.case("wheel scrolls the list", function(g)
+  g.start({ config = CONFIG })
+  prompts(g, 1)
+  for _ = 2, 20 do
+    open_window(g)
+  end
+  local before = focused(g)
+  local list = open_list(g)
+  g.mouse("scroll", "down", list.left + list.col + 5, list.row + 3)
+  g.settle()
+  list = plugin_window(g)
+  t.eq(entries(list)[1], "s Settings")
+  t.eq(list.selected, nil)
+  t.eq(focused(g), before)
+  g.keys("enter")
+  g.settle()
+  t.eq(#floating_ids(g), 21)
+end)
+
+t.case("escape returns to the state at opening", function(g)
+  g.start({ config = CONFIG })
+  prompts(g, 1)
+  open_window(g)
+  open_window(g)
+  g.client("gband.action.focus_band_down()")
+  g.settle()
+  open_window(g)
+  open_window(g)
+  named(g, { "notes", "logs", "mail", "top", "low" })
+  focus_in_order(g, { 5, 4, 1, 2, 3 })
+  g.client("gband.window.minimize(1)")
+  g.settle()
+  t.eq(viewed_band(g), 1)
+  open_list(g)
+  g.keys("j j j j j j")
+  g.settle()
+  t.match(plugin_window(g).selected, "^5 low +band 2$")
+  t.eq(viewed_band(g), 2)
+  t.eq(focused(g), 5)
+  t.ok(over(g, 5, 4))
+  g.expect_screenshot("low")
+
+  g.keys("escape")
+  g.settle()
+  t.ok(list_closed(g))
+  t.eq(viewed_band(g), 1)
+  t.eq(focused(g), 3)
+  t.ok(over(g, 3, 2))
+  t.ok(g.screen().cell(2, 20).char ~= "╭")
+  t.ok(minimized(g, 1))
+  g.expect_screenshot("back")
+
+  g.client("gband.band.view(gband.layout().bands[2].id)")
+  g.settle()
+  t.eq(focused(g), 4)
+  t.ok(over(g, 4, 5))
+end)
+
+t.case("press on empty ribbon cancels", function(g)
+  recent(g)
+  open_list(g)
+  g.keys("j j j")
+  g.settle()
+  click(g, 5, 10)
+  t.ok(list_closed(g))
+  t.eq(focused(g), 3)
+  t.ok(over(g, 3, 2))
+end)
+
+t.case("press outside closes and takes its effect", function(g)
+  recent(g)
+  open_list(g)
+  click(g, 21, 6)
+  t.ok(list_closed(g))
+  t.eq(focused(g), 1)
+end)
+
+t.case("right press keeps the preview", function(g)
+  recent(g)
+  open_list(g)
+  g.keys("j j j")
+  g.settle()
+  click(g, 5, 10, "right")
+  local list = plugin_window(g)
+  t.eq(list.lines[1]:match("^┌(%a+)"), "windows")
+  t.eq({ list.left + list.col, list.row }, { 5, 10 })
+  t.eq(focused(g), 2)
+  t.eq(most_recent(g), 2)
+end)
+
+t.case("closed by other code", function(g)
+  recent(g)
+  open_list(g)
+  g.keys("j j j")
+  g.settle()
+  g.client("gband.win.close(gband.view().plugin_window)")
+  g.settle()
+  t.ok(list_closed(g))
+  t.eq(focused(g), 3)
+  t.ok(over(g, 3, 2))
+end)
+
+t.case("shortcut picks a window", function(g)
+  recent(g)
+  open_list(g)
+  g.keys("2")
+  g.settle()
+  t.ok(list_closed(g))
+  t.eq(focused(g), 2)
+  t.ok(over(g, 2, 3))
+  t.eq(most_recent(g), 2)
+end)
+
+t.case("digits before a prefix binding", function(g)
+  recent(g, { config = CONFIG .. '\ngband.keymap.set("prefix", "1", gband.action.open_window)\n' })
+  open_list(g)
+  g.keys("1")
+  g.settle()
+  t.ok(list_closed(g))
+  t.eq(focused(g), 3)
+  t.eq(#floating_ids(g), 3)
+end)
+
+t.case("prefix key keeps the preview", function(g)
+  recent(g)
+  open_list(g)
+  g.keys("j j j")
+  g.settle()
+  g.keys(":")
+  g.settle()
+  t.ok(plugin_window(g).lines[1]:find("lua", 1, true))
+  t.eq(focused(g), 2)
+  t.eq(most_recent(g), 2)
+end)
+
+t.case("window closed under the list", function(g)
+  recent(g)
+  open_list(g)
+  g.keys("j j j")
+  g.settle()
+  g.client([[gband.window.send_text(1, "exit\n")]])
+  g.wait(function()
+    return not in_layout(g, 1)
+  end)
+  g.settle()
+  local list = plugin_window(g)
+  t.eq(entries(list), { "n New window", "s Settings", "-", "1 mail", "2 logs" })
+  t.eq(list.selected, "2 logs")
+end)
+
+t.case("window focused at opening closes", function(g)
+  recent(g)
+  open_list(g)
+  g.keys("j j j j")
+  g.settle()
+  t.eq(focused(g), 1)
+  g.client([[gband.window.send_text(3, "exit\n")]])
+  g.wait(function()
+    return not in_layout(g, 3)
+  end)
+  g.settle()
+  g.keys("escape")
+  g.settle()
+  t.ok(list_closed(g))
+  t.eq(focused(g), 2)
+  t.ok(over(g, 2, 1))
 end)
 
 t.case("list of two windows, its buttons and a minimized entry", function(g)
@@ -478,11 +916,11 @@ t.case("list of two windows, its buttons and a minimized entry", function(g)
   t.eq({ list.width, list.height, list.col, list.row }, { 24, 7, 27, 8 })
   t.eq(list.lines, {
     "┌windows────────[□][X]─┐",
-    "│ New window           │",
-    "│ Settings             │",
+    "│ n New window         │",
+    "│ s Settings           │",
     "├──────────────────────┤",
-    "│ notes                │",
-    "│ logs                 │",
+    "│ 1 logs               │",
+    "│ 2 notes              │",
     "└───────────────? keys─┘",
   })
   t.eq(g.client("return gband.keymap.current_table()"), "root")
@@ -498,18 +936,29 @@ t.case("list of two windows, its buttons and a minimized entry", function(g)
   list = plugin_window(g)
   t.eq({ list.row, list.height }, { 8, 7 })
 
+  g.keys("5")
+  g.settle()
+  t.eq(plugin_window(g).selected, "n New window")
+  t.eq(focused(g), 2)
+
+  g.keys("j j j")
+  g.settle()
+  t.eq(focused(g), 1)
   click(g, 48, 8)
   t.eq(g.client("return #gband.win.list()"), 0)
+  t.eq(focused(g), 2)
+  t.ok(over(g, 2, 1))
 
   g.client("gband.window.minimize(2)")
   g.settle()
   list = open_list(g)
-  t.eq(entries(list)[5], "logs (minimized)")
-  t.ok(g.screen().cell(list.row + 5, list.left + list.col + 2).dim)
+  t.eq(entries(list)[5], "2 logs (minimized)")
+  t.ok(g.screen().cell(list.row + 5, list.left + list.col + 4).dim)
+  t.ok(not g.screen().cell(list.row + 5, list.left + list.col + 2).dim)
   g.keys("j j j")
   g.settle()
   list = plugin_window(g)
-  t.eq(list.selected, "logs (minimized)")
+  t.eq(list.selected, "2 logs (minimized)")
   g.expect_screenshot("minimized entry")
   g.keys("enter")
   g.settle()
@@ -522,10 +971,11 @@ t.case("pick a window", function(g)
   open_window(g)
   t.eq(focused(g), 2)
   open_list(g)
-  g.keys("j j enter")
+  g.keys("j j j enter")
   g.settle()
   t.eq(g.client("return #gband.win.list()"), 0)
   t.eq(focused(g), 1)
+  t.eq(most_recent(g), 1)
 end)
 
 t.case("windows in two bands", function(g)
@@ -540,7 +990,7 @@ t.case("windows in two bands", function(g)
   g.client("gband.window.rename(..., 'logs') gband.band.view(gband.layout().bands[1].id)", second)
   g.settle()
   local list = open_list(g)
-  t.eq(entries(list), { "New window", "Settings", "-", "1 notes", "2 logs" })
+  t.eq(entries(list), { "n New window", "s Settings", "-", "1 notes       band 1", "2 logs        band 2" })
   g.expect_screenshot("two bands", { styles = false })
   g.keys("j j j enter")
   g.settle()
@@ -568,6 +1018,32 @@ t.case("open the settings", function(g)
   t.eq(g.client("return #gband.win.list()"), 1)
 end)
 
+t.case("settings from a preview", function(g)
+  recent(g)
+  open_list(g)
+  g.keys("j j j")
+  g.settle()
+  t.eq(focused(g), 2)
+  g.keys("s")
+  g.settle()
+  t.ok(plugin_window(g).lines[1]:find("settings", 1, true))
+  t.eq(focused(g), 3)
+  t.ok(over(g, 3, 2))
+end)
+
+t.case("settings from a preview in another band", function(g)
+  two_bands(g)
+  open_list(g)
+  g.keys("end")
+  g.settle()
+  t.eq(viewed_band(g), 2)
+  g.keys("s")
+  g.settle()
+  t.eq(viewed_band(g), 1)
+  t.ok(plugin_window(g).lines[1]:find("settings", 1, true))
+  t.eq(g.client("return #gband.win.list()"), 1)
+end)
+
 t.case("scroll a long list", function(g)
   g.start({ config = CONFIG })
   for _ = 2, 20 do
@@ -590,8 +1066,8 @@ t.case("scroll a long list", function(g)
   local list = plugin_window(g)
   t.eq(list.height, 15)
   t.eq(#entries(list), 13)
-  t.eq(list.selected, "window 20")
-  t.eq(entries(list)[13], "window 20")
+  t.eq(list.selected, "  window 1")
+  t.eq(entries(list)[13], "  window 1")
   g.expect_screenshot("end", { styles = false })
 end)
 
@@ -627,7 +1103,7 @@ t.case("same list from a right press", function(g)
   g.client("gband.window.rename(1, 'notes') gband.window.rename(2, 'logs')")
   g.settle()
   click(g, 75, 1, "right")
-  t.eq(entries(plugin_window(g)), { "New window", "Settings", "-", "notes", "logs" })
+  t.eq(entries(plugin_window(g)), { "n New window", "s Settings", "-", "1 logs", "2 notes" })
 end)
 
 t.case("window menu and window list at the pointer", function(g)
@@ -705,7 +1181,7 @@ t.case("leader opens the list", function(g)
   t.eq(g.client("return gband.keymap.current_table()"), "root")
   g.keys("j")
   g.settle()
-  t.eq(plugin_window(g).selected, "Settings")
+  t.eq(plugin_window(g).selected, "s Settings")
   t.eq(g.screen().row(3):find("j", 1, true), nil)
 end)
 

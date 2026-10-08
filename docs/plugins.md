@@ -763,6 +763,7 @@ Both remove control characters first, so they measure text as plugin windows and
 The focused plugin window is the focused floating plugin window, otherwise the plugin window shown in the focused window.
 A newly opened floating plugin window with `focus` takes focus; moving focus or viewing another band leaves no floating plugin window focused.
 The exception is a focus change caused by the floating plugin window's own `keys` function, or, for one opened with `hover = true`, by its `on_mouse` for any kind of event: it stays focused until the next key press, whether the change happens at once or arrives later from the server, as an opened window's focus does.
+A floating plugin window that such code opens with focus, or focuses with `gband.win.focus`, takes that hold over, also when the code closed the first one.
 So a list can run actions on Enter and stay open for the next choice, and preview the window under the pointer with a peek.
 While a plugin window is focused, every key the bindings leave unused goes to it and never to a program, and so does every paste.
 A key goes to the first of these that takes it:
@@ -926,14 +927,15 @@ On a bar of height `h`, counting rows from 0:
 
 | row | shows | group |
 |---|---|---|
-| 0 | the mode letter, or `⊞` with the floating key style | `SidebarMode` |
+| 0 | the mode letter, or `∷` with the floating key style | `SidebarMode` |
 | 1 | nothing | `Bar` |
 | 2 to `h - 2` | one band label each, in layout order | `SidebarBandActive` for the viewed band, `SidebarBand` for the others |
 | `h - 1` | `!` while the client reports an error, otherwise nothing | `SidebarError` |
 
 The mode letter is `I` while the active key table is `root`.
 For any other table it is the first character of `gband.keymap.label(table)`, uppercased when it is an ASCII lowercase letter: navigation mode shows `N`, the direct key style's `prefix` shows `P`, and a mode labelled `resize` shows `R`.
-While `gband.keystyle.current()` returns `floating`, row 0 shows the apps character `⊞` instead, whatever table is active, so a mode of your own shows no letter there.
+While `gband.keystyle.current()` returns `floating`, row 0 shows the apps character `∷`, U+2237, instead, whatever table is active, so a mode of your own shows no letter there.
+`∷` is East Asian ambiguous width, so a terminal that draws ambiguous characters two cells wide draws it over the ribbon; a copy of the sidebar can draw `⸬`, U+2E2C, a lookalike of neutral width that fewer fonts hold.
 A configuration that requires `gband.keystyle.floating` by name, without `gband.keystyle.use`, keeps the mode letter.
 
 A band's label is its position in the layout, counted from 1, not its number: `1` to `9`, then `a` to `z` for positions 10 to 35.
@@ -949,7 +951,7 @@ The sidebar redraws in the frame that follows a change of the viewed band, the b
 
 A press of the left button on a band's label views that band, as `gband.band.view` does, whatever key table is active.
 The sidebar does this from its own `MousePressed` handler, since a press on a bar cell reaches handlers with the target `outside`.
-A press of the left button on `⊞` dispatches `desktop.list`, which opens the window list, when `gband.action` holds it.
+A press of the left button on `∷` dispatches `desktop.list`, which opens the window list, when `gband.action` holds it.
 Any other press on the sidebar does nothing.
 
 ## The key list: `gband.keylist`
@@ -1051,7 +1053,7 @@ Its `setup` takes no options, raises an error naming any field it is given, and 
 | action | description | effect |
 |---|---|---|
 | `desktop.list` | `list the windows` | opens the window list centred in the ribbon, or focuses it when it is open |
-| `desktop.leader` | `open the window list, or send the prefix key from it` | while the window list is the focused plugin window, closes it and runs `gband.keymap.run("prefix", "prefix")`; otherwise acts as `desktop.list` |
+| `desktop.leader` | `open the window list, or send the prefix key from it` | while the window list is the focused plugin window, closes it by keeping what it shows and runs `gband.keymap.run("prefix", "prefix")`; otherwise acts as `desktop.list` |
 | `desktop.press` | `move, resize or press a button of a floating window` | the left press on a border, below |
 | `desktop.menu` | `open the menu for the cell under the pointer` | the right press, below |
 
@@ -1113,20 +1115,39 @@ At most one is open.
 | Enter | pick the entry |
 | Escape, `q` | close the menu |
 
-A left press selects an entry and the release on it picks it, the wheel moves the selection, and a press anywhere else closes the menu and still takes its own effect.
+A left press selects an entry and the release on it picks it, and a press anywhere else closes the menu and still takes its own effect.
+The wheel moves the window menu's selection, and scrolls the window list by one row without moving its selection.
+A menu moves its shown rows only as far as the selection, a wheel step or a change of its rows or height needs.
 
-The window list, titled `windows`, holds `New window`, which opens a floating window running your shell, `Settings`, then every window that runs a program, by its shown name, in layout order across every band.
-Windows in two or more bands start with the band's sidebar label, and a window this client minimized ends with ` (minimized)` in `DesktopMinimized`; picking a window focuses it, viewing its band and restoring it.
-Its `[□]` gives it the ribbon's height and `[❐]` gives its height back, its `[X]` closes it, and its bottom border shows `? keys` while `prefix` binds `?`.
-Any other key that `prefix` binds closes the list and runs that binding, so with the floating preset `D` detaches, `:` opens the Lua prompt, `?` opens the key list and `N` renames the focused window.
+The window list, titled `windows`, holds `New window`, which opens a floating window running your shell, `Settings`, then every window that runs a program, by its shown name.
+The windows this client focused come first, the most recent at the top, as `last_focus` orders them, then the windows it never focused, in layout order; the order is taken when the list opens and stays while it is open, with windows that close dropped and windows that open added at the end.
+Each entry starts with its shortcut, in `DesktopShortcut`: `n` for `New window`, `s` for `Settings`, `1` to `9` for the first nine windows and `0` for the tenth; later windows have none.
+While windows sit in two or more bands, each window entry ends with `band ` and the band's sidebar label, right-aligned, and a window this client minimized has ` (minimized)` after its name and its entry in `DesktopMinimized`.
+Its `[□]` gives it the ribbon's height and `[❐]` gives its height back, and its bottom border shows `? keys` while `prefix` binds `?`.
 
-The window menu, titled with the window's name, holds `Close`, `Maximize` or `Restore`, `Minimize`, `Tile left` and `Tile right`, and closes when its window leaves the layout.
+The window list previews the entry the selection lands on, by a key, a press, a shortcut or the pointer: a window entry is peeked with `gband.window.focus(id, { peek = true })`, so it shows from its band, on top and also when minimized, and `New window` and `Settings` show the band and focus the list opened on.
+A preview records nothing, so the focus order, the stacking order and the minimized windows stay as they were.
+The list is opened with `hover = true`, so moving the pointer onto an entry selects and previews it, and the list stays focused through its previews; the window menu is opened without `hover`.
+
+The window list closes by keeping what it shows or by cancelling:
+
+- Picking a window, by Enter, a click or its shortcut, keeps: it focuses the window as `gband.window.focus` does, which records it, raises it and restores it when minimized.
+- Picking `New window` or `Settings` cancels, then opens the window in the band the list opened on, or the settings window.
+- `[X]`, Escape, `q` and closing by other code with `gband.win.close` cancel: the list views the band it opened on with `gband.band.view`, which ends the peek, so the band, the focused window, the stacking order and the minimized windows are as they were.
+- A press elsewhere focuses the window it names; otherwise it leaves the view as the press changed it, or cancels when the press changed nothing.
+- A right press that opens a menu, and a `prefix` key, keep.
+
+The keys `n`, `s` and `0` to `9` belong to the list, whatever `prefix` binds: each picks the entry with that shortcut, and a digit no entry has does nothing.
+Any other key that `prefix` binds keeps and runs that binding, so with the floating preset `D` detaches, `:` opens the Lua prompt, `?` opens the key list and `N` renames the window the list shows; a `prefix` binding of a digit, `n` or `s` stays reachable from the key list.
+
+The window menu, titled with the window's name, holds `Close`, `Maximize` or `Restore`, `Minimize`, `Tile left` and `Tile right`, closes when its window leaves the layout, and leaves the focused window as it was when it closes.
 
 **The leader.**
 The floating preset's `prefix` is not a mode, so the prefix key makes it active; its `KeyTableChanged` handler then returns to `root` and dispatches `desktop.leader`, so the prefix key opens the window list and the keys that follow reach it.
-Pressing the prefix key again from the list sends it to the focused window, as the other styles' prefix key twice does.
+Pressing the prefix key again from the list keeps the window it shows and sends the prefix key to it, as the other styles' prefix key twice does.
 
-The plugin defines `DesktopButton` as `{ bold = true }`, `DesktopClose` as `{ fg = 1, bold = true }` and `DesktopMinimized` as `{ dim = true }` when its module is first required.
+The plugin defines `DesktopButton` as `{ bold = true }`, `DesktopClose` as `{ bold = true }`, `DesktopMinimized` as `{ dim = true }` and `DesktopShortcut` as `{ link = "KeyListKey" }` when its module is first required, so `[X]` takes the border's colour and the shortcuts take the key list's.
+No bundled theme sets `DesktopClose`; `gband.hl.set("DesktopClose", { fg = 1, bold = true })` brings back a red close button.
 
 ## Key styles: `gband.keystyle`
 

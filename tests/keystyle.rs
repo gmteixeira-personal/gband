@@ -278,3 +278,87 @@ fn detach_from_the_list() {
     client.send(b"D");
     client.wait_exit();
 }
+
+#[test]
+fn leader_after_a_preview() {
+    let (_env, mut client) = floating_saved("keystyle-floating-leader-preview");
+    client.run("cat -v");
+    client.wait_for_text("$ cat -v");
+    client.send(b"\x00");
+    client.wait_for_text("┌windows");
+    client.send(b"\r");
+    client.wait_for("the second window over the first", |screen| {
+        buttons(screen) == 2 && !screen.contents().contains("$ cat -v")
+    });
+    client.send(b"\x00");
+    client.wait_for_text("┌windows");
+    client.send(b"jjj");
+    client.wait_for_text("$ cat -v");
+    client.send(b"\x00");
+    client.wait_for("the window list closed", |screen| {
+        !screen.contents().contains("┌windows")
+    });
+    client.send(b"\r");
+    client.wait_for("cat -v printing ^@", |screen| {
+        screen
+            .contents()
+            .lines()
+            .filter(|line| line.contains("│^@ "))
+            .count()
+            >= 2
+    });
+}
+
+const NAMED: &str = "gband.keystyle.use('floating')
+gband.bind('f5', function() gband.action.open_window({ floating = true }) end)
+gband.bind('f6', function()
+  local floating = gband.layout().bands[1].floating
+  for index, name in ipairs({ 'notes', 'logs', 'mail' }) do
+    gband.window.rename(floating[index].id, name)
+  end
+  gband.window.focus(floating[3].id)
+end)
+";
+
+fn list_entries(screen: &Grid) -> Vec<String> {
+    screen
+        .contents()
+        .lines()
+        .filter_map(|line| {
+            line.split('│').find_map(|cell| {
+                let entry = cell.strip_prefix(' ')?.trim_end();
+                let mut chars = entry.chars();
+                let shortcut = chars.next()?;
+                (shortcut.is_ascii_digit() && chars.next() == Some(' ')).then(|| entry.to_owned())
+            })
+        })
+        .collect()
+}
+
+#[test]
+fn windows_never_focused_come_last() {
+    let env = TestEnv::new("keystyle-floating-never-focused");
+    env.write_config(NAMED);
+    let mut first = Attached::start(&env, 80, 24);
+    first.wait_for("the first window floating", |screen| buttons(screen) == 1);
+    first.send(b"\x1b[15~");
+    first.wait_for("two windows", |screen| buttons(screen) == 2);
+    first.send(b"\x1b[15~");
+    first.wait_for("three windows", |screen| buttons(screen) == 3);
+    first.send(b"\x1b[17~\x00");
+    first.wait_for_text("┌windows");
+    first.send(b"jjjj");
+    first.wait_for("the first client's window list", |screen| {
+        list_entries(screen) == ["1 mail", "2 logs", "3 notes"]
+    });
+    first.send(b"\x1b");
+    first.wait_for("the window list closed", |screen| {
+        !screen.contents().contains("┌windows")
+    });
+    let mut second = Attached::start(&env, 80, 24);
+    second.wait_for("three windows", |screen| buttons(screen) == 3);
+    second.send(b"\x00");
+    second.wait_for("the window list", |screen| {
+        list_entries(screen) == ["1 mail", "2 notes", "3 logs"]
+    });
+}

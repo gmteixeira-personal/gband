@@ -24,9 +24,7 @@ size 80x24 cursor 5:23 shown
 22|│$         │
 23|╰──────────╯
 --
-4:20-54 fg=4 bold
-4:55-57 fg=1 bold
-4:58-59 fg=4 bold
+4:20-59 fg=4 bold
 5:20 fg=4 bold
 5:59 fg=4 bold
 6:20 fg=4 bold
