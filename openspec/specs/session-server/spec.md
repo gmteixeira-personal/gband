@@ -137,7 +137,7 @@ The windows' programs SHALL keep running when a client detaches, disconnects or 
 - **AND** once the session settles, the shell's window is resized to the whole column
 
 ### Requirement: Snapshot on attach
-When a client completes the handshake, the server SHALL send it the layout with the screen area, then one snapshot for each window in the layout. A window's snapshot SHALL reproduce that window's current screen: its size, every visible cell with its attributes, the cursor position and visibility, and the input modes the grid tracks, including application cursor keys and bracketed paste.
+When a client completes the handshake, the server SHALL send it the layout with the screen area, then one snapshot for each window in the layout. A window's snapshot SHALL reproduce that window's current screen: its size, every visible cell with its attributes, the cursor position and visibility, and the input modes the grid tracks, including application cursor keys and bracketed paste. The modifyOtherKeys level SHALL NOT be part of the snapshot: the server encodes keys with its own grid, which keeps the level across a detach and a later attach.
 
 #### Scenario: Reattach restores the screen
 - **WHEN** the user runs `ls` in a window, kills the client, and runs `gband attach` again
@@ -152,6 +152,10 @@ When a client completes the handshake, the server SHALL send it the layout with 
 #### Scenario: Reattach restores input modes
 - **WHEN** nvim is running in a window with application cursor keys enabled, the client is killed, and a new client attaches
 - **THEN** pressing Up in the new client, with that window focused, sends `\x1bOA` to nvim
+
+#### Scenario: Reattach keeps modifyOtherKeys
+- **WHEN** the program in a window has written `\x1b[>4;1m`, the client is killed, and a new client attaches
+- **THEN** pressing Ctrl+Enter in the new client, with that window focused, sends `\x1b[27;5;13~` to the program
 
 ### Requirement: State updates
 After the snapshots, the server SHALL send each attached client the layout whenever the layout or the screen area changes. Whenever a window's screen changes, the server SHALL send each attached client an update for that window that turns the screen of that window the client last received into its current screen. Updates SHALL carry state, not a replay of a program's output: when a client falls behind, intermediate states MAY be skipped, and the client SHALL still converge on every window's current screen. When a window's PTY size changes, and when a window joins the layout, the server SHALL send each client a snapshot of that window instead of an update, after the layout that holds the change.
