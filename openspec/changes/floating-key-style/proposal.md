@@ -68,6 +68,7 @@ Out of scope:
 - openspec/changes/floating-key-style/
 - README.md
 - crates/client/src/bindings.rs
+- crates/client/src/lib.rs
 - crates/lua/src/bundled.rs
 - crates/lua/src/directory.rs
 - crates/lua/src/lib.rs
@@ -93,14 +94,19 @@ Out of scope:
 - docs/tutorial/00-setup.md
 - docs/tutorial/01-keys.md
 - docs/tutorial/03-options.md
+- examples/plugins/hello/tests/hello_spec.lua
+- examples/tutorial/00-setup/tests/setup_spec.lua
+- examples/tutorial/04-events/tests/events_spec.lua
 - tests/config.rs
 - tests/keystyle.rs
 - tests/lua/bundled_copies_spec.lua
 - tests/lua/floating_spec.lua
+- tests/lua/floating_target_spec.lua
 - tests/lua/screenshots/floating_spec/
 - tests/lua/screenshots/settings_spec/the-settings-window-with-the-floating-key-style--floating.txt
 - tests/lua/screenshots/sidebar_spec/the-floating-style-shows-the-apps-character--apps.txt
 - tests/lua/settings_spec.lua
 - tests/lua/sidebar_spec.lua
+- tests/lua/window_names_spec.lua
 - tests/lua_specs.rs
 - tests/settings.rs
