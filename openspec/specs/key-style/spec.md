@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Defines gband's two key styles, modal and direct: the bundled preset files that make each style's bindings, how a configuration uses one, where the user's choice is saved, the chooser that saves it, and the offer of that chooser on the first start.
+Defines gband's three key styles, modal, direct and floating: the bundled preset files that make each style's bindings, how a configuration uses one, where the user's choice is saved, the chooser that saves it, and the offer of that chooser on the first start.
 
 ## Requirements
 

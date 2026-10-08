@@ -1,7 +1,7 @@
 # sidebar Specification
 
 ## Purpose
-Defines the sidebar: the one-column bar that the bundled `gband.sidebar` plugin adds through the bar API to show the active mode, the layout's bands with the viewed one emphasised, and whether the client reports an error.
+Defines the sidebar: the one-column bar that the bundled `gband.sidebar` plugin adds through the bar API to show the active mode, or the apps character that opens the floating key style's window list, the layout's bands with the viewed one emphasised, and whether the client reports an error.
 
 ## Requirements
 
