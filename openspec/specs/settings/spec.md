@@ -104,7 +104,7 @@ The settings window SHALL have a border, the title `settings`, and its cursor li
 | 3 | `keys` | the style `gband.keystyle.saved()` returns, or `modal` when it returns nil |
 | 4 | `I on new` | `on` when `gband.settings.interactive_on_new()` returns `true`, `off` otherwise |
 
-The fourth line SHALL be present only when the third line shows `modal`. When the third line shows `direct`, the window SHALL hold the first three lines only.
+The fourth line SHALL be present only when the third line shows `modal`. When the third line shows `direct` or `floating`, the window SHALL hold the first three lines only.
 
 The cursor line SHALL start on the first line, except as "Reopen after a save" defines. The window's width SHALL be the smaller of 31 and the ribbon area's width. Its height SHALL be the smaller of the number of its lines plus 2 and the ribbon area's height. It SHALL be centered in the ribbon area, rounding the left and top offsets down. A line wider than the content area SHALL be cut at the content area's edge, as the plugin-windows capability defines.
 
@@ -119,6 +119,11 @@ The cursor line SHALL start on the first line, except as "Reopen after a save" d
 #### Scenario: Window with the direct style
 - **WHEN** `user/keystyle.lua` holds `return "direct"`, the default configuration is in use on an 80×24 terminal, and the settings window opens
 - **THEN** the window holds three lines, the last showing `keys     direct`
+- **AND** it is 31 columns wide and 5 rows high, and spans columns 24 to 54 and rows 9 to 13 of the 79-column ribbon area
+
+#### Scenario: Window with the floating style
+- **WHEN** `user/keystyle.lua` holds `return "floating"`, the default configuration is in use on an 80×24 terminal, and the settings window opens
+- **THEN** the window holds three lines, the last showing `keys     floating`
 - **AND** it is 31 columns wide and 5 rows high, and spans columns 24 to 54 and rows 9 to 13 of the 79-column ribbon area
 
 #### Scenario: Saved values shown
@@ -151,7 +156,7 @@ On the `theme` line:
 
 On the `sidebar` line, Enter, `h`, `l`, Left and Right SHALL save the other value: `false` when the line shows `on`, and `true` when it shows `off`.
 
-On the `keys` line, Enter, `h`, `l`, Left and Right SHALL save the other key style, `direct` when the line shows `modal` and `modal` when it shows `direct`, as the key-style capability's "Saved key style" defines.
+On the `keys` line, Enter, `l` and Right SHALL save the next key style in the order `modal`, `direct`, `floating`, and `modal` when the line shows `floating`. `h` and Left SHALL save the previous key style in that order, and `floating` when the line shows `modal`. Each SHALL save as the key-style capability's "Saved key style" defines.
 
 On the `I on new` line, Enter, `h`, `l`, Left and Right SHALL save the other value, as "Saved I on new" defines: `false` when the line shows `on`, and `true` when it shows `off`.
 
@@ -166,6 +171,19 @@ When `gband.config_dir` is nil, or a file cannot be written, the key SHALL save 
 - **WHEN** no `user/init.lua` exists, the modal style is saved, the settings window is open on its third line, and the user presses `l`
 - **THEN** `user/keystyle.lua` holds `return "direct"`
 - **AND** within a second the configuration reloads with the direct style's bindings, and the reopened settings window holds three lines
+
+#### Scenario: Switch to the floating style
+- **WHEN** no `user/init.lua` exists, the direct style is saved, the settings window is open on its third line, and the user presses Enter
+- **THEN** `user/keystyle.lua` holds `return "floating"`
+- **AND** within a second the configuration reloads with the floating style's bindings, and the reopened settings window holds three lines
+
+#### Scenario: Back from the modal style
+- **WHEN** no `user/init.lua` exists, the modal style is saved, the settings window is open on its third line, and the user presses `h`
+- **THEN** `user/keystyle.lua` holds `return "floating"`
+
+#### Scenario: Forward from the floating style
+- **WHEN** no `user/init.lua` exists, the floating style is saved, the settings window is open on its third line, and the user presses Right
+- **THEN** `user/keystyle.lua` holds `return "modal"`
 
 #### Scenario: Turn I on new on
 - **WHEN** no `user/init.lua` and no `user/interactive_on_new.lua` exist, the modal style is in use, the settings window is open on its fourth line, and the user presses Enter

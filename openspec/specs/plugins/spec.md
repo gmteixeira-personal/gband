@@ -33,7 +33,8 @@ Defines how the client's Lua runtime finds, loads and isolates plugins: the runt
 - `gband.sidebar`, as the sidebar capability defines;
 - `gband.errors`, as the error-list capability defines;
 - `gband.prompt`, as the lua-prompt capability defines;
-- the key style presets `gband.keystyle.modal` and `gband.keystyle.direct`, as the key-style capability defines;
+- the key style presets `gband.keystyle.modal`, `gband.keystyle.direct` and `gband.keystyle.floating`, as the key-style capability defines;
+- `gband.desktop`, as the floating-key-style capability defines;
 - `gband.keylist`, as the key-list capability defines;
 - `gband.keyform`, which returns the function that turns a key name into the form the key-list capability's "Key form" defines;
 - `gband.theme` and `gband.theme.catppuccin`, as the colorschemes capability's "Themes" defines.
@@ -75,6 +76,10 @@ The first file found SHALL be loaded, and errors in it SHALL name its path and l
 #### Scenario: Bundled chunk arguments
 - **WHEN** `user/lua/probe.lua` returns `{ ... }`, and `user/init.lua` compares what `require("probe")` returns with what the bundled `gband.keyform` chunk receives
 - **THEN** both hold the module name and the module's path, and nothing else
+
+#### Scenario: Bundled desktop plugin
+- **WHEN** no runtimepath entry holds `lua/gband/desktop.lua` and `user/init.lua` calls `gband.plugin("gband.desktop")`
+- **THEN** the bundled module loads and `gband.action.list()` holds `desktop.list`
 
 ### Requirement: Plugin files
 After the init file returns, loading SHALL source, for each plugin in runtimepath order whose manifest is valid, its side file once: `client.lua` in a client, and `server.lua` in the server. A plugin MAY hold only one side file, and the other side SHALL then source nothing of it without an error. The `user` directory SHALL have no side file: its init file is `user/init.lua` in a client and `user/server.lua` in the server. A runtimepath entry without a manifest SHALL contribute its modules and colorschemes only; when it holds `client.lua` or `server.lua`, the process SHALL report a plugin error naming the missing manifest and source neither. No file under a `plugin` directory, in any entry, SHALL be sourced.

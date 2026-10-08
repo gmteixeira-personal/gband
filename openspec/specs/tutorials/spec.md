@@ -117,7 +117,7 @@ gband SHALL include an internals tutorial in `docs/internals/`. It SHALL explain
 | `05-plugin-windows.md` | the state, drawing and API of the module `gband.win` |
 | `06-window-provider.md` | the windows provider of `gband.win`: its input, layout and drawing functions |
 | `07-settings.md` | the module `gband.settings` and the settings provider |
-| `08-key-styles.md` | the module `gband.keystyle` and the modal and direct presets |
+| `08-key-styles.md` | the module `gband.keystyle`, the modal, direct and floating presets, and the bundled plugin `gband.desktop` that the floating preset sets up |
 | `09-sidebar-and-errors.md` | the bundled plugins `gband.sidebar` and `gband.errors` |
 | `10-keylist-and-prompt.md` | the bundled plugins `gband.keylist` and `gband.prompt`, and the module `gband.keyform` |
 | `11-default-configs.md` | the default client and server configurations |
@@ -136,6 +136,10 @@ The index SHALL link to every chapter, in order. The Scripting section of `READM
 #### Scenario: Reached from the scripting tutorial
 - **WHEN** a reader opens `docs/tutorial/README.md`
 - **THEN** it links to `docs/internals/README.md`
+
+#### Scenario: Floating style explained
+- **WHEN** a reader opens `docs/internals/08-key-styles.md`
+- **THEN** it quotes `defaults/keystyle/floating.lua` and `defaults/lua/gband/desktop.lua`, and names both paths outside fenced code blocks
 
 ### Requirement: Quotes of bundled files
 A fenced code block in an internals chapter whose info string is `lua` followed by a second word is a quote. The second word SHALL be the path, relative to the configuration directory, of a file that gband writes under `defaults/`, such as `defaults/lua/gband/bar.lua` or `defaults/colors/gruvbox.lua`. The quote's lines SHALL equal a run of consecutive lines of that file's text, verbatim, indentation and blank lines included. The run SHALL occur at exactly one position in the file. gband's test suite SHALL fail when a quote names a path that gband does not write, matches no run of the file, or matches more than one, and SHALL name the chapter, the path and the quote's first line.
