@@ -1871,6 +1871,7 @@ async fn attach(
         draw(terminal, &mut display, now)?;
         if let Some(channel) = &mut channel
             && !display.is_animating(now)
+            && controls.next_flush(&display).is_none()
         {
             channel.drawn(connection.sent).await?;
         }

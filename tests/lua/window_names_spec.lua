@@ -3,6 +3,7 @@ local t = require("gband.test")
 local function started(g, size)
   g.start({ window_titles = true, size = size })
   g.wait_text("$")
+  g.wait_text("╭sh")
   g.settle()
 end
 

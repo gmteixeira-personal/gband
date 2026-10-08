@@ -11,6 +11,13 @@ local function count(g, text)
   return found
 end
 
+local function logged(g, text, times)
+  g.wait(function()
+    return count(g, text) >= times
+  end)
+  t.eq(count(g, text), times)
+end
+
 local function start(g)
   chapter.start(g, { size = "40x8", env = { SHELL = "/bin/cat" } })
 end
@@ -19,10 +26,10 @@ t.case("a mark raises marks.changed", function(g)
   start(g)
   g.keys("ctrl+space m")
   g.settle()
-  t.eq(count(g, "marks changed\t1\ta"), 1)
+  logged(g, "marks changed\t1\ta", 1)
   g.keys("m")
   g.settle()
-  t.eq(count(g, "marks changed\t1\tnil"), 1)
+  logged(g, "marks changed\t1\tnil", 1)
 end)
 
 t.case("closing a marked window forgets its mark", function(g)
@@ -31,10 +38,10 @@ t.case("closing a marked window forgets its mark", function(g)
   g.settle()
   g.keys("ctrl+space m q")
   g.settle()
-  t.eq(count(g, "marks changed\t2\tnil"), 1)
+  logged(g, "marks changed\t2\tnil", 1)
   g.keys("m")
   g.settle()
-  t.eq(count(g, "marks changed\t1\ta"), 1)
+  logged(g, "marks changed\t1\ta", 1)
 end)
 
 t.case("clearing the group stops the handlers", function(g)

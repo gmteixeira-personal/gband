@@ -15,7 +15,8 @@ gband has two key styles, modal and direct, and both assume a user who drives a 
 - **Sidebar.** With the floating style, row 0 shows `⊞` in place of the mode letter, and a left press on it opens the window list. Band labels, the wheel and the error marker stay as they are.
 - **Settings.** The `keys` line cycles modal, direct, floating: Enter, `l` and Right go forward, `h` and Left go back. The `I on new` line stays modal only.
 - **Packaging.** The new preset and module join the bundled file list and `KEY_STYLES` in `crates/lua/src/bundled.rs`, and `KEY_STYLES` in `crates/lua/src/lib.rs` grows to three entries. gband writes the preset to `defaults/keystyle/floating.lua` and the module to `defaults/lua/gband/desktop.lua`.
-- **Client fix.** `gband.win.open({ kind = "tiled" })` without `band` or `after` opened nothing while a floating window had focus, because the client named that floating window as `after`. The client now resolves the default as `open_window` does, which the plugin-windows capability already requires. No other Rust, protocol or harness change.
+- **Client fix.** `gband.win.open({ kind = "tiled" })` without `band` or `after` opened nothing while a floating window had focus, because the client named that floating window as `after`. The client now resolves the default as `open_window` does, which the plugin-windows capability already requires.
+- **Settle fix.** A settle could complete while the client still held back the window move or resize of a pointer drag for its next frame, so a second drag within one frame of the first read the old box. The client now answers a settle only once that send has gone. No other Rust, protocol or harness change.
 - `gband.api_version` does not rise: the change only adds a style name, a function, a plugin and its actions.
 
 Out of scope:
@@ -38,6 +39,7 @@ Out of scope:
 - `plugins`: "Module lookup" lists `gband.keystyle.floating` and `gband.desktop`.
 - `lua-prompt`: "Default setup" names the bindings of every key style.
 - `tutorials`: "Internals tutorial" has chapter 08 teach the floating preset and `gband.desktop`.
+- `test-channel`: "Settle" waits for the window move or resize that a pointer drag holds back.
 
 ## Impact
 
@@ -45,6 +47,7 @@ Out of scope:
 - Changed Lua: `crates/lua/src/runtime/gband/keystyle.lua`, `sidebar.lua` and `settings.lua`.
 - Packaging: `crates/lua/src/bundled.rs`, `crates/lua/src/lib.rs`, and the unit test in `crates/lua/src/directory.rs`.
 - Client: the default target of a tiled plugin window in `crates/client/src/lib.rs`, with a regression case in `tests/lua/floating_target_spec.lua`.
+- Test channel: the settle answer in `crates/client/src/lib.rs`, covered by the border drags of `tests/lua/floating_spec.lua`.
 - Tests: `crates/lua/tests/keystyle.rs`, `settings.rs`, `sidebar.rs`, `config.rs` and a new `desktop.rs`, the key table tests in `crates/client/src/bindings.rs`, `tests/config.rs`, `tests/keystyle.rs`, `tests/settings.rs`, a new `tests/lua/floating_spec.lua` with its screenshots, `tests/lua/settings_spec.lua`, `tests/lua/sidebar_spec.lua`, `tests/lua/bundled_copies_spec.lua`, and `tests/lua_specs.rs`.
 - Docs: `README.md`, `docs/plugins.md`, `docs/testing.md`, `docs/internals/` chapters 00, 07, 08, 09, 10, 11 and the index, and `docs/tutorial/00-setup.md`, `01-keys.md` and `03-options.md`.
 - No protocol change, no new dependency, no change to the server.

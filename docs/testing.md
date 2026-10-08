@@ -295,7 +295,7 @@ Give `time = false` to `g.start` for the real time.
 
 1. the client has read and handled every byte written to its terminal, the case's keys and the terminal's own replies, and holds no unfinished escape sequence,
 2. the server has handled every message the client sent, applied the actions, run its Lua handlers and sent the changes,
-3. the client has handled every message the server sent, run its handlers, finished any animation and drawn the result,
+3. the client has handled every message the server sent, run its handlers, finished any animation, sent the window move or resize that a drag holds back for its next frame, and drawn the result,
 4. the runner has read the frame,
 
 and again for the effects of those effects, until a round changes nothing, up to ten rounds.

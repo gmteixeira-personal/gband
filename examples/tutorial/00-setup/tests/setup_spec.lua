@@ -1,13 +1,14 @@
 local t = require("gband.test")
 local chapter = require("chapter")
 
-local function logged(g, text)
-  for _, line in ipairs(g.log("client")) do
-    if line:find(text, 1, true) then
-      return true
+local function wait_logged(g, text)
+  g.wait(function()
+    for _, line in ipairs(g.log("client")) do
+      if line:find(text, 1, true) then
+        return true
+      end
     end
-  end
-  return false
+  end)
 end
 
 local function prompt(g, line)
@@ -29,15 +30,18 @@ t.case("the prompt prints to the client log", function(g)
   prompt(g, [[print(gband.config_dir)]])
   local config_dir = g.client("return gband.config_dir")
   t.match(config_dir, "/gband$")
-  t.ok(logged(g, config_dir), "the client log holds the configuration directory")
+  wait_logged(g, config_dir)
 end)
 
 t.case("a broken file keeps the last configuration", function(g)
   chapter.start(g, { size = "40x8", env = { SHELL = "/bin/cat" } })
   g.write("user/init.lua", chapter.read("user/init.lua") .. [[gband.plugn("gband.sidebar")]] .. "\n")
-  t.match(g.reload(), "user/init.lua:7: attempt to call a nil value %(field 'plugn'%)")
+  g.wait(function()
+    return g.client("return #gband.errors()") > 0
+  end)
   g.settle()
   t.eq(g.client("return #gband.errors()"), 1)
+  t.match(g.client("return gband.errors()[1]"), "user/init.lua:7: attempt to call a nil value %(field 'plugn'%)")
   t.match(g.screen().row(7), "^!")
   g.expect_screenshot("the error marker")
 
