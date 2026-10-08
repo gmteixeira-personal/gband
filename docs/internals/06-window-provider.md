@@ -144,12 +144,13 @@ function hooks.mouse(id, event)
 ```
 
 The client reports where a mouse event landed inside the content, as `content_row`, counted from 0, or nil on the border.
+Besides a press, a release, a drag and a wheel step, it reports a `"move"`, a motion with no button held to another cell, but only over a plugin window whose latest frame sets `hover`, so a window opened without `hover` costs no call per cell the pointer crosses.
 The event also carries `box_col`, `box_row`, `box_width` and `box_height`, the cell and size of the plugin window's box with its border, nil when the pointer is off the plugin window.
 `mouse` adds `line`, the line of the window's text under the pointer, when there is one, so that a plugin need not know how far the window has scrolled.
 
 ```lua defaults/lua/gband/win.lua
   if win.on_mouse then
-    if win.kind == "floating" and event.kind ~= "scroll" then
+    if win.kind == "floating" and (win.hover or event.kind ~= "scroll") then
       hold(id)
     end
     core.call(win.owner, nil, win.on_mouse, id, event)
@@ -158,7 +159,8 @@ The event also carries `box_col`, `box_row`, `box_width` and `box_height`, the c
 ```
 
 A window with `on_mouse` handles every event itself.
-A press or drag in a floating window holds it, so that the focus changes its handler causes do not take focus from it.
+A press, a release or a drag in a floating window holds it, so that the focus changes its handler causes do not take focus from it.
+A hover window treats the pointer as input, so it is held for every event, a wheel step and a move included, and a preview its handler starts with a peek keeps the list focused.
 
 ```lua defaults/lua/gband/win.lua
   if event.kind == "scroll" then

@@ -7,7 +7,7 @@ gband.hl.default("PluginWindowTitle", { bold = true })
 gband.hl.default("PluginWindowCursorLine", { reverse = true })
 
 local COMMON = {
-  kind = true, lines = true, focus = true, cursorline = true,
+  kind = true, lines = true, focus = true, cursorline = true, hover = true,
   keys = true, on_input = true, on_close = true, on_resize = true, on_mouse = true,
 }
 local FLOATING = { row = true, col = true, width = true, height = true, border = true, title = true }
@@ -208,7 +208,9 @@ local function render(win)
     lines[#lines + 1] = row_runs(win.lines[index] or {}, cols, row_base, style)
   end
   if win.kind == "tiled" then
-    core.present_window(win.id, { kind = "tiled", cols = cols, rows = rows, base = base, lines = lines })
+    core.present_window(win.id, {
+      kind = "tiled", cols = cols, rows = rows, base = base, lines = lines, hover = win.hover,
+    })
     return
   end
   local placed = win.placed
@@ -231,6 +233,7 @@ local function render(win)
     lines = lines,
     z = win.z,
     focused = focused_float == win.id,
+    hover = win.hover,
   })
 end
 
@@ -409,6 +412,7 @@ function api.open(opts)
     top = 1,
     cursor = 1,
     cursorline = check_boolean(opts, "cursorline", false),
+    hover = check_boolean(opts, "hover", false),
     keys = check_keys(opts),
     on_input = check_function(opts, "on_input"),
     on_close = check_function(opts, "on_close"),
@@ -564,6 +568,7 @@ function api.info(id)
     line_count = #win.lines,
     cols = cols,
     rows = rows,
+    hover = win.hover,
   }
   if win.kind == "floating" then
     local placed = win.placed
@@ -675,7 +680,7 @@ function hooks.mouse(id, event)
     event.line = win.top + event.content_row
   end
   if win.on_mouse then
-    if win.kind == "floating" and event.kind ~= "scroll" then
+    if win.kind == "floating" and (win.hover or event.kind ~= "scroll") then
       hold(id)
     end
     core.call(win.owner, nil, win.on_mouse, id, event)

@@ -1460,3 +1460,143 @@ fn minimized_floating_window() {
 fn minimized_by_another_client() {
     assert_eq!(minimized_fields("layout-not-minimized", &[]), "4=nil 5=nil");
 }
+
+#[test]
+fn focus_options_choose_peek_or_focus() {
+    assert_eq!(
+        dispatched(
+            "focus-options",
+            state(two_bands(), 1, Some(1), "root"),
+            "gband.window.focus(3, { peek = true })\ngband.window.focus(3, { peek = false })\ngband.window.focus(3, {})"
+        ),
+        [
+            Dispatch::Action(Action::View(ViewAction::Peek(WindowId(3)))),
+            Dispatch::Action(Action::View(ViewAction::FocusWindow(WindowId(3)))),
+            Dispatch::Action(Action::View(ViewAction::FocusWindow(WindowId(3)))),
+        ]
+    );
+}
+
+#[test]
+fn unknown_focus_option_is_an_error_at_the_line() {
+    let scratch = Scratch::new("focus-unknown-option");
+    let path = scratch.write(
+        "\n\n\n\ngband.bind('alt+r', function() gband.window.focus(1, { raise = true }) end)\n",
+    );
+    let config = scratch.loaded();
+    clean(
+        &config
+            .runtime
+            .set_state(state(two_bands(), 1, Some(1), "root")),
+    );
+    let chord = gband_lua::Chord::Key(key("alt+r"));
+    let Some((_, gband_lua::Binding::Callback(callback))) = config.keymap["root"]
+        .iter()
+        .find(|(bound, _)| *bound == chord)
+    else {
+        panic!("alt+r is not bound to a function");
+    };
+    let outcome = config.runtime.call(*callback);
+    assert!(outcome.dispatched.is_empty());
+    let [error] = outcome.errors.as_slice() else {
+        panic!("{:?}", outcome.errors);
+    };
+    assert_error_at(error, &path, 5, "`raise`");
+}
+
+#[test]
+fn bad_focus_options_are_errors() {
+    failed(
+        "focus-peek-text",
+        state(two_bands(), 1, Some(1), "root"),
+        "gband.window.focus(1, { peek = 'yes' })",
+        "`peek`",
+    );
+    failed(
+        "focus-options-boolean",
+        state(two_bands(), 1, Some(1), "root"),
+        "gband.window.focus(1, true)",
+        "must be a table",
+    );
+}
+
+fn last_focus_fields(name: &str, layout: Layout, last_focus: &[(u32, u64)]) -> String {
+    let view = ViewState {
+        last_focus: last_focus
+            .iter()
+            .map(|&(window, tick)| (WindowId(window), tick))
+            .collect(),
+        ..state(layout, 1, Some(1), "root")
+    };
+    let (_scratch, config) = loaded_with(name, "", view);
+    eval(
+        &config,
+        r#"
+        local parts = {}
+        for _, band in ipairs(gband.layout().bands) do
+          for _, column in ipairs(band.columns) do
+            for _, w in ipairs(column.windows) do
+              parts[#parts + 1] = w.id .. "=" .. tostring(w.last_focus)
+            end
+          end
+          for _, f in ipairs(band.floating) do
+            parts[#parts + 1] = "f" .. f.id .. "=" .. tostring(f.last_focus)
+          end
+        end
+        return table.concat(parts, " ")
+        "#,
+    )
+}
+
+#[test]
+fn last_focus_of_the_focused_windows() {
+    assert_eq!(
+        last_focus_fields("last-focus-attached", two_bands(), &[(1, 1)]),
+        "1=1 2=nil 3=nil"
+    );
+    assert_eq!(
+        last_focus_fields("last-focus", two_bands(), &[(1, 3), (2, 2)]),
+        "1=3 2=2 3=nil"
+    );
+}
+
+#[test]
+fn floating_window_without_last_focus() {
+    assert_eq!(
+        last_focus_fields("last-focus-floating", with_floating(), &[(1, 1)]),
+        "1=1 2=nil f4=nil 3=nil"
+    );
+}
+
+#[test]
+fn last_focus_gives_the_stacking_order() {
+    let mut layout = with_floating();
+    for _ in 0..2 {
+        let window = layout.allocate_window();
+        layout.open_floating(window, BandId(1), None, AREA, &LayoutOptions::default());
+    }
+    assert_eq!(
+        last_focus_fields("last-focus-stacking", layout, &[(1, 1), (6, 2), (4, 3)]),
+        "1=1 2=nil f4=3 f5=nil f6=2 3=nil"
+    );
+}
+
+#[test]
+fn peeked_focus() {
+    let view = ViewState {
+        peek: true,
+        ..state(with_floating(), 1, Some(4), "root")
+    };
+    let (_scratch, config) = loaded_with("view-peek", "", view);
+    let view: Table = eval(&config, "return gband.view()");
+    assert_eq!(view.get::<Option<u32>>("window").unwrap(), Some(4));
+    assert!(view.get::<bool>("floating").unwrap());
+    assert_eq!(view.get::<Option<bool>>("peek").unwrap(), Some(true));
+    let (_scratch, config) = loaded_with(
+        "view-no-peek",
+        "",
+        state(with_floating(), 1, Some(4), "root"),
+    );
+    let view: Table = eval(&config, "return gband.view()");
+    assert_eq!(view.get::<Option<bool>>("peek").unwrap(), None);
+}

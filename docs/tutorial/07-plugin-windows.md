@@ -123,6 +123,10 @@ gband.on("User", function()
 end, { group = group, pattern = "marks.changed" })
 ```
 
+The list could also preview the marked window under its cursor, with `gband.window.focus(window, { peek = true })` from one of its `keys` functions, which shows the window without recording the focus.
+Opened with `hover = true`, it could preview as the pointer hovers a line: its `on_mouse` then runs with the kind `"move"` for each cell the pointer crosses, and the list stays focused after the peek.
+[Windows and bands](../plugins.md#windows-and-bands-gbandwindow-gbandband) describes the peek.
+
 [Plugin windows](../plugins.md#plugin-windows-gbandwin) describes the tiled kind, which takes a column of the layout, and every option and function.
 
 ## The whole file

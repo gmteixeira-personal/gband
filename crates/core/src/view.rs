@@ -15,6 +15,7 @@ pub enum ViewAction {
     BandDown,
     BandUp,
     FocusWindow(WindowId),
+    Peek(WindowId),
     ViewBand(BandId),
     SwitchLayer,
     CenterColumn,
@@ -70,6 +71,7 @@ pub struct View {
     position: Location,
     recency: HashMap<WindowId, u64>,
     minimized: BTreeSet<WindowId>,
+    peek: Option<(WindowId, Layer)>,
     tick: u64,
     policy: CenterFocusedColumn,
     loop_bands: bool,
@@ -88,6 +90,7 @@ impl View {
             position: Location::default(),
             recency: HashMap::new(),
             minimized: BTreeSet::new(),
+            peek: None,
             tick: 0,
             policy,
             loop_bands: true,
@@ -112,25 +115,45 @@ impl View {
     }
 
     pub fn focused(&self) -> Option<WindowId> {
-        self.bands.get(&self.band).and_then(BandView::focused)
+        self.peeked()
+            .or_else(|| self.bands.get(&self.band).and_then(BandView::focused))
+    }
+
+    pub fn peeked(&self) -> Option<WindowId> {
+        self.peek.map(|(window, _)| window)
     }
 
     pub fn minimized(&self) -> &BTreeSet<WindowId> {
         &self.minimized
     }
 
+    pub fn hidden(&self, window: WindowId) -> bool {
+        self.minimized.contains(&window) && self.peeked() != Some(window)
+    }
+
+    pub fn last_focus(&self) -> &HashMap<WindowId, u64> {
+        &self.recency
+    }
+
     fn available(&self, band: &Band, window: WindowId) -> bool {
-        band.holds(window) && !self.minimized.contains(&window)
+        band.holds(window) && !self.hidden(window)
     }
 
     pub fn layer(&self) -> Layer {
-        self.bands
-            .get(&self.band)
-            .map_or(Layer::Tiled, |state| state.layer)
+        match self.peek {
+            Some((_, layer)) => layer,
+            None => self
+                .bands
+                .get(&self.band)
+                .map_or(Layer::Tiled, |state| state.layer),
+        }
     }
 
     fn tiled_focus(&self) -> Option<WindowId> {
-        self.bands.get(&self.band).and_then(|state| state.tiled)
+        match self.peek {
+            Some((window, Layer::Tiled)) => Some(window),
+            _ => self.bands.get(&self.band).and_then(|state| state.tiled),
+        }
     }
 
     pub fn tiled_in(&self, band: &Band) -> Option<WindowId> {
@@ -247,10 +270,15 @@ impl View {
     }
 
     pub fn stacking(&self, scene: Scene<'_>) -> Vec<WindowId> {
-        scene
-            .layout
-            .band(self.band)
-            .map_or_else(Vec::new, |band| self.stacked(band))
+        let Some(band) = scene.layout.band(self.band) else {
+            return Vec::new();
+        };
+        let mut order = self.stacked(band);
+        if let Some((window, Layer::Floating)) = self.peek {
+            order.retain(|&other| other != window);
+            order.push(window);
+        }
+        order
     }
 
     fn stacked(&self, band: &Band) -> Vec<WindowId> {
@@ -297,7 +325,7 @@ impl View {
         let floating = boxes(band, scene.area)
             .into_iter()
             .filter(|placed| {
-                !self.minimized.contains(&placed.window)
+                !self.hidden(placed.window)
                     && placed.width > 0
                     && placed.height > 0
                     && placed.x < scene.viewport.cols
@@ -310,6 +338,7 @@ impl View {
     pub fn apply(&mut self, action: ViewAction, scene: Scene<'_>) {
         match action {
             ViewAction::FocusWindow(window) => return self.focus_window(window, scene),
+            ViewAction::Peek(window) => return self.peek(window, scene),
             ViewAction::ViewBand(band) => return self.view_band(band, scene),
             ViewAction::Minimize(window) => return self.minimize(window, scene),
             _ => {}
@@ -345,7 +374,7 @@ impl View {
             }
             ViewAction::SwitchLayer => {
                 let state = self.bands.get(&band.id).copied().unwrap_or_default();
-                let target = match state.layer {
+                let target = match self.layer() {
                     Layer::Tiled => self.floating_target(band, state),
                     Layer::Floating => tiled_target(band, state),
                 };
@@ -377,14 +406,17 @@ impl View {
                 };
                 self.enter(target);
             }
-            ViewAction::FocusWindow(_) | ViewAction::ViewBand(_) | ViewAction::Minimize(_) => {}
+            ViewAction::FocusWindow(_)
+            | ViewAction::Peek(_)
+            | ViewAction::ViewBand(_)
+            | ViewAction::Minimize(_) => {}
         }
         self.settle(scene, previous, heading);
     }
 
     pub fn view_band(&mut self, band: BandId, scene: Scene<'_>) {
         if band == self.band {
-            return;
+            return self.end_peek(scene);
         }
         let Some(target) = scene.layout.band(band) else {
             return;
@@ -399,12 +431,46 @@ impl View {
         let Some(window) = window.or(previous) else {
             return;
         };
-        if !matches!(scene.layout.place(window), Some(Place::Floating { .. }))
-            || !self.minimized.insert(window)
-        {
+        if !matches!(scene.layout.place(window), Some(Place::Floating { .. })) {
             return;
         }
+        let inserted = self.minimized.insert(window);
+        if self.peeked() == Some(window) {
+            return self.end_peek(scene);
+        }
+        if inserted {
+            self.settle(scene, previous, None);
+        }
+    }
+
+    fn peek(&mut self, window: WindowId, scene: Scene<'_>) {
+        let Some(band) = scene.layout.bands().iter().find(|band| band.holds(window)) else {
+            return;
+        };
+        let previous = self.focused();
+        self.band = band.id;
+        self.peek = layer_in(band, window).map(|layer| (window, layer));
         self.settle(scene, previous, None);
+    }
+
+    pub fn end_peek(&mut self, scene: Scene<'_>) {
+        let Some((previous, _)) = self.peek.take() else {
+            return;
+        };
+        if let Some(band) = scene.layout.band(self.band) {
+            self.recall(band);
+        }
+        self.settle(scene, Some(previous), None);
+    }
+
+    fn recall(&mut self, band: &Band) {
+        let state = self.bands.get(&band.id).copied().unwrap_or_default();
+        if !state
+            .focused()
+            .is_some_and(|window| self.available(band, window))
+        {
+            self.enter(band);
+        }
     }
 
     pub fn focus_window(&mut self, window: WindowId, scene: Scene<'_>) {
@@ -446,21 +512,14 @@ impl View {
             }
         };
         let band = &layout.bands()[index];
-        let state = *self.bands.entry(band.id).or_default();
-        let target = match state.focused() {
-            Some(window) if self.available(band, window) => Some(window),
-            Some(_) => match state.layer {
-                Layer::Tiled => self.clamped(band).or_else(|| self.top_floating(band)),
-                Layer::Floating => self
-                    .top_floating(band)
-                    .or_else(|| tiled_target(band, state)),
-            },
-            None => band.first_window().or_else(|| self.top_floating(band)),
-        };
-        match target {
-            Some(window) if Some(window) == state.focused() => self.place_focus(band, window),
-            Some(window) => self.focus(band, window),
-            None => self.clear_focus(),
+        if let Some((window, _)) = self.peek {
+            self.peek = layer_in(band, window).map(|layer| (window, layer));
+            if self.peek.is_none() {
+                self.recall(band);
+            }
+        }
+        if self.peek.is_none() {
+            self.refocus(band);
         }
         let minimized = &self.minimized;
         let state = self.bands.entry(band.id).or_default();
@@ -479,7 +538,27 @@ impl View {
         self.follow(band, scene, previous, heading);
     }
 
+    fn refocus(&mut self, band: &Band) {
+        let state = *self.bands.entry(band.id).or_default();
+        let target = match state.focused() {
+            Some(window) if self.available(band, window) => Some(window),
+            Some(_) => match state.layer {
+                Layer::Tiled => self.clamped(band).or_else(|| self.top_floating(band)),
+                Layer::Floating => self
+                    .top_floating(band)
+                    .or_else(|| tiled_target(band, state)),
+            },
+            None => band.first_window().or_else(|| self.top_floating(band)),
+        };
+        match target {
+            Some(window) if Some(window) == state.focused() => self.place_focus(band, window),
+            Some(window) => self.focus(band, window),
+            None => self.clear_focus(),
+        }
+    }
+
     fn enter(&mut self, band: &Band) {
+        self.peek = None;
         self.band = band.id;
         let state = *self.bands.entry(band.id).or_default();
         let target = state
@@ -565,6 +644,7 @@ impl View {
     }
 
     fn focus(&mut self, band: &Band, window: WindowId) {
+        self.peek = None;
         self.place_focus(band, window);
         self.touch(window);
     }
@@ -684,6 +764,14 @@ impl View {
         let moved = place(copy);
         state.travel += moved - camera;
         state.camera = moved.rem_euclid(period);
+    }
+}
+
+fn layer_in(band: &Band, window: WindowId) -> Option<Layer> {
+    if band.floating_index(window).is_some() {
+        Some(Layer::Floating)
+    } else {
+        band.locate(window).map(|_| Layer::Tiled)
     }
 }
 

@@ -72,6 +72,11 @@ fn minimize() {
 }
 
 #[test]
+fn peek() {
+    gband_test(root(), &["tests/lua/peek_spec.lua"]);
+}
+
+#[test]
 fn floating_key_style() {
     gband_test(root(), &["tests/lua/floating_spec.lua"]);
 }

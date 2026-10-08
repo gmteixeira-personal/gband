@@ -588,10 +588,16 @@ end, { desc = "the navigation n" })
 - `cols` and `rows`: the size of the screen area.
 - `bands`: one table per band, in order, each with `id`, `columns` and `floating`.
 - `columns`: one table per column, left to right, each with `width` as a number, `full_width` and `windows`.
-- `windows`: one table per window, top to bottom, each with `id` and either `rows`, a fixed height, or `weight`, an automatic height's weight. A window that shows a tiled plugin window this client opened also has `plugin_window`. A window that runs a program also has `name`, the name its border shows, with ` #n` when another window of the band has the same name, and `manual_name`, the name set by `gband.window.rename`, when it has one.
-- `floating`: one table per floating window, in the band's floating order, each with `id`, `width` and `full_width` as a column has them, `rows`, the box's height, and `col` and `row`, the box's top-left cell as placed in the screen area. A window that shows a plugin window this client opened also has `plugin_window`, and one that runs a program has `name` and `manual_name` as a window table has them. A window this client has minimized has `minimized`, true; other windows have no `minimized`.
+- `windows`: one table per window, top to bottom, each with `id` and either `rows`, a fixed height, or `weight`, an automatic height's weight. A window that shows a tiled plugin window this client opened also has `plugin_window`. A window that runs a program also has `name`, the name its border shows, with ` #n` when another window of the band has the same name, and `manual_name`, the name set by `gband.window.rename`, when it has one. A window this client has focused has `last_focus`, as described below.
+- `floating`: one table per floating window, in the band's floating order, each with `id`, `width` and `full_width` as a column has them, `rows`, the box's height, and `col` and `row`, the box's top-left cell as placed in the screen area. A window that shows a plugin window this client opened also has `plugin_window`, and one that runs a program has `name` and `manual_name` as a window table has them. A window this client has focused has `last_focus`. A window this client has minimized has `minimized`, true; other windows have no `minimized`.
+
+Each client counts the focuses it records, from 0 when it attaches.
+`last_focus` is the count at the window's last focus by this client, so a higher `last_focus` is a more recent focus.
+A window this client never focused has no `last_focus`, a reload keeps every `last_focus`, and a peek, described under `gband.window.focus`, changes none.
+This client draws the floating windows of a band that it has not minimized in this order, from bottom to top: those without `last_focus` in the order of `floating`, then the others by ascending `last_focus`.
 
 `gband.view()` returns `band`, the viewed band, `window`, the focused window or nil, `floating`, true while the band's floating layer has focus, `plugin_window`, the focused plugin window or nil, `table`, the active key table, and `cols` and `rows`, the size of the ribbon.
+While the focused window is one this client peeks, it also returns `peek`, true; otherwise it has no `peek`.
 
 Both can be called from any code that runs after loading.
 They describe the state when they are called: an action the running callback dispatched takes effect only after it returns.
@@ -668,9 +674,9 @@ end, { desc = "open a window as the band's first column" })
 These dispatch like actions, in the order they are called together with the callback's actions, and are errors outside a callback.
 A window or band number not in the layout is an error at the line of the call.
 
-- `gband.window.focus(window)` views the window's band and focuses the window. Focusing a window this client has minimized restores it, on top of the other floating windows.
+- `gband.window.focus(window, opts)` views the window's band and focuses the window. Focusing a window this client has minimized restores it, on top of the other floating windows. `opts` is optional: a table that holds at most `peek`, a boolean. With `{ peek = true }` it peeks the window instead, as described below.
 - `gband.window.minimize(window)` hides a floating window from this client only, until it is focused again. Other clients still draw it, and its program keeps its size. A window that is not floating is an error; a window already minimized stays minimized.
-- `gband.band.view(band)` views a band, focusing the window last focused there.
+- `gband.band.view(band)` views a band, focusing the window last focused there. Viewing the band already viewed ends a peek and otherwise changes nothing.
 - `gband.window.set_width(window, width)` sets the width of the window's column, or of its box when it floats, a number greater than 0 and at most 10000, and turns full width off.
 - `gband.window.set_height(window, { rows = n })` gives a fixed height; `gband.window.set_height(window, { weight = w })` gives an automatic height of weight `w`.
 - `gband.window.set_position(window, { col = c, row = r })` places a floating window's box with its top-left cell at `c` and `r`, kept inside the screen area. A window that is not floating is an error.
@@ -680,6 +686,20 @@ A window or band number not in the layout is an error at the line of the call.
 - `gband.window.rename(window, name)` sets the window's manual name, which its border and every client show instead of its title or command, with leading and trailing whitespace trimmed. A `name` that is nil or empty clears it. A drawn window of a plugin window, a `name` that is neither a string nor nil, and a `name` holding a control character are errors.
 
 Keys sent this way run no binding and leave the active key table alone.
+
+A peek shows a window without recording it.
+It focuses the window as a focus does: it views the window's band, shows the window's layer as active, moves the camera to it and emits `FocusChanged`, and `BandChanged` when the band changes.
+It records nothing: every `last_focus`, the stacking order, the window and the layer each band remembers and the set of minimized windows stay as they were, and a minimized window is not restored.
+While the peek lasts, the window is the focused window, drawn above every other floating window of its band, also when this client has minimized it, and shown and a pointer target.
+A peeked tiled window is drawn as the focused tile is, under the floating windows.
+
+The peek ends with a new focus, recorded as usual, when any focus other than a peek happens, when another window is peeked, or when the viewed band changes.
+A focus of the peeked window itself records it and restores and raises the window, and emits no `FocusChanged`, since the focused window stays the same.
+The peek ends without a new focus when `gband.band.view` views the band already viewed, when this client minimizes the peeked window, when the peeked window leaves the layout, and when a reload succeeds, which closes every plugin window; a reload that fails keeps the peek.
+Focus then returns to the window this client last focused in the viewed band, recording nothing, or, when that window is gone or minimized, goes where viewing the band sends it.
+The window returns to its place in the stacking order, or is hidden again when it is minimized.
+
+An `opts` that is neither nil nor a table, a field of `opts` other than `peek`, and a `peek` that is not a boolean are errors at the line of the call, and the call dispatches nothing.
 
 ```lua
 gband.keymap.set("prefix", "e", function()
@@ -712,6 +732,7 @@ It is one of two kinds:
 | `on_input` | both | function of the number and a text | none |
 | `on_close`, `on_resize` | both | function | none |
 | `on_mouse` | both | function of the number and a mouse table | none |
+| `hover` | both | boolean: `on_mouse` also runs as the pointer moves over the plugin window | `false` |
 | `row`, `col` | floating | integer of at least 0, or `"center"` | `"center"` |
 | `width`, `height` | floating | integer of at least 1 | half the ribbon |
 | `border` | floating | a boolean, or a border table `{ sides = ..., chars = ... }` | `true` |
@@ -734,15 +755,15 @@ Both remove control characters first, so they measure text as plugin windows and
 - `gband.win.set_lines(win, lines)` replaces the lines.
 - `gband.win.scroll(win, count)` moves the first shown line, and `gband.win.set_cursor(win, line)` the cursor line. With `cursorline`, the plugin window scrolls just enough to keep the cursor line shown and draws it in `PluginWindowCursorLine`.
 - `gband.win.focus(win)` focuses a floating plugin window, or the window of a tiled plugin window.
-- `gband.win.set_config(win, config)` changes a floating plugin window's `row`, `col`, `width`, `height`, `border` or `title`.
+- `gband.win.set_config(win, config)` changes a floating plugin window's `row`, `col`, `width`, `height`, `border` or `title`. Any other field, `hover` included, is an error.
 - `gband.win.close(win)` closes a plugin window, and for a tiled one its window too. Closing a plugin window that is not open does nothing.
-- `gband.win.info(win)` returns `id`, `kind`, `focused`, `window`, `top`, `cursor`, `line_count`, `cols` and `rows`, and for a floating plugin window `row`, `col`, `width` and `height`.
+- `gband.win.info(win)` returns `id`, `kind`, `focused`, `window`, `top`, `cursor`, `line_count`, `cols`, `rows` and `hover`, and for a floating plugin window `row`, `col`, `width` and `height`.
 - `gband.win.list()` returns the open plugin windows' numbers in ascending order.
 
 The focused plugin window is the focused floating plugin window, otherwise the plugin window shown in the focused window.
 A newly opened floating plugin window with `focus` takes focus; moving focus or viewing another band leaves no floating plugin window focused.
-The exception is a focus change caused by the floating plugin window's own `keys` function: it stays focused until the next key press, whether the change happens at once or arrives later from the server, as an opened window's focus does.
-So a list can run actions on Enter and stay open for the next choice.
+The exception is a focus change caused by the floating plugin window's own `keys` function, or, for one opened with `hover = true`, by its `on_mouse` for any kind of event: it stays focused until the next key press, whether the change happens at once or arrives later from the server, as an opened window's focus does.
+So a list can run actions on Enter and stay open for the next choice, and preview the window under the pointer with a peek.
 While a plugin window is focused, every key the bindings leave unused goes to it and never to a program, and so does every paste.
 A key goes to the first of these that takes it:
 
@@ -766,13 +787,18 @@ A wheel step that a binding takes, such as Alt with the wheel in the default con
 With `on_mouse`, those defaults are off.
 `on_mouse` runs for a press on the plugin window that no `root` binding takes, a press its `root` binding declines included, for that press's drags and release, and for each wheel step over it in any mode that no binding takes, a declined one included, with the plugin window's number and a table:
 
-- `kind`: `"press"`, `"release"`, `"drag"` or `"scroll"`.
-- `button`: `"left"`, `"middle"` or `"right"`, except for `"scroll"`.
+- `kind`: `"press"`, `"release"`, `"drag"`, `"scroll"` or `"move"`.
+- `button`: `"left"`, `"middle"` or `"right"`, except for `"scroll"` and `"move"`.
 - `direction`: `"up"`, `"down"`, `"left"` or `"right"`, for `"scroll"`.
 - `content_col`, `content_row`: the cell inside the border, from 0, nil on the border.
 - `line`: the line shown at `content_row`, from 1, nil past the last line.
 - `box_col`, `box_row`, `box_width`, `box_height`: the cell inside the plugin window's box, border included, from 0, and the box's size as drawn, all nil when the pointer is off the plugin window.
 - `ctrl`, `alt`, `shift`: the modifiers held.
+
+A plugin window opened with `hover = true` also gets `on_mouse` with the kind `"move"` each time the pointer moves, with no button held, to another cell over it, in any mode and whether or not it has focus, with the same fields as a press and no `button`.
+A move focuses nothing and emits no built-in event.
+A plugin window without `hover` gets no move, and one with `hover` but without `on_mouse` ignores moves.
+`hover` is fixed when the plugin window opens.
 
 A press focuses the plugin window first, and `on_mouse` runs as a callback of the plugin that opened it.
 The drag actions move and resize floating plugin windows as they do floating windows, running `on_resize` for each new size.
@@ -1495,6 +1521,7 @@ A frame is a table:
 | `z` | floating only: the stacking order; a higher `z` is drawn over a lower one |
 | `focused` | floating only: whether the window has focus |
 | `cols`, `rows` | tiled only: the size of the drawn window's content |
+| `hover` | optional: `true` for the client to report moves over the plugin window to the windows provider's `mouse` |
 
 A style is a table of `fg` and `bg`, each `#rrggbb` or a palette index from 0 to 255, and the booleans `bold`, `italic`, `underline`, `reverse` and `dim`; a missing field is the default.
 
@@ -1534,7 +1561,7 @@ The windows provider's functions, each called when the event it names happens:
 | function | called |
 |---|---|
 | `key(id, name, text)` | a key reaches the focused plugin window `id`: `name` is its canonical name, and `text` the character it types, or nil |
-| `mouse(id, event)` | a mouse event reaches the plugin window `id`: `event` holds `kind` (`"press"`, `"release"`, `"drag"` or `"scroll"`), `button` or `direction`, `content_col` and `content_row` or nil on the border, `box_col`, `box_row`, `box_width` and `box_height` or nil off the plugin window, and `ctrl`, `alt` and `shift` |
+| `mouse(id, event)` | a mouse event reaches the plugin window `id`: `event` holds `kind` (`"press"`, `"release"`, `"drag"` or `"scroll"`, or `"move"` for a motion with no button held over a plugin window whose latest frame sets `hover`), `button` or `direction`, `content_col` and `content_row` or nil on the border, `box_col`, `box_row`, `box_width` and `box_height` or nil off the plugin window, and `ctrl`, `alt` and `shift` |
 | `paste(id, text)` | text is pasted into the focused plugin window `id` |
 | `set_box(id, col, row, width, height)` | the mouse moved or resized the floating plugin window `id` |
 | `raise(id)` | a press on the plugin window `id` focuses it |

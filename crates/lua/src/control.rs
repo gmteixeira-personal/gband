@@ -8,6 +8,7 @@ use gband_core::view::ViewAction;
 use mlua::{Lua, Table, Value};
 
 use crate::api::{self, Dispatch, WindowInput};
+use crate::check;
 use crate::error::ConfigError;
 use crate::keys::parse_key;
 use crate::options::{self, Width};
@@ -430,6 +431,7 @@ fn layout(lua: &Lua, (): ()) -> mlua::Result<Table> {
                     plugin_windows::plugin_window_of(lua, window)?,
                 )?;
                 set_names(&item, &state, window)?;
+                item.set("last_focus", state.last_focus.get(&window).copied())?;
                 windows.push(item)?;
             }
             described.set("windows", windows)?;
@@ -451,6 +453,7 @@ fn layout(lua: &Lua, (): ()) -> mlua::Result<Table> {
                 plugin_windows::plugin_window_of(lua, record.window)?,
             )?;
             set_names(&item, &state, record.window)?;
+            item.set("last_focus", state.last_focus.get(&record.window).copied())?;
             if state.minimized.contains(&record.window) {
                 item.set("minimized", true)?;
             }
@@ -482,6 +485,9 @@ fn view(lua: &Lua, (): ()) -> mlua::Result<Table> {
         .is_some_and(|window| state.layout.floating(WindowId(window)).is_some());
     table.set("floating", floating)?;
     table.set("plugin_window", plugin_windows::focused(lua)?)?;
+    if state.peek {
+        table.set("peek", true)?;
+    }
     table.set("table", state.table)?;
     table.set("cols", state.ribbon.cols)?;
     table.set("rows", state.ribbon.rows)?;
@@ -499,12 +505,36 @@ fn checked<T>(lua: &Lua, what: &str, result: Result<T, String>) -> mlua::Result<
     result.map_err(|message| ConfigError::raise(lua, format!("{what}: {message}")))
 }
 
-fn focus(lua: &Lua, target: Value) -> mlua::Result<()> {
+fn focus(lua: &Lua, (target, options): (Value, Value)) -> mlua::Result<()> {
     let what = "gband.window.focus";
     dispatching(lua, what)?;
     let window = checked(lua, what, window(lua, &target))?;
-    let action = Action::View(ViewAction::FocusWindow(window));
-    api::queue(lua, Dispatch::Action(action), what)
+    let action = if checked(lua, what, peek_option(&options))? {
+        ViewAction::Peek(window)
+    } else {
+        ViewAction::FocusWindow(window)
+    };
+    api::queue(lua, Dispatch::Action(Action::View(action)), what)
+}
+
+fn peek_option(options: &Value) -> Result<bool, String> {
+    let options = match options {
+        Value::Nil => return Ok(false),
+        Value::Table(options) => options,
+        other => {
+            return Err(format!(
+                "the options must be a table, found {}",
+                other.type_name()
+            ));
+        }
+    };
+    for pair in options.pairs::<Value, Value>() {
+        let (name, _) = pair.map_err(|error| error.to_string())?;
+        if !matches!(&name, Value::String(text) if *text == "peek") {
+            return Err(format!("the options take no field `{}`", field_name(&name)));
+        }
+    }
+    Ok(check::optional_boolean_field(options, "peek", "a boolean")?.unwrap_or(false))
 }
 
 fn minimize(lua: &Lua, target: Value) -> mlua::Result<()> {
