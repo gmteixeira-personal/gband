@@ -98,8 +98,10 @@ The prefix key, Ctrl+Space, gives the keys below their gband meaning, in one of 
   Escape, Enter and any other key with no binding after Ctrl+Space are discarded.
 - **floating**: every window floats, as on a desktop like MS Windows, and Ctrl+Space opens the window list.
   Each floating window has `[_][□][X]` on its title bar to minimize, maximize and close it, and its border moves and resizes it with the left button; see [Mouse](#mouse).
-  The window list holds `New window`, `Settings` and every window; `j`, `k` and the arrows move, Enter picks, and Escape or `q` closes it.
-  Its keys from the table below, such as `D`, `:`, `?` and `s`, run from the list, and Ctrl+Space again sends Ctrl+Space to the window.
+  The window list holds `New window`, `Settings` and every window, the most recent first, each with a shortcut: `n`, `s`, then `1` to `9` and `0`.
+  `j`, `k`, the arrows and the pointer move through it, and moving onto a window shows it, from another band or minimized, without changing anything yet.
+  Enter, a click or a shortcut keeps the window shown, and Escape or `q` returns to how things were when the list opened.
+  Its other keys from the table below, such as `D`, `:` and `?`, keep the window shown and run from the list, and Ctrl+Space again sends Ctrl+Space to it.
 
 The key style is chosen in the settings window, which Ctrl+Space then `s` opens; see [Settings](#settings).
 
@@ -601,7 +603,7 @@ The viewed band's label is bold, and the others are dim, or in the theme's muted
 A label is the band's position, so the labels stay `1`, `2`, `3` after a band is removed.
 Bands that do not fit above the last row, and bands past the 35th, are not shown.
 With the direct key style, the sidebar shows `P` after the prefix key until the key sequence ends.
-With the floating key style, the first row shows `⊞` instead of the mode, and clicking it opens the window list.
+With the floating key style, the first row shows `∷` instead of the mode, and clicking it opens the window list.
 Clicking a band's label with the left button views that band, in any mode.
 Turning the wheel over the sidebar views the band below or above the viewed band, one band per step, in any mode.
 

@@ -1,0 +1,128 @@
+size 80x24 cursor 22:62 hidden
+ 0|
+ 1|
+ 2|                    ╭────────────────────────────[_][□][X]─╮
+ 3|                    │$╭────────────────────────────[_][□][X]─╮
+ 4|                    │ │$                                     │
+ 5|                    │ │                                      │
+ 6|                    │ │                                      │
+ 7|                    │ │  ┌windows──────────────[□][X]─┐      │
+ 8|                    │ │  │ n New window               │      │
+ 9|                    │ │  │ s Settings                 │      │
+10|                    │ │  ├────────────────────────────┤      │
+11|                    │ │  │ 1 mail              band 1 │      │
+12|                    │ │  │ 2 logs              band 1 │      │
+13|                    │ │  │ 3 notes (minimized) band 1 │      │
+14|                    │ │  │ 4 top               band 2 │      │
+15|                    │ │  │ 5 low               band 2 │      │
+16|                    │ │  └─────────────────────? keys─┘      │
+17|                    │ │                                      │
+18|                    │ │                                      │
+19|                    │ │                                      │
+20|                    │ │                                      │
+21|                    ╰─│                                      │
+22|                      ╰──────────────────────────────────────╯
+23|
+--
+2:20-48 fg=8
+2:49-57 fg=8 bold
+2:58-59 fg=8
+3:20 fg=8
+3:22-61 fg=4 bold
+4:20 fg=8
+4:22 fg=4 bold
+4:61 fg=4 bold
+5:20 fg=8
+5:22 fg=4 bold
+5:61 fg=4 bold
+6:20 fg=8
+6:22 fg=4 bold
+6:61 fg=4 bold
+7:20 fg=8
+7:22 fg=4 bold
+7:25 fg=8 bg=0
+7:26-32 fg=4 bg=0 bold
+7:33-46 fg=8 bg=0
+7:47-52 fg=7 bg=0 bold
+7:53-54 fg=8 bg=0
+7:61 fg=4 bold
+8:20 fg=8
+8:22 fg=4 bold
+8:25 fg=8 bg=0
+8:26 fg=7 bg=0
+8:27 fg=4 bg=0 bold
+8:28-53 fg=7 bg=0
+8:54 fg=8 bg=0
+8:61 fg=4 bold
+9:20 fg=8
+9:22 fg=4 bold
+9:25 fg=8 bg=0
+9:26 fg=7 bg=0
+9:27 fg=4 bg=0 bold
+9:28-53 fg=7 bg=0
+9:54 fg=8 bg=0
+9:61 fg=4 bold
+10:20 fg=8
+10:22 fg=4 bold
+10:25-54 fg=8 bg=0
+10:61 fg=4 bold
+11:20 fg=8
+11:22 fg=4 bold
+11:25 fg=8 bg=0
+11:26 fg=7 bg=0
+11:27 fg=4 bg=0 bold
+11:28-53 fg=7 bg=0
+11:54 fg=8 bg=0
+11:61 fg=4 bold
+12:20 fg=8
+12:22 fg=4 bold
+12:25 fg=8 bg=0
+12:26 fg=7 bg=0
+12:27 fg=4 bg=0 bold
+12:28-53 fg=7 bg=0
+12:54 fg=8 bg=0
+12:61 fg=4 bold
+13:20 fg=8
+13:22 fg=4 bold
+13:25 fg=8 bg=0
+13:26 fg=7 bg=0 dim
+13:27 fg=4 bg=0 bold
+13:28-53 fg=7 bg=0 dim
+13:54 fg=8 bg=0
+13:61 fg=4 bold
+14:20 fg=8
+14:22 fg=4 bold
+14:25 fg=8 bg=0
+14:26 fg=7 bg=0
+14:27 fg=4 bg=0 bold
+14:28-53 fg=7 bg=0
+14:54 fg=8 bg=0
+14:61 fg=4 bold
+15:20 fg=8
+15:22 fg=4 bold
+15:25 fg=8 bg=0
+15:26-53 fg=0 bg=4
+15:54 fg=8 bg=0
+15:61 fg=4 bold
+16:20 fg=8
+16:22 fg=4 bold
+16:25-46 fg=8 bg=0
+16:47-52 fg=4 bg=0 bold
+16:53-54 fg=8 bg=0
+16:61 fg=4 bold
+17:20 fg=8
+17:22 fg=4 bold
+17:61 fg=4 bold
+18:20 fg=8
+18:22 fg=4 bold
+18:61 fg=4 bold
+19:20 fg=8
+19:22 fg=4 bold
+19:61 fg=4 bold
+20:20 fg=8
+20:22 fg=4 bold
+20:61 fg=4 bold
+21:20-21 fg=8
+21:22 fg=4 bold
+21:61 fg=4 bold
+22:22-61 fg=4 bold

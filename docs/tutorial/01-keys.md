@@ -39,7 +39,7 @@ Bindings made after `gband.keystyle.use()` replace the style's binding for the s
 
 The floating style binds far less after the prefix key, because its windows float and the mouse drives them.
 Its prefix key opens the window list, and a key that its `prefix` table binds, such as `D` or `?`, runs from that list.
-A key you bind in `prefix` becomes a shortcut of the list too.
+A key you bind in `prefix` becomes a shortcut of the list too, except `n`, `s` and the digits: in the list they pick a line, `New window`, `Settings` or a window, and do not run a `prefix` binding of the same key.
 Its `leftmouse` and `rightmouse` bindings in `root` act only on a floating window's border and empty ribbon, and return `false` for every other click, so a click in a window still focuses it and reaches the program, as the next section explains.
 
 ## Modes

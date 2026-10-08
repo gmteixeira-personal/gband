@@ -184,7 +184,7 @@ fn apps_character_with_the_floating_style() {
     assert_eq!(
         shown_rows(&bar),
         [
-            (0, "⊞".to_owned()),
+            (0, "∷".to_owned()),
             (2, "1".to_owned()),
             (3, "2".to_owned())
         ]
@@ -197,7 +197,7 @@ fn apps_character_after_the_leader() {
     let mut state = drawn(80);
     state.table = "prefix".to_owned();
     let bar = presented(&config, state);
-    assert_eq!(rows(&bar)[0], "⊞");
+    assert_eq!(rows(&bar)[0], "∷");
 }
 
 #[test]
@@ -217,7 +217,7 @@ fn apps_character_without_the_desktop_plugin() {
         "gband.keystyle.use('floating')\ngband.plugin('gband.sidebar')\ngband.action['desktop.list'] = nil",
     );
     let bar = presented(&config, with_ribbon(drawn(80)));
-    assert_eq!(rows(&bar)[0], "⊞");
+    assert_eq!(rows(&bar)[0], "∷");
     clean(&press_row_zero(&config));
     assert_eq!(plugin_windows(&config), 0);
 }

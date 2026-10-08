@@ -12,7 +12,7 @@ local MARKER_ROWS = 1
 local FIRST_BAND_ROW = 2
 local WHEEL = { down = "focus_band_down", up = "focus_band_up" }
 
-local APPS = "⊞"
+local APPS = "∷"
 
 local placed = false
 

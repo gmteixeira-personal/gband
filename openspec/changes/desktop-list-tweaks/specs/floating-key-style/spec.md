@@ -239,6 +239,10 @@ While the window list is open, it SHALL build its rows again when `WindowOpened`
 - **WHEN** the window list is open and the user presses `j` then Enter
 - **THEN** the window list is closed and the settings window is open and focused
 
+#### Scenario: Settings from a preview
+- **WHEN** the window list of "Preview by keys" previews window 2 and the user presses `s`
+- **THEN** the window list is closed, the settings window is open and focused, and window 3 is focused and drawn over window 2
+
 #### Scenario: Scroll a long list
 - **WHEN** the client's terminal is 80×24 with no bar, the viewed band holds 20 floating windows named `window 1` to `window 20`, which this client opened and focused in that order, and the user opens the window list and presses End
 - **THEN** the list is 15 rows high and shows 13 rows between its borders

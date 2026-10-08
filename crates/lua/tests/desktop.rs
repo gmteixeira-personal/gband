@@ -81,6 +81,29 @@ fn defaults_without_a_colorscheme() {
     let config = scratch.loaded();
     assert!(config.errors.is_empty(), "{:?}", config.errors);
     assert_eq!(resolved(&config, "DesktopButton"), ["bold=true"]);
-    assert_eq!(resolved(&config, "DesktopClose"), ["bold=true", "fg=1"]);
+    assert_eq!(resolved(&config, "DesktopClose"), ["bold=true"]);
     assert_eq!(resolved(&config, "DesktopMinimized"), ["dim=true"]);
+    assert_eq!(resolved(&config, "DesktopShortcut"), ["bold=true"]);
+    let definition: Vec<String> = eval(
+        &config,
+        "local out = {} for k, v in pairs(gband.hl.get('DesktopShortcut')) do out[#out + 1] = k .. '=' .. tostring(v) end return out",
+    );
+    assert_eq!(definition, ["link=KeyListKey"]);
+}
+
+#[test]
+fn close_button_in_every_bundled_theme() {
+    let scratch = Scratch::new("desktop-close-themes");
+    scratch.write(&format!("{JOB}gband.keystyle.use('floating')"));
+    let config = scratch.loaded();
+    assert!(config.errors.is_empty(), "{:?}", config.errors);
+    let themes: Vec<String> = eval(&config, "return gband.settings.themes()");
+    assert!(!themes.is_empty());
+    for theme in themes {
+        clean(&run_job(
+            &config,
+            &format!("assert(gband.colorscheme('{theme}'))"),
+        ));
+        assert_eq!(resolved(&config, "DesktopClose"), ["bold=true"], "{theme}");
+    }
 }

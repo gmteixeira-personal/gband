@@ -20,7 +20,7 @@ See proposal.md for the motivation. This change starts after window-peek is arch
 **Goals:**
 - Escape restores exactly the view at opening: the viewed band, the focused window, the stacking order of every band and the minimized windows.
 - Every way to move the selection previews the same way, and every way to close the list either keeps or cancels.
-- Only Lua changes: `desktop.lua` and `sidebar.lua`, with their tests and docs.
+- Only Lua changes: `desktop.lua`, `sidebar.lua` and `win.lua`, with their tests and docs.
 
 **Non-Goals:**
 - Any change to the window menu, the title bar buttons' placement, or the floating preset's bindings.
@@ -101,6 +101,14 @@ Keep is a normal focus of the peeked window: it records the focus, which raises 
 The list stores what its last preview showed for rule 2, as the band and the window, and sets it again after each preview.
 
 **Closing by other code cancels.** The window's `on_close` runs only when other code closes it: the plugin clears `menu` before its own closes. A successful reload closes plugin windows without `on_close`, and window-peek ends the peek in the same step, so no previewed window outlives the list. A failed reload keeps the list open and the peek with it.
+
+### The hold passes to a window the held window opens
+`s` from a preview selects `Settings`, which dispatches the return to the band at opening, then picks it, which cancels and opens the settings window, all in one `keys` function. The view change takes effect after the function returns, and its `FocusChanged` or `BandChanged` would take focus from the settings window: the plugin-windows capability held only the window whose `keys` function ran, and that window, the list, has closed. Enter and a click do not meet this, because their selection previewed in an earlier key or press.
+
+So `gband.win` passes the hold on: while a floating plugin window is held, a floating plugin window that becomes the focused one, by opening with `focus` or by `gband.win.focus`, while the held window is still focused or after it has closed, is held in its place until the user presses another key. The plugin-windows delta states it as a rule of "Focused plugin window".
+
+- *Alternative*: open the settings window from a `FocusChanged` handler once the view has returned. Rejected: the plugin windows module unfocuses after every handler of that event has run, so the window would lose focus all the same.
+- *Alternative*: let `s` keep instead of cancel while a window is previewed. Rejected: `Settings` would then act on what the list shows rather than the state at opening, unlike Enter and a click.
 
 ### Keys of the list
 The list's own keys come first: the menu keys of "Desktop menus", then `n`, `s` and the ten digits. The digits are reserved even when no entry has one, so `5` with three windows does nothing rather than run a `prefix 5` binding: a key that changes meaning with the number of open windows would surprise. Every other `prefix` binding keeps and runs, as before. A `prefix` binding of a digit stays reachable from the key list, which `?` opens.

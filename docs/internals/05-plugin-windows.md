@@ -395,6 +395,9 @@ end
 ```lua defaults/lua/gband/win.lua
 local function raise(win)
   if focused_float ~= win.id then
+    if held ~= nil and (held == focused_float or wins[held] == nil) then
+      held = win.id
+    end
     unfocus()
   end
   focused_float = win.id
@@ -406,6 +409,7 @@ end
 
 Raising a floating window gives it focus and puts it on top of the stack.
 Both the window that lost focus and the one that gained it are touched, since each draws its border differently.
+When the window losing focus is held, or the held window has closed, the hold passes to the raised window: code that closes a held window and opens another, as the desktop's window list does when it opens the settings, keeps the new window focused through the view change it dispatched first.
 
 ```lua defaults/lua/gband/win.lua
 local function close(win, run_callback, request)

@@ -402,11 +402,14 @@ local key_form = require("gband.keyform")
 
 ```lua defaults/lua/gband/desktop.lua
 gband.hl.default("DesktopButton", { bold = true })
-gband.hl.default("DesktopClose", { fg = 1, bold = true })
+gband.hl.default("DesktopClose", { bold = true })
 gband.hl.default("DesktopMinimized", { dim = true })
+gband.hl.default("DesktopShortcut", { link = "KeyListKey" })
 ```
 
 The groups are defined as defaults when the module is first required, as every bundled plugin does.
+`DesktopClose` is bold like the other buttons, with no colour of its own, so `[X]` takes the border's colour.
+`DesktopShortcut` links to the key list's `KeyListKey`, so a key the user can press looks the same in both lists, and every bundled theme colours it through that link.
 
 ```lua defaults/lua/gband/desktop.lua
 local MINIMIZE, MAXIMIZE, RESTORE, CLOSE = "[_]", "[□]", "[❐]", "[X]"
@@ -417,10 +420,15 @@ local MENU_MIN_WIDTH = 16
 local MENU_HEIGHT = 7
 local HINT = "? keys"
 local LETTERS = "abcdefghijklmnopqrstuvwxyz"
+local DIGITS = "1234567890"
 local MENU_KEYS = {
   j = true, down = true, k = true, up = true, pagedown = true, pageup = true,
   home = true, ["end"] = true, enter = true, esc = true, q = true,
 }
+local LIST_KEYS = { n = true, s = true }
+for index = 1, #DIGITS do
+  LIST_KEYS[DIGITS:sub(index, index)] = true
+end
 local CORNERS = {
   { "left", "top" },
   { "right", "top" },
@@ -429,7 +437,7 @@ local CORNERS = {
 }
 ```
 
-The glyphs of the buttons, the sizes of the two menus, the keys the menus keep for themselves in key form, and the four corner zones in the order they are checked.
+The glyphs of the buttons, the sizes of the two menus, the keys the menus keep for themselves in key form, the digits of the window list's shortcuts in order, the keys the window list keeps on top of those, `n`, `s` and the ten digits, and the four corner zones in the order they are checked.
 
 ```lua defaults/lua/gband/desktop.lua
 local remembered = {}
@@ -658,7 +666,7 @@ local function close_menu()
 end
 ```
 
-The menus are floating plugin windows, so `is_open` asks `gband.win.list()` rather than trusting the plugin's own variable, and `close_menu` forgets the menu before it closes the window, so its `on_close` finds nothing to forget.
+The menus are floating plugin windows, so `is_open` asks `gband.win.list()` rather than trusting the plugin's own variable, and `close_menu` forgets the menu before it closes the window, so its `on_close` finds nothing to forget and cancels nothing.
 
 ```lua defaults/lua/gband/desktop.lua
 local function pad(text, width)
@@ -690,28 +698,59 @@ local function border_line(left, right, width, title, spans)
   return line
 end
 
+local function entry_cells(row, inner, style)
+  if inner < 2 then
+    return { { text = pad(gband.ui.truncate(row.label, inner), inner), hl = style } }
+  end
+  local band = row.band or ""
+  local room = inner - 2 - (row.band and gband.ui.width(band) + 1 or 0)
+  local label = gband.ui.truncate(row.label, math.max(0, room))
+  local rest = gband.ui.truncate(pad(label, math.max(0, inner - 2 - gband.ui.width(band))) .. band, inner - 2)
+  return {
+    { text = row.shortcut or " ", hl = row.shortcut and style ~= "PluginWindowCursorLine" and "DesktopShortcut" or style },
+    { text = " " .. pad(rest, inner - 2), hl = style },
+  }
+end
+
 local function row_line(row, width, selected)
   if row.separator then
     return { { text = "├" .. string.rep("─", math.max(0, width - 2)) .. "┤", hl = "PluginWindowBorder" } }
   end
   local inner = math.max(0, width - 4)
-  return {
-    { text = "│", hl = "PluginWindowBorder" },
-    {
-      text = " " .. pad(gband.ui.truncate(row.text, inner), inner) .. " ",
-      hl = selected and "PluginWindowCursorLine" or row.hl or "PluginWindow",
-    },
-    { text = "│", hl = "PluginWindowBorder" },
-  }
+  local style = selected and "PluginWindowCursorLine" or row.hl or "PluginWindow"
+  local line = { { text = "│", hl = "PluginWindowBorder" }, { text = " ", hl = style } }
+  if row.label then
+    for _, span in ipairs(entry_cells(row, inner, style)) do
+      line[#line + 1] = span
+    end
+  else
+    line[#line + 1] = { text = pad(gband.ui.truncate(row.text, inner), inner), hl = style }
+  end
+  line[#line + 1] = { text = " ", hl = style }
+  line[#line + 1] = { text = "│", hl = "PluginWindowBorder" }
+  return line
 end
 ```
 
 A menu has no border of its own: a plugin window's border can show a title, but nothing at its right end, where the buttons go.
 So the menu draws its frame in its lines: a top or bottom border with an optional title and right-aligned spans, placed as decorations are, and a row that is either an entry between two side borders or a separator.
+A window menu entry has a `text`, cut and padded to the inner width.
+A window list entry has a `label` instead, and `entry_cells` lays out its cells: the shortcut or a space, a space, the label, spaces, and the band part, ending on the last cell.
+The label is cut first, so that a space always separates it from the band part, and the shortcut and band part stay readable.
+Outside the selected row the shortcut takes `DesktopShortcut` and the other cells `row.hl`, which is `DesktopMinimized` for a minimized window; the selected row is one bar of `PluginWindowCursorLine`, shortcut included.
 
 ```lua defaults/lua/gband/desktop.lua
 local function shown_rows()
   return math.max(1, gband.win.info(menu.win).height - 2)
+end
+
+local function reveal()
+  local shown = shown_rows()
+  if menu.selected < menu.top then
+    menu.top = menu.selected
+  elseif menu.selected > menu.top + shown - 1 then
+    menu.top = menu.selected - shown + 1
+  end
 end
 
 local function draw()
@@ -720,11 +759,6 @@ local function draw()
   end
   local info = gband.win.info(menu.win)
   local shown = math.max(0, info.height - 2)
-  if menu.selected < menu.top then
-    menu.top = menu.selected
-  elseif menu.selected > menu.top + shown - 1 then
-    menu.top = menu.selected - shown + 1
-  end
   menu.top = math.max(1, math.min(menu.top, #menu.rows - shown + 1))
   local lines = { border_line("┌", "┐", info.width, menu.title, menu.buttons()) }
   for offset = 0, shown - 1 do
@@ -736,7 +770,8 @@ local function draw()
 end
 ```
 
-`draw` keeps the selected entry in view by moving the first shown row the least amount, then writes every line.
+`reveal` moves the first shown row the least amount that shows the selected entry, and only code that moves the selection calls it.
+`draw` only keeps the first shown row inside the rows, so a wheel step that scrolls the window list away from its selection stays scrolled until the selection moves, and a change of the rows or the height keeps a full page shown.
 It reads the menu's size from `gband.win.info`, which gives the size after the ribbon cut the box, so a small terminal draws a smaller frame.
 
 ```lua defaults/lua/gband/desktop.lua
@@ -746,10 +781,58 @@ local function entry_from(index, step)
   end
   return menu.rows[index] and index or nil
 end
+```
+
+`entry_from` finds the first entry from a row on in one direction, skipping separators.
+
+```lua defaults/lua/gband/desktop.lua
+local function opening_band(opening)
+  local bands = gband.layout().bands
+  for _, band in ipairs(bands) do
+    if band.id == opening.band then
+      return band.id
+    end
+  end
+  local band = bands[opening.position] or bands[#bands]
+  return band and band.id
+end
+
+local function view_opening(opening)
+  local band = opening_band(opening)
+  if band then
+    gband.band.view(band)
+  end
+  return band
+end
+```
+
+The window list records the band it opened on by its id and its position.
+`view_opening` views that band, or the band now at its position, or the last band when it has left, with `gband.band.view` even when the client views it already: viewing the viewed band ends a peek and returns focus to the window last focused there, which is the window focused at opening, since previews record nothing.
+
+```lua defaults/lua/gband/desktop.lua
+local function preview(row)
+  local view = gband.view()
+  if row.window then
+    if view.window ~= row.window then
+      gband.window.focus(row.window, { peek = true })
+    end
+    menu.shown = { band = row.band_id, window = row.window }
+    return
+  end
+  local band = opening_band(menu.opening)
+  if band and (view.peek or view.band ~= band) then
+    gband.band.view(band)
+  end
+  menu.shown = { band = band, window = menu.opening.window }
+end
 
 local function select(index)
   if index then
     menu.selected = index
+    reveal()
+    if menu.kind == "list" then
+      preview(menu.rows[index])
+    end
     draw()
   end
 end
@@ -770,8 +853,10 @@ local function page(by)
 end
 ```
 
-Moving the selection skips separators.
-`page` moves by the rows shown, and lands on the first or last entry past either end.
+Every selection in the window list previews: a window entry peeks its window with `gband.window.focus(id, { peek = true })`, which views its band and draws it on top, minimized or not, and records nothing; `New window` and `Settings` return to the band at opening.
+A preview that would show what the view already shows dispatches nothing, so moving through an untouched list emits no `FocusChanged`.
+`menu.shown` keeps the band and window the last preview shows, for the press handler below.
+Moving the selection skips separators, and `page` moves by the rows shown, landing on the first or last entry past either end.
 
 ```lua defaults/lua/gband/desktop.lua
 local function pick(index)
@@ -779,8 +864,23 @@ local function pick(index)
   if not row or row.separator then
     return
   end
+  local closed = menu
   close_menu()
-  row.act()
+  row.act(closed)
+end
+
+local function keep()
+  close_menu()
+  local view = gband.view()
+  if view.peek then
+    gband.window.focus(view.window)
+  end
+end
+
+local function cancel()
+  local closed = menu
+  close_menu()
+  view_opening(closed.opening)
 end
 
 local function own(fn)
@@ -792,7 +892,10 @@ local function own(fn)
 end
 ```
 
-Picking closes the menu before the entry acts, so an entry that opens another plugin window gives it focus.
+Picking closes the menu before the entry acts, so an entry that opens another plugin window gives it focus, and hands the entry the closed menu, whose band at opening `New window` and `Settings` return to.
+The window list closes in one of two ways.
+`keep` focuses the window the view peeks with `gband.window.focus`, which records the focus, raises the window and restores it when minimized; it is a focus of the focused window, so it emits no `FocusChanged`.
+`cancel` returns to the band at opening.
 `own` wraps a key function so it acts only on the menu that is open now.
 
 ```lua defaults/lua/gband/desktop.lua
@@ -819,11 +922,20 @@ local function on_mouse(win, event)
   if not (menu and menu.win == win) then
     return
   end
+  if event.kind == "move" then
+    local target = target_at(event)
+    if target and target.entry and target.entry ~= menu.selected then
+      select(target.entry)
+    end
+    return
+  end
   if event.kind == "scroll" then
-    if event.direction == "down" then
-      step(1)
-    elseif event.direction == "up" then
-      step(-1)
+    local by = event.direction == "down" and 1 or event.direction == "up" and -1 or 0
+    if menu.kind == "list" then
+      menu.top = math.max(1, math.min(menu.top + by, #menu.rows - shown_rows() + 1))
+      draw()
+    elseif by ~= 0 then
+      step(by)
     end
     return
   end
@@ -852,8 +964,9 @@ end
 ```
 
 Without a border, a box cell and a content cell are the same, and the plugin finds what is under the pointer from `box_row`: the top border holds the buttons, the bottom border nothing, and the rows between hold entries.
+A move, which only the window list receives since only it is opened with `hover`, selects the entry under the pointer and so previews it; a move over a separator or the frame changes nothing.
+A wheel step scrolls the window list by one row and keeps its selection, so the row under a still pointer stays selected; in the window menu it moves the selection.
 A left press selects an entry or arms a button, and only a release on the same entry or button acts, as on a desktop.
-The wheel moves the selection.
 
 ```lua defaults/lua/gband/desktop.lua
 local function first_entry(rows)
@@ -866,7 +979,11 @@ local function first_entry(rows)
 end
 
 local function open_menu(spec, at)
-  close_menu()
+  if list_open() then
+    keep()
+  else
+    close_menu()
+  end
   gband.keymap.enter("root")
   spec.selected = first_entry(spec.rows)
   spec.top = 1
@@ -881,8 +998,8 @@ local function open_menu(spec, at)
     home = own(function() select(entry_from(1, 1)) end),
     ["end"] = own(function() select(entry_from(#menu.rows, -1)) end),
     enter = own(function() pick(menu.selected) end),
-    escape = own(close_menu),
-    q = own(close_menu),
+    escape = own(spec.close),
+    q = own(spec.close),
   }
   for key, fn in pairs(spec.keys or {}) do
     keys[key] = own(fn)
@@ -896,6 +1013,7 @@ local function open_menu(spec, at)
     row = at and math.max(0, at.row) or "center",
     keys = keys,
     on_mouse = on_mouse,
+    hover = spec.hover,
     on_resize = function(win)
       if menu and menu.win == win then
         draw()
@@ -903,7 +1021,11 @@ local function open_menu(spec, at)
     end,
     on_close = function(win)
       if menu and menu.win == win then
+        local closed = menu
         menu = nil
+        if closed.opening then
+          view_opening(closed.opening)
+        end
       end
     end,
   })
@@ -911,9 +1033,11 @@ local function open_menu(spec, at)
 end
 ```
 
-`open_menu` closes any other menu first, so at most one is open, and returns to `root`, so the keys that follow reach the menu.
+`open_menu` keeps what an open window list shows before it replaces the list, so a right press that opens a menu over a preview leaves the previewed window focused, and closes any other menu first, so at most one is open.
+It returns to `root`, so the keys that follow reach the menu.
 It records whether a press of this plugin is still on its way to the `MousePressed` handler, the press that opened the menu, which that handler must not take as a press outside.
-The menu's keys are the movement keys, Enter, Escape and `q`, plus any the menu adds.
+The menu's keys are the movement keys, Enter, and Escape and `q`, which run the menu's `close`, plus any the menu adds.
+The window list opens with `hover = true`, so it receives moves and stays focused through the previews its `on_mouse` starts, and its `on_close`, which runs only when other code closes it, cancels.
 
 ```lua defaults/lua/gband/desktop.lua
 local function ribbon()
@@ -924,7 +1048,9 @@ end
 local function widest(rows)
   local found = 0
   for _, row in ipairs(rows) do
-    if row.text then
+    if row.width then
+      found = math.max(found, row.width)
+    elseif row.text then
       found = math.max(found, gband.ui.width(row.text))
     end
   end
@@ -942,59 +1068,130 @@ local function band_label(position)
 end
 ```
 
+`widest` takes a window list entry's width from the entry, since its cells are more than its label.
 The band label repeats the sidebar's rule from [09](09-sidebar-and-errors.md): positions 1 to 9, then letters.
 
 ```lua defaults/lua/gband/desktop.lua
-local function list_rows(minimizing)
-  local layout = gband.layout()
+local function program_windows(layout)
   local found, bands = {}, 0
   for position, band in ipairs(layout.bands) do
     local before = #found
     for _, column in ipairs(band.columns) do
       for _, window in ipairs(column.windows) do
         if window.name then
-          found[#found + 1] = { position = position, window = window }
+          found[#found + 1] = { position = position, band = band.id, window = window }
         end
       end
     end
     for _, box in ipairs(band.floating) do
       if box.name then
-        found[#found + 1] = { position = position, window = box, minimized = box.minimized or box.id == minimizing }
+        found[#found + 1] = { position = position, band = band.id, window = box }
       end
     end
     if #found > before then
       bands = bands + 1
     end
   end
-  local rows = {
-    { key = "new", text = "New window", act = function() gband.action.open_window({ floating = true }) end },
-    { key = "settings", text = "Settings", act = function() gband.settings.open() end },
-  }
-  if #found > 0 then
-    rows[#rows + 1] = { separator = true }
+  return found, bands
+end
+
+local function recent_order(found)
+  local focused, order = {}, {}
+  for _, item in ipairs(found) do
+    if item.window.last_focus then
+      focused[#focused + 1] = item.window
+    end
+  end
+  table.sort(focused, function(a, b)
+    return a.last_focus > b.last_focus
+  end)
+  for _, window in ipairs(focused) do
+    order[#order + 1] = window.id
   end
   for _, item in ipairs(found) do
-    local id = item.window.id
-    local text = item.window.name
-    if bands >= 2 then
-      text = band_label(item.position) .. " " .. text
+    if not item.window.last_focus then
+      order[#order + 1] = item.window.id
     end
-    if item.minimized then
-      text = text .. " (minimized)"
-    end
-    rows[#rows + 1] = {
-      key = id,
-      text = text,
-      hl = item.minimized and "DesktopMinimized" or nil,
-      act = function() gband.window.focus(id) end,
-    }
   end
-  return rows
+  return order
 end
 ```
 
-The window list's rows: `New window`, `Settings`, then every window that runs a program, in layout order across every band, tiled windows first and floating ones in their floating order.
-The band label appears once windows sit in two or more bands, and a window this client minimized is marked and dimmed.
+`program_windows` collects every window that runs a program, in layout order across every band, tiled windows first and floating ones in their floating order, and counts the bands that hold one.
+`recent_order` puts the windows this client focused first, from the highest `last_focus` down, then the windows it never focused, in layout order.
+
+```lua defaults/lua/gband/desktop.lua
+local function list_entry(index, item, minimized, bands)
+  local id = item.window.id
+  local label = item.window.name .. (minimized and " (minimized)" or "")
+  local band = bands >= 2 and "band " .. band_label(item.position) or nil
+  return {
+    key = id,
+    window = id,
+    band_id = item.band,
+    shortcut = index <= #DIGITS and DIGITS:sub(index, index) or nil,
+    label = label,
+    band = band,
+    width = 2 + gband.ui.width(label) + (band and 1 + gband.ui.width(band) or 0),
+    hl = minimized and "DesktopMinimized" or nil,
+    act = function() gband.window.focus(id) end,
+  }
+end
+
+local function list_rows(order, minimizing)
+  local found, bands = program_windows(gband.layout())
+  order = order or recent_order(found)
+  local by_id, kept = {}, {}
+  for _, item in ipairs(found) do
+    by_id[item.window.id] = item
+  end
+  for _, id in ipairs(order) do
+    if by_id[id] then
+      kept[#kept + 1] = id
+      by_id[id].kept = true
+    end
+  end
+  for _, item in ipairs(found) do
+    if not item.kept then
+      kept[#kept + 1] = item.window.id
+    end
+  end
+  local rows = {
+    {
+      key = "new",
+      shortcut = "n",
+      label = "New window",
+      width = 2 + gband.ui.width("New window"),
+      act = function(closed)
+        local band = view_opening(closed.opening)
+        gband.action.open_window({ floating = true, band = band })
+      end,
+    },
+    {
+      key = "settings",
+      shortcut = "s",
+      label = "Settings",
+      width = 2 + gband.ui.width("Settings"),
+      act = function(closed)
+        view_opening(closed.opening)
+        gband.settings.open()
+      end,
+    },
+  }
+  if #kept > 0 then
+    rows[#rows + 1] = { separator = true }
+  end
+  for index, id in ipairs(kept) do
+    local item = by_id[id]
+    rows[#rows + 1] = list_entry(index, item, item.window.minimized or id == minimizing, bands)
+  end
+  return rows, kept
+end
+```
+
+A window entry's shortcut is the digit at its index, `1` to `9` and then `0`, and none past the tenth.
+Its band part, `band ` and the band label, shows once windows sit in two or more bands, and a window this client minimized is marked and dimmed.
+`list_rows` keeps the order it is given, drops the windows that left and adds the others after them in layout order, and returns the order it used, so the list's order is set when it opens and its shortcuts follow the rows.
 `minimizing` names a window whose minimize this callback just dispatched, which the layout does not show yet.
 
 ```lua defaults/lua/gband/desktop.lua
@@ -1017,10 +1214,21 @@ local function list_shortcuts()
   local keys = {}
   for _, binding in ipairs(gband.keymap.list("prefix")) do
     local key = binding.key
-    if key ~= "prefix" and not key_form.is_mouse(key) and not MENU_KEYS[key_form(key)] then
+    if key ~= "prefix" and not key_form.is_mouse(key) and not MENU_KEYS[key_form(key)] and not LIST_KEYS[key_form(key)] then
       keys[key] = function()
-        close_menu()
+        keep()
         gband.keymap.run("prefix", key)
+      end
+    end
+  end
+  for key in pairs(LIST_KEYS) do
+    keys[key] = function()
+      for index, row in ipairs(menu.rows) do
+        if row.shortcut == key then
+          select(index)
+          pick(index)
+          return
+        end
       end
     end
   end
@@ -1030,7 +1238,8 @@ end
 
 The list is at least 24 cells wide and at most 15 rows high.
 Its hint shows only while `prefix` binds `?`.
-Every other `prefix` binding becomes a key of the list that closes it and runs the binding, except the prefix key itself, mouse names and the menu's own keys.
+Every other `prefix` binding becomes a key of the list that keeps and then runs the binding, so the binding reads the view the list shows; the prefix key itself, mouse names, the menu's own keys and the list's own keys are left out.
+`n`, `s` and the digits select the entry with that shortcut and pick it, and a digit no entry has does nothing.
 
 ```lua defaults/lua/gband/desktop.lua
 local function toggle_list_height()
@@ -1052,9 +1261,27 @@ local function show_list(at)
     gband.win.focus(menu.win)
     return
   end
-  local rows = list_rows()
+  local rows, order = list_rows()
   local width, height = list_size(rows)
-  local spec = { kind = "list", title = LIST_TITLE, rows = rows, width = width, height = height }
+  local view = gband.view()
+  local position = 1
+  for index, band in ipairs(gband.layout().bands) do
+    if band.id == view.band then
+      position = index
+    end
+  end
+  local spec = {
+    kind = "list",
+    title = LIST_TITLE,
+    rows = rows,
+    order = order,
+    width = width,
+    height = height,
+    hover = true,
+    opening = { band = view.band, position = position, window = view.window },
+    shown = { band = view.band, window = view.window },
+    close = cancel,
+  }
   function spec.buttons()
     return {
       { text = spec.restore and RESTORE or MAXIMIZE, hl = "DesktopButton" },
@@ -1068,7 +1295,7 @@ local function show_list(at)
     if button == 1 then
       toggle_list_height()
     else
-      close_menu()
+      cancel()
     end
   end
   spec.keys = list_shortcuts()
@@ -1076,29 +1303,38 @@ local function show_list(at)
 end
 ```
 
-The list's `[□]` gives it the ribbon's height from row 0 and remembers the row and height to give back.
+The list's `[□]` gives it the ribbon's height from row 0 and remembers the row and height to give back, and its `[X]` cancels.
 `show_list` focuses an open list instead of opening a second one, unless a right press asks for it at the pointer, in which case it opens anew there.
+It records the band and window the view shows at opening, which is also what the list shows until its first preview.
 
 ```lua defaults/lua/gband/desktop.lua
 local function rebuild(minimizing)
   if not list_open() then
     return
   end
-  local chosen = menu.rows[menu.selected]
-  local key = chosen and chosen.key
-  menu.rows = list_rows(minimizing)
-  menu.selected = first_entry(menu.rows)
+  local before = menu.selected
+  local key = menu.rows[before].key
+  menu.rows, menu.order = list_rows(menu.order, minimizing)
+  local selected = nil
   for index, row in ipairs(menu.rows) do
-    if key ~= nil and row.key == key then
-      menu.selected = index
+    if row.key == key then
+      selected = index
     end
   end
+  if not selected then
+    local row = menu.rows[before]
+    selected = row and not row.separator and before or entry_from(#menu.rows, -1)
+  end
+  menu.selected = selected
   if not menu.restore then
     local width, height = list_size(menu.rows)
     local info = gband.win.info(menu.win)
     if width ~= info.width or height ~= info.height then
       gband.win.set_config(menu.win, { width = width, height = height })
     end
+  end
+  if selected ~= before or menu.rows[selected].key ~= key then
+    reveal()
   end
   draw()
 end
@@ -1109,7 +1345,9 @@ local function minimize(id)
 end
 ```
 
-While the list is open, layout and focus events rebuild its rows, keeping the selected entry when it is still there, and resizing the list unless its height is maximized.
+While the list is open, layout and focus events rebuild its rows in the order taken at opening, and resize the list unless its height is maximized.
+The selection stays on its entry, or takes the entry on the same row, or the last entry, and the first shown row moves only when the selection changed entry or row.
+A rebuild previews nothing: it runs on the `FocusChanged` of the list's own peeks, and the next key or move previews.
 
 ```lua defaults/lua/gband/desktop.lua
 local function window_menu(id, at)
@@ -1140,6 +1378,7 @@ local function window_menu(id, at)
     rows = rows,
     width = math.min(cols, math.max(MENU_MIN_WIDTH, widest(rows) + 4, gband.ui.width(box.name) + 2)),
     height = math.min(MENU_HEIGHT, height),
+    close = close_menu,
   }
   function spec.buttons()
     return {}
@@ -1152,7 +1391,7 @@ local function window_menu(id, at)
 end
 ```
 
-The window menu holds five entries for one window, the second chosen by the window's state when it opens.
+The window menu holds five entries for one window, the second chosen by the window's state when it opens, and closes with nothing to keep or cancel.
 
 ```lua defaults/lua/gband/desktop.lua
 local function pointer(event)
@@ -1289,18 +1528,31 @@ local function dismiss(event)
   if event.target == "plugin_window" and event.plugin_window == menu.win then
     return
   end
+  local closed = menu
   close_menu()
+  if closed.kind ~= "list" then
+    return
+  end
+  if event.window then
+    gband.window.focus(event.window)
+    return
+  end
+  local view = gband.view()
+  if view.band == closed.shown.band and view.window == closed.shown.window then
+    view_opening(closed.opening)
+  end
 end
 ```
 
 `desktop.menu`, bound to `rightmouse`, opens the window menu on a border or the list on empty ribbon, and declines the rest, so a right click in content still pastes.
 `dismiss` is the `MousePressed` handler: it runs for every press in every table, after the press is handled, and closes the menu unless the press is on the menu or is the one that opened it.
 The press itself still takes its effect, so a click on a window both closes the list and focuses the window.
+Closing the window list then takes the press's result into account: a press on a window focuses that window, which ends a peek of it with a recorded focus, also from a title bar button that `desktop.press` took without focusing; a press that changed the view, such as a sidebar band label whose handler ran first, is left alone; any other press cancels.
 
 ```lua defaults/lua/gband/desktop.lua
 local function leader()
   if list_open() and gband.view().plugin_window == menu.win then
-    close_menu()
+    keep()
     gband.keymap.run("prefix", "prefix")
     return
   end
@@ -1308,7 +1560,7 @@ local function leader()
 end
 ```
 
-The leader opens the list, or, pressed while the list has focus, closes it and runs the prefix key's own binding, `send_prefix` with the floating preset, so a program can still receive Ctrl+Space.
+The leader opens the list, or, pressed while the list has focus, keeps what it shows and runs the prefix key's own binding, `send_prefix` with the floating preset, so the window the list showed receives Ctrl+Space.
 
 ```lua defaults/lua/gband/desktop.lua
 local function float_tiled(layout)

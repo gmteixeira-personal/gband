@@ -910,6 +910,32 @@ fn own_key_holds_the_float_focus_until_the_next_key() {
 }
 
 #[test]
+fn float_opened_by_a_held_float_takes_the_hold() {
+    let client = Client::new("win-hold-passes", "");
+    client.run(
+        "win = gband.win.open({ keys = { enter = function(id)
+          gband.win.close(id)
+          gband.action.focus_column_right()
+          other = gband.win.open({})
+        end } })",
+    );
+    let win: u32 = client.global("win");
+    clean(&client.key(win, "enter"));
+    let focused = || client.eval::<bool>("return gband.win.info(other).focused");
+    let focus_changed = || {
+        clean(&client.config.runtime.emit(&Event::FocusChanged {
+            window: Some(WindowId(2)),
+            previous: Some(WindowId(1)),
+        }))
+    };
+    focus_changed();
+    assert!(focused());
+    clean(&client.config.runtime.release_plugin_windows());
+    focus_changed();
+    assert!(!focused());
+}
+
+#[test]
 fn default_key_does_not_hold_the_float_focus() {
     let client = Client::new("win-no-hold", "");
     client.run("win = gband.win.open({ lines = { 'a', 'b' } })");

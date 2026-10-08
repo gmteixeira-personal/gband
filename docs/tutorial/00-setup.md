@@ -44,7 +44,7 @@ gband.plugin("gband.sidebar")
 ```
 
 The sidebar is the column on the left.
-Its first row shows the mode, `I` for interactive and `N` for navigation, or `⊞` with the floating style, and the rows below list the bands.
+Its first row shows the mode, `I` for interactive and `N` for navigation, or `∷` with the floating style, and the rows below list the bands.
 [The sidebar](../plugins.md#the-sidebar-gbandsidebar) describes every row.
 
 The error list has no key yet.

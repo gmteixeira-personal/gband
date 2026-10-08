@@ -28,9 +28,7 @@ size 80x24 cursor 10:46 hidden
 4:30 fg=8 bg=0
 4:31-35 fg=4 bg=0 bold
 4:36-45 fg=8 bg=0
-4:46-54 fg=4 bold
-4:55-57 fg=1 bold
-4:58-59 fg=4 bold
+4:46-59 fg=4 bold
 5:20 fg=4 bold
 5:30 fg=8 bg=0
 5:31-44 fg=0 bg=4

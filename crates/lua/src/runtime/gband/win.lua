@@ -262,6 +262,9 @@ end
 
 local function raise(win)
   if focused_float ~= win.id then
+    if held ~= nil and (held == focused_float or wins[held] == nil) then
+      held = win.id
+    end
     unfocus()
   end
   focused_float = win.id
