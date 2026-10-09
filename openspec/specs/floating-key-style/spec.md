@@ -41,6 +41,7 @@ The floating preset, `gband.keystyle.floating`, SHALL first set up, with `gband.
 | `:` | `prefix :` | `prompt.open` | `run Lua` |
 | `N` | `prefix N` | `prompt.rename` | `rename the window` |
 | `s` | `prefix s` | the function `gband.settings.open` | `settings` |
+| `!` | `prefix !` | `reload` | `reload the configuration` |
 | `D` | `prefix D` | `detach` | `detach` |
 | Ctrl+Space | `prefix prefix` | `send_prefix` | `send the prefix key to the focused window` |
 
@@ -60,7 +61,7 @@ It SHALL bind no key in `root` and no mouse name in `prefix`. Last, it SHALL reg
 
 #### Scenario: Prefix bindings in order
 - **WHEN** `user/init.lua` calls only `gband.keystyle.use("floating")` and reads `gband.keymap.list("prefix")`
-- **THEN** the keys are `n`, `?`, `:`, `N`, `s`, `D` and `prefix`, in that order
+- **THEN** the keys are `n`, `?`, `:`, `N`, `s`, `!`, `D` and `prefix`, in that order
 - **AND** the entry for `n` has no action and the description `open a floating window`
 
 #### Scenario: Root bindings in order
@@ -540,7 +541,7 @@ While the window list is open, it SHALL build its rows again when `WindowOpened`
 
 #### Scenario: Key list from the list
 - **WHEN** the floating style is in use, the window list is open, and the user presses `?`
-- **THEN** a floating plugin window titled `prefix keys` is open and focused, with a line for each of `n`, `?`, `:`, `N`, `s`, `D` and `C-space`
+- **THEN** a floating plugin window titled `prefix keys` is open and focused, with a line for each of `n`, `?`, `:`, `N`, `s`, `!`, `D` and `C-space`
 
 #### Scenario: Prefix key keeps the preview
 - **WHEN** the window list of "Preview by keys" previews window 2 and the user presses `:`
@@ -561,6 +562,10 @@ While the window list is open, it SHALL build its rows again when `WindowOpened`
 #### Scenario: Window focused at opening closes
 - **WHEN** the window list of "Most recent first" is open, the user presses `j` four times, so that the list previews window 1, the program of window 3 exits, and the user presses Escape
 - **THEN** the window list is closed, and window 2 is focused and drawn over window 1
+
+#### Scenario: Reload from the key list
+- **WHEN** the floating style is in use, the window list is open, the user presses `?`, then `!`
+- **THEN** the configuration reloads as the configuration capability's "Forced reload" defines, the key list is closed, and `root` is active
 
 ### Requirement: Window menu
 The window menu SHALL be a desktop menu, as "Desktop menus" defines, for one floating window. Its title SHALL be the window's shown name. It SHALL have no buttons and no hint. Its entries SHALL be, in this order: `Close`; `Maximize`, or `Restore` while the window counts as maximized, as "Maximize, restore and tile" defines; `Minimize`; `Tile left`; and `Tile right`. Its width SHALL be the smallest of the ribbon area's width and the largest of 16, the widest entry plus 4, and the title's width plus 2. Its height SHALL be the smaller of 7 and the ribbon area's height.

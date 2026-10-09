@@ -103,32 +103,41 @@ The settings window SHALL have a border, the title `settings`, and its cursor li
 | 2 | `sidebar` | `off` when `gband.settings.sidebar()` returns `false`, `on` otherwise |
 | 3 | `keys` | the style `gband.keystyle.saved()` returns, or `modal` when it returns nil |
 | 4 | `I on new` | `on` when `gband.settings.interactive_on_new()` returns `true`, `off` otherwise |
+| last | `reload` | `ok` when `gband.errors()` returns an empty list, `1 error` when it holds one error, and the number of errors followed by ` errors` otherwise |
 
-The fourth line SHALL be present only when the third line shows `modal`. When the third line shows `direct` or `floating`, the window SHALL hold the first three lines only.
+The `I on new` line SHALL be present only when the third line shows `modal`, and the `reload` line SHALL then be the fifth. When the third line shows `direct` or `floating`, the window SHALL hold the first three lines and the `reload` line as its fourth.
 
 The cursor line SHALL start on the first line, except as "Reopen after a save" defines. The window's width SHALL be the smaller of 31 and the ribbon area's width. Its height SHALL be the smaller of the number of its lines plus 2 and the ribbon area's height. It SHALL be centered in the ribbon area, rounding the left and top offsets down. A line wider than the content area SHALL be cut at the content area's edge, as the plugin-windows capability defines.
 
 #### Scenario: Window opens
 - **WHEN** no setting is saved, the active colorscheme is `default`, and a binding function calls `gband.settings.open()`
-- **THEN** a focused floating plugin window titled `settings` shows `theme    default`, `sidebar  on`, `keys     modal` and `I on new off`, with the cursor line on the first line
+- **THEN** a focused floating plugin window titled `settings` shows `theme    default`, `sidebar  on`, `keys     modal`, `I on new off` and `reload   ok`, with the cursor line on the first line
 
 #### Scenario: Window beside the default sidebar
 - **WHEN** the default configuration is in use with the modal style on an 80×24 terminal and the settings window opens
-- **THEN** the window is 31 columns wide and 6 rows high, and spans columns 24 to 54 and rows 9 to 14 of the 79-column ribbon area
+- **THEN** the window is 31 columns wide and 7 rows high, and spans columns 24 to 54 and rows 8 to 14 of the 79-column ribbon area
 
 #### Scenario: Window with the direct style
 - **WHEN** `user/keystyle.lua` holds `return "direct"`, the default configuration is in use on an 80×24 terminal, and the settings window opens
-- **THEN** the window holds three lines, the last showing `keys     direct`
-- **AND** it is 31 columns wide and 5 rows high, and spans columns 24 to 54 and rows 9 to 13 of the 79-column ribbon area
+- **THEN** the window holds four lines, the third showing `keys     direct` and the fourth `reload   ok`
+- **AND** it is 31 columns wide and 6 rows high, and spans columns 24 to 54 and rows 9 to 14 of the 79-column ribbon area
 
 #### Scenario: Window with the floating style
 - **WHEN** `user/keystyle.lua` holds `return "floating"`, the default configuration is in use on an 80×24 terminal, and the settings window opens
-- **THEN** the window holds three lines, the last showing `keys     floating`
-- **AND** it is 31 columns wide and 5 rows high, and spans columns 24 to 54 and rows 9 to 13 of the 79-column ribbon area
+- **THEN** the window holds four lines, the third showing `keys     floating` and the fourth `reload   ok`
+- **AND** it is 31 columns wide and 6 rows high, and spans columns 24 to 54 and rows 9 to 14 of the 79-column ribbon area
 
 #### Scenario: Saved values shown
 - **WHEN** `user/sidebar.lua` holds `return false`, `user/interactive_on_new.lua` holds `return true`, and the settings window opens
 - **THEN** its second line shows `sidebar  off` and its fourth line shows `I on new on`
+
+#### Scenario: Errors counted
+- **WHEN** `gband.errors()` returns two errors and the settings window opens
+- **THEN** its last line shows `reload   2 errors`
+
+#### Scenario: One error counted
+- **WHEN** `gband.errors()` returns one error and the settings window opens
+- **THEN** its last line shows `reload   1 error`
 
 #### Scenario: Opened from navigation mode
 - **WHEN** the modal style is in use and the user presses Ctrl+Space then `s`
@@ -160,6 +169,8 @@ On the `keys` line, Enter, `l` and Right SHALL save the next key style in the or
 
 On the `I on new` line, Enter, `h`, `l`, Left and Right SHALL save the other value, as "Saved I on new" defines: `false` when the line shows `on`, and `true` when it shows `off`.
 
+On the `reload` line, Enter SHALL dispatch `gband.action.reload`, as the configuration capability's "Forced reload" defines, and save nothing. `h`, `l`, Left and Right SHALL do nothing there.
+
 When `gband.config_dir` is nil, or a file cannot be written, the key SHALL save nothing and the settings window SHALL stay open. The key SHALL raise an error naming the file, such as `user/sidebar.lua`, and the reason, which the client reports as the configuration capability defines for an error in a callback. The setting in use SHALL stay.
 
 #### Scenario: Turn the sidebar off
@@ -170,12 +181,12 @@ When `gband.config_dir` is nil, or a file cannot be written, the key SHALL save 
 #### Scenario: Switch the key style
 - **WHEN** no `user/init.lua` exists, the modal style is saved, the settings window is open on its third line, and the user presses `l`
 - **THEN** `user/keystyle.lua` holds `return "direct"`
-- **AND** within a second the configuration reloads with the direct style's bindings, and the reopened settings window holds three lines
+- **AND** within a second the configuration reloads with the direct style's bindings, and the reopened settings window holds four lines
 
 #### Scenario: Switch to the floating style
 - **WHEN** no `user/init.lua` exists, the direct style is saved, the settings window is open on its third line, and the user presses Enter
 - **THEN** `user/keystyle.lua` holds `return "floating"`
-- **AND** within a second the configuration reloads with the floating style's bindings, and the reopened settings window holds three lines
+- **AND** within a second the configuration reloads with the floating style's bindings, and the reopened settings window holds four lines
 
 #### Scenario: Back from the modal style
 - **WHEN** no `user/init.lua` exists, the modal style is saved, the settings window is open on its third line, and the user presses `h`
@@ -210,6 +221,14 @@ When `gband.config_dir` is nil, or a file cannot be written, the key SHALL save 
 #### Scenario: Dismiss
 - **WHEN** the settings window is open and the user presses Escape
 - **THEN** the window closes and no file in `user` changes
+
+#### Scenario: Reload from the settings window
+- **WHEN** a plugin's `client.lua` is rewritten from drawing `old` to drawing `new`, the settings window is open on its `reload` line, and the user presses Enter
+- **THEN** the client draws `new` and no file in `user` changes
+
+#### Scenario: Arrows on the reload line
+- **WHEN** the settings window is open on its `reload` line and the user presses `l`
+- **THEN** no configuration loads and no file in `user` changes
 
 #### Scenario: Cannot save
 - **WHEN** the `user` directory cannot be written and the user presses Enter on the settings window's second line
@@ -249,6 +268,8 @@ Enter SHALL save the theme of the cursor line, as "Saved theme" defines, and clo
 ### Requirement: Reopen after a save
 When a key of the settings window or the theme list saves a setting, the client SHALL remember the line of the settings window that the setting belongs to, until the next load ends. When that load succeeds, the client SHALL open the settings window and focus it, as `gband.settings.open()` does, with its cursor line on that line. This SHALL apply whatever configuration file is in use. A load that fails SHALL forget the line and open nothing, and so SHALL a load that no such save preceded.
 
+When Enter on the `reload` line dispatches the reload, the client SHALL remember that line until the forced reload has ended: its own load and the server's answer, as the configuration capability's "Forced reload" defines. The client SHALL then open the settings window and focus it with its cursor line on the `reload` line, whether the loads succeeded or failed. The window SHALL show the values as of that moment, and when it is still open, it SHALL show its lines again with those values.
+
 #### Scenario: Back on the same line
 - **WHEN** the settings window is open on its third line and the user presses Enter
 - **THEN** after the reload the settings window is open and focused, with the cursor line on its third line
@@ -261,6 +282,18 @@ When a key of the settings window or the theme list saves a setting, the client 
 #### Scenario: No reopen for an unrelated reload
 - **WHEN** the user closes the settings window with Escape and then saves `user/lua/extra.lua`
 - **THEN** the configuration reloads and no settings window opens
+
+#### Scenario: Back on the reload line
+- **WHEN** the modal style is in use, the settings window is open on its fifth line, `reload   ok`, and the user presses Enter
+- **THEN** after the reload the settings window is open and focused, with the cursor line on its fifth line
+
+#### Scenario: Failed reload counted
+- **WHEN** the settings window shows `reload   ok`, a plugin's `client.lua` is changed to raise `bad` on line 1, and the user presses Enter on the `reload` line
+- **THEN** after the reload the settings window is open and focused on its `reload` line, which shows `reload   1 error`
+
+#### Scenario: Server error counted
+- **WHEN** the settings window shows `reload   ok`, a plugin's `server.lua` is changed to raise `bad` on line 1, and the user presses Enter on the `reload` line
+- **THEN** after the reload the settings window's `reload` line shows `reload   1 error`
 
 ### Requirement: Offer on the first start
 The default configuration SHALL register a handler of `Attached`, as the lua-events capability defines. The handler SHALL call `gband.settings.open()` when `gband.config_dir` is not nil and `gband.settings.theme()`, `gband.settings.sidebar()` and `gband.keystyle.saved()` all return nil. A client emits `Attached` once, after it attaches, and never for a reload, so the offer SHALL open the settings window at most once per start of a client. Until one setting is saved, each start SHALL offer the settings window again.

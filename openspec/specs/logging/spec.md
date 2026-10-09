@@ -7,7 +7,7 @@ Defines how `gband` processes record diagnostics. The server runs without a term
 ## Requirements
 
 ### Requirement: Log to a file per role
-The `server`, `attach`, `list-sessions`, `kill-session` and `kill-server` subcommands SHALL write their logs to files in the log directory. No `gband` subcommand SHALL write log events to standard output or standard error. The `server` subcommand SHALL log to the `server` file series, and the `attach`, `list-sessions`, `kill-session` and `kill-server` subcommands to the `client` file series. Subcommands that other capabilities define, such as shell-completions' `completions` and `install-completions`, SHALL log only as those capabilities state. Each line SHALL carry a timestamp, the level, the event's source module and its message, with no terminal colour codes.
+The `server`, `attach`, `list-sessions`, `kill-session`, `kill-server`, `reload`, `errors`, `eval` and `cmd` subcommands SHALL write their logs to files in the log directory. No `gband` subcommand SHALL write log events to standard output or standard error. The `server` subcommand SHALL log to the `server` file series, and the `attach`, `list-sessions`, `kill-session`, `kill-server`, `reload`, `errors`, `eval` and `cmd` subcommands to the `client` file series. Subcommands that other capabilities define, such as shell-completions' `completions` and `install-completions`, SHALL log only as those capabilities state. Each line SHALL carry a timestamp, the level, the event's source module and its message, with no terminal colour codes.
 
 #### Scenario: Server logs to its own series
 - **WHEN** the user runs `gband server`
@@ -26,6 +26,11 @@ The `server`, `attach`, `list-sessions`, `kill-session` and `kill-server` subcom
 
 #### Scenario: Kill-session logs to the client series
 - **WHEN** the user runs `gband kill-session`
+- **THEN** a file whose name starts with `client.` and ends with `.log` exists in the log directory
+- **AND** no file of the `server` series was written by that run
+
+#### Scenario: Reload logs to the client series
+- **WHEN** the user runs `gband reload`
 - **THEN** a file whose name starts with `client.` and ends with `.log` exists in the log directory
 - **AND** no file of the `server` series was written by that run
 
@@ -93,7 +98,7 @@ When the log directory cannot be created or its file cannot be opened, `gband` S
 - **AND** the process exits with status 1
 
 ### Requirement: Events name their server
-Servers on different socket paths share one log directory and one file series per role. Every log event that the `server`, `attach`, `list-sessions`, `kill-session` and `kill-server` subcommands write after resolving their socket path SHALL carry that socket path, so the lines of one server can be told from another's.
+Servers on different socket paths share one log directory and one file series per role. Every log event that the `server`, `attach`, `list-sessions`, `kill-session`, `kill-server`, `reload`, `errors`, `eval` and `cmd` subcommands write after resolving their socket path SHALL carry that socket path, so the lines of one server can be told from another's.
 
 #### Scenario: Two servers in one file
 - **WHEN** servers named `a` and `b` run on the same day

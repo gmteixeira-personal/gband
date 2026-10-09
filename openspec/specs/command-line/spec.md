@@ -7,7 +7,7 @@ Defines the `gband` binary's command line: the subcommands it accepts, the help 
 ## Requirements
 
 ### Requirement: Subcommands run the session
-The `gband` binary SHALL accept the subcommands `server`, `attach`, `list-sessions`, `kill-session` and `kill-server`. When no subcommand is given, `gband` SHALL run `attach`, with every option given applied to it as if `attach` had been named. Each of these five subcommands SHALL start logging for its role and record one log event stating that it started, before doing anything else. Subcommands that other capabilities define, such as shell-completions' `completions` and `install-completions`, SHALL log only as those capabilities state. `gband server` SHALL run the session server the session-server capability defines, in the foreground, until its last session ends. `gband attach` SHALL run the client the client-attach capability defines. `gband list-sessions`, `gband kill-session` and `gband kill-server` SHALL list the sessions, end a session and stop the running server, as the session-server capability defines. No subcommand SHALL write log events to standard output or standard error.
+The `gband` binary SHALL accept the subcommands `server`, `attach`, `list-sessions`, `kill-session`, `kill-server`, `reload`, `errors`, `eval` and `cmd`. When no subcommand is given, `gband` SHALL run `attach`, with every option given applied to it as if `attach` had been named. Each of these nine subcommands SHALL start logging for its role and record one log event stating that it started, before doing anything else. Subcommands that other capabilities define, such as shell-completions' `completions` and `install-completions`, SHALL log only as those capabilities state. `gband server` SHALL run the session server the session-server capability defines, in the foreground, until its last session ends. `gband attach` SHALL run the client the client-attach capability defines. `gband list-sessions`, `gband kill-session` and `gband kill-server` SHALL list the sessions, end a session and stop the running server, as the session-server capability defines. `gband reload`, `gband errors`, `gband eval` and `gband cmd` SHALL act as the remote-control capability defines. No subcommand SHALL write log events to standard output or standard error.
 
 #### Scenario: Run the server
 - **WHEN** the user runs `gband server` with `SHELL=/bin/true`
@@ -48,24 +48,29 @@ The `gband` binary SHALL accept the subcommands `server`, `attach`, `list-sessio
 - **THEN** the client log file holds an event stating that the client started
 - **AND** the process exits with status 1
 
+#### Scenario: Run reload
+- **WHEN** the user runs `gband reload` with no server running
+- **THEN** the client log file holds an event stating that the client started
+- **AND** the process exits with status 1
+
 #### Scenario: Run kill-session
 - **WHEN** the user runs `gband kill-session` with no server running
 - **THEN** the client log file holds an event stating that the client started
 - **AND** the process exits with status 1
 
 ### Requirement: Help and version
-`gband -h` and `gband --help` SHALL each print usage to standard output that lists the `server`, `attach`, `list-sessions`, `kill-session` and `kill-server` subcommands and the `-s` option, marks `attach` as the subcommand run when none is given, and exit with status 0 without creating or writing a log file. `gband --version` SHALL print the binary's version and exit with status 0.
+`gband -h` and `gband --help` SHALL each print usage to standard output that lists the `server`, `attach`, `list-sessions`, `kill-session`, `kill-server`, `reload`, `errors`, `eval` and `cmd` subcommands and the `-s` option, marks `attach` as the subcommand run when none is given, and exit with status 0 without creating or writing a log file. `gband --version` SHALL print the binary's version and exit with status 0.
 
 #### Scenario: Print help
 - **WHEN** the user runs `gband --help`
-- **THEN** standard output lists the `server`, `attach`, `list-sessions`, `kill-session` and `kill-server` subcommands and the `-s` option
+- **THEN** standard output lists the `server`, `attach`, `list-sessions`, `kill-session`, `kill-server`, `reload`, `errors`, `eval` and `cmd` subcommands and the `-s` option
 - **AND** the `attach` entry states that it is the default subcommand
 - **AND** the process exits with status 0
 - **AND** no log file is created
 
 #### Scenario: Print help with the short flag
 - **WHEN** the user runs `gband -h`
-- **THEN** standard output lists the `server`, `attach`, `list-sessions`, `kill-session` and `kill-server` subcommands and the `-s` option
+- **THEN** standard output lists the `server`, `attach`, `list-sessions`, `kill-session`, `kill-server`, `reload`, `errors`, `eval` and `cmd` subcommands and the `-s` option
 - **AND** the process exits with status 0
 - **AND** no log file is created
 
@@ -95,7 +100,7 @@ The `gband` binary SHALL accept the subcommands `server`, `attach`, `list-sessio
 - **AND** no log file is created
 
 ### Requirement: Server selection
-The `server`, `attach` and `kill-server` subcommands SHALL address one server, identified by its socket path. Two options select it, and each SHALL be accepted before or after the subcommand:
+The `server`, `attach`, `kill-server`, `reload`, `errors`, `eval` and `cmd` subcommands SHALL address one server, identified by its socket path. Two options select it, and each SHALL be accepted before or after the subcommand:
 
 | option | selects |
 |---|---|
@@ -153,7 +158,7 @@ Giving both options, a name that breaks the rule, or an empty path SHALL be an i
 - **AND** the process exits with status 2
 
 ### Requirement: Session option
-The `gband` binary SHALL accept the option `-s <name>`, long form `--session <name>`, before or after the subcommand. It names a session as the session-server capability defines session names. When it is absent, the session name SHALL be `default`. `gband server`, `gband attach` and `gband kill-session` SHALL use it. When the name is not a valid session name, `gband` SHALL print one line to standard error stating the rule for session names and exit with status 2, without creating or writing a log file. When `-s` is given to `kill-server`, `list-sessions` or `test`, which do not select a session, `gband` SHALL print one line to standard error saying that the option does not apply to that subcommand and exit with status 2, without creating or writing a log file.
+The `gband` binary SHALL accept the option `-s <name>`, long form `--session <name>`, before or after the subcommand. It names a session as the session-server capability defines session names. When it is absent, the session name SHALL be `default`, except for `reload`, `errors`, `eval` and `cmd`: they SHALL use the session that the `GBAND_SESSION` environment variable names when it is set and holds a valid session name, and `default` otherwise, so that a command run in a gband window addresses that window's session. `gband server`, `gband attach`, `gband kill-session`, `gband reload`, `gband errors`, `gband eval` and `gband cmd` SHALL use it. When the name is not a valid session name, `gband` SHALL print one line to standard error stating the rule for session names and exit with status 2, without creating or writing a log file. When `-s` is given to `kill-server`, `list-sessions` or `test`, which do not select a session, `gband` SHALL print one line to standard error saying that the option does not apply to that subcommand and exit with status 2, without creating or writing a log file.
 
 #### Scenario: Option after the subcommand
 - **WHEN** the user runs `gband attach -s work`
@@ -179,6 +184,18 @@ The `gband` binary SHALL accept the option `-s <name>`, long form `--session <na
 - **WHEN** the user runs `gband test -s work`
 - **THEN** standard error says that `-s` does not apply to `test`
 - **AND** the process exits with status 2
+
+#### Scenario: Session of the window
+- **WHEN** the user runs `gband errors` without `-s` in a window of the session `work`
+- **THEN** it reports the session `work`
+
+#### Scenario: Option over the window's session
+- **WHEN** the user runs `gband reload -s other` in a window of the session `work`
+- **THEN** it reloads the clients of the session `other`
+
+#### Scenario: Outside a window
+- **WHEN** `GBAND_SESSION` is unset and the user runs `gband errors`
+- **THEN** it reports the session `default`
 
 ### Requirement: Server starting size
 `gband server` SHALL accept the option `--size <cols>x<rows>`, where both are whole numbers above 0. The session the server creates on start SHALL start at that screen area, as the session-server capability's "Session on start" defines. When the option is absent, that area SHALL be 80 columns by 24 rows. When the value is not of that form, `gband` SHALL print one line to standard error naming the value and the form `COLSxROWS`, and exit with status 2, without creating or writing a log file.

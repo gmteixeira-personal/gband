@@ -23,7 +23,7 @@ Every message in either direction SHALL be sent as one frame. A frame is a 4-byt
 - **AND** it keeps serving its other clients
 
 ### Requirement: Handshake
-The first frame a client sends SHALL be a hello. The hello's payload SHALL begin with the client's protocol version, encoded the same way in every protocol version, followed by the client's terminal size. The first frame the server sends SHALL answer it. The server SHALL decode the leading version on its own, and compare it with its own version before it decodes anything that follows it. When the versions differ, the answer SHALL reject the client and carry the server's protocol version, whatever bytes follow the version, and the server SHALL then close the connection. When the versions are equal and the rest of the hello decodes, the answer SHALL accept the client and carry the server's protocol version. The leading version and the answer SHALL keep the same encoding in every later protocol version, so that two versions can always detect each other. The fields after the leading version MAY change in a later protocol version. The current protocol version SHALL be 11.
+The first frame a client sends SHALL be a hello. The hello's payload SHALL begin with the client's protocol version, encoded the same way in every protocol version, followed by the client's terminal size. The first frame the server sends SHALL answer it. The server SHALL decode the leading version on its own, and compare it with its own version before it decodes anything that follows it. When the versions differ, the answer SHALL reject the client and carry the server's protocol version, whatever bytes follow the version, and the server SHALL then close the connection. When the versions are equal and the rest of the hello decodes, the answer SHALL accept the client and carry the server's protocol version. The leading version and the answer SHALL keep the same encoding in every later protocol version, so that two versions can always detect each other. The fields after the leading version MAY change in a later protocol version. The current protocol version SHALL be 12.
 
 #### Scenario: Matching versions
 - **WHEN** a version 2 client sends its hello to a version 2 server
@@ -79,6 +79,10 @@ The first frame a client sends SHALL be a hello. The hello's payload SHALL begin
 - **WHEN** a client speaking protocol version 10 sends its hello to a server speaking version 11
 - **THEN** the server rejects it with version 11 and closes the connection
 
+#### Scenario: Version 11 client meets a version 12 server
+- **WHEN** a client speaking protocol version 11 sends its hello to a server speaking version 12
+- **THEN** the server rejects it with version 12 and closes the connection
+
 ### Requirement: Client messages
 After an attach request, a client SHALL send only these messages:
 
@@ -94,8 +98,10 @@ After an attach request, a client SHALL send only these messages:
 | mouse | a window identifier, a mouse event kind, press, release, motion or wheel, its button or wheel direction, its content cell, and its Shift, Alt and Ctrl modifiers, as the input-encoding capability defines them |
 | rename | a window identifier, and the window's new manual name, or nothing to clear it |
 | detach | nothing |
+| reload | nothing; it asks the server for a forced reload, as the configuration capability's "Forced reload" defines |
+| control answer | a call number from a control message, and the answer to its operation, as "Control operations" in "Requests" defines |
 
-Window and band identifiers SHALL name windows and bands of the client's session. The server SHALL ignore a window identifier in a shown message that names no window of the client's session. The open window action SHALL name a band, optionally the window whose column the new column follows, optionally the new column's width, whether the window floats, whether the client asks to focus the new window, and what the window holds: either a program, which is optionally named as a command line or as an argument list, or plugin content with a request number. Every other action SHALL name a window. Consume or expel and move column SHALL also name their direction, left or right. Move window SHALL also name its direction, down or up. Toggle floating SHALL also name optionally the tiled window to tile after, and SHALL name either no layer, the floating layer or the tiled layer, as the session-server capability's "Session actions" defines. Set position SHALL also name a column and a row. Set width SHALL also name a width. Set height SHALL also name either a number of rows or a weight. Grow and shrink of a width and of a height SHALL also name a step. Move to place SHALL also name a reference window and a place: a new column left of the reference window's column, a new column right of it, above the reference window, or below it. A rename SHALL name a window that runs a program. A width, a weight and a step SHALL each be a fraction in lowest terms. A client SHALL NOT reuse a call number while its call is unanswered. A client that detaches SHALL send detach, then close the connection.
+Window and band identifiers SHALL name windows and bands of the client's session. The server SHALL ignore a window identifier in a shown message that names no window of the client's session. The open window action SHALL name a band, optionally the window whose column the new column follows, optionally the new column's width, whether the window floats, whether the client asks to focus the new window, and what the window holds: either a program, which is optionally named as a command line or as an argument list, or plugin content with a request number. Every other action SHALL name a window. Consume or expel and move column SHALL also name their direction, left or right. Move window SHALL also name its direction, down or up. Toggle floating SHALL also name optionally the tiled window to tile after, and SHALL name either no layer, the floating layer or the tiled layer, as the session-server capability's "Session actions" defines. Set position SHALL also name a column and a row. Set width SHALL also name a width. Set height SHALL also name either a number of rows or a weight. Grow and shrink of a width and of a height SHALL also name a step. Move to place SHALL also name a reference window and a place: a new column left of the reference window's column, a new column right of it, above the reference window, or below it. A rename SHALL name a window that runs a program. A width, a weight and a step SHALL each be a fraction in lowest terms. A client SHALL NOT reuse a call number while its call is unanswered. A client SHALL answer each control message with exactly one control answer that carries its call number. A client that detaches SHALL send detach, then close the connection.
 
 #### Scenario: Detach message
 - **WHEN** a client sends detach
@@ -171,6 +177,14 @@ Window and band identifiers SHALL name windows and bands of the client's session
 - **WHEN** a client sends move to place naming window 3, the reference window 5 and the place right of its column
 - **THEN** the server decodes the same windows and place
 
+#### Scenario: Reload message answered
+- **WHEN** an attached client sends a reload message
+- **THEN** the server loads its configuration again and then sends that client a reloaded message
+
+#### Scenario: Control message answered
+- **WHEN** the server sends an attached client a control message with call number 4 and the operation errors
+- **THEN** the client sends one control answer with call number 4
+
 ### Requirement: Server messages
 After the handshake, a server SHALL send only these messages:
 
@@ -192,6 +206,9 @@ After the handshake, a server SHALL send only these messages:
 | result | a call number from a command message, and either the command's result as a plain data value or an error message |
 | requirements | for each plugin the server requires in the client, its name and its requirement |
 | server error | the text of a configuration or plugin error of the server's Lua |
+| reloaded | nothing; the server's load that a reload message asked for has ended, and any error of it has been sent as a server error |
+| control | a call number chosen by the server, and one control operation, as "Control operations" in "Requests" defines |
+| control results | the answers to a control request, as "Requests" defines |
 
 The server SHALL send info exactly once, as its first message after accepting the hello, before any answer to a request. An executable's identity SHALL be the device and inode of the file the process was started from, taken when the process starts, so that replacing the file on disk, as a rebuild does, gives a new identity. The layout, snapshot, update, focus, opened, exited, window state and window name messages SHALL concern only the session the client attached to, and the result messages only the client's own calls. After the layout and the snapshots of an attach, the server SHALL send, in this order, a window name message for each window that runs a program, a window state message for each key of each window state of the session, one requirements message, the latest server error if any, and the queued events for the client; and only then any later message.
 
@@ -258,8 +275,18 @@ After the server's info, the first message a client sends SHALL be one request:
 | attach | a session name, and the client's working directory | the layout, then a snapshot of each window, of the session it attaches the client to |
 | list sessions | nothing | one sessions message, then it closes the connection |
 | kill session | a session name | killed once the session has ended, or no such session, then it closes the connection |
+| control | a session name, a target, and one control operation | control results once every addressed process has answered or timed out, or no such session, then it closes the connection |
 
-A sessions message SHALL hold, for each session, its name, the number of windows in its layout and the number of clients attached to it. The server SHALL close the connection, and record the reason in its log, when the first message after info is not a request, or when a request names an invalid session name. After a list or kill request, the client SHALL send nothing more. After an attach request, the client SHALL send only the messages "Client messages" defines.
+A sessions message SHALL hold, for each session, its name, the number of windows in its layout and the number of clients attached to it. The server SHALL close the connection, and record the reason in its log, when the first message after info is not a request, or when a request names an invalid session name. A control request's target SHALL be one of: the server; every client attached to the session; the server and every client attached to the session; one client attached to the session, named by its client number; or the client of the session that the remote-control capability's "Chosen client" defines. The server SHALL give each client that attaches a client number: a positive integer that no other client of that server has had while it runs. The control operations SHALL be:
+
+| operation | content | answer |
+|---|---|---|
+| reload | nothing | the process's load number after the load, and the load's error, or nothing when it succeeded |
+| errors | nothing | the process's load number, and its error list, as the remote-control capability's "Errors subcommand" defines |
+| eval | a chunk of Lua source, and a list of plain data arguments | the chunk's return values as plain data values, or an error message |
+| command | a command's full name, and its arguments as a plain data value | the command's result as a plain data value, or an error message |
+
+The server SHALL answer a control request with one control results message that holds one entry for each addressed process: the server first when the target includes the server, then the clients in ascending client number. Each entry SHALL name the process, the server or a client by its client number, and hold its answer, or no answer when the process did not answer in time. A target with no client, the chosen client included, SHALL give an empty list of entries. The server SHALL forward an operation for a client to that client as a control message, and SHALL NOT forward it to a client of another session. After a list, kill or control request, the client SHALL send nothing more. After an attach request, the client SHALL send only the messages "Client messages" defines.
 
 #### Scenario: Attach request
 - **WHEN** a client sends an attach request naming `work`
@@ -275,6 +302,18 @@ A sessions message SHALL hold, for each session, its name, the number of windows
 
 #### Scenario: Request round trip
 - **WHEN** an attach request naming `work` with the working directory `/tmp` is framed and decoded
+- **THEN** the decoded request equals the original
+
+#### Scenario: Control request answered by every client
+- **WHEN** two clients are attached to `work` and a third connection sends a control request for `work` with the target every client and the operation errors
+- **THEN** the server sends each attached client a control message, and then the third connection one control results message with two entries in ascending client number, and closes the connection
+
+#### Scenario: Control request for an absent session
+- **WHEN** a connection sends a control request naming `absent` to a server that hosts only `default`
+- **THEN** the server sends no such session and closes the connection
+
+#### Scenario: Control round trip
+- **WHEN** a control request naming `work`, the target client 2 and the operation eval with the source `return 1` and no argument is framed and decoded
 - **THEN** the decoded request equals the original
 
 ### Requirement: Plain data values

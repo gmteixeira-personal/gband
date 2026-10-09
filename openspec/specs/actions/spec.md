@@ -12,7 +12,7 @@ Every action SHALL be exactly one of three kinds:
 |---|---|---|
 | view | the client alone, with no message to the server | focus a neighbouring window, view another band |
 | session | the server, which applies it to the shared layout | open, close, consume or expel a window, change a column's width |
-| client | the client alone, outside the view | detach, send the prefix key to the focused window |
+| client | the client alone, outside the view | detach, send the prefix key to the focused window, reload the configuration |
 
 The drag actions, `drag_window`, `drag_resize_window` and `drag_band`, are client actions that act only while the client handles a mouse press, and then send session actions and move the camera as the mouse capability defines. One view action sends a message: `center_column`, while the floating layer is active, sends the placing of the focused floating window, as the layout-view capability's "Center the focused column" defines.
 
@@ -129,6 +129,7 @@ Every built-in action SHALL have one Lua name, under which `gband.action` holds 
 | `reset_window_height` | reset the height of the window | session |
 | `detach` | detach | client |
 | `send_prefix` | send the prefix key to the focused window | client |
+| `reload` | reload the configuration | client |
 | `drag_window` | move the window with the mouse | client |
 | `drag_resize_window` | resize the window with the mouse | client |
 | `drag_band` | slide the band or switch bands with the mouse | client |
@@ -160,3 +161,11 @@ Actions that the configuration capability's `gband.action.register` adds SHALL s
 #### Scenario: Minimize description
 - **WHEN** `gband.action.list()` is read
 - **THEN** the entry named `minimize_window` has the description `minimize the focused floating window`
+
+#### Scenario: Reload by name
+- **WHEN** a binding names `gband.action.reload` and its keys are pressed
+- **THEN** the client loads its configuration again and asks the server to load its own, as the configuration capability's "Forced reload" defines
+
+#### Scenario: Reload description
+- **WHEN** `gband.action.list()` is read
+- **THEN** the entry named `reload` has the description `reload the configuration`

@@ -210,6 +210,7 @@ With the modal key style, the bindings SHALL be: Ctrl+Space as the prefix, no bi
 | `:` | `prefix :` | open the Lua prompt, as the lua-prompt capability defines, which returns to interactive mode | client | |
 | `N` | `prefix N` | rename the focused window, as the window-names capability's "Rename prompt" defines, which returns to interactive mode | client | |
 | `s` | `prefix s` | open the settings window, as the settings capability defines, which returns to interactive mode | client | `settings` |
+| `!` | `prefix !` | reload the configuration, as the configuration capability's "Forced reload" defines, which returns to interactive mode | client | |
 | `D` | `prefix D` | detach | client | |
 | Escape | `prefix escape` | return to interactive mode | — | `interactive mode` |
 | Enter | `prefix enter` | return to interactive mode | — | `interactive mode` |
@@ -421,6 +422,19 @@ Where a scenario of this requirement names no key style, the modal key style is 
 - **WHEN** the direct key style is saved, no `user/init.lua` exists, and the user presses Ctrl+Space then `s`
 - **THEN** the settings window is open and focused
 
+#### Scenario: Reload the configuration
+- **WHEN** no `user/init.lua` exists, a plugin's `client.lua` is rewritten from drawing `old` to drawing `new`, and the user presses Ctrl+Space then `!`
+- **THEN** the client draws `new`
+- **AND** `root` is active
+
+#### Scenario: Reload with the direct key style
+- **WHEN** the direct key style is saved, no `user/init.lua` exists, a plugin's `client.lua` is rewritten from drawing `old` to drawing `new`, and the user presses Ctrl+Space then `!`
+- **THEN** the client draws `new`
+
+#### Scenario: Reset height keeps its key
+- **WHEN** no `user/init.lua` exists, the focused window has a fixed height, and the user presses Ctrl+Space then Shift+R
+- **THEN** the focused window's height is automatic again and no configuration loads
+
 #### Scenario: Colon reaches the focused window
 - **WHEN** no `user/init.lua` exists, `root` is active, and the user types `:`
 - **THEN** the focused window receives `:` and no prompt opens
@@ -455,6 +469,10 @@ Where a scenario of this requirement names no key style, the modal key style is 
 #### Scenario: Prefix binding from the window list
 - **WHEN** the floating key style is saved, no `user/init.lua` exists, and the user presses Ctrl+Space then Shift+D
 - **THEN** the client detaches
+
+#### Scenario: Reload from the window list
+- **WHEN** the floating key style is saved, no `user/init.lua` exists, a plugin's `client.lua` is rewritten from drawing `old` to drawing `new`, and the user presses Ctrl+Space then `!`
+- **THEN** the window list is closed and the client draws `new`
 
 ### Requirement: Report shown windows
 The client SHALL send the server a shown message naming its shown windows, as the layout-view capability defines them, once it has received the first layout after attaching. It SHALL send a new shown message whenever its shown windows change, whether a layout, a focus message, a view action or a change of its terminal's size changed them. It SHALL NOT send a shown message that names the same windows as the last one it sent.
