@@ -128,7 +128,7 @@ fn two_windows_first_focused(env: &TestEnv) -> Attached {
 fn in_window(env: &TestEnv, client: &mut Attached, args: &str, file: &str) -> Vec<Json> {
     let path = out_file(env, file);
     client.run(&format!(
-        "'{GBAND}' {args} > '{}'; echo done-{file}",
+        "'{GBAND}' {args} > '{}'; echo \"done-\"{file}",
         path.display()
     ));
     client.wait_for_line(&format!("done-{file}"));

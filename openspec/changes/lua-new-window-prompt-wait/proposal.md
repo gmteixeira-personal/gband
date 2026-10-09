@@ -7,6 +7,7 @@ Two specs already wait for the prompts before they act: `prompted_columns` in `t
 ## What Changes
 
 - "two shells are numbered in layout order" in `tests/lua/window_names_spec.lua` waits, after it opens the window, until the screen shows two `│$` prompts and the `sh #2` title, before it settles and takes the screenshot.
+- `in_window` in `tests/control.rs` types its marker as `echo "done-"<file>`. The gate for this change failed on `from_a_window_and_the_window_session`: in a worktree with a long path, the typed command wrapped in the 37-column tile and left `done-reload.json` alone on a row, so the wait ended before the command wrote its JSON file. The quotes keep the typed text from ever matching the output row.
 - Test code only: no behaviour, spec, screenshot or documentation changes.
 
 Out of scope:
@@ -26,6 +27,7 @@ None. The change edits tests only, so `.openspec.yaml` sets `skip_specs: true`.
 ## Impact
 
 - `tests/lua/window_names_spec.lua`: a stronger wait after opening a window.
+- `tests/control.rs`: a done marker that the echoed command line cannot match.
 - No product code, harness, Lua API, screenshot or documentation change.
 
 ## Coordination
@@ -38,4 +40,5 @@ None. The change edits tests only, so `.openspec.yaml` sets `skip_specs: true`.
 
 ### Expected Files
 - openspec/changes/lua-new-window-prompt-wait/
+- tests/control.rs
 - tests/lua/window_names_spec.lua
