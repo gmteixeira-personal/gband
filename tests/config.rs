@@ -173,7 +173,7 @@ fn sidebar_letter(screen: &Grid) -> String {
 }
 
 const SIDEBAR: &str = "lua/gband/sidebar.lua";
-const ROOT_LETTER: &str = "    return \"I\"\n";
+const ROOT_LETTER: &str = "    return multi and \"M\" or \"I\"\n";
 
 #[test]
 fn edited_bundled_sources_are_restored() {

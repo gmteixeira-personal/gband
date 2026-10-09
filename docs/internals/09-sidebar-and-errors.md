@@ -59,12 +59,12 @@ end
 The sidebar knows nothing of the presets: it asks `gband.keystyle.current()` which style `use` picked in this load.
 
 ```lua defaults/lua/gband/sidebar.lua
-local function mode_letter(active)
+local function mode_letter(active, multi)
   if floating_style() then
     return APPS
   end
   if active == "root" then
-    return "I"
+    return multi and "M" or "I"
   end
   local label = gband.keymap.label(active)
   local letter = label:match("^" .. utf8.charpattern) or ""
@@ -76,7 +76,7 @@ end
 ```
 
 With the floating style, row 0 always shows `∷`: its `prefix` table is active only until the leader handler returns to `root`, so a letter would always read `I`.
-Otherwise the mode letter is `I` in `root`, which the key styles call interactive mode.
+Otherwise the mode letter is `I` in `root`, which the key styles call interactive mode, or `M` there while multi mode is on, which `core.state()` reports as `multi`.
 Otherwise it is the first character of the table's label, from `gband.keymap.label`, as a capital: `N` for the modal style's `navigation`.
 A table that is not a mode has no label, and `label` returns its name.
 
@@ -116,7 +116,7 @@ local function lines_for(state, height)
     if marker then
       lines[1] = { { text = "!", hl = "SidebarError" } }
     else
-      lines[1] = { { text = mode_letter(state.table), hl = "SidebarMode" } }
+      lines[1] = { { text = mode_letter(state.table, state.multi), hl = "SidebarMode" } }
     end
     return lines, marker
   end
@@ -126,7 +126,7 @@ local function lines_for(state, height)
 A bar one row high shows only the marker, or the mode letter when there is no error.
 
 ```lua defaults/lua/gband/sidebar.lua
-  lines[1] = { { text = mode_letter(state.table), hl = "SidebarMode" } }
+  lines[1] = { { text = mode_letter(state.table, state.multi), hl = "SidebarMode" } }
   if marker then
     lines[height] = { { text = "!", hl = "SidebarError" } }
   end
@@ -174,7 +174,7 @@ While it is, the client draws no error banner over the windows; a sidebar hidden
 core.on_state(draw)
 ```
 
-`gband.core.on_state` calls `draw` whenever the key table, the viewed band, the number of bands or the error list changes.
+`gband.core.on_state` calls `draw` whenever the key table, the viewed band, the number of bands, multi mode or the error list changes.
 One function then covers everything the sidebar shows.
 
 ### Clicks and the wheel

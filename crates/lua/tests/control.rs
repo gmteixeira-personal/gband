@@ -815,6 +815,7 @@ fn bad_targets_are_errors() {
         ),
         ("gband.action.detach({})", "detach"),
         ("gband.action.reload({})", "reload"),
+        ("gband.action.toggle_multi({})", "toggle_multi"),
         ("gband.action.drag_resize_window({ edges = {} })", "`edges`"),
         (
             "gband.action.drag_resize_window({ edges = { 'middle' } })",
@@ -1600,4 +1601,33 @@ fn peeked_focus() {
     );
     let view: Table = eval(&config, "return gband.view()");
     assert_eq!(view.get::<Option<bool>>("peek").unwrap(), None);
+}
+
+#[test]
+fn multi_mode_off_at_attach() {
+    let (_scratch, config) =
+        loaded_with("view-multi-off", "", state(two_bands(), 1, Some(2), "root"));
+    let multi: Option<bool> = eval(&config, "return gband.view().multi");
+    assert_eq!(multi, None);
+}
+
+#[test]
+fn multi_mode_on() {
+    assert_eq!(
+        dispatched(
+            "multi-dispatch",
+            state(two_bands(), 1, Some(2), "root"),
+            "gband.action.toggle_multi()"
+        ),
+        [Dispatch::Action(Action::Client(ClientAction::ToggleMulti))]
+    );
+    let view = ViewState {
+        multi: true,
+        ..state(two_bands(), 1, Some(2), "root")
+    };
+    let (_scratch, config) = loaded_with("view-multi-on", "", view);
+    let multi: Option<bool> = eval(&config, "return gband.view().multi");
+    assert_eq!(multi, Some(true));
+    let core_multi: bool = eval(&config, "return gband.core.state().multi");
+    assert!(core_multi);
 }

@@ -24,7 +24,8 @@ Running the same command in several shells, such as an update on a set of hosts,
 - `actions`: "Lua names of actions" lists `toggle_multi` and says what `send_prefix` does while multi mode is on.
 - `sidebar`: "Mode letter" shows `M` while multi mode is on in interactive mode.
 - `lua-control`: "Read the view" holds `multi`.
-- `floating-key-style`: "Window list" gains the `Multi mode` entry and its shortcut, with its scenarios renumbered; "Desktop menus" and "Leader" scenarios follow the extra row.
+- `lua-api`: "Core primitives" runs `on_state` functions when multi mode changes, and `state()` holds `multi`.
+- `floating-key-style`: "Window list" gains the `Multi mode` entry and its shortcut, with its scenarios renumbered; "Desktop menus", "Right press" and "Leader" scenarios follow the extra row.
 
 ## Impact
 
@@ -45,31 +46,38 @@ Running the same command in several shells, such as an update on a set of hosts,
 
 ### Expected Files
 - openspec/changes/multi-mode/
-- crates/core/src/action.rs
+- README.md
+- crates/client/src/bindings.rs
 - crates/client/src/lib.rs
 - crates/client/tests/actions.rs
+- crates/core/src/action.rs
 - crates/lua/src/actions.rs
-- crates/lua/src/ui.rs
 - crates/lua/src/control.rs
-- crates/lua/src/runtime/gband/keystyle/modal.lua
-- crates/lua/src/runtime/gband/keystyle/direct.lua
-- crates/lua/src/runtime/gband/sidebar.lua
 - crates/lua/src/runtime/gband/desktop.lua
+- crates/lua/src/runtime/gband/keystyle/direct.lua
+- crates/lua/src/runtime/gband/keystyle/modal.lua
+- crates/lua/src/runtime/gband/sidebar.lua
+- crates/lua/src/ui.rs
 - crates/lua/tests/config.rs
 - crates/lua/tests/control.rs
+- crates/lua/tests/core.rs
 - crates/lua/tests/keystyle.rs
+- crates/lua/tests/plugins.rs
 - crates/lua/tests/sidebar.rs
-- crates/lua/tests/desktop.rs
-- tests/keystyle.rs
-- tests/multi_mode.rs
-- tests/lua/keylist_spec.lua
-- tests/lua/screenshots/keylist_spec/
-- tests/lua/sidebar_spec.lua
-- tests/lua/screenshots/sidebar_spec/
-- tests/lua/floating_spec.lua
-- tests/lua/screenshots/floating_spec/
-- README.md
-- docs/plugins.md
-- docs/tutorial/01-keys.md
+- docs/internals/00-boundary.md
 - docs/internals/08-key-styles.md
 - docs/internals/09-sidebar-and-errors.md
+- docs/plugins.md
+- docs/tutorial/01-keys.md
+- tests/common/mod.rs
+- tests/config.rs
+- tests/keystyle.rs
+- tests/multi_mode.rs
+- tests/lua/floating_spec.lua
+- tests/lua/screenshots/floating_spec/
+- tests/lua/keylist_spec.lua
+- tests/lua/screenshots/keylist_spec/default-list--last-page.txt
+- tests/lua/prompt_spec.lua
+- tests/lua/screenshots/prompt_spec/the-key-list-holds-the-prompt-between-the-key-list-and-detach--hint.txt
+- tests/lua/sidebar_spec.lua
+- tests/lua/screenshots/sidebar_spec/

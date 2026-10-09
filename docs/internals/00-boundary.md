@@ -34,7 +34,7 @@ Here they are by group, in the order the reference gives them, with the chapter 
 
 - `gband.core.events` lists the client's built-in event names, and `gband.core.emit` runs the handlers of one of them. `gband.hl` emits `HighlightChanged` and `gband.colorscheme` emits `ColorschemeChanged` this way.
 - `gband.core.after_event` adds a function that runs after the handlers of every built-in event. `gband.bar` and `gband.win` redraw from one, in [04](04-bars.md) and [06](06-window-provider.md).
-- `gband.core.on_state` adds a function that runs when the key table, the viewed band or the error list changes, and `gband.core.state` returns that state. Bars and plugin windows read the state to size themselves, and the sidebar redraws on every change, in [09](09-sidebar-and-errors.md).
+- `gband.core.on_state` adds a function that runs when the key table, the viewed band, multi mode or the error list changes, and `gband.core.state` returns that state. Bars and plugin windows read the state to size themselves, and the sidebar redraws on every change, in [09](09-sidebar-and-errors.md).
 - `gband.core.error_marker` tells the client that a bar draws the error marker, so the client leaves out its own error banner. The sidebar calls it in [09](09-sidebar-and-errors.md).
 
 ### Colors and themes

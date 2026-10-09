@@ -488,6 +488,9 @@ fn view(lua: &Lua, (): ()) -> mlua::Result<Table> {
     if state.peek {
         table.set("peek", true)?;
     }
+    if state.multi {
+        table.set("multi", true)?;
+    }
     table.set("table", state.table)?;
     table.set("cols", state.ribbon.cols)?;
     table.set("rows", state.ribbon.rows)?;

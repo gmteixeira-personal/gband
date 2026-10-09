@@ -179,6 +179,10 @@ set("prefix", ":", action["prompt.open"], { desc = "run Lua" })
 set("prefix", "N", action["prompt.rename"], { desc = "rename the window" })
 set("prefix", "s", gband.settings.open, { desc = "settings" })
 set("prefix", "!", action.reload, { desc = "reload the configuration" })
+set("prefix", "m", function()
+  action.toggle_multi()
+  interactive()
+end, { desc = "multi mode" })
 set("prefix", "D", action.detach, { desc = "detach" })
 set("prefix", "escape", interactive, { desc = "interactive mode" })
 set("prefix", "enter", interactive, { desc = "interactive mode" })
@@ -187,6 +191,8 @@ set("prefix", "enter", interactive, { desc = "interactive mode" })
 `?`, `:` and `N` open plugin windows, which take the keys from there on, and `s` opens the settings window.
 `!` reloads the configuration of this client and of the server, reading the plugins' files again, which a saved file under `user/` alone does not do.
 A load that works starts a new keymap in `root`, and one that fails returns to `root` too, so `!` leaves navigation mode either way.
+`m` turns multi mode on or off and returns to interactive mode, where what you type then reaches every window of the band, so the sidebar shows `M` at once.
+Leaving navigation mode later by Escape or Enter keeps multi mode as it is.
 Escape and Enter return to interactive mode.
 
 ```lua defaults/keystyle/modal.lua
@@ -292,8 +298,11 @@ set("prefix", ":", action["prompt.open"], { desc = "run Lua" })
 set("prefix", "N", action["prompt.rename"], { desc = "rename the window" })
 set("prefix", "s", gband.settings.open, { desc = "settings" })
 set("prefix", "!", action.reload, { desc = "reload the configuration" })
+set("prefix", "m", action.toggle_multi, { desc = "toggle multi mode" })
 set("prefix", "D", action.detach, { desc = "detach" })
 ```
+
+`m` is bound to `toggle_multi` itself, since every key after the prefix key ends the sequence here anyway.
 
 ```lua defaults/keystyle/direct.lua
 set("prefix", "left", action.focus_column_left, { desc = "focus the column to the left" })
@@ -430,7 +439,7 @@ local MENU_KEYS = {
   j = true, down = true, k = true, up = true, pagedown = true, pageup = true,
   home = true, ["end"] = true, enter = true, esc = true, q = true,
 }
-local LIST_KEYS = { n = true, s = true }
+local LIST_KEYS = { n = true, s = true, m = true }
 for index = 1, #DIGITS do
   LIST_KEYS[DIGITS:sub(index, index)] = true
 end
@@ -442,7 +451,7 @@ local CORNERS = {
 }
 ```
 
-The glyphs of the buttons, the sizes of the two menus, the keys the menus keep for themselves in key form, the digits of the window list's shortcuts in order, the keys the window list keeps on top of those, `n`, `s` and the ten digits, and the four corner zones in the order they are checked.
+The glyphs of the buttons, the sizes of the two menus, the keys the menus keep for themselves in key form, the digits of the window list's shortcuts in order, the keys the window list keeps on top of those, `n`, `s`, `m` and the ten digits, and the four corner zones in the order they are checked.
 
 ```lua defaults/lua/gband/desktop.lua
 local remembered = {}
@@ -858,7 +867,7 @@ local function page(by)
 end
 ```
 
-Every selection in the window list previews: a window entry peeks its window with `gband.window.focus(id, { peek = true })`, which views its band and draws it on top, minimized or not, and records nothing; `New window` and `Settings` return to the band at opening.
+Every selection in the window list previews: a window entry peeks its window with `gband.window.focus(id, { peek = true })`, which views its band and draws it on top, minimized or not, and records nothing; `New window`, `Settings` and `Multi mode` return to the band at opening.
 A preview that would show what the view already shows dispatches nothing, so moving through an untouched list emits no `FocusChanged`.
 `menu.shown` keeps the band and window the last preview shows, for the press handler below.
 Moving the selection skips separators, and `page` moves by the rows shown, landing on the first or last entry past either end.
@@ -897,7 +906,7 @@ local function own(fn)
 end
 ```
 
-Picking closes the menu before the entry acts, so an entry that opens another plugin window gives it focus, and hands the entry the closed menu, whose band at opening `New window` and `Settings` return to.
+Picking closes the menu before the entry acts, so an entry that opens another plugin window gives it focus, and hands the entry the closed menu, whose band at opening `New window`, `Settings` and `Multi mode` return to.
 The window list closes in one of two ways.
 `keep` focuses the window the view peeks with `gband.window.focus`, which records the focus, raises the window and restores it when minimized; it is a focus of the focused window, so it emits no `FocusChanged`.
 `cancel` returns to the band at opening.
@@ -1161,6 +1170,7 @@ local function list_rows(order, minimizing)
       kept[#kept + 1] = item.window.id
     end
   end
+  local multi_label = gband.view().multi and "Multi mode (on)" or "Multi mode"
   local rows = {
     {
       key = "new",
@@ -1182,6 +1192,16 @@ local function list_rows(order, minimizing)
         gband.settings.open()
       end,
     },
+    {
+      key = "multi",
+      shortcut = "m",
+      label = multi_label,
+      width = 2 + gband.ui.width(multi_label),
+      act = function(closed)
+        view_opening(closed.opening)
+        gband.action.toggle_multi()
+      end,
+    },
   }
   if #kept > 0 then
     rows[#rows + 1] = { separator = true }
@@ -1194,6 +1214,7 @@ local function list_rows(order, minimizing)
 end
 ```
 
+`Multi mode` reads the state from `gband.view().multi` each time the rows are built, so the label says `(on)` while multi mode is on, and picking it cancels the list before it toggles.
 A window entry's shortcut is the digit at its index, `1` to `9` and then `0`, and none past the tenth.
 Its band part, `band ` and the band label, shows once windows sit in two or more bands, and a window this client minimized is marked and dimmed.
 `list_rows` keeps the order it is given, drops the windows that left and adds the others after them in layout order, and returns the order it used, so the list's order is set when it opens and its shortcuts follow the rows.

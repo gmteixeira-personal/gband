@@ -49,7 +49,7 @@ The server configuration file SHALL be `user/server.lua` in the configuration di
 | `ClientDetached` | `session`, `client` | a client detaches or disconnects |
 | `ConfigReloaded` | empty | a reload succeeded, to the handlers of the new configuration |
 
-A session's events SHALL reach the handlers in the order the session applied the changes. The `data` of a window's `WindowOutput` events, joined in order, SHALL equal the bytes the program wrote, except bytes dropped as "Handlers never slow a session" defines. A chunk's boundaries are arbitrary. `WindowInput` SHALL NOT carry the input itself.
+A session's events SHALL reach the handlers in the order the session applied the changes. A key's or paste's `WindowInput` SHALL reach the handlers before any `WindowOutput` holding bytes the window's program wrote after reading that key or paste. The `data` of a window's `WindowOutput` events, joined in order, SHALL equal the bytes the program wrote, except bytes dropped as "Handlers never slow a session" defines. A chunk's boundaries are arbitrary. `WindowInput` SHALL NOT carry the input itself.
 
 #### Scenario: Agent prompt detected
 - **WHEN** a `WindowOutput` handler appends each `data` of window 1 to a buffer, and window 1 runs `printf 'Do you want\nto proceed?\n'`
@@ -62,6 +62,10 @@ A session's events SHALL reach the handlers in the order the session applied the
 #### Scenario: Input notice
 - **WHEN** a client types `ls` into window 2
 - **THEN** `WindowInput` runs naming window 2 and that client, and its payload holds no `ls`
+
+#### Scenario: Input before the output it causes
+- **WHEN** a `WindowInput` handler counts its calls for window 1, a `WindowOutput` handler records that count when its `data` first holds `input`, and a client pastes `printf 'in%s\n' put` into window 1 and presses Enter
+- **THEN** the recorded count is 2
 
 #### Scenario: User event refused
 - **WHEN** line 1 of `user/server.lua` calls `gband.on("User", fn)`

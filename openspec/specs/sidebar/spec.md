@@ -49,7 +49,7 @@ On a shown sidebar of height `h`, row 0 SHALL hold the mode letter, or the apps 
 - **THEN** no cell of column 0 has a background colour, and the blank cells have no foreground colour either
 
 ### Requirement: Mode letter
-While the floating key style is in use, as "Apps character" defines, row 0 SHALL show the apps character in place of the mode letter. Otherwise, the mode letter SHALL be `I` while the active key table is `root`. While any other table is active, it SHALL be the first character of the label `gband.keymap.label` returns for that table, with an ASCII lowercase letter shown in uppercase. It SHALL be drawn in the group `SidebarMode`, and SHALL change in the frame that follows the change of the active table.
+While the floating key style is in use, as "Apps character" defines, row 0 SHALL show the apps character in place of the mode letter. Otherwise, the mode letter SHALL be `I` while the active key table is `root` and multi mode is off, and `M` while the active key table is `root` and multi mode is on, as the multi-mode capability defines. While any other table is active, it SHALL be the first character of the label `gband.keymap.label` returns for that table, with an ASCII lowercase letter shown in uppercase. It SHALL be drawn in the group `SidebarMode`, and SHALL change in the frame that follows the change of the active table or of multi mode.
 
 #### Scenario: Navigation mode
 - **WHEN** the default configuration is in use and the user presses Ctrl+Space
@@ -66,6 +66,16 @@ While the floating key style is in use, as "Apps character" defines, row 0 SHALL
 #### Scenario: User mode
 - **WHEN** `user/init.lua` declares `resize` a mode with the label `resize`, and a binding enters `resize`
 - **THEN** row 0 of the sidebar shows `R`
+
+
+#### Scenario: Multi mode
+- **WHEN** the default configuration is in use and the user presses Ctrl+Space then `m`
+- **THEN** row 0 of the sidebar shows `M`
+- **AND** after Ctrl+Space it shows `N`, after Escape `M` again, and after Ctrl+Space then `m` it shows `I`
+
+#### Scenario: Multi mode with the floating style
+- **WHEN** the floating key style is in use and multi mode is on
+- **THEN** row 0 of the sidebar shows the apps character
 
 ### Requirement: Band labels
 The sidebar SHALL show one label for each band of the layout, in layout order from row 2 down, the empty last band included. The label of the band at position `p`, counted from 1, SHALL be the digit `p` for `p` from 1 to 9, and the letter at position `p − 9` of `abcdefghijklmnopqrstuvwxyz` for `p` from 10 to 35. A band at a position past 35, or whose row would be `h − 1` or below, SHALL NOT be drawn. The labels SHALL change in the frame that follows a change of the bands.
@@ -195,7 +205,7 @@ The floating key style SHALL be in use while `gband.keystyle.current()` returns 
 
 #### Scenario: Open the window list from the sidebar
 - **WHEN** the floating style is in use with the default configuration, the viewed band holds floating windows named `notes` and `logs`, which this client focused in that order, and the user presses the left button on column 0, row 0
-- **THEN** the window list is open and focused, centred in the ribbon area, with the rows `n New window`, `s Settings`, a separator, `1 logs` and `2 notes` between its borders
+- **THEN** the window list is open and focused, centred in the ribbon area, with the rows `n New window`, `s Settings`, `m Multi mode`, a separator, `1 logs` and `2 notes` between its borders
 
 #### Scenario: Floating preset required by name
 - **WHEN** `user/init.lua` requires `gband.keystyle.floating` by name and sets up `gband.sidebar`
