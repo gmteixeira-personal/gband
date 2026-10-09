@@ -226,8 +226,10 @@ fn number_follows_the_layout() {
     let env = TestEnv::new("names-numbers");
     let mut client = titled(&env);
     client.send(b"\x00n\r");
-    client.wait_for("two numbered shells", |screen| {
-        titles(screen) == ["sh #1", "sh #2"]
+    client.wait_for("two numbered shells, the second focused", |screen| {
+        let mut found = tiles(screen);
+        found.sort_by_key(|tile| tile.left);
+        found.get(1).is_some_and(|tile| tile.focused) && titles(screen) == ["sh #1", "sh #2"]
     });
     client.wait_for_prompt();
     client.run("printf '\\033]2;second\\007'");
