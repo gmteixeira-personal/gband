@@ -21,6 +21,7 @@ end
 
 t.case("a prompt marks the window waiting", function(g)
   g.start()
+  g.wait_text("$")
   g.run("printf 'Do you want to %s?\\n' proceed")
   waits(g, 1)
   g.settle()
@@ -35,6 +36,7 @@ end)
 
 t.case("typing clears the waiting state", function(g)
   g.start({ size = "80x6" })
+  g.wait_text("$")
   g.run("printf 'Do you want to %s?\\n' proceed")
   waits(g, 1)
   g.type("x")

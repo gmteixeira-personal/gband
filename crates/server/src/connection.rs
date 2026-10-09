@@ -407,19 +407,19 @@ fn dispatch(
         match message {
             ClientMessage::Key { window, key } => {
                 context.hub.typed(client);
-                if forward(session, window, Input::Key(key)) {
+                forward(session, window, Input::Key(key), || {
                     context.taps.notice(&session.name, window, client);
-                }
+                });
             }
             ClientMessage::Paste { window, text } => {
                 context.hub.typed(client);
-                if forward(session, window, Input::Paste(text)) {
+                forward(session, window, Input::Paste(text), || {
                     context.taps.notice(&session.name, window, client);
-                }
+                });
             }
             ClientMessage::Mouse { window, event } => {
                 context.hub.typed(client);
-                forward(session, window, Input::Mouse(event));
+                forward(session, window, Input::Mouse(event), || {});
             }
             ClientMessage::Command { call, name, args } => {
                 let call_input = scripting::Input::Call {
@@ -518,12 +518,18 @@ async fn deliver(
     send(writer, message).await
 }
 
-fn forward(session: &SessionHandle, window: WindowId, input: Input) -> bool {
+fn forward(
+    session: &SessionHandle,
+    window: WindowId,
+    input: Input,
+    before_send: impl FnOnce(),
+) -> bool {
     let state = session.state.borrow();
     let Some(entry) = state.windows.get(&window) else {
         tracing::debug!(window = %window, "input dropped for a window not in the layout");
         return false;
     };
+    before_send();
     if entry.input.send(input).is_err() {
         tracing::debug!(window = %window, "input dropped because the PTY writer has stopped");
         return false;
