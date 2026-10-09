@@ -1753,6 +1753,7 @@ One Lua state serves every session the server hosts; events name their session.
 | `ConfigReloaded` | empty | a reload succeeded, to the new configuration's handlers |
 
 A session's events reach the handlers in the order the session applied the changes: a window's `WindowExited` comes before its `WindowClosed`, and its last `WindowOutput` before both.
+A key's or paste's `WindowInput` comes before the `WindowOutput` of anything the program writes after reading it, so a handler can clear on input what it set from output.
 `WindowInput` says that input happened, never what it was.
 
 `WindowOutput` delivers the raw bytes in chunks whose boundaries are arbitrary, so a prompt can be split between two calls.

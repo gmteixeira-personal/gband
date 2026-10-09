@@ -536,6 +536,34 @@ end)",
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn input_before_its_output() {
+    let scripted = start(
+        "lua-input-order",
+        "local inputs = {}
+local tails = {}
+local seen = {}
+gband.on('WindowInput', function(ev)
+  inputs[ev.window] = (inputs[ev.window] or 0) + 1
+end)
+gband.on('WindowOutput', function(ev)
+  if seen[ev.window] then return end
+  local tail = (tails[ev.window] or '') .. ev.data
+  if tail:find('input', 1, true) then
+    seen[ev.window] = true
+    gband.emit('seen', { count = inputs[ev.window] or 0 })
+  end
+  tails[ev.window] = tail:sub(-4)
+end)",
+    )
+    .await;
+    let mut client = scripted.attach().await;
+    client.wait_for_prompt(client.first()).await;
+    client.type_line("printf 'in%s\\n' put").await;
+    let seen = event(&mut client, "seen").await;
+    assert_eq!(field(&seen, "count"), Some(&Value::Int(2)));
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn close_from_a_handler() {
     let scripted = start(
         "lua-close",
