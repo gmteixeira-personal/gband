@@ -5,7 +5,7 @@ use std::thread;
 use gband_core::event::LayoutEvent;
 use gband_core::layout::WindowId;
 use gband_lua::server::{Caller, Event};
-use gband_lua::{Config, ConfigError, Dispatch, Outcome};
+use gband_lua::{Config, ConfigError, Dispatch, Outcome, Side};
 use gband_protocol::{Requirement, SessionName, Value};
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio::sync::{Semaphore, broadcast, oneshot};
@@ -16,7 +16,9 @@ use crate::session::{Command, Reply};
 
 pub const OUTPUT_BUDGET: usize = 4 * 1024 * 1024;
 pub const NOTICE_BUDGET: usize = 1024;
-const LUA_CLIENT: u64 = 0;
+pub(crate) const LUA_CLIENT: u64 = 0;
+
+pub type Loader = Arc<dyn Fn() -> Result<Config, ConfigError> + Send + Sync>;
 
 pub(crate) enum Input {
     Bus(Published),
@@ -39,6 +41,8 @@ pub(crate) enum Input {
         replies: UnboundedSender<Reply>,
     },
     Reload(Result<Config, ConfigError>),
+    Load(oneshot::Sender<(u64, Option<String>)>),
+    Errors(oneshot::Sender<(u64, Vec<String>)>),
     Eval {
         source: String,
         args: Vec<Value>,
@@ -50,6 +54,7 @@ pub(crate) enum Input {
 pub struct Scripting {
     config: Config,
     error: Option<ConfigError>,
+    loader: Loader,
     sender: mpsc::Sender<Input>,
     receiver: mpsc::Receiver<Input>,
 }
@@ -71,11 +76,16 @@ impl Scripting {
             Self {
                 config,
                 error,
+                loader: Arc::new(|| Ok(gband_lua::defaults(Side::Server))),
                 sender,
                 receiver,
             },
             reloader,
         )
+    }
+
+    pub fn with_loader(self, loader: Loader) -> Self {
+        Self { loader, ..self }
     }
 }
 
@@ -158,6 +168,36 @@ impl Taps {
             .is_some_and(|sender| sender.send(input).is_ok())
     }
 
+    async fn ask<T>(&self, input: impl FnOnce(oneshot::Sender<T>) -> Input) -> Option<T> {
+        let (reply, answer) = oneshot::channel();
+        if !self.call(input(reply)) {
+            return None;
+        }
+        answer.await.ok()
+    }
+
+    pub(crate) async fn load(&self) -> Option<(u64, Option<String>)> {
+        self.ask(Input::Load).await
+    }
+
+    pub(crate) async fn errors(&self) -> Option<(u64, Vec<String>)> {
+        self.ask(Input::Errors).await
+    }
+
+    pub(crate) async fn eval(
+        &self,
+        source: String,
+        args: Vec<Value>,
+    ) -> Result<Vec<Value>, String> {
+        self.ask(|reply| Input::Eval {
+            source,
+            args,
+            reply,
+        })
+        .await
+        .unwrap_or_else(|| Err("the server runs no Lua".to_owned()))
+    }
+
     fn want(&self, config: &Config) {
         self.output
             .store(config.runtime.handles("WindowOutput"), Ordering::Release);
@@ -174,6 +214,7 @@ pub(crate) fn start(
     let Scripting {
         config,
         error,
+        loader,
         sender,
         receiver,
     } = scripting;
@@ -189,6 +230,8 @@ pub(crate) fn start(
     ));
     let worker = Worker {
         config,
+        loader,
+        load: 1,
         hub,
         taps: Arc::clone(&taps),
         gate,
@@ -272,6 +315,8 @@ async fn drain(
 
 struct Worker {
     config: Config,
+    loader: Loader,
+    load: u64,
     hub: Arc<Hub>,
     taps: Arc<Taps>,
     gate: Arc<Semaphore>,
@@ -354,7 +399,7 @@ impl Worker {
             .set_host(Arc::new(HubHost(Arc::clone(&self.hub))));
         self.taps.want(&self.config);
         self.hub.set_requirements(requirements(&self.config));
-        self.hub.clear_error();
+        self.hub.clear_errors();
         self.report(errors);
     }
 
@@ -430,14 +475,16 @@ impl Worker {
                 self.apply(outcome);
                 let _ = replies.send(Reply::Result { call, result });
             }
-            Input::Reload(Ok(config)) => {
-                tracing::info!("server configuration reloaded");
-                self.config = config;
-                let errors = self.config.errors.clone();
-                self.loaded(&errors);
-                self.emit(&Event::ConfigReloaded);
+            Input::Reload(result) => self.reload(result),
+            Input::Load(reply) => {
+                let loaded = (self.loader)();
+                let error = loaded.as_ref().err().map(ToString::to_string);
+                self.reload(loaded);
+                let _ = reply.send((self.load, error));
             }
-            Input::Reload(Err(error)) => self.report(&[error]),
+            Input::Errors(reply) => {
+                let _ = reply.send((self.load, self.hub.errors()));
+            }
             Input::Eval {
                 source,
                 args,
@@ -450,6 +497,20 @@ impl Worker {
             Input::Barrier(reached) => {
                 let _ = reached.send(());
             }
+        }
+    }
+
+    fn reload(&mut self, result: Result<Config, ConfigError>) {
+        self.load += 1;
+        match result {
+            Ok(config) => {
+                tracing::info!(load = self.load, "server configuration reloaded");
+                self.config = config;
+                let errors = self.config.errors.clone();
+                self.loaded(&errors);
+                self.emit(&Event::ConfigReloaded);
+            }
+            Err(error) => self.report(&[error]),
         }
     }
 

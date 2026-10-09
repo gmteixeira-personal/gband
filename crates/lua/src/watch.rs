@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher as _};
 
-use crate::{Config, ConfigError, LoadOptions, Locations, Side, load, user_dir};
+use crate::user_dir;
 
 const DEBOUNCE: Duration = Duration::from_millis(100);
 
@@ -20,12 +20,12 @@ enum Watching {
     Parent,
 }
 
-pub fn watch<F>(locations: Locations, side: Side, options: LoadOptions, deliver: F) -> Watcher
+pub fn watch<F>(config: PathBuf, changed: F) -> Watcher
 where
-    F: FnMut(Result<Config, ConfigError>) + Send + 'static,
+    F: FnMut() + Send + 'static,
 {
     let idle = Watcher { _watcher: None };
-    let directory = user_dir(&locations.config);
+    let directory = user_dir(&config);
     let (events_tx, events) = mpsc::channel();
     let watcher = match notify::recommended_watcher(move |event| {
         let _ = events_tx.send(event);
@@ -40,10 +40,7 @@ where
         let mut inner = watcher.lock().expect("watcher lock");
         if inner.watch(&directory, RecursiveMode::Recursive).is_ok() {
             Watching::Directory
-        } else if inner
-            .watch(&locations.config, RecursiveMode::NonRecursive)
-            .is_ok()
-        {
+        } else if inner.watch(&config, RecursiveMode::NonRecursive).is_ok() {
             Watching::Parent
         } else {
             tracing::info!(
@@ -58,16 +55,11 @@ where
         .name("gband-config".to_owned())
         .spawn(move || {
             reload(
-                Target {
-                    locations,
-                    side,
-                    options,
-                    directory,
-                },
+                Target { config, directory },
                 watching,
                 events,
                 weak,
-                deliver,
+                changed,
             )
         });
     if let Err(error) = spawned {
@@ -80,9 +72,7 @@ where
 }
 
 struct Target {
-    locations: Locations,
-    side: Side,
-    options: LoadOptions,
+    config: PathBuf,
     directory: PathBuf,
 }
 
@@ -91,16 +81,11 @@ fn reload<F>(
     mut watching: Watching,
     events: mpsc::Receiver<notify::Result<Event>>,
     watcher: Weak<Mutex<RecommendedWatcher>>,
-    mut deliver: F,
+    mut changed: F,
 ) where
-    F: FnMut(Result<Config, ConfigError>),
+    F: FnMut(),
 {
-    let Target {
-        locations,
-        side,
-        options,
-        directory,
-    } = target;
+    let Target { config, directory } = target;
     while let Ok(event) = events.recv() {
         let relevant = match watching {
             Watching::Directory => touches_lua(&event, &directory),
@@ -115,7 +100,7 @@ fn reload<F>(
             };
             let mut watcher = watcher.lock().expect("watcher lock");
             if watcher.watch(&directory, RecursiveMode::Recursive).is_ok() {
-                let _ = watcher.unwatch(&locations.config);
+                let _ = watcher.unwatch(&config);
                 watching = Watching::Directory;
             }
         }
@@ -128,7 +113,7 @@ fn reload<F>(
                 Err(RecvTimeoutError::Disconnected) => return,
             }
         }
-        deliver(load(&locations, side, &options));
+        changed();
     }
 }
 
@@ -160,7 +145,9 @@ mod tests {
     use std::sync::mpsc::Receiver;
 
     use super::*;
-    use crate::{defaults_file, user_file};
+    use crate::{
+        Config, ConfigError, LoadOptions, Locations, Side, defaults_file, load, user_file,
+    };
 
     struct Scratch(gband_scratch::Scratch);
 
@@ -180,14 +167,9 @@ mod tests {
             config: dir.to_path_buf(),
             plugins: None,
         };
-        let watcher = watch(
-            locations,
-            Side::Client,
-            LoadOptions::default(),
-            move |result| {
-                let _ = tx.send(result);
-            },
-        );
+        let watcher = watch(locations.config.clone(), move || {
+            let _ = tx.send(load(&locations, Side::Client, &LoadOptions::default()));
+        });
         (watcher, rx)
     }
 

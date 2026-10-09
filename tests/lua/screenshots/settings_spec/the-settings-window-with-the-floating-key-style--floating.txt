@@ -1,4 +1,4 @@
-size 80x24 cursor 14:52 hidden
+size 80x24 cursor 14:56 hidden
  0|∷
  1|
  2|1                    ╭───────────────────────────[_][□][X]─╮
@@ -12,8 +12,8 @@ size 80x24 cursor 14:52 hidden
 10|                     │   │theme    terminal            │   │
 11|                     │   │sidebar  on                  │   │
 12|                     │   │keys     floating            │   │
-13|                     │   └─────────────────────────────┘   │
-14|                     │                                     │
+13|                     │   │reload   ok                  │   │
+14|                     │   └─────────────────────────────┘   │
 15|                     │                                     │
 16|                     │                                     │
 17|                     │                                     │
@@ -72,10 +72,13 @@ size 80x24 cursor 14:52 hidden
 12:59 fg=4 bold
 13:0 bg=0
 13:21 fg=4 bold
-13:25-55 fg=8 bg=0
+13:25-34 fg=8 bg=0
+13:35-54 fg=7 bg=0
+13:55 fg=8 bg=0
 13:59 fg=4 bold
 14:0 bg=0
 14:21 fg=4 bold
+14:25-55 fg=8 bg=0
 14:59 fg=4 bold
 15:0 bg=0
 15:21 fg=4 bold

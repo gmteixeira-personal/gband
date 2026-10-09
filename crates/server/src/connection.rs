@@ -3,25 +3,29 @@ use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
 
 use anyhow::{Context as _, Result, anyhow, bail};
 use gband_core::geometry::Size;
 use gband_core::layout::{SessionAction, WindowId};
 use gband_protocol::{
-    ClientMessage, Hello, HelloReply, MessageReader, MessageWriter, PROTOCOL_VERSION,
-    ServerMessage, SessionName, decode, leading_version,
+    Answer, ClientMessage, Entry, Hello, HelloReply, MessageReader, MessageWriter, Operation,
+    PROTOCOL_VERSION, Process, ServerMessage, SessionName, Target, decode, leading_version,
 };
 use serde::Serialize;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::{mpsc, oneshot};
+use tracing::Instrument;
 
 use crate::channel::{Barrier, Settling};
 use crate::event::SessionEvent;
-use crate::hub::Hub;
+use crate::hub::{Call, Hub};
 use crate::registry::{Request, SessionHandle};
 use crate::scripting::{self, Taps};
 use crate::session::{Command, INITIAL_AREA, Reply, State};
 use crate::window::{Contents, Input, Seen};
+
+pub const ANSWER_TIMEOUT: Duration = Duration::from_secs(5);
 
 pub struct Context {
     pub registry: mpsc::UnboundedSender<Request>,
@@ -171,7 +175,108 @@ async fn handle(
             let _ = ended.wait_for(|ended| *ended).await;
             link.send(&ServerMessage::Killed).await
         }
+        ClientMessage::Control {
+            session,
+            target,
+            operation,
+        } => {
+            let answer = control(context, session, target, operation).await;
+            link.send(&answer).await
+        }
         _ => bail!("the first message after info is not a request"),
+    }
+}
+
+async fn control(
+    context: &Context,
+    session: SessionName,
+    target: Target,
+    operation: Operation,
+) -> ServerMessage {
+    if context.hub.session(session.as_str()).is_none() {
+        return ServerMessage::NoSuchSession;
+    }
+    let mut entries = Vec::new();
+    if matches!(target, Target::Server | Target::All) {
+        let answer = server_part(context, &session, &operation).await;
+        entries.push(Entry {
+            process: Process::Server,
+            answer: Some(answer),
+        });
+    }
+    let attached = context.hub.clients_of(&session);
+    let clients = match target {
+        Target::Server => Vec::new(),
+        Target::EveryClient | Target::All => attached,
+        Target::Client(client) => attached.into_iter().filter(|&id| id == client).collect(),
+        Target::Chosen => context.hub.chosen(&session).into_iter().collect(),
+    };
+    let calls: Vec<(u64, Option<Call>)> = clients
+        .into_iter()
+        .map(|client| (client, context.hub.control(client, operation.clone())))
+        .collect();
+    let deadline = tokio::time::Instant::now() + ANSWER_TIMEOUT;
+    for (client, call) in calls {
+        let answer = match call {
+            Some((call, answer)) => {
+                let answered = tokio::time::timeout_at(deadline, answer).await;
+                context.hub.forget(call);
+                answered.ok().and_then(Result::ok)
+            }
+            None => None,
+        };
+        entries.push(Entry {
+            process: Process::Client(client),
+            answer,
+        });
+    }
+    ServerMessage::ControlResults(entries)
+}
+
+async fn server_part(context: &Context, session: &SessionName, operation: &Operation) -> Answer {
+    let no_lua = || "the server runs no Lua".to_owned();
+    match operation.clone() {
+        Operation::Reload => match context.taps.load().await {
+            Some((load, error)) => Answer::Loaded { load, error },
+            None => Answer::Loaded {
+                load: 1,
+                error: Some(no_lua()),
+            },
+        },
+        Operation::Errors => {
+            let (load, errors) = context.taps.errors().await.unwrap_or((1, Vec::new()));
+            Answer::Errors { load, errors }
+        }
+        Operation::Eval { source, args } => Answer::Values(context.taps.eval(source, args).await),
+        Operation::Command { name, args } => {
+            let client = context.hub.chosen(session);
+            let (replies_tx, mut replies) = mpsc::unbounded_channel();
+            let called = context.taps.call(scripting::Input::Call {
+                session: session.clone(),
+                client: client.unwrap_or(scripting::LUA_CLIENT),
+                call: 0,
+                name: name.clone(),
+                args,
+                replies: replies_tx,
+            });
+            if !called {
+                return Answer::Values(Err(format!("unknown command `{name}`")));
+            }
+            while let Some(reply) = replies.recv().await {
+                match reply {
+                    Reply::Result { result, .. } => {
+                        return Answer::Values(result.map(|value| vec![value]));
+                    }
+                    Reply::Focus(window) => {
+                        if let Some(client) = client {
+                            context.hub.send(client, ServerMessage::Focus(window));
+                        }
+                    }
+                    Reply::Opened { .. } => {}
+                }
+            }
+            Answer::Values(Err(no_lua()))
+        }
     }
 }
 
@@ -301,16 +406,19 @@ fn dispatch(
     while let Some(message) = reader.try_recv::<ClientMessage>()? {
         match message {
             ClientMessage::Key { window, key } => {
+                context.hub.typed(client);
                 if forward(session, window, Input::Key(key)) {
                     context.taps.notice(&session.name, window, client);
                 }
             }
             ClientMessage::Paste { window, text } => {
+                context.hub.typed(client);
                 if forward(session, window, Input::Paste(text)) {
                     context.taps.notice(&session.name, window, client);
                 }
             }
             ClientMessage::Mouse { window, event } => {
+                context.hub.typed(client);
                 forward(session, window, Input::Mouse(event));
             }
             ClientMessage::Command { call, name, args } => {
@@ -351,10 +459,23 @@ fn dispatch(
             ClientMessage::Rename { window, name } => {
                 session.command(Command::Rename { window, name });
             }
+            ClientMessage::Reload => {
+                let taps = Arc::clone(&context.taps);
+                let hub = Arc::clone(&context.hub);
+                tokio::spawn(
+                    async move {
+                        taps.load().await;
+                        hub.send(client, ServerMessage::Reloaded);
+                    }
+                    .in_current_span(),
+                );
+            }
+            ClientMessage::ControlAnswer { call, answer } => context.hub.answer(call, answer),
             ClientMessage::Detach => return Ok(true),
             ClientMessage::Attach { .. }
             | ClientMessage::ListSessions
-            | ClientMessage::KillSession { .. } => bail!("a request after the client attached"),
+            | ClientMessage::KillSession { .. }
+            | ClientMessage::Control { .. } => bail!("a request after the client attached"),
         }
     }
     Ok(false)

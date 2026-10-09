@@ -259,7 +259,7 @@ const FLOATING_ROOT: [&str; 7] = [
 fn floating_prefix_bindings_in_order() {
     let entries = prefix_entries(&floating_preset("keystyle-floating-prefix"));
     let keys: Vec<&str> = entries.iter().map(|(key, _, _)| key.as_str()).collect();
-    assert_eq!(keys, ["n", "?", ":", "N", "s", "D", "prefix"]);
+    assert_eq!(keys, ["n", "?", ":", "N", "s", "!", "D", "prefix"]);
     assert_eq!(
         entries[0],
         (

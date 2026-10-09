@@ -12,8 +12,8 @@ gband reloads its configuration only when a `.lua` file under `user/` changes. A
 - **Control subcommands.** Four new `gband` subcommands talk to the running server over its socket. They select the server as `attach` does, so from a gband window they reach that window's server, and the session from `-s`, else `GBAND_SESSION`, else `default`. Each prints text by default and JSON with `--json`, and exits with 1 when the request failed:
   - `gband reload` forces a reload of the server and of every client attached to the session, waits for each, and prints one result per process.
   - `gband errors` prints the error list of the server and of every client of the session, each with its load number.
-  - `gband eval [--server | --client <n>] <source> [<arg>...]` runs a Lua chunk in one client of the session, or in the server, and prints its return values.
-  - `gband cmd [--server | --client <n>] <name> [<args>]` runs a command registered with `gband.cmd`, or a server command, with JSON arguments, and prints its result.
+  - `gband eval [--on-server | --client <n>] <source> [<arg>...]` runs a Lua chunk in one client of the session, or in the server, and prints its return values.
+  - `gband cmd [--on-server | --client <n>] <name> [<args>]` runs a command registered with `gband.cmd`, or a server command, with JSON arguments, and prints its result.
 - **Wire protocol 12.** A new request carries a control operation for a session. New messages let the server forward an operation to an attached client and collect its answer, and let an attached client ask the server to reload and learn when it has.
 - **BREAKING** for a configuration that registers its own action named `reload` with `gband.action.register`: the name now belongs to a built-in action, so loading fails as for any built-in name. `gband.api_version` stays 2, since the documented API only grows.
 

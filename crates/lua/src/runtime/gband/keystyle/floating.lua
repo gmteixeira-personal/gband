@@ -12,6 +12,7 @@ set("prefix", "?", action["keylist.open"], { desc = "list the keys" })
 set("prefix", ":", action["prompt.open"], { desc = "run Lua" })
 set("prefix", "N", action["prompt.rename"], { desc = "rename the window" })
 set("prefix", "s", gband.settings.open, { desc = "settings" })
+set("prefix", "!", action.reload, { desc = "reload the configuration" })
 set("prefix", "D", action.detach, { desc = "detach" })
 set("prefix", "prefix", action.send_prefix, { desc = "send the prefix key to the focused window" })
 

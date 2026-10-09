@@ -31,7 +31,8 @@ use tokio::sync::{broadcast, mpsc, oneshot, watch};
 use tokio::task::JoinSet;
 use tracing::Instrument;
 
-pub use crate::channel::{Loader, TestChannel};
+pub use crate::channel::TestChannel;
+pub use crate::connection::ANSWER_TIMEOUT;
 use crate::connection::Context;
 pub use crate::event::{CAPACITY, Published, SessionEvent};
 use crate::hub::Hub;
@@ -39,7 +40,7 @@ pub use crate::hub::QUEUE_LIMIT;
 pub use crate::lock::kill;
 use crate::registry::{Registry, Shared};
 use crate::scripting::Taps;
-pub use crate::scripting::{NOTICE_BUDGET, OUTPUT_BUDGET, Reloader, Scripting};
+pub use crate::scripting::{Loader, NOTICE_BUDGET, OUTPUT_BUDGET, Reloader, Scripting};
 pub use crate::session::INITIAL_AREA;
 
 pub const SUN_PATH_MAX: usize = 107;

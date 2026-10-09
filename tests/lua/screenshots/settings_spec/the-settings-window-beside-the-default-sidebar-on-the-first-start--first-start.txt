@@ -1,4 +1,4 @@
-size 80x24 cursor 11:55 hidden
+size 80x24 cursor 10:55 hidden
  0|I╭─────────────────────────────────────╮
  1| │$                                    │
  2|1│                                     │
@@ -7,12 +7,12 @@ size 80x24 cursor 11:55 hidden
  5| │                                     │
  6| │                                     │
  7| │                                     │
- 8| │                                     │
- 9| │                       ┌settings─────────────────────┐
-10| │                       │theme    default             │
-11| │                       │sidebar  on                  │
-12| │                       │keys     modal               │
-13| │                       │I on new off                 │
+ 8| │                       ┌settings─────────────────────┐
+ 9| │                       │theme    default             │
+10| │                       │sidebar  on                  │
+11| │                       │keys     modal               │
+12| │                       │I on new off                 │
+13| │                       │reload   ok                  │
 14| │                       └─────────────────────────────┘
 15| │                                     │
 16| │                                     │
@@ -43,15 +43,17 @@ size 80x24 cursor 11:55 hidden
 7:1 fg=#b1b9f9 bold
 7:39 fg=#b1b9f9 bold
 8:1 fg=#b1b9f9 bold
-8:39 fg=#b1b9f9 bold
+8:25 fg=8
+8:26-33 fg=8 bold
+8:34-55 fg=8
 9:1 fg=#b1b9f9 bold
 9:25 fg=8
-9:26-33 fg=8 bold
-9:34-55 fg=8
+9:26-34 dim inverse
+9:35-54 inverse
+9:55 fg=8
 10:1 fg=#b1b9f9 bold
 10:25 fg=8
-10:26-34 dim inverse
-10:35-54 inverse
+10:26-34 dim
 10:55 fg=8
 11:1 fg=#b1b9f9 bold
 11:25 fg=8

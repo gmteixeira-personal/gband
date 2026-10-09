@@ -1094,7 +1094,7 @@ t.case("key list from the list", function(g)
   for index = 2, #info.lines - 1 do
     keys[#keys + 1] = info.lines[index]:match("^│(%S+)")
   end
-  t.eq(keys, { "n", "?", ":", "N", "s", "D", "C-space" })
+  t.eq(keys, { "n", "?", ":", "N", "s", "!", "D", "C-space" })
 end)
 
 t.case("same list from a right press", function(g)

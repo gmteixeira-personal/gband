@@ -362,3 +362,102 @@ fn windows_never_focused_come_last() {
         list_entries(screen) == ["1 mail", "2 notes", "3 logs"]
     });
 }
+
+fn label_plugin(env: &TestEnv, label: &str) {
+    env.write_client_plugin(
+        "label",
+        &format!("gband.bar.add({{ side = 'right', size = 6, lines = {{ '{label}' }} }})\n"),
+    );
+}
+
+fn client_load(env: &TestEnv) -> u64 {
+    let output = env
+        .command(GBAND, &["errors", "--json"])
+        .env_remove("GBAND_SESSION")
+        .output()
+        .unwrap();
+    let entries: Vec<serde_json::Value> = serde_json::from_slice(&output.stdout).unwrap();
+    entries[1]["load"].as_u64().unwrap()
+}
+
+fn reload_redraws(name: &str, style: &str) -> (TestEnv, Attached) {
+    let env = TestEnv::new(name);
+    env.save_key_style(style);
+    label_plugin(&env, "old");
+    let mut client = Attached::start(&env, 80, 24);
+    client.wait_for_text("old");
+    client.wait_for_text("$");
+    label_plugin(&env, "new");
+    client.send(b"\x00!");
+    client.wait_for_text("new");
+    (env, client)
+}
+
+#[test]
+fn reload_the_configuration() {
+    let (env, mut client) = reload_redraws("keystyle-reload", "modal");
+    assert_eq!(client_load(&env), 2);
+    client.run("echo back-to-typing");
+    client.wait_for_line("back-to-typing");
+}
+
+#[test]
+fn reload_with_the_direct_key_style() {
+    let (env, _client) = reload_redraws("keystyle-reload-direct", "direct");
+    assert_eq!(client_load(&env), 2);
+}
+
+#[test]
+fn reload_from_the_window_list() {
+    let env = TestEnv::new("keystyle-reload-list");
+    env.save_key_style("floating");
+    label_plugin(&env, "old");
+    let mut client = Attached::start(&env, 80, 24);
+    client.wait_for_text("old");
+    client.wait_for_text("$");
+    label_plugin(&env, "new");
+    client.send(b"\x00");
+    client.wait_for_text("┌windows");
+    client.send(b"!");
+    client.wait_for("the window list closed and the new label drawn", |screen| {
+        let contents = screen.contents();
+        !contents.contains("┌windows") && contents.contains("new")
+    });
+    assert_eq!(client_load(&env), 2);
+}
+
+#[test]
+fn reset_height_keeps_its_key() {
+    let env = TestEnv::new("keystyle-reset-height");
+    let mut client = Attached::start(&env, 80, 24);
+    client.wait_for_prompt();
+    client.shell_pid(&env);
+    client.send(b"\x00n\r");
+    client.wait_for("two tiles", |screen| tiles(screen).len() == 2);
+    client.wait_for_prompt();
+    client.send(b"\x00[");
+    client.wait_for("one column of two windows", |screen| {
+        let tiles = tiles(screen);
+        tiles.len() == 2 && tiles[0].left == tiles[1].left
+    });
+    let height = |client: &Attached| {
+        let tile = focused_tile(client);
+        tile.bottom - tile.top
+    };
+    let automatic = height(&client);
+    client.send(b"_");
+    client.wait_for("a fixed, smaller height", |screen| {
+        tiles(screen)
+            .into_iter()
+            .find(|tile| tile.focused)
+            .is_some_and(|tile| tile.bottom - tile.top < automatic)
+    });
+    client.send(b"R");
+    client.wait_for("the automatic height again", |screen| {
+        tiles(screen)
+            .into_iter()
+            .find(|tile| tile.focused)
+            .is_some_and(|tile| tile.bottom - tile.top == automatic)
+    });
+    assert_eq!(client_load(&env), 1);
+}

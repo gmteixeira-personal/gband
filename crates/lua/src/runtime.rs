@@ -794,6 +794,15 @@ impl Runtime {
         (answer, outcome)
     }
 
+    pub fn client_command(&self, name: &str, args: &Data) -> (Result<Data, String>, Outcome) {
+        let mut answer = Err(format!("the command `{name}` did not run"));
+        let outcome = self.within_callback(|lua| {
+            answer = commands::invoke_client(lua, name, args)?;
+            Ok(Ending::Returned)
+        });
+        (answer, outcome)
+    }
+
     pub fn eval(&self, source: &str, args: &[Data]) -> (Result<Vec<Data>, String>, Outcome) {
         let mut answer = Err("the chunk did not run".to_owned());
         let outcome = self.within_callback(|lua| {

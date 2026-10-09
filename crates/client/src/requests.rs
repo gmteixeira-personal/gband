@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use anyhow::{Result, bail};
-use gband_protocol::{ClientMessage, ServerMessage, SessionSummary};
+use gband_protocol::{ClientMessage, Entry, Operation, ServerMessage, SessionSummary, Target};
 
 use crate::connect::terminal_size;
 use crate::{ClientConfig, Transport, connect, runtime};
@@ -18,6 +18,30 @@ pub fn list_sessions(
         match connection.receive().await? {
             ServerMessage::Sessions(sessions) => Ok(sessions),
             _ => bail!("the server sent an unexpected answer to a list request"),
+        }
+    })
+}
+
+pub fn control(
+    config: &ClientConfig,
+    transport: &impl Transport,
+    target: Target,
+    operation: Operation,
+) -> Result<Vec<Entry>> {
+    let session = &config.session;
+    runtime()?.block_on(async {
+        let mut connection = connect(config, transport, terminal_size()).await?;
+        connection
+            .send(&ClientMessage::Control {
+                session: session.clone(),
+                target,
+                operation,
+            })
+            .await?;
+        match connection.receive().await? {
+            ServerMessage::ControlResults(entries) => Ok(entries),
+            ServerMessage::NoSuchSession => bail!("no session named {session} on {transport}"),
+            _ => bail!("the server sent an unexpected answer to a control request"),
         }
     })
 }

@@ -7,6 +7,7 @@ local LABEL_WIDTH = 9
 local WIDTH = 31
 local THEME, SIDEBAR, KEYS, INTERACTIVE_ON_NEW = 1, 2, 3, 4
 local LABELS = { "theme", "sidebar", "keys", "I on new" }
+local RELOAD_LABEL = "reload"
 local KEY_STYLES = { "modal", "direct", "floating" }
 local THEME_FILE = "user/theme.lua"
 local SIDEBAR_FILE = "user/sidebar.lua"
@@ -128,6 +129,34 @@ local function key_style()
   return gband.keystyle.saved() or "modal"
 end
 
+local function reload_line()
+  return key_style() == "modal" and INTERACTIVE_ON_NEW + 1 or KEYS + 1
+end
+
+local function meaning(line)
+  if line == reload_line() then
+    return RELOAD_LABEL
+  end
+  return line
+end
+
+local function error_count()
+  local count = #gband.errors()
+  if count == 0 then
+    return "ok"
+  elseif count == 1 then
+    return "1 error"
+  end
+  return count .. " errors"
+end
+
+local function labelled(label, value)
+  return {
+    { text = label .. string.rep(" ", LABEL_WIDTH - #label), hl = "SettingsLabel" },
+    value,
+  }
+end
+
 local function lines()
   local values = {
     tostring(gband.colorscheme()),
@@ -139,12 +168,9 @@ local function lines()
   end
   local out = {}
   for index, value in ipairs(values) do
-    local label = LABELS[index]
-    out[index] = {
-      { text = label .. string.rep(" ", LABEL_WIDTH - #label), hl = "SettingsLabel" },
-      value,
-    }
+    out[index] = labelled(LABELS[index], value)
   end
+  out[#out + 1] = labelled(RELOAD_LABEL, error_count())
   return out
 end
 
@@ -201,9 +227,14 @@ local function toggle_interactive_on_new()
   save(INTERACTIVE_ON_NEW, INTERACTIVE_ON_NEW_FILE, "return " .. next_value .. "\n")
 end
 
+local function reload()
+  core.reopen_settings(reload_line())
+  gband.action.reload()
+end
+
 local function change(direction)
   return function(win)
-    local line = gband.win.info(win).cursor
+    local line = meaning(gband.win.info(win).cursor)
     if line == THEME then
       step_theme(direction)
     elseif line == SIDEBAR then
@@ -219,8 +250,10 @@ end
 local open_list
 
 local function enter(win)
-  local line = gband.win.info(win).cursor
-  if line == THEME then
+  local line = meaning(gband.win.info(win).cursor)
+  if line == RELOAD_LABEL then
+    reload()
+  elseif line == THEME then
     open_list()
   elseif line == SIDEBAR then
     toggle_sidebar()
@@ -336,6 +369,7 @@ local function show(line)
   end
   if is_open(window) then
     gband.win.focus(window)
+    gband.win.set_lines(window, lines())
   else
     local content = lines()
     window = gband.win.open({

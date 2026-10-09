@@ -7,12 +7,12 @@ size 80x24 cursor 19:51 hidden
  5| │                           │terminal            │
  6| │                           │catppuccin-latte    │
  7| │                           │catppuccin-frappe   │
- 8| │                           │catppuccin-macchiato│
- 9| │                       ┌set│catppuccin-mocha    │────┐
-10| │                       │the│tokyo-night         │    │
-11| │                       │sid│dracula             │    │
-12| │                       │key│nord                │    │
-13| │                       │I o│gruvbox             │    │
+ 8| │                       ┌set│catppuccin-macchiato│────┐
+ 9| │                       │the│catppuccin-mocha    │    │
+10| │                       │sid│tokyo-night         │    │
+11| │                       │key│dracula             │    │
+12| │                       │I o│nord                │    │
+13| │                       │rel│gruvbox             │    │
 14| │                       └───│one-dark            │────┘
 15| │                           │solarized           │
 16| │                           │kanagawa            │
@@ -59,24 +59,26 @@ size 80x24 cursor 19:51 hidden
 7:50 fg=8 bg=0
 8:0 bg=0
 8:1 fg=4 bold
+8:25 fg=8 bg=0
+8:26-28 fg=4 bg=0 bold
 8:29 fg=8 bg=0
 8:30-49 fg=7 bg=0
-8:50 fg=8 bg=0
+8:50-55 fg=8 bg=0
 9:0 bg=0
 9:1 fg=4 bold
 9:25 fg=8 bg=0
-9:26-28 fg=4 bg=0 bold
+9:26-28 fg=0 bg=4
 9:29 fg=8 bg=0
 9:30-49 fg=7 bg=0
-9:50-55 fg=8 bg=0
+9:50 fg=8 bg=0
+9:51-54 fg=0 bg=4
+9:55 fg=8 bg=0
 10:0 bg=0
 10:1 fg=4 bold
-10:25 fg=8 bg=0
-10:26-28 fg=0 bg=4
-10:29 fg=8 bg=0
+10:25-29 fg=8 bg=0
 10:30-49 fg=7 bg=0
 10:50 fg=8 bg=0
-10:51-54 fg=0 bg=4
+10:51-54 fg=7 bg=0
 10:55 fg=8 bg=0
 11:0 bg=0
 11:1 fg=4 bold

@@ -4,6 +4,7 @@ use common::*;
 use gband_core::action::Action;
 use gband_core::view::ViewAction;
 use gband_lua::{Binding, CallbackId, Config, Dispatch};
+use gband_protocol::{Key, Value};
 
 fn root_callback(config: &Config, index: usize) -> CallbackId {
     config.keymap["root"]
@@ -199,4 +200,48 @@ fn registering_after_the_load_fails() {
         2,
         "while the configuration loads",
     );
+}
+
+#[test]
+fn client_command_returns_its_value() {
+    let scratch = Scratch::new("client-value");
+    scratch.write(
+        "gband.cmd.register('greet', function(args) return 'hi ' .. args.who end)
+gband.cmd.register('types', function(args) return type(args.n) .. ' ' .. type(args.list) end)
+gband.cmd.register('right', function() gband.action.focus_column_right() end)",
+    );
+    let config = scratch.loaded();
+    let args = Value::Table(vec![(Key::string("who"), Value::string("you"))]);
+    let (result, outcome) = config.runtime.client_command("greet", &args);
+    clean(&outcome);
+    assert_eq!(result, Ok(Value::string("hi you")));
+    let args = Value::Table(vec![
+        (Key::string("n"), Value::Int(1)),
+        (
+            Key::string("list"),
+            Value::Table(vec![(Key::Int(1), Value::Int(1))]),
+        ),
+    ]);
+    let (result, _) = config.runtime.client_command("types", &args);
+    assert_eq!(result, Ok(Value::string("number table")));
+    let (result, outcome) = config.runtime.client_command("right", &Value::Nil);
+    assert_eq!(result, Ok(Value::Nil));
+    assert_eq!(
+        outcome.dispatched,
+        [Dispatch::Action(Action::View(ViewAction::FocusRight))]
+    );
+}
+
+#[test]
+fn client_command_failure_is_answered_and_reported() {
+    let scratch = Scratch::new("client-failure");
+    let path =
+        scratch.write("gband.cmd.register('broken', function()\n  error('broken command')\nend)");
+    let config = scratch.loaded();
+    let (result, outcome) = config.runtime.client_command("broken", &Value::Nil);
+    assert!(result.unwrap_err().contains("broken command"));
+    assert_error_at(&outcome.errors[0], &path, 2, "broken command");
+    let (result, outcome) = config.runtime.client_command("absent", &Value::Nil);
+    assert!(result.unwrap_err().contains("absent"));
+    clean(&outcome);
 }

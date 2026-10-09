@@ -11,8 +11,9 @@ use gband_core::layout::{
 };
 use gband_protocol::test::{FromProcess, Role, ToProcess};
 use gband_protocol::{
-    ClientMessage, Decoder, ExecutableId, Hello, HelloReply, Key as ValueKey, PROTOCOL_VERSION,
-    Requirement, ServerMessage, SessionName, SessionSummary, Value, encode,
+    Answer, ClientMessage, Decoder, Entry, ExecutableId, Hello, HelloReply, Key as ValueKey,
+    Operation, PROTOCOL_VERSION, Process, Requirement, ServerMessage, SessionName, SessionSummary,
+    Target, Value, encode,
 };
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -31,8 +32,8 @@ fn session(name: &str) -> SessionName {
 }
 
 #[test]
-fn protocol_version_is_eleven() {
-    assert_eq!(PROTOCOL_VERSION, 11);
+fn protocol_version_is_twelve() {
+    assert_eq!(PROTOCOL_VERSION, 12);
 }
 
 #[test]
@@ -93,6 +94,84 @@ fn requests_round_trip() {
     round_trip(ClientMessage::KillSession {
         session: session("work"),
     });
+}
+
+#[test]
+fn control_request_round_trips() {
+    round_trip(ClientMessage::Control {
+        session: session("work"),
+        target: Target::Client(2),
+        operation: Operation::Eval {
+            source: "return 1".to_owned(),
+            args: Vec::new(),
+        },
+    });
+    for target in [
+        Target::Server,
+        Target::EveryClient,
+        Target::All,
+        Target::Chosen,
+    ] {
+        round_trip(ClientMessage::Control {
+            session: session("default"),
+            target,
+            operation: Operation::Reload,
+        });
+    }
+    round_trip(ClientMessage::Control {
+        session: session("default"),
+        target: Target::Chosen,
+        operation: Operation::Command {
+            name: "agents.next_waiting".to_owned(),
+            args: Value::Table(vec![(ValueKey::string("n"), Value::Int(1))]),
+        },
+    });
+}
+
+#[test]
+fn control_messages_round_trip() {
+    round_trip(ClientMessage::Reload);
+    round_trip(ClientMessage::ControlAnswer {
+        call: 4,
+        answer: Answer::Errors {
+            load: 2,
+            errors: vec!["user/init.lua:2: bad".to_owned()],
+        },
+    });
+    round_trip(ClientMessage::ControlAnswer {
+        call: 5,
+        answer: Answer::Loaded {
+            load: 3,
+            error: None,
+        },
+    });
+    round_trip(ClientMessage::ControlAnswer {
+        call: 6,
+        answer: Answer::Values(Ok(vec![text("client"), Value::Int(2)])),
+    });
+    round_trip(ClientMessage::ControlAnswer {
+        call: 7,
+        answer: Answer::Values(Err("boom".to_owned())),
+    });
+    round_trip(ServerMessage::Reloaded);
+    round_trip(ServerMessage::Control {
+        call: 4,
+        operation: Operation::Errors,
+    });
+    round_trip(ServerMessage::ControlResults(vec![
+        Entry {
+            process: Process::Server,
+            answer: Some(Answer::Loaded {
+                load: 3,
+                error: Some("server.lua:1: bad".to_owned()),
+            }),
+        },
+        Entry {
+            process: Process::Client(1),
+            answer: None,
+        },
+    ]));
+    round_trip(ServerMessage::ControlResults(Vec::new()));
 }
 
 #[test]

@@ -3,20 +3,16 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use anyhow::{Context as _, Result};
-use gband_lua::{Config, ConfigError};
 use gband_protocol::test::{FromProcess, ToProcess};
 use gband_protocol::{MessageReader, MessageWriter, ServerMessage};
 use tokio::net::UnixStream;
 use tokio::sync::{mpsc, oneshot};
 
 use crate::hub::Hub;
-use crate::scripting::{Input, Taps};
-
-pub type Loader = Box<dyn FnMut() -> Result<Config, ConfigError> + Send>;
+use crate::scripting::Taps;
 
 pub struct TestChannel {
     pub stream: std::os::unix::net::UnixStream,
-    pub reload: Loader,
 }
 
 pub(crate) enum Barrier {
@@ -106,7 +102,7 @@ pub(crate) async fn serve(channel: TestChannel, hub: Arc<Hub>, taps: Arc<Taps>) 
 }
 
 async fn run(channel: TestChannel, hub: &Hub, taps: &Taps) -> Result<()> {
-    let TestChannel { stream, mut reload } = channel;
+    let TestChannel { stream } = channel;
     stream
         .set_nonblocking(true)
         .context("cannot use the test channel")?;
@@ -117,30 +113,15 @@ async fn run(channel: TestChannel, hub: &Hub, taps: &Taps) -> Result<()> {
     let mut writer = MessageWriter::new(writer);
     while let Some(request) = reader.recv::<ToProcess>().await? {
         let answer = match request {
-            ToProcess::Eval { id, source, args } => {
-                let (reply, answer) = oneshot::channel();
-                let result = if taps.call(Input::Eval {
-                    source,
-                    args,
-                    reply,
-                }) {
-                    answer
-                        .await
-                        .unwrap_or_else(|_| Err("the server's Lua stopped".to_owned()))
-                } else {
-                    Err("the server runs no Lua".to_owned())
-                };
-                Some(FromProcess::Answer { id, result })
-            }
+            ToProcess::Eval { id, source, args } => Some(FromProcess::Answer {
+                id,
+                result: taps.eval(source, args).await,
+            }),
             ToProcess::Reload { id } => {
-                let loaded = reload();
-                let error = loaded.as_ref().err().map(ToString::to_string);
-                if taps.call(Input::Reload(loaded)) {
-                    let (reply, applied) = oneshot::channel();
-                    if taps.call(Input::Barrier(reply)) {
-                        let _ = applied.await;
-                    }
-                }
+                let error = match taps.load().await {
+                    Some((_, error)) => error,
+                    None => Some("the server runs no Lua".to_owned()),
+                };
                 Some(FromProcess::Reloaded { id, error })
             }
             ToProcess::SetTime { time } => {

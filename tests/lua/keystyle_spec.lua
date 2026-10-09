@@ -11,3 +11,45 @@ t.case("the direct style's mode letter and key list title", function(g)
   t.match(g.screen().text(), "prefix keys")
   g.expect_screenshot("direct")
 end)
+
+local function reloaded_by(g, keys)
+  g.client("reload_marker = true")
+  for _, key in ipairs(keys) do
+    g.keys(key)
+    g.settle()
+  end
+  t.eq(g.client("return reload_marker"), nil)
+  t.eq(g.client("return gband.keymap.current_table()"), "root")
+  t.eq(g.client("return gband.view().plugin_window"), nil)
+end
+
+t.case("prefix ! reloads with the modal style, also mid navigation", function(g)
+  g.start({ keystyle = "modal" })
+  g.wait_text("$")
+  reloaded_by(g, { "ctrl+space !" })
+  reloaded_by(g, { "ctrl+space n", "h", "!" })
+end)
+
+t.case("prefix ! reloads with the direct style", function(g)
+  g.start({ keystyle = "direct" })
+  g.wait_text("$")
+  reloaded_by(g, { "ctrl+space !" })
+end)
+
+t.case("prefix ! reloads from the floating window list", function(g)
+  g.start({ files = { ["user/keystyle.lua"] = 'return "floating"\n' } })
+  g.wait_text("$")
+  reloaded_by(g, { "ctrl+space", "!" })
+end)
+
+t.case("! in the key list reloads with the modal style", function(g)
+  g.start({ keystyle = "modal" })
+  g.wait_text("$")
+  reloaded_by(g, { "ctrl+space ?", "!" })
+end)
+
+t.case("! in the key list reloads with the floating style", function(g)
+  g.start({ files = { ["user/keystyle.lua"] = 'return "floating"\n' } })
+  g.wait_text("$")
+  reloaded_by(g, { "ctrl+space", "?", "!" })
+end)

@@ -656,3 +656,121 @@ fn new_default_width() {
     let (left, width) = open_second_window(&mut client, &env);
     assert_eq!((left, width), (40, 26));
 }
+
+fn label_plugin(env: &TestEnv, label: &str) {
+    env.write_client_plugin(
+        "label",
+        &format!("gband.bar.add({{ side = 'right', size = 6, lines = {{ '{label}' }} }})\n"),
+    );
+}
+
+fn loads(env: &TestEnv) -> Vec<(String, u64)> {
+    let output = env
+        .command(GBAND, &["errors", "--json"])
+        .env_remove("GBAND_SESSION")
+        .output()
+        .unwrap();
+    let entries: Vec<serde_json::Value> = serde_json::from_slice(&output.stdout).unwrap();
+    entries
+        .iter()
+        .map(|entry| {
+            (
+                entry["process"].as_str().unwrap().to_owned(),
+                entry["load"].as_u64().unwrap(),
+            )
+        })
+        .collect()
+}
+
+fn own_errors(env: &TestEnv) -> String {
+    let output = env
+        .command(GBAND, &["errors"])
+        .env_remove("GBAND_SESSION")
+        .output()
+        .unwrap();
+    String::from_utf8(output.stdout).unwrap()
+}
+
+#[test]
+fn forced_reload_reads_a_changed_plugin_and_returns_to_typing() {
+    let env = TestEnv::new("config-forced-plugin");
+    label_plugin(&env, "old");
+    let mut client = Attached::start(&env, 80, 24);
+    client.wait_for_text("old");
+    client.wait_for_prompt();
+    label_plugin(&env, "new");
+    client.send(b"\x00!");
+    client.wait_for_text("new");
+    client.run("echo hi");
+    client.wait_for_line("hi");
+}
+
+#[test]
+fn forced_reload_reads_a_changed_server_plugin() {
+    let env = TestEnv::new("config-forced-server-plugin");
+    let emitting = |word: &str| {
+        env.write_server_plugin(
+            "note",
+            &format!("gband.on('WindowOpened', function() gband.emit('note', '{word}') end)\n"),
+        );
+    };
+    emitting("one");
+    env.write_client_plugin(
+        "show",
+        "local bar = gband.bar.add({ id = 'note', side = 'right', size = 6 })\n\
+         gband.on('ServerEvent', function(ev) gband.bar.set_lines(bar, { ev.data }) end, { pattern = 'note' })\n",
+    );
+    let mut client = Attached::start(&env, 80, 24);
+    client.wait_for_prompt();
+    emitting("two");
+    client.send(b"\x00!");
+    wait_until(
+        || loads(&env).first() == Some(&("server".to_owned(), 2)),
+        "the server's forced load",
+    );
+    client.send(b"\x00n\r");
+    client.wait_for_text("two");
+    assert!(!client.contents().contains("one"), "{}", client.contents());
+}
+
+#[test]
+fn broken_plugin_keeps_the_configuration_in_use() {
+    let env = TestEnv::new("config-forced-broken");
+    env.write_config(&with_defaults(
+        "gband.bind('alt+l', gband.action.focus_column_right)",
+    ));
+    env.write_client_plugin("fragile", "local fine = true\n");
+    let mut client = two_windows_first_focused(&env);
+    env.write_client_plugin("fragile", "error('bad')\n");
+    client.send(b"\x00!");
+    wait_until(|| own_errors(&env).contains("bad"), "the plugin error");
+    client.wait_for("the error marker", sidebar_error);
+    client.send(b"\x1bl");
+    client.wait_for("the second tile focused", second_focused);
+}
+
+#[test]
+fn forced_reload_leaves_other_clients_alone() {
+    let env = TestEnv::new("config-forced-others");
+    label_plugin(&env, "old");
+    let mut first = Attached::start(&env, 80, 24);
+    first.wait_for_text("old");
+    first.wait_for_prompt();
+    let second = Attached::start(&env, 80, 24);
+    second.wait_for_text("old");
+    label_plugin(&env, "new");
+    first.send(b"\x00!");
+    first.wait_for_text("new");
+    thread::sleep(Duration::from_millis(300));
+    let contents = second.contents();
+    assert!(
+        contents.contains("old") && !contents.contains("new"),
+        "{contents}"
+    );
+    let loaded = loads(&env);
+    assert_eq!(
+        loaded.iter().filter(|(_, load)| *load == 2).count(),
+        2,
+        "{loaded:?}"
+    );
+}

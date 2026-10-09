@@ -814,6 +814,7 @@ fn bad_targets_are_errors() {
             "focus_column_left",
         ),
         ("gband.action.detach({})", "detach"),
+        ("gband.action.reload({})", "reload"),
         ("gband.action.drag_resize_window({ edges = {} })", "`edges`"),
         (
             "gband.action.drag_resize_window({ edges = { 'middle' } })",

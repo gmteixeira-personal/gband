@@ -7,7 +7,8 @@ use gband_core::input::{Key, KeyCode};
 use gband_core::layout::{Proportion, WindowId};
 use gband_lua::{LoadOptions, Locations, Side};
 use gband_protocol::{
-    ClientMessage, Key as DataKey, Requirement, ServerMessage, SessionName, Value,
+    Answer, ClientMessage, Entry, Key as DataKey, Operation, Process, Requirement, ServerMessage,
+    SessionName, Target, Value,
 };
 use gband_server::{Reloader, Scripting, ServerConfig};
 use gband_test_support::*;
@@ -67,6 +68,10 @@ async fn start_in(runtime_dir: Scratch, source: &str) -> Scripted {
     write(&server_file(&locations), source);
     let (loaded, error) = load(&locations);
     let (scripting, reloader) = Scripting::new(loaded, error);
+    let loading = locations.clone();
+    let scripting = scripting.with_loader(std::sync::Arc::new(move || {
+        gband_lua::load(&loading, Side::Server, &LoadOptions::default())
+    }));
     let config = ServerConfig {
         scripting: Some(scripting),
         channel: None,
@@ -96,6 +101,26 @@ impl Scripted {
 
     async fn attach(&self) -> TestClient {
         self.server.attach(80, 24).await
+    }
+
+    async fn server_answer(&self, operation: Operation) -> Answer {
+        let answer = self
+            .server
+            .control("default", Target::Server, operation)
+            .await;
+        let ServerMessage::ControlResults(entries) = answer else {
+            panic!("{answer:?}");
+        };
+        let [
+            Entry {
+                process: Process::Server,
+                answer: Some(answer),
+            },
+        ] = &entries[..]
+        else {
+            panic!("{entries:?}");
+        };
+        answer.clone()
     }
 }
 
@@ -246,6 +271,116 @@ async fn kept_across_reload() {
     event(&mut client, "reloaded").await;
     let later = scripted.attach().await;
     assert_eq!(later.states[&first]["agent"], text("waiting"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn every_load_counts_failed_ones_included() {
+    let scripted = start("lua-load-number", "").await;
+    assert_eq!(
+        scripted.server_answer(Operation::Errors).await,
+        Answer::Errors {
+            load: 1,
+            errors: Vec::new(),
+        }
+    );
+    scripted.reload("local = 1");
+    let Answer::Errors { load: 2, errors } = scripted.server_answer(Operation::Errors).await else {
+        panic!("the failed load was not counted");
+    };
+    assert_eq!(errors.len(), 1, "{errors:?}");
+    assert!(errors[0].contains("server.lua:1:"), "{errors:?}");
+    write(&server_file(&scripted.locations), "");
+    assert_eq!(
+        scripted.server_answer(Operation::Reload).await,
+        Answer::Loaded {
+            load: 3,
+            error: None,
+        }
+    );
+    assert_eq!(
+        scripted.server_answer(Operation::Errors).await,
+        Answer::Errors {
+            load: 3,
+            errors: Vec::new(),
+        }
+    );
+    write(&server_file(&scripted.locations), "error('bad')");
+    let Answer::Loaded {
+        load: 4,
+        error: Some(error),
+    } = scripted.server_answer(Operation::Reload).await
+    else {
+        panic!("the failed forced load was not counted");
+    };
+    assert!(error.contains("bad"), "{error}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn server_errors_listed_since_the_last_good_load() {
+    let scripted = start(
+        "lua-error-list",
+        "gband.on('WindowOpened', function() error('boom') end)",
+    )
+    .await;
+    let mut client = scripted.attach().await;
+    let first = client.first();
+    let second = client.open_after(first).await;
+    client.open_after(second).await;
+    client
+        .wait_until(|client| {
+            client
+                .bridge
+                .iter()
+                .filter(|message| matches!(message, ServerMessage::ServerError(_)))
+                .count()
+                >= 2
+        })
+        .await;
+    let Answer::Errors { load: 1, errors } = scripted.server_answer(Operation::Errors).await else {
+        panic!("wrong load number");
+    };
+    assert!(errors.len() >= 2, "{errors:?}");
+    assert!(
+        errors.iter().all(|error| error.contains("boom")),
+        "{errors:?}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn eval_and_command_in_the_server() {
+    let scripted = start(
+        "lua-control-eval",
+        "gband.cmd.register('double', function(args) return args.n * 2 end)",
+    )
+    .await;
+    assert_eq!(
+        scripted
+            .server_answer(Operation::Eval {
+                source: "return gband.side, ...".to_owned(),
+                args: vec![text("a")],
+            })
+            .await,
+        Answer::Values(Ok(vec![text("server"), text("a")]))
+    );
+    assert_eq!(
+        scripted
+            .server_answer(Operation::Command {
+                name: "double".to_owned(),
+                args: Value::Table(vec![(DataKey::string("n"), Value::Int(21))]),
+            })
+            .await,
+        Answer::Values(Ok(vec![Value::Int(42)]))
+    );
+    let Answer::Values(Err(reason)) = scripted
+        .server_answer(Operation::Command {
+            name: "absent".to_owned(),
+            args: Value::Nil,
+        })
+        .await
+    else {
+        panic!("an unknown command answered");
+    };
+    assert!(reason.contains("absent"), "{reason}");
 }
 
 #[tokio::test(flavor = "multi_thread")]

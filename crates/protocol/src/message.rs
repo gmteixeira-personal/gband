@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::session::{SessionName, SessionSummary};
 use crate::value::Value;
 
-pub const PROTOCOL_VERSION: u32 = 11;
+pub const PROTOCOL_VERSION: u32 = 12;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Hello {
@@ -64,6 +64,16 @@ pub enum ClientMessage {
         window: WindowId,
         name: Option<String>,
     },
+    Control {
+        session: SessionName,
+        target: Target,
+        operation: Operation,
+    },
+    Reload,
+    ControlAnswer {
+        call: u64,
+        answer: Answer,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -118,6 +128,48 @@ pub enum ServerMessage {
     },
     Requirements(Vec<Requirement>),
     ServerError(String),
+    Reloaded,
+    Control {
+        call: u64,
+        operation: Operation,
+    },
+    ControlResults(Vec<Entry>),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Target {
+    Server,
+    EveryClient,
+    All,
+    Client(u64),
+    Chosen,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Operation {
+    Reload,
+    Errors,
+    Eval { source: String, args: Vec<Value> },
+    Command { name: String, args: Value },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Answer {
+    Loaded { load: u64, error: Option<String> },
+    Errors { load: u64, errors: Vec<String> },
+    Values(Result<Vec<Value>, String>),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum Process {
+    Server,
+    Client(u64),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Entry {
+    pub process: Process,
+    pub answer: Option<Answer>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
