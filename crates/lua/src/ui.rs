@@ -41,6 +41,7 @@ pub struct ViewState {
     pub minimized: BTreeSet<WindowId>,
     pub last_focus: BTreeMap<WindowId, u64>,
     pub peek: bool,
+    pub multi: bool,
 }
 
 pub type WindowStates = BTreeMap<WindowId, BTreeMap<String, Data>>;
@@ -625,6 +626,7 @@ fn state(lua: &Lua, (): ()) -> mlua::Result<Table> {
     band.set("count", state.band.count)?;
     table.set("band", band)?;
     table.set("window", state.window)?;
+    table.set("multi", state.multi)?;
     table.set("width", state.width)?;
     table.set("height", state.height)?;
     table.set("error", state.error)?;
@@ -641,6 +643,7 @@ fn drawn_differs(old: &ViewState, new: &ViewState) -> bool {
         || old.band.count != new.band.count
         || old.error != new.error
         || old.errors != new.errors
+        || old.multi != new.multi
 }
 
 pub(crate) fn set_state(lua: &Lua, state: ViewState) -> mlua::Result<()> {

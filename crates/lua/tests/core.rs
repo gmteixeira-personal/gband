@@ -152,6 +152,23 @@ fn several_state_functions() {
 }
 
 #[test]
+fn state_follows_multi_mode() {
+    let scratch = Scratch::new("core-multi");
+    scratch.client_plugin(
+        "watch",
+        "gband.core.on_state(function() seen = gband.core.state().multi end)",
+    );
+    let config = scratch.loaded();
+    clean(&config.runtime.set_state(band(1, 2)));
+    config.runtime.lua().load("seen = nil").exec().unwrap();
+    let mut state = band(1, 2);
+    state.multi = true;
+    clean(&config.runtime.set_state(state));
+    let seen: Option<bool> = global(&config, "seen");
+    assert_eq!(seen, Some(true));
+}
+
+#[test]
 fn argument_errors_name_the_primitive_and_the_field() {
     rejected(
         "gband.core.present_window(1, { kind = 'tiled', cols = 'wide', rows = 1, base = {}, lines = {} })",

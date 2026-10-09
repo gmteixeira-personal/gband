@@ -518,10 +518,10 @@ fn every_default_binding_is_described() {
     for (config, count, open) in [
         (
             gband_lua::defaults(gband_lua::Side::Client),
-            49,
+            50,
             "open a window",
         ),
-        (direct, 47, "open a window"),
+        (direct, 48, "open a window"),
         (floating, 8, "open a floating window"),
     ] {
         assert_described(&config, count, open);
@@ -544,6 +544,10 @@ fn direct_style_from_the_saved_choice() {
     assert_eq!(
         action_of(&config, prefixed("n")),
         Some(Action::Session(SessionCommand::OpenWindow))
+    );
+    assert_eq!(
+        action_of(&config, prefixed("m")),
+        Some(Action::Client(ClientAction::ToggleMulti))
     );
     assert_eq!(
         binding(&config, ("prefix", Chord::Prefix)),
@@ -620,6 +624,7 @@ fn assert_described(config: &Config, count: usize, open: &str) {
            enter = 'interactive mode',
            prefix = 'send the prefix key',
            s = 'settings',
+           m = 'multi mode',
          }}
          local wrong = {{}}
          for _, table in ipairs({{ 'prefix', 'root' }}) do
@@ -738,7 +743,8 @@ fn settings_bound_by_the_defaults() {
     let position = |key: &str| keys.iter().position(|bound| bound == key).unwrap();
     assert_eq!(position("s"), position("N") + 1);
     assert_eq!(position("!"), position("s") + 1);
-    assert!(position("!") < position("D"));
+    assert_eq!(position("m"), position("!") + 1);
+    assert_eq!(position("D"), position("m") + 1);
     let desc: String = eval(
         &config,
         "for _, entry in ipairs(gband.keymap.list('prefix')) do if entry.key == 's' then return entry.desc end end",
@@ -808,6 +814,7 @@ fn every_action_is_named() {
         "detach",
         "send_prefix",
         "reload",
+        "toggle_multi",
         "drag_window",
         "drag_resize_window",
         "drag_band",
@@ -852,6 +859,16 @@ fn reload_description() {
         "for _, action in ipairs(gband.action.list()) do if action.name == 'reload' then return action.desc end end",
     );
     assert_eq!(desc, "reload the configuration");
+}
+
+#[test]
+fn toggle_multi_description() {
+    let config = gband_lua::defaults(gband_lua::Side::Client);
+    let desc: String = eval(
+        &config,
+        "for _, action in ipairs(gband.action.list()) do if action.name == 'toggle_multi' then return action.desc end end",
+    );
+    assert_eq!(desc, "toggle multi mode");
 }
 
 #[test]

@@ -101,6 +101,7 @@ pub enum ClientAction {
     Detach,
     SendPrefix,
     Reload,
+    ToggleMulti,
     SendKey(Key),
     DragWindow,
     DragResize(Option<Edges>),

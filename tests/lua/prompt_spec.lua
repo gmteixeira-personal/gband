@@ -50,13 +50,23 @@ t.case("the key list holds the prompt between the key list and detach", function
   g.wait_text("$")
   g.keys("ctrl+space ? end")
   g.settle()
+  local own = g.client([[
+    for index, entry in ipairs(gband.keymap.list("prefix")) do
+      if entry.key == "?" then
+        return index
+      end
+    end
+  ]])
+  g.client("gband.win.set_cursor(gband.view().plugin_window, ...)", own)
+  g.settle()
   local list = row_of(g, "list the keys")
   t.ok(list, "the key list's own line is shown")
   t.match(g.screen().row(list + 1), "│:%s+run Lua")
   t.match(g.screen().row(list + 2), "│N%s+rename the window")
   t.match(g.screen().row(list + 3), "│s%s+settings")
   t.match(g.screen().row(list + 4), "│!%s+reload the configuration")
-  t.match(g.screen().row(list + 5), "│D%s+detach")
+  t.match(g.screen().row(list + 5), "│m%s+multi mode")
+  t.match(g.screen().row(list + 6), "│D%s+detach")
   local order = g.client([[
     local keys = {}
     for _, entry in ipairs(gband.keymap.list("prefix")) do
@@ -64,6 +74,6 @@ t.case("the key list holds the prompt between the key list and detach", function
     end
     return table.concat(keys, " ")
   ]])
-  t.match(order, "%? : N s ! D ")
+  t.match(order, "%? : N s ! m D ")
   g.expect_screenshot("hint")
 end)

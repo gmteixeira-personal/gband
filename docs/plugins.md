@@ -306,6 +306,7 @@ The built-in actions, with the description `gband.action.list()` gives each:
 | `detach` | client | detach |
 | `send_prefix` | client | send the prefix key to the focused window |
 | `reload` | client | reload the configuration |
+| `toggle_multi` | client | toggle multi mode |
 | `drag_window` | client | move the window with the mouse |
 | `drag_resize_window` | client | resize the window with the mouse |
 | `drag_band` | client | slide the band or switch bands with the mouse |
@@ -313,6 +314,9 @@ The built-in actions, with the description `gband.action.list()` gives each:
 The view and client actions exist in the client only.
 The session actions exist on both sides; in the server they take a target, as "Session actions in the server" describes.
 The three `drag_` actions act only when a mouse press runs them, as "Mouse names" describes.
+`toggle_multi` turns this client's multi mode on or off and takes no target.
+While multi mode is on, every key and paste that would reach the focused window reaches each window of the viewed band instead, in layout order, minimized windows included, and `send_prefix` sends the prefix key to each of them; a focused plugin window still takes the keys, the mouse still reaches one window, and `gband.window.send_keys`, `send_text` and `paste` still reach only the window they name.
+Multi mode is off when the client attaches, a reload turns it off, and it is this client's alone.
 
 `gband.action.register(name, fn, { desc = "..." })` registers an action and returns its action value.
 Dispatching it runs `fn` with no arguments, at once, before the caller continues.
@@ -603,6 +607,7 @@ This client draws the floating windows of a band that it has not minimized in th
 
 `gband.view()` returns `band`, the viewed band, `window`, the focused window or nil, `floating`, true while the band's floating layer has focus, `plugin_window`, the focused plugin window or nil, `table`, the active key table, and `cols` and `rows`, the size of the ribbon.
 While the focused window is one this client peeks, it also returns `peek`, true; otherwise it has no `peek`.
+While this client's multi mode is on, it also returns `multi`, true; otherwise it has no `multi`.
 
 Both can be called from any code that runs after loading.
 They describe the state when they are called: an action the running callback dispatched takes effect only after it returns.
@@ -937,7 +942,7 @@ On a bar of height `h`, counting rows from 0:
 | 2 to `h - 2` | one band label each, in layout order | `SidebarBandActive` for the viewed band, `SidebarBand` for the others |
 | `h - 1` | `!` while the client reports an error, otherwise nothing | `SidebarError` |
 
-The mode letter is `I` while the active key table is `root`.
+The mode letter is `I` while the active key table is `root`, or `M` while multi mode is on, as `gband.view().multi` says.
 For any other table it is the first character of `gband.keymap.label(table)`, uppercased when it is an ASCII lowercase letter: navigation mode shows `N`, the direct key style's `prefix` shows `P`, and a mode labelled `resize` shows `R`.
 While `gband.keystyle.current()` returns `floating`, row 0 shows the apps character `∷`, U+2237, instead, whatever table is active, so a mode of your own shows no letter there.
 `∷` is East Asian ambiguous width, so a terminal that draws ambiguous characters two cells wide draws it over the ribbon; a copy of the sidebar can draw `⸬`, U+2E2C, a lookalike of neutral width that fewer fonts hold.
@@ -1124,13 +1129,13 @@ A left press selects an entry and the release on it picks it, and a press anywhe
 The wheel moves the window menu's selection, and scrolls the window list by one row without moving its selection.
 A menu moves its shown rows only as far as the selection, a wheel step or a change of its rows or height needs.
 
-The window list, titled `windows`, holds `New window`, which opens a floating window running your shell, `Settings`, then every window that runs a program, by its shown name.
+The window list, titled `windows`, holds `New window`, which opens a floating window running your shell, `Settings`, `Multi mode`, which reads `Multi mode (on)` while multi mode is on, then every window that runs a program, by its shown name.
 The windows this client focused come first, the most recent at the top, as `last_focus` orders them, then the windows it never focused, in layout order; the order is taken when the list opens and stays while it is open, with windows that close dropped and windows that open added at the end.
-Each entry starts with its shortcut, in `DesktopShortcut`: `n` for `New window`, `s` for `Settings`, `1` to `9` for the first nine windows and `0` for the tenth; later windows have none.
+Each entry starts with its shortcut, in `DesktopShortcut`: `n` for `New window`, `s` for `Settings`, `m` for `Multi mode`, `1` to `9` for the first nine windows and `0` for the tenth; later windows have none.
 While windows sit in two or more bands, each window entry ends with `band ` and the band's sidebar label, right-aligned, and a window this client minimized has ` (minimized)` after its name and its entry in `DesktopMinimized`.
 Its `[□]` gives it the ribbon's height and `[❐]` gives its height back, and its bottom border shows `? keys` while `prefix` binds `?`.
 
-The window list previews the entry the selection lands on, by a key, a press, a shortcut or the pointer: a window entry is peeked with `gband.window.focus(id, { peek = true })`, so it shows from its band, on top and also when minimized, and `New window` and `Settings` show the band and focus the list opened on.
+The window list previews the entry the selection lands on, by a key, a press, a shortcut or the pointer: a window entry is peeked with `gband.window.focus(id, { peek = true })`, so it shows from its band, on top and also when minimized, and `New window`, `Settings` and `Multi mode` show the band and focus the list opened on.
 A preview records nothing, so the focus order, the stacking order and the minimized windows stay as they were.
 The list is opened with `hover = true`, so moving the pointer onto an entry selects and previews it, and the list stays focused through its previews; the window menu is opened without `hover`.
 
@@ -1138,12 +1143,13 @@ The window list closes by keeping what it shows or by cancelling:
 
 - Picking a window, by Enter, a click or its shortcut, keeps: it focuses the window as `gband.window.focus` does, which records it, raises it and restores it when minimized.
 - Picking `New window` or `Settings` cancels, then opens the window in the band the list opened on, or the settings window.
+- Picking `Multi mode` cancels, then dispatches `toggle_multi`.
 - `[X]`, Escape, `q` and closing by other code with `gband.win.close` cancel: the list views the band it opened on with `gband.band.view`, which ends the peek, so the band, the focused window, the stacking order and the minimized windows are as they were.
 - A press elsewhere focuses the window it names; otherwise it leaves the view as the press changed it, or cancels when the press changed nothing.
 - A right press that opens a menu, and a `prefix` key, keep.
 
-The keys `n`, `s` and `0` to `9` belong to the list, whatever `prefix` binds: each picks the entry with that shortcut, and a digit no entry has does nothing.
-Any other key that `prefix` binds keeps and runs that binding, so with the floating preset `D` detaches, `!` reloads the configuration, `:` opens the Lua prompt, `?` opens the key list and `N` renames the window the list shows; a `prefix` binding of a digit, `n` or `s` stays reachable from the key list.
+The keys `n`, `s`, `m` and `0` to `9` belong to the list, whatever `prefix` binds: each picks the entry with that shortcut, and a digit no entry has does nothing.
+Any other key that `prefix` binds keeps and runs that binding, so with the floating preset `D` detaches, `!` reloads the configuration, `:` opens the Lua prompt, `?` opens the key list and `N` renames the window the list shows; a `prefix` binding of a digit, `n`, `s` or `m` stays reachable from the key list.
 
 The window menu, titled with the window's name, holds `Close`, `Maximize` or `Restore`, `Minimize`, `Tile left` and `Tile right`, closes when its window leaves the layout, and leaves the focused window as it was when it closes.
 
@@ -1161,7 +1167,8 @@ Each is a file of plain top-level calls, as a `user/init.lua` is: it sets up `gb
 The modal preset declares `prefix` a mode labelled `navigation` and binds Escape and Enter to return to interactive mode.
 Its `n` opens a window and returns to interactive mode only when `gband.settings.interactive_on_new()` returned `true` when the preset loaded, and otherwise leaves navigation mode active.
 The direct preset declares no mode, so each key after the prefix key acts once; it binds `n` to `open_window` and the prefix key to `send_prefix` directly.
-Both bind Ctrl+Space then `s` to `gband.settings.open`, described `settings`, right after `:`, and then `!` to `reload`, described `reload the configuration`, before `D`.
+Both bind Ctrl+Space then `s` to `gband.settings.open`, described `settings`, right after `:`, then `!` to `reload`, described `reload the configuration`, and then `m`, before `D`.
+The direct preset binds `m` to `toggle_multi`; the modal preset binds it to a function described `multi mode` that dispatches `toggle_multi` and returns to interactive mode, so the sidebar shows `M` at once.
 The floating preset also sets up `gband.desktop`, declares no mode, and binds only `n` (a floating window), `?`, `:`, `N`, `s`, `!`, `D` and the prefix key in `prefix`, and `leftmouse` and `rightmouse` in `root`, as "The desktop" describes.
 gband writes copies of all three to `defaults/keystyle/` for you to read; loading never reads the copies.
 
@@ -1507,8 +1514,8 @@ Each primitive checks its arguments, and a wrong one is an error at the line of 
 | `events` | a list of the client's built-in event names |
 | `emit(name, payload)` | runs the handlers of the built-in event `name` with a copy of the table `payload`, as "Events" describes, then every `after_event` function; a name that is not a built-in event is an error |
 | `after_event(fn)` | adds `fn`, which runs after the handlers of each built-in event with the event's name, and with nil when a load finishes or the plugins are refreshed |
-| `on_state(fn)` | adds `fn`, which runs with no arguments when the active key table, the viewed band's position, the number of bands or the error list changes |
-| `state()` | a new table: `table`, the active key table; `band`, with the viewed band's `number`, its 1-based `index` and the band `count`; `window`, the focused window or nil; `width` and `height`, the terminal's size; `error`, the latest error message or nil; and `ribbon`, with the ribbon area's `cols` and `rows` |
+| `on_state(fn)` | adds `fn`, which runs with no arguments when the active key table, the viewed band's position, the number of bands, multi mode or the error list changes |
+| `state()` | a new table: `table`, the active key table; `band`, with the viewed band's `number`, its 1-based `index` and the band `count`; `window`, the focused window or nil; `multi`, true while multi mode is on; `width` and `height`, the terminal's size; `error`, the latest error message or nil; and `ribbon`, with the ribbon area's `cols` and `rows` |
 | `error_marker(shown)` | records whether a bar draws the error marker; while it is `true`, the client draws no error banner |
 
 ### Colors and themes

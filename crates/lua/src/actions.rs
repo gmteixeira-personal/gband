@@ -23,7 +23,7 @@ const fn builtin(name: &'static str, action: Action, desc: &'static str) -> Buil
     BuiltinAction { name, action, desc }
 }
 
-pub const ACTIONS: [BuiltinAction; 31] = [
+pub const ACTIONS: [BuiltinAction; 32] = [
     builtin(
         "focus_column_left",
         Action::View(ViewAction::FocusLeft),
@@ -171,6 +171,11 @@ pub const ACTIONS: [BuiltinAction; 31] = [
         "reload",
         Action::Client(ClientAction::Reload),
         "reload the configuration",
+    ),
+    builtin(
+        "toggle_multi",
+        Action::Client(ClientAction::ToggleMulti),
+        "toggle multi mode",
     ),
     builtin(
         "drag_window",

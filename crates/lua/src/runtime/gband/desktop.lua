@@ -19,7 +19,7 @@ local MENU_KEYS = {
   j = true, down = true, k = true, up = true, pagedown = true, pageup = true,
   home = true, ["end"] = true, enter = true, esc = true, q = true,
 }
-local LIST_KEYS = { n = true, s = true }
+local LIST_KEYS = { n = true, s = true, m = true }
 for index = 1, #DIGITS do
   LIST_KEYS[DIGITS:sub(index, index)] = true
 end
@@ -646,6 +646,7 @@ local function list_rows(order, minimizing)
       kept[#kept + 1] = item.window.id
     end
   end
+  local multi_label = gband.view().multi and "Multi mode (on)" or "Multi mode"
   local rows = {
     {
       key = "new",
@@ -665,6 +666,16 @@ local function list_rows(order, minimizing)
       act = function(closed)
         view_opening(closed.opening)
         gband.settings.open()
+      end,
+    },
+    {
+      key = "multi",
+      shortcut = "m",
+      label = multi_label,
+      width = 2 + gband.ui.width(multi_label),
+      act = function(closed)
+        view_opening(closed.opening)
+        gband.action.toggle_multi()
       end,
     },
   }

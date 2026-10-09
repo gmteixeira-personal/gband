@@ -184,6 +184,7 @@ fn every_preset_binding_is_described() {
         ("enter", "interactive mode"),
         ("prefix", "send the prefix key"),
         ("s", "settings"),
+        ("m", "multi mode"),
     ];
     for style in ["modal", "direct"] {
         let scratch = Scratch::new(&format!("keystyle-described-{style}"));

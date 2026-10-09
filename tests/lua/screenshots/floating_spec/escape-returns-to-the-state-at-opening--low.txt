@@ -5,10 +5,10 @@ size 80x24 cursor 22:62 hidden
  3|                    │$╭────────────────────────────[_][□][X]─╮
  4|                    │ │$                                     │
  5|                    │ │                                      │
- 6|                    │ │                                      │
- 7|                    │ │  ┌windows──────────────[□][X]─┐      │
- 8|                    │ │  │ n New window               │      │
- 9|                    │ │  │ s Settings                 │      │
+ 6|                    │ │  ┌windows──────────────[□][X]─┐      │
+ 7|                    │ │  │ n New window               │      │
+ 8|                    │ │  │ s Settings                 │      │
+ 9|                    │ │  │ m Multi mode               │      │
 10|                    │ │  ├────────────────────────────┤      │
 11|                    │ │  │ 1 mail              band 1 │      │
 12|                    │ │  │ 2 logs              band 1 │      │
@@ -37,14 +37,19 @@ size 80x24 cursor 22:62 hidden
 5:61 fg=4 bold
 6:20 fg=8
 6:22 fg=4 bold
+6:25 fg=8 bg=0
+6:26-32 fg=4 bg=0 bold
+6:33-46 fg=8 bg=0
+6:47-52 fg=7 bg=0 bold
+6:53-54 fg=8 bg=0
 6:61 fg=4 bold
 7:20 fg=8
 7:22 fg=4 bold
 7:25 fg=8 bg=0
-7:26-32 fg=4 bg=0 bold
-7:33-46 fg=8 bg=0
-7:47-52 fg=7 bg=0 bold
-7:53-54 fg=8 bg=0
+7:26 fg=7 bg=0
+7:27 fg=4 bg=0 bold
+7:28-53 fg=7 bg=0
+7:54 fg=8 bg=0
 7:61 fg=4 bold
 8:20 fg=8
 8:22 fg=4 bold

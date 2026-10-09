@@ -6,10 +6,10 @@ size 80x24 cursor 22:62 hidden
  4|                    │                                      │
  5|                    │                                      │
  6|                    │                                      │
- 7|                    │                                      │
- 8|                    │       ┌windows────────[□][X]─┐       │
- 9|                    │       │ n New window         │       │
-10|                    │       │ s Settings           │       │
+ 7|                    │       ┌windows────────[□][X]─┐       │
+ 8|                    │       │ n New window         │       │
+ 9|                    │       │ s Settings           │       │
+10|                    │       │ m Multi mode         │       │
 11|                    │       ├──────────────────────┤       │
 12|                    │       │ 1 logs        band 1 │       │
 13|                    │       │ 2 notes       band 1 │       │
@@ -34,13 +34,18 @@ size 80x24 cursor 22:62 hidden
 6:20 fg=4 bold
 6:59 fg=4 bold
 7:20 fg=4 bold
+7:28 fg=8 bg=0
+7:29-35 fg=4 bg=0 bold
+7:36-43 fg=8 bg=0
+7:44-49 fg=7 bg=0 bold
+7:50-51 fg=8 bg=0
 7:59 fg=4 bold
 8:20 fg=4 bold
 8:28 fg=8 bg=0
-8:29-35 fg=4 bg=0 bold
-8:36-43 fg=8 bg=0
-8:44-49 fg=7 bg=0 bold
-8:50-51 fg=8 bg=0
+8:29 fg=7 bg=0
+8:30 fg=4 bg=0 bold
+8:31-50 fg=7 bg=0
+8:51 fg=8 bg=0
 8:59 fg=4 bold
 9:20 fg=4 bold
 9:28 fg=8 bg=0

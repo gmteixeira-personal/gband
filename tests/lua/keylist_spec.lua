@@ -197,7 +197,12 @@ t.case("only the key list's own line is muted", function(g)
   local win = open(g)
   local muted = {}
   local count = #g.client("return gband.keymap.list('prefix')")
-  for _, line in ipairs({ 1, 19, count }) do
+  local lines = {}
+  for line = 1, count, 10 do
+    lines[#lines + 1] = line
+  end
+  lines[#lines + 1] = count
+  for _, line in ipairs(lines) do
     g.client("gband.win.set_cursor(...)", win, line)
     g.settle()
     for _, desc in ipairs(muted_lines(g, win)) do
