@@ -50,22 +50,28 @@ gband reloads its configuration only when a `.lua` file under `user/` changes. A
 
 ### Expected Files
 - openspec/changes/reload-and-control/
+- Cargo.lock
+- Cargo.toml
 - README.md
+- crates/client/src/bindings.rs
 - crates/client/src/channel.rs
-- crates/client/src/connect.rs
 - crates/client/src/lib.rs
+- crates/client/src/requests.rs
 - crates/client/tests/actions.rs
 - crates/core/src/action.rs
 - crates/lua/src/actions.rs
 - crates/lua/src/commands.rs
+- crates/lua/src/runtime.rs
 - crates/lua/src/runtime/gband/keystyle/direct.lua
 - crates/lua/src/runtime/gband/keystyle/floating.lua
 - crates/lua/src/runtime/gband/keystyle/modal.lua
 - crates/lua/src/runtime/gband/settings.lua
+- crates/lua/src/watch.rs
 - crates/lua/tests/commands.rs
 - crates/lua/tests/config.rs
 - crates/lua/tests/control.rs
 - crates/lua/tests/keystyle.rs
+- crates/lua/tests/plugins.rs
 - crates/lua/tests/settings.rs
 - crates/protocol/src/lib.rs
 - crates/protocol/src/message.rs
@@ -77,6 +83,8 @@ gband reloads its configuration only when a `.lua` file under `user/` changes. A
 - crates/server/src/scripting.rs
 - crates/server/tests/control.rs
 - crates/server/tests/scripting.rs
+- crates/server/tests/sync.rs
+- crates/test-support/src/lib.rs
 - docs/internals/07-settings.md
 - docs/internals/08-key-styles.md
 - docs/plugins.md
@@ -87,7 +95,16 @@ gband reloads its configuration only when a `.lua` file under `user/` changes. A
 - tests/config.rs
 - tests/control.rs
 - tests/keystyle.rs
-- tests/lua/screenshots/settings_spec/
+- tests/lua/floating_spec.lua
+- tests/lua/keylist_spec.lua
+- tests/lua/keystyle_spec.lua
+- tests/lua/prompt_spec.lua
+- tests/lua/screenshots/keylist_spec/default-list--last-page.txt
+- tests/lua/screenshots/prompt_spec/the-key-list-holds-the-prompt-between-the-key-list-and-detach--hint.txt
+- tests/lua/screenshots/settings_spec/the-settings-window-beside-the-default-sidebar-on-the-first-start--first-start.txt
+- tests/lua/screenshots/settings_spec/the-settings-window-with-the-direct-key-style--direct.txt
+- tests/lua/screenshots/settings_spec/the-settings-window-with-the-floating-key-style--floating.txt
+- tests/lua/screenshots/settings_spec/the-theme-list-beside-the-default-sidebar--theme-list.txt
 - tests/lua/settings_spec.lua
 - tests/settings.rs
 - tests/subcommands.rs
