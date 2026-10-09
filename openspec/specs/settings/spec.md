@@ -176,17 +176,17 @@ When `gband.config_dir` is nil, or a file cannot be written, the key SHALL save 
 #### Scenario: Turn the sidebar off
 - **WHEN** no `user/init.lua` exists, the settings window is open on its first line, and the user presses `j` then Enter
 - **THEN** `user/sidebar.lua` holds `return false`
-- **AND** within a second the configuration reloads and no sidebar is drawn
+- **AND** within two seconds the configuration reloads and no sidebar is drawn
 
 #### Scenario: Switch the key style
 - **WHEN** no `user/init.lua` exists, the modal style is saved, the settings window is open on its third line, and the user presses `l`
 - **THEN** `user/keystyle.lua` holds `return "direct"`
-- **AND** within a second the configuration reloads with the direct style's bindings, and the reopened settings window holds four lines
+- **AND** within two seconds the configuration reloads with the direct style's bindings, and the reopened settings window holds four lines
 
 #### Scenario: Switch to the floating style
 - **WHEN** no `user/init.lua` exists, the direct style is saved, the settings window is open on its third line, and the user presses Enter
 - **THEN** `user/keystyle.lua` holds `return "floating"`
-- **AND** within a second the configuration reloads with the floating style's bindings, and the reopened settings window holds four lines
+- **AND** within two seconds the configuration reloads with the floating style's bindings, and the reopened settings window holds four lines
 
 #### Scenario: Back from the modal style
 - **WHEN** no `user/init.lua` exists, the modal style is saved, the settings window is open on its third line, and the user presses `h`

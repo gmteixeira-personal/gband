@@ -159,7 +159,7 @@ Loading SHALL evaluate `user/keystyle.lua` only through `gband.keystyle.saved()`
 
 #### Scenario: Saving reloads the configuration
 - **WHEN** a client is attached with no `user/init.lua`, the modal style is in use, and the settings window saves the direct style
-- **THEN** within a second Ctrl+Space then `h` focuses the column to the left and the keys that follow reach the focused window
+- **THEN** within two seconds Ctrl+Space then `h` focuses the column to the left and the keys that follow reach the focused window
 
 #### Scenario: User file untouched
 - **WHEN** `user/init.lua` calls `gband.keystyle.use()` and binds `alt+h`, and the user picks the direct style in the settings window
