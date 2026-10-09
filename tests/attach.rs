@@ -113,9 +113,9 @@ fn prefix_key_twice_sends_one_ctrl_space() {
     let env = TestEnv::new("prefix-literal");
     let mut client = Attached::start(&env, 80, 24);
     client.wait_for_prompt();
-    client.shell_pid(&env);
+    let shell = client.shell_pid(&env);
     client.run("clear; cat -v");
-    thread::sleep(Duration::from_millis(300));
+    client.wait_for_child(shell, "cat");
     client.send(b"\x00");
     thread::sleep(Duration::from_millis(200));
     client.send(b"\x00");
@@ -135,9 +135,9 @@ fn ctrl_enter_reaches_a_program_that_asked_for_modify_other_keys() {
     let env = TestEnv::new("modify-other-keys");
     let mut client = Attached::start(&env, 80, 24);
     client.wait_for_prompt();
-    client.shell_pid(&env);
+    let shell = client.shell_pid(&env);
     client.run("clear; printf '\\033[>4;1m'; cat -v");
-    thread::sleep(Duration::from_millis(300));
+    client.wait_for_child(shell, "cat");
     client.send(b"\x1b[27;5;13~");
     thread::sleep(Duration::from_millis(200));
     client.send(b"\r");
@@ -149,9 +149,9 @@ fn reattach_keeps_modify_other_keys() {
     let env = TestEnv::new("reattach-modify-other-keys");
     let mut first = Attached::start(&env, 80, 24);
     first.wait_for_prompt();
-    first.shell_pid(&env);
+    let shell = first.shell_pid(&env);
     first.run("clear; printf '\\033[>4;1m'; cat -v");
-    thread::sleep(Duration::from_millis(300));
+    first.wait_for_child(shell, "cat");
     first.kill();
 
     let mut second = Attached::start(&env, 80, 24);
@@ -167,9 +167,9 @@ fn ctrl_enter_is_enter_without_modify_other_keys() {
     let env = TestEnv::new("legacy-ctrl-enter");
     let mut client = Attached::start(&env, 80, 24);
     client.wait_for_prompt();
-    client.shell_pid(&env);
+    let shell = client.shell_pid(&env);
     client.run("clear; cat -v");
-    thread::sleep(Duration::from_millis(300));
+    client.wait_for_child(shell, "cat");
     client.send(b"\x1b[27;5;13~");
     thread::sleep(Duration::from_millis(200));
     client.send(b"x");

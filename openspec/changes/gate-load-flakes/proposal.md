@@ -8,8 +8,8 @@ The gate (`.claude/flow-gate`) fails on `dev` when other sessions run their own 
 
 ## What Changes
 
-- When a process cannot set up native file watching because a system limit is reached, it watches its configuration by polling instead. It still reloads within one second of a change and logs a warning naming the cause. A watch that fails because the directory does not exist keeps today's behaviour.
-- The configuration spec's "Reload on change" states the fallback and gains a scenario.
+- Every process watches its configuration by polling, as niri does, instead of through inotify. It checks the `.lua` files under `user` once a second, reading no file contents, and reloads within two seconds of a change. No limit on file-change notifications can stop it, and the `notify` dependency goes.
+- The configuration spec's "Reload on change" states that changes are found by polling, allows two seconds instead of one, and gains a scenario. The `settings` and `key-style` scenarios that wait for a reload allow two seconds too.
 - The two mouse tests wait for a focused tile and its prompt before they type.
 - The harness gains a wait for a named program to run as a child of the focused window's shell. `echo_keys` in `tests/config.rs` and the four `cat -v` tests in `tests/attach.rs` use it instead of a fixed sleep before they send the probe.
 
@@ -27,14 +27,17 @@ None.
 
 ### Modified Capabilities
 
-- `configuration`: "Reload on change" requires polling when native file watching hits a system limit, with the same one-second bound, and gains a scenario.
+- `configuration`: "Reload on change" requires changes to be found by polling, without operating-system file-change notifications, within two seconds instead of one, and gains a scenario.
+- `settings`: the scenarios of "Settings window keys" that wait for a reload allow two seconds.
+- `key-style`: "Saved key style"'s scenario "Saving reloads the configuration" allows two seconds.
 
 ## Impact
 
-- `crates/lua/src/watch.rs`: polling fallback and its unit test.
+- `crates/lua/src/watch.rs`: the polling thread and its unit test.
+- `Cargo.toml`, `crates/lua/Cargo.toml`, `Cargo.lock`: `notify` removed.
 - `crates/harness/src/terminal.rs`: the wait for a child program.
 - `tests/mouse.rs`, `tests/config.rs`, `tests/attach.rs`: stronger waits.
-- No wire protocol change, no Lua API change, no new dependency: `notify` 8.2 already provides `PollWatcher`.
+- No wire protocol change, no Lua API change, no new dependency.
 
 ## Coordination
 
@@ -47,6 +50,9 @@ None.
 ### Expected Files
 - openspec/changes/gate-load-flakes/
 - crates/lua/src/watch.rs
+- crates/lua/Cargo.toml
+- Cargo.toml
+- Cargo.lock
 - crates/harness/src/terminal.rs
 - tests/mouse.rs
 - tests/config.rs

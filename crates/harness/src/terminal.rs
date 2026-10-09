@@ -1,3 +1,4 @@
+use std::fs;
 use std::io::{Read, Write};
 use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -9,7 +10,7 @@ use gband_emulator::{Emulator, Grid};
 use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use rustix::process::{Pid, Signal};
 
-use crate::env::{TIMEOUT, TestEnv};
+use crate::env::{TIMEOUT, TestEnv, children};
 
 type SharedWriter = Arc<Mutex<Input>>;
 
@@ -202,6 +203,25 @@ impl Attached {
             .filter_map(|line| parse_pid(line))
             .next_back()
             .expect("no pid line in the focused window")
+    }
+
+    pub fn wait_for_child(&self, shell: i32, program: &str) {
+        let deadline = Instant::now() + TIMEOUT;
+        loop {
+            let running = children(shell).into_iter().any(|child| {
+                fs::read_to_string(format!("/proc/{child}/comm"))
+                    .is_ok_and(|comm| comm.trim_end() == program)
+            });
+            if running {
+                return;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "timed out waiting for {program} to run under {shell}; screen:\n{}",
+                self.contents()
+            );
+            thread::sleep(Duration::from_millis(20));
+        }
     }
 
     pub fn wait_exit(&mut self) -> u32 {

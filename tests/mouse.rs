@@ -451,8 +451,9 @@ fn middle_drag_up_switches_bands_in_navigation_mode() {
     client.send(&[PREFIX, b"un\r"].concat());
     client.wait_for("a window in the second band", |screen| {
         let shown = tiles(screen);
-        shown.len() == 1 && !focused_has(screen, "AAA")
+        shown.len() == 1 && shown[0].focused && !focused_has(screen, "AAA")
     });
+    client.wait_for_prompt();
     client.run("echo BBB");
     client.wait_for_line("BBB");
     client.send(&[PREFIX, b"i"].concat());
@@ -525,8 +526,10 @@ fn alt_wheel_switches_bands() {
     client.wait_for_line("AAA");
     client.send(&[PREFIX, b"un\r"].concat());
     client.wait_for("a window in the second band", |screen| {
-        tiles(screen).len() == 1 && !focused_has(screen, "AAA")
+        let shown = tiles(screen);
+        shown.len() == 1 && shown[0].focused && !focused_has(screen, "AAA")
     });
+    client.wait_for_prompt();
     client.run("echo BBB");
     client.wait_for_line("BBB");
     client.send(&[PREFIX, b"i\r"].concat());
