@@ -112,7 +112,10 @@ fn focused_window(env: &TestEnv) -> String {
 fn two_windows_first_focused(env: &TestEnv) -> Attached {
     let mut client = attached(env);
     client.send(b"\x00n\r");
-    client.wait_for("two tiles", |screen| tiles(screen).len() == 2);
+    client.wait_for("the second of two tiles focused", |screen| {
+        let found = tiles(screen);
+        found.len() == 2 && found[1].focused
+    });
     client.wait_for_prompt();
     client.shell_pid(env);
     client.send(b"\x00h\r");
@@ -125,7 +128,7 @@ fn two_windows_first_focused(env: &TestEnv) -> Attached {
 fn in_window(env: &TestEnv, client: &mut Attached, args: &str, file: &str) -> Vec<Json> {
     let path = out_file(env, file);
     client.run(&format!(
-        "'{GBAND}' {args} > '{}'; echo done-{file}",
+        "'{GBAND}' {args} > '{}'; echo \"done-\"{file}",
         path.display()
     ));
     client.wait_for_line(&format!("done-{file}"));
