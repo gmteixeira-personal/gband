@@ -162,7 +162,7 @@ Whenever the client exits after taking the terminal, it SHALL first leave the al
 - **THEN** the client restores the terminal, prints `[lost server]` and exits with status 1
 
 ### Requirement: Key bindings
-The client SHALL take its key tables, its modes and its prefix key from the configuration, as the configuration capability defines them. The client SHALL keep one active key table, which SHALL be `root` outside a key sequence and outside a mode. While `root` is active, a key bound in `root` SHALL run its binding, and the prefix key SHALL make `prefix` the active table. The client SHALL send neither to the server. Any other key while `root` is active SHALL go to the focused plugin window when there is one, as the plugin-windows capability defines, and SHALL otherwise be sent to the focused window.
+The client SHALL take its key tables, its modes and its prefix key from the configuration, as the configuration capability defines them. The client SHALL keep one active key table, which SHALL be `root` outside a key sequence and outside a mode. While `root` is active, a key bound in `root` SHALL run its binding, and the prefix key SHALL make `prefix` the active table. The client SHALL send neither to the server. Any other key while `root` is active SHALL go to the focused plugin window when there is one, as the plugin-windows capability defines, and SHALL otherwise be sent to the focused window, or, while multi mode is on, to every window of the viewed band, as the multi-mode capability defines.
 
 While a table that is not a mode is active, the next key SHALL end the sequence: a key bound in that table SHALL run its binding, and any other key SHALL be discarded together with the keys that began the sequence. When the sequence ends, the active table SHALL become the table its binding entered with `gband.keymap.enter`, or `root` when it entered none.
 
@@ -211,6 +211,7 @@ With the modal key style, the bindings SHALL be: Ctrl+Space as the prefix, no bi
 | `N` | `prefix N` | rename the focused window, as the window-names capability's "Rename prompt" defines, which returns to interactive mode | client | |
 | `s` | `prefix s` | open the settings window, as the settings capability defines, which returns to interactive mode | client | `settings` |
 | `!` | `prefix !` | reload the configuration, as the configuration capability's "Forced reload" defines, which returns to interactive mode | client | |
+| `m` | `prefix m` | toggle multi mode, as the multi-mode capability defines, then return to interactive mode | client | `multi mode` |
 | `D` | `prefix D` | detach | client | |
 | Escape | `prefix escape` | return to interactive mode | — | `interactive mode` |
 | Enter | `prefix enter` | return to interactive mode | — | `interactive mode` |
@@ -218,14 +219,14 @@ With the modal key style, the bindings SHALL be: Ctrl+Space as the prefix, no bi
 | Right | `prefix right` | focus the column to the right | view | |
 | Down | `prefix down` | focus the window below | view | |
 | Up | `prefix up` | focus the window above | view | |
-| Ctrl+Space | `prefix prefix` | send the prefix key to the focused window, then return to interactive mode | client | `send the prefix key` |
+| Ctrl+Space | `prefix prefix` | send the prefix key to the focused window, or to every window of the viewed band while multi mode is on, then return to interactive mode | client | `send the prefix key` |
 | any other key | — | discard the key; navigation mode stays active | — | |
 
-With the direct key style, the bindings SHALL be: Ctrl+Space as the prefix, no binding in `root`, no mode, and in `prefix` every row of the table above except Escape and Enter, in the same order. `n` SHALL be bound to open window and Ctrl+Space to send the prefix key, each to the action itself, with that action's description. Every other row SHALL be bound as with the modal key style. Each key after the prefix key SHALL end the key sequence, as in any table that is not a mode, so `root` is active again after it. Any other key, Escape and Enter included, SHALL be discarded together with the prefix key.
+With the direct key style, the bindings SHALL be: Ctrl+Space as the prefix, no binding in `root`, no mode, and in `prefix` every row of the table above except Escape and Enter, in the same order. `n` SHALL be bound to open window, `m` to toggle multi mode and Ctrl+Space to send the prefix key, each to the action itself, with that action's description. Every other row SHALL be bound as with the modal key style. Each key after the prefix key SHALL end the key sequence, as in any table that is not a mode, so `root` is active again after it. Any other key, Escape and Enter included, SHALL be discarded together with the prefix key.
 
 With the floating key style, the bindings SHALL be: Ctrl+Space as the prefix, no key binding in `root`, no mode, and in `prefix` the bindings that the floating-key-style capability's "Floating bindings" gives, in its order. The floating preset's handler of `KeyTableChanged` SHALL make `root` active again as soon as the prefix key makes `prefix` active, and SHALL open the window list, as that capability's "Leader" defines. The keys that follow SHALL therefore reach the window list, and a key bound in `prefix` SHALL run from the window list as its "Window list" defines.
 
-A binding to an action SHALL dispatch it. A binding to a Lua function SHALL run the function, as the configuration capability defines. A view action SHALL change this client's view as the layout-view capability defines, and SHALL send nothing to the server, except `center_column` on the floating layer, which sends the placing the layout-view capability defines. A session action SHALL be sent to the server as an action naming the focused window, resolved as the actions capability defines, except close window while a floating plugin window is focused, which closes that floating plugin window in the client. Open window SHALL name the viewed band and the tiled window this client focused most recently there, or no window when there is none. Any other session action, and sending the prefix key, SHALL do nothing when no window is focused, except close window while a floating plugin window is focused. A character key SHALL match a binding by its character, Ctrl and Alt, so a `D` matches whether or not the terminal reports Shift with it.
+A binding to an action SHALL dispatch it. A binding to a Lua function SHALL run the function, as the configuration capability defines. A view action SHALL change this client's view as the layout-view capability defines, and SHALL send nothing to the server, except `center_column` on the floating layer, which sends the placing the layout-view capability defines. A session action SHALL be sent to the server as an action naming the focused window, resolved as the actions capability defines, except close window while a floating plugin window is focused, which closes that floating plugin window in the client. Open window SHALL name the viewed band and the tiled window this client focused most recently there, or no window when there is none. Any other session action, and sending the prefix key while multi mode is off, SHALL do nothing when no window is focused, except close window while a floating plugin window is focused. A character key SHALL match a binding by its character, Ctrl and Alt, so a `D` matches whether or not the terminal reports Shift with it.
 
 Where a scenario of this requirement names no key style, the modal key style is saved.
 
@@ -431,6 +432,16 @@ Where a scenario of this requirement names no key style, the modal key style is 
 - **WHEN** the direct key style is saved, no `user/init.lua` exists, a plugin's `client.lua` is rewritten from drawing `old` to drawing `new`, and the user presses Ctrl+Space then `!`
 - **THEN** the client draws `new`
 
+#### Scenario: Multi mode from navigation mode
+- **WHEN** no `user/init.lua` exists, the viewed band holds two shell windows, and the user presses Ctrl+Space then `m`, and types `echo hi` and Enter
+- **THEN** `root` is active and both windows print `hi`
+- **AND** after Ctrl+Space, `m`, `echo solo` and Enter, only the focused window prints `solo`
+
+#### Scenario: Multi mode with the direct key style
+- **WHEN** the direct key style is saved, no `user/init.lua` exists, the viewed band holds two shell windows, and the user presses Ctrl+Space then `m`, and types `echo hi` and Enter
+- **THEN** both windows print `hi`
+- **AND** `gband.keymap.list("prefix")` holds `m` bound to the action `toggle_multi`
+
 #### Scenario: Reset height keeps its key
 - **WHEN** no `user/init.lua` exists, the focused window has a fixed height, and the user presses Ctrl+Space then Shift+R
 - **THEN** the focused window's height is automatic again and no configuration loads
@@ -568,7 +579,7 @@ With the modal key style, each of these keeps navigation mode active, and a disc
 - **THEN** it holds no mouse name
 
 ### Requirement: Input to the server
-The client SHALL send each key press and repeat that the key bindings do not consume to the server as a key naming the focused window, each paste as a paste naming the focused window, and each change of its reported size, as "Ribbon area beside the bars" defines it, as a resize carrying the reported size. While a plugin window is focused, the plugin-windows capability SHALL take the keys and the pastes instead, whether or not a window is focused. Otherwise, keys and pastes SHALL be dropped while no window is focused. Keys the input-encoding capability cannot represent SHALL be dropped. On attach, the client SHALL send its reported size as the terminal size its hello carries, as the wire-protocol capability defines the hello. Its bars SHALL already be placed for that report, as the configuration loaded before the handshake adds them.
+The client SHALL send each key press and repeat that the key bindings do not consume to the server as a key naming the focused window, each paste as a paste naming the focused window, or, while multi mode is on, each such key and paste once to every window of the viewed band, as the multi-mode capability defines, and each change of its reported size, as "Ribbon area beside the bars" defines it, as a resize carrying the reported size. While a plugin window is focused, the plugin-windows capability SHALL take the keys and the pastes instead, whether or not a window is focused. Otherwise, with multi mode off, keys and pastes SHALL be dropped while no window is focused. Keys the input-encoding capability cannot represent SHALL be dropped. On attach, the client SHALL send its reported size as the terminal size its hello carries, as the wire-protocol capability defines the hello. Its bars SHALL already be placed for that report, as the configuration loaded before the handshake adds them.
 
 #### Scenario: Typing runs a command
 - **WHEN** the user types `echo hi` and Enter

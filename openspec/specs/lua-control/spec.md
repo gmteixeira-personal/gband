@@ -71,6 +71,7 @@ Changing the returned table SHALL NOT change the layout. Calling `gband.layout()
 - `floating`: `true` when the floating layer of the viewed band is active, and `false` otherwise.
 - `plugin_window`: the focused plugin window's number, as the plugin-windows capability defines it, or nil.
 - `peek`: `true` while the focused window is a window this client peeks, as the layout-view capability's "Peek a window" defines, and absent otherwise.
+- `multi`: `true` while this client's multi mode is on, as the multi-mode capability defines, and absent otherwise.
 - `table`: the active key table.
 - `cols` and `rows`: the size of the ribbon area.
 
@@ -92,6 +93,12 @@ Calling it while the configuration loads SHALL be an error at the line of the ca
 - **WHEN** band 1 holds window 1 in a column and floating window 3, window 1 is focused, a binding function calls `gband.window.focus(3, { peek = true })`, and a later binding function calls `gband.view()`
 - **THEN** the result's `window` is 3, its `floating` is `true` and its `peek` is `true`
 - **AND** after a binding function calls `gband.window.focus(1)`, `gband.view()` holds `window` 1 and no `peek`
+
+
+#### Scenario: Multi mode on
+- **WHEN** a binding function dispatches `gband.action.toggle_multi()`, and a later binding function calls `gband.view()`
+- **THEN** the result's `multi` is `true`
+- **AND** after a binding function dispatches `gband.action.toggle_multi()` again, `gband.view()` holds no `multi`
 
 ### Requirement: State as of the call
 `gband.layout()` and `gband.view()` SHALL describe the client's state when they are called. Actions and calls that the running callback dispatched SHALL NOT be reflected, because they take effect after it returns.

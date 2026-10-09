@@ -41,8 +41,8 @@ The client SHALL provide the table `gband.core`, holding the primitives below. E
 | `events` | the list of the client's built-in event names |
 | `emit(name, payload)` | runs the handlers of the built-in event `name` with `payload`, as the lua-events capability defines, then every `after_event` function |
 | `after_event(fn)` | adds `fn`, which runs with the event's name after each built-in event's handlers |
-| `on_state(fn)` | adds `fn`, which runs when the active key table, the viewed band's position, the number of bands or the error list changes |
-| `state()` | returns a new table: `table`, the active key table; `band`, with the viewed band's `number`, its 1-based `index` and the band `count`; `window`, the focused window or nil; `width` and `height`, the terminal's size; `error`, the latest error or nil; and `ribbon`, with the ribbon area's `cols` and `rows` |
+| `on_state(fn)` | adds `fn`, which runs when the active key table, the viewed band's position, the number of bands, this client's multi mode or the error list changes |
+| `state()` | returns a new table: `table`, the active key table; `band`, with the viewed band's `number`, its 1-based `index` and the band `count`; `window`, the focused window or nil; `multi`, `true` while this client's multi mode is on, as the multi-mode capability defines, and `false` otherwise; `width` and `height`, the terminal's size; `error`, the latest error or nil; and `ribbon`, with the ribbon area's `cols` and `rows` |
 | `timer(ms, fn)` | runs `fn` as a callback every `ms` milliseconds, at least 1, until cancelled, and returns its id |
 | `cancel(id)` | cancels the timer `id` |
 | `palette.set(spec)`, `palette.get()` | set and read the terminal palette, as the colorschemes capability defines |
@@ -86,6 +86,10 @@ The frame, entry, slot and bar tables SHALL have the fields the API documentatio
 #### Scenario: Several state functions
 - **WHEN** two plugins each call `gband.core.on_state` and the viewed band changes
 - **THEN** both functions run
+
+#### Scenario: State follows multi mode
+- **WHEN** a plugin calls `gband.core.on_state(fn)` and a binding function dispatches `gband.action.toggle_multi()`
+- **THEN** `fn` runs, and `gband.core.state().multi` is `true`
 
 ### Requirement: Providers
 `gband.core.provide(kind, implementation)` SHALL register the implementation the client calls for `kind`. A later call for the same kind SHALL replace the earlier implementation. A reload SHALL clear every registration before the new configuration loads. The kinds and the functions the client calls on them are:

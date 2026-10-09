@@ -241,7 +241,7 @@ A menu opened by a right press SHALL have its top-left cell at the pointer's cel
 
 #### Scenario: Window list at the pointer, cut to the ribbon area
 - **WHEN** the floating style is in use with no bar, the client's terminal is 80×24, the only window floats with a box that does not cover column 70 and row 20, and the user presses the right button at column 70 and row 20
-- **THEN** the window list opens 24 columns wide and 6 rows high at column 56 and row 18
+- **THEN** the window list opens 24 columns wide and 7 rows high at column 56 and row 17
 
 #### Scenario: Right press in content pastes
 - **WHEN** the floating style is in use, the copy buffer holds `ls`, and the user right-clicks the content of a floating shell window whose program reports no mouse
@@ -334,7 +334,7 @@ A left press on an entry SHALL select it, and a release of the left button on th
 A press of any button whose `target` is not the open desktop menu SHALL close it, except the press that opened it. That press SHALL still take its usual effect, from its binding or the interactive mode defaults. Closing the window menu SHALL leave the focused window as it was. Closing the window list SHALL keep or cancel, as "Window list" defines.
 
 #### Scenario: Move past the separator
-- **WHEN** the window list shows `n New window`, `s Settings`, a separator and `1 notes`, with `New window` selected, and the user presses `j` twice
+- **WHEN** the window list shows `n New window`, `s Settings`, `m Multi mode`, a separator and `1 notes`, with `New window` selected, and the user presses `j` three times
 - **THEN** the entry `1 notes` is selected
 
 #### Scenario: Escape closes
@@ -364,12 +364,13 @@ Its rows SHALL be, in this order:
 
 1. the entry `New window`, with the shortcut `n`;
 2. the entry `Settings`, with the shortcut `s`;
-3. a separator, when at least one window entry follows;
-4. one window entry for each window of the layout that runs a program, as "Windows float" defines.
+3. the entry `Multi mode`, with the shortcut `m`;
+4. a separator, when at least one window entry follows;
+5. one window entry for each window of the layout that runs a program, as "Windows float" defines.
 
 The windows that this client has focused SHALL come first among the window entries, from the highest `last_focus` down, as `gband.layout()` gives `last_focus`. The windows that this client has never focused SHALL follow, in layout order: the bands in order, and in each band its columns from left to right with their windows from top to bottom, then its floating windows in the order of its floating list. The first nine window entries SHALL have the shortcuts `1` to `9`, in order. The tenth SHALL have the shortcut `0`. A window entry after the tenth SHALL have no shortcut.
 
-The label of `New window` and of `Settings` SHALL be its name. A window entry's label SHALL be the window's shown name, as `gband.layout()` gives `name`. When this client has minimized the window, ` (minimized)` SHALL follow the name in the label. While the windows that run a program are in two or more bands, each window entry SHALL have a band part: `band `, with its space, followed by the band label of the window's band. The band label SHALL be the band's position counted from 1, as the sidebar capability's "Band labels" defines.
+The label of `New window` and of `Settings` SHALL be its name. The label of `Multi mode` SHALL be `Multi mode` while this client's multi mode is off, and `Multi mode (on)` while it is on, as the multi-mode capability defines. A window entry's label SHALL be the window's shown name, as `gband.layout()` gives `name`. When this client has minimized the window, ` (minimized)` SHALL follow the name in the label. While the windows that run a program are in two or more bands, each window entry SHALL have a band part: `band `, with its space, followed by the band label of the window's band. The band label SHALL be the band's position counted from 1, as the sidebar capability's "Band labels" defines.
 
 An entry's `w − 4` cells, as "Desktop menus" defines them, SHALL hold, from left to right: its shortcut, or a space when it has none; a space; its label; spaces; and its band part when it has one, ending on the last of the `w − 4` cells. The label SHALL be cut, as `gband.ui.truncate` cuts, so that at least one space stays between it and the band part. Outside the selected entry, the shortcut SHALL be drawn in `DesktopShortcut`. The other cells of the entry of a window that this client has minimized SHALL be drawn in `DesktopMinimized`.
 
@@ -380,7 +381,7 @@ The band that the client views when the list opens SHALL be the list's band at o
 Each time the selection lands on an entry, by a key, a press, a shortcut or the pointer, the list SHALL preview that entry:
 
 - A window entry SHALL peek its window, as `gband.window.focus(window, { peek = true })` does, as the lua-control capability defines. The client then views the window's band, focuses the window and draws it above the other floating windows of its band, also when this client has minimized it.
-- `New window` and `Settings` SHALL return to the band at opening.
+- `New window`, `Settings` and `Multi mode` SHALL return to the band at opening.
 
 A preview records nothing in this client's view: the focus order, the stacking order of every band, the window that each band remembers and the set of minimized windows stay as they were. The window list SHALL stay focused through its previews, as the plugin-windows capability's "Focused plugin window" defines for a floating plugin window's `keys` functions, and for the `on_mouse` of a floating plugin window opened with `hover = true`.
 
@@ -394,14 +395,15 @@ Picking an entry SHALL first select it. Then it SHALL act as follows:
 - A window entry SHALL keep. Its window is then focused, as `gband.window.focus` does: the client views its band, and restores the window when this client has minimized it.
 - `New window` SHALL cancel, then open a window running the user's shell, floating, in the band that the client then views, as `gband.action.open_window({ floating = true, band = <that band> })` does.
 - `Settings` SHALL cancel, then open the settings window, as `gband.settings.open()` does.
+- `Multi mode` SHALL cancel, then toggle this client's multi mode, as `gband.action.toggle_multi()` does.
 
 `[□]` SHALL give the list the ribbon area's height at row 0 and show `[❐]`. `[❐]` SHALL give it back the height and the row it had before. `[X]` SHALL cancel. Escape and `q` SHALL cancel. When code other than the desktop plugin closes the window list, as `gband.win.close` does, the list SHALL cancel. A reload that loads a new configuration SHALL close the list without keeping or cancelling, as the plugin-windows capability closes every plugin window. It ends a peek, as the layout-view capability's "Peek a window" defines: the client keeps the band it views and focuses the window it last focused there, and records nothing.
 
 These keys SHALL also act while the window list is focused:
 
-- `n`, `s` and the shortcut of each window entry SHALL act as a left press and release on that entry: they select it, then pick it.
+- `n`, `s`, `m` and the shortcut of each window entry SHALL act as a left press and release on that entry: they select it, then pick it.
 - A digit from `0` to `9` that no entry has as its shortcut SHALL do nothing.
-- A key that the `prefix` table binds SHALL keep, and then run that binding with `gband.keymap.run("prefix", key)`. This SHALL hold for every binding of `prefix` except the binding of the prefix key itself, the bindings of mouse names, the keys of the table in "Desktop menus", `n`, `s` and the digits `0` to `9`. Those keys SHALL keep their meaning in the list, whatever `prefix` binds. With the floating preset's bindings, `D` therefore detaches, `:` opens the Lua prompt, `?` opens the key list, and `N` renames the focused window, which is the window that the list previews.
+- A key that the `prefix` table binds SHALL keep, and then run that binding with `gband.keymap.run("prefix", key)`. This SHALL hold for every binding of `prefix` except the binding of the prefix key itself, the bindings of mouse names, the keys of the table in "Desktop menus", `n`, `s`, `m` and the digits `0` to `9`. Those keys SHALL keep their meaning in the list, whatever `prefix` binds. With the floating preset's bindings, `D` therefore detaches, `:` opens the Lua prompt, `?` opens the key list, and `N` renames the focused window, which is the window that the list previews.
 
 When the pointer moves, with no button held, to a cell of an entry, as `on_mouse` reports with the kind `"move"`, that entry SHALL be selected. A move to a separator or to a cell of the frame SHALL change nothing. While the rows do not fit, a wheel step down over the list SHALL make the next row the first shown row, and a wheel step up the previous row, while `h − 2` rows stay shown. A wheel step SHALL NOT change the selected entry.
 
@@ -415,8 +417,8 @@ While the window list is open, it SHALL build its rows again when `WindowOpened`
 
 #### Scenario: List of two windows
 - **WHEN** no `user/init.lua` exists, `user/keystyle.lua` holds `return "floating"`, the client's terminal is 80×24, the viewed band holds floating windows 1 and 2 named `notes` and `logs`, this client focused window 1 and then window 2, and a binding function dispatches `desktop.list`
-- **THEN** a focused floating plugin window 24 columns wide and 7 rows high spans columns 27 to 50 and rows 8 to 14 of the 79-column ribbon area
-- **AND** its rows read `┌windows────────[□][X]─┐`, `│ n New window         │`, `│ s Settings           │`, `├──────────────────────┤`, `│ 1 logs               │`, `│ 2 notes              │` and `└───────────────? keys─┘`
+- **THEN** a focused floating plugin window 24 columns wide and 8 rows high spans columns 27 to 50 and rows 8 to 15 of the 79-column ribbon area
+- **AND** its rows read `┌windows────────[□][X]─┐`, `│ n New window         │`, `│ s Settings           │`, `│ m Multi mode         │`, `├──────────────────────┤`, `│ 1 logs               │`, `│ 2 notes              │` and `└───────────────? keys─┘`
 - **AND** `root` is the active table and window 2 is still focused
 
 #### Scenario: Most recent first
@@ -444,12 +446,12 @@ While the window list is open, it SHALL build its rows again when `WindowOpened`
 - **THEN** the window list is still open with `New window` selected, and window 2 is still focused
 
 #### Scenario: Preview by keys
-- **WHEN** the window list of "Most recent first" is open and the user presses `j` three times
+- **WHEN** the window list of "Most recent first" is open and the user presses `j` four times
 - **THEN** the entry `2 logs` is selected, window 2 is focused and drawn over window 3, and the window list is still open and focused
 - **AND** window 3's `last_focus` is still higher than window 2's
 
 #### Scenario: Preview a minimized window
-- **WHEN** the floating style is in use, the viewed band holds floating windows 1, 2 and 3 named `notes`, `logs` and `mail` with overlapping boxes, this client focused windows 1, 2 and 3 in that order and minimized window 1, and the user opens the window list and presses `j` four times
+- **WHEN** the floating style is in use, the viewed band holds floating windows 1, 2 and 3 named `notes`, `logs` and `mail` with overlapping boxes, this client focused windows 1, 2 and 3 in that order and minimized window 1, and the user opens the window list and presses `j` five times
 - **THEN** the entry `3 notes (minimized)` is selected, and window 1 is focused and drawn over windows 2 and 3
 - **AND** `gband.layout()` still marks window 1 `minimized`
 
@@ -463,7 +465,7 @@ While the window list is open, it SHALL build its rows again when `WindowOpened`
 - **THEN** `New window` is selected, and window 3 is focused and drawn over window 2
 
 #### Scenario: Preview by the pointer
-- **WHEN** `user/init.lua` calls only `gband.keystyle.use("floating")`, the client's terminal is 80×24, the window list of "Most recent first" is open at columns 28 to 51 and rows 8 to 15, and the user moves the pointer with no button held to column 35 and row 13
+- **WHEN** `user/init.lua` calls only `gband.keystyle.use("floating")`, the client's terminal is 80×24, the window list of "Most recent first" is open at columns 28 to 51 and rows 7 to 15, and the user moves the pointer with no button held to column 35 and row 13
 - **THEN** the entry `2 logs` is selected, window 2 is focused and drawn over window 3, and the window list is still focused
 
 #### Scenario: Wheel scrolls the list
@@ -471,8 +473,8 @@ While the window list is open, it SHALL build its rows again when `WindowOpened`
 - **THEN** the first row between the list's borders is the entry `s Settings`, `New window` is still selected, and the focused window has not changed
 
 #### Scenario: Escape returns to the state at opening
-- **WHEN** the floating style is in use, band 1 holds floating windows 1, 2 and 3 named `notes`, `logs` and `mail` with overlapping boxes, band 2 holds floating windows 4 and 5 named `top` and `low` with overlapping boxes, this client focused windows 5, 4, 1, 2 and 3 in that order, minimized window 1 and views band 1, and the user opens the window list, presses `j` six times and then presses Escape
-- **THEN** after the sixth `j` the client views band 2 with window 5 focused and drawn over window 4
+- **WHEN** the floating style is in use, band 1 holds floating windows 1, 2 and 3 named `notes`, `logs` and `mail` with overlapping boxes, band 2 holds floating windows 4 and 5 named `top` and `low` with overlapping boxes, this client focused windows 5, 4, 1, 2 and 3 in that order, minimized window 1 and views band 1, and the user opens the window list, presses `j` seven times and then presses Escape
+- **THEN** after the seventh `j` the client views band 2 with window 5 focused and drawn over window 4
 - **AND** after Escape the window list is closed, the client views band 1 with window 3 focused, draws window 3 over window 2 and does not draw window 1, and `gband.layout()` marks window 1 `minimized`
 - **AND** when the user then views band 2, the client focuses window 4 and draws it over window 5
 
@@ -485,7 +487,7 @@ While the window list is open, it SHALL build its rows again when `WindowOpened`
 - **THEN** the window list is closed, window 1 is focused, no longer minimized, and drawn over windows 2 and 3
 
 #### Scenario: Pick a window
-- **WHEN** the window list of "List of two windows" is open and the user presses `j`, `j`, `j`, then Enter
+- **WHEN** the window list of "List of two windows" is open and the user presses `j`, `j`, `j`, `j`, then Enter
 - **THEN** the list closes and window 1 is focused with the highest `last_focus`
 
 #### Scenario: Restore a minimized window
@@ -509,6 +511,20 @@ While the window list is open, it SHALL build its rows again when `WindowOpened`
 - **WHEN** the window list is open and the user presses `j` then Enter
 - **THEN** the window list is closed and the settings window is open and focused
 
+#### Scenario: Multi mode from the list
+- **WHEN** the floating style is in use, the viewed band holds floating shell windows named `notes` and `logs`, and the user presses Ctrl+Space, `m`, then types `echo hi` and Enter
+- **THEN** after `m` the window list is closed and `root` is active
+- **AND** both windows print `hi`
+- **AND** when the user opens the window list again, its rows between its borders are `n New window`, `s Settings`, `m Multi mode (on)`, a separator and the two window entries
+
+#### Scenario: Multi mode off from the list
+- **WHEN** the floating style is in use, multi mode is on, the viewed band holds two floating shell windows, and the user opens the window list, presses `j` twice, then Enter, and types `echo solo` and Enter
+- **THEN** only the focused window prints `solo`
+
+#### Scenario: Multi mode from a preview
+- **WHEN** the window list of "Preview by keys" previews window 2 and the user presses `m`
+- **THEN** the window list is closed, multi mode is on, and window 3 is focused and drawn over window 2
+
 #### Scenario: Settings from a preview
 - **WHEN** the window list of "Preview by keys" previews window 2 and the user presses `s`
 - **THEN** the window list is closed, the settings window is open and focused, and window 3 is focused and drawn over window 2
@@ -521,10 +537,10 @@ While the window list is open, it SHALL build its rows again when `WindowOpened`
 #### Scenario: Maximize the list's height
 - **WHEN** the window list of "List of two windows" is open and the user clicks its `[□]` at terminal column 45 and row 8
 - **THEN** the list spans rows 0 to 23 of the ribbon area and its top border shows `[❐]`
-- **AND** a click on `[❐]` gives it back rows 8 to 14
+- **AND** a click on `[❐]` gives it back rows 8 to 15
 
 #### Scenario: Close by the button
-- **WHEN** the window list of "List of two windows" is open, the user presses `j` three times, and then clicks its `[X]` at terminal column 48 and row 8
+- **WHEN** the window list of "List of two windows" is open, the user presses `j` four times, and then clicks its `[X]` at terminal column 48 and row 8
 - **THEN** the window list is closed and window 2 is focused and drawn over window 1
 
 #### Scenario: Closed by other code
@@ -549,7 +565,7 @@ While the window list is open, it SHALL build its rows again when `WindowOpened`
 
 #### Scenario: Same list from a right press
 - **WHEN** the floating style is in use, the viewed band holds floating windows named `notes` and `logs`, which this client focused in that order, and the user presses the right button on empty ribbon
-- **THEN** the window list's rows between its borders are `n New window`, `s Settings`, a separator, `1 logs` and `2 notes`
+- **THEN** the window list's rows between its borders are `n New window`, `s Settings`, `m Multi mode`, a separator, `1 logs` and `2 notes`
 
 #### Scenario: Right press keeps the preview
 - **WHEN** the window list of "Preview by keys" previews window 2 and the user presses the right button on empty ribbon
@@ -560,7 +576,7 @@ While the window list is open, it SHALL build its rows again when `WindowOpened`
 - **THEN** the window list is still open and focused, its window entries read `1 mail` and `2 logs`, and `2 logs` is still selected
 
 #### Scenario: Window focused at opening closes
-- **WHEN** the window list of "Most recent first" is open, the user presses `j` four times, so that the list previews window 1, the program of window 3 exits, and the user presses Escape
+- **WHEN** the window list of "Most recent first" is open, the user presses `j` five times, so that the list previews window 1, the program of window 3 exits, and the user presses Escape
 - **THEN** the window list is closed, and window 2 is focused and drawn over window 1
 
 #### Scenario: Reload from the key list
@@ -617,7 +633,7 @@ The floating preset SHALL register one handler of `KeyTableChanged`. When the ev
 - **THEN** the window list is closed and `cat -v` prints `^@` on a line of its own
 
 #### Scenario: Leader after a preview
-- **WHEN** the floating style is in use, the viewed band holds floating windows 1 and 2, window 1 runs `cat -v`, this client focused window 1 and then window 2, and the user presses Ctrl+Space, `j` three times, Ctrl+Space and Enter
+- **WHEN** the floating style is in use, the viewed band holds floating windows 1 and 2, window 1 runs `cat -v`, this client focused window 1 and then window 2, and the user presses Ctrl+Space, `j` four times, Ctrl+Space and Enter
 - **THEN** the window list is closed, window 1 is focused, and `cat -v` prints `^@` on a line of its own
 
 #### Scenario: Table changes of the leader
