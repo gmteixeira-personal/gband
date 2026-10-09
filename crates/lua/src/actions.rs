@@ -23,7 +23,7 @@ const fn builtin(name: &'static str, action: Action, desc: &'static str) -> Buil
     BuiltinAction { name, action, desc }
 }
 
-pub const ACTIONS: [BuiltinAction; 30] = [
+pub const ACTIONS: [BuiltinAction; 31] = [
     builtin(
         "focus_column_left",
         Action::View(ViewAction::FocusLeft),
@@ -166,6 +166,11 @@ pub const ACTIONS: [BuiltinAction; 30] = [
         "send_prefix",
         Action::Client(ClientAction::SendPrefix),
         "send the prefix key to the focused window",
+    ),
+    builtin(
+        "reload",
+        Action::Client(ClientAction::Reload),
+        "reload the configuration",
     ),
     builtin(
         "drag_window",

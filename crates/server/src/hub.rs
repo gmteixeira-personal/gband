@@ -4,8 +4,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use gband_core::layout::WindowId;
 use gband_lua::server::{Host, SessionView};
-use gband_protocol::{Requirement, ServerMessage, SessionName, Value};
-use tokio::sync::mpsc;
+use gband_protocol::{Answer, Operation, Requirement, ServerMessage, SessionName, Value};
+use tokio::sync::{mpsc, oneshot};
 
 use crate::channel::Settling;
 use crate::registry::SessionHandle;
@@ -13,6 +13,8 @@ use crate::registry::SessionHandle;
 pub const QUEUE_LIMIT: usize = 256;
 
 pub type State = BTreeMap<String, Value>;
+
+pub type Call = (u64, oneshot::Receiver<Answer>);
 
 struct Queued {
     session: Option<SessionName>,
@@ -32,8 +34,11 @@ struct Inner {
     states: HashMap<(SessionName, WindowId), State>,
     clients: BTreeMap<u64, Client>,
     queue: VecDeque<Queued>,
-    error: Option<String>,
+    errors: Vec<String>,
     requirements: Vec<Requirement>,
+    calls: HashMap<u64, oneshot::Sender<Answer>>,
+    next_call: u64,
+    typed: HashMap<SessionName, u64>,
 }
 
 #[derive(Default)]
@@ -131,7 +136,7 @@ impl Hub {
             })
             .collect();
         messages.push(ServerMessage::Requirements(inner.requirements.clone()));
-        messages.extend(inner.error.clone().map(ServerMessage::ServerError));
+        messages.extend(inner.errors.last().cloned().map(ServerMessage::ServerError));
         let (delivered, kept): (VecDeque<Queued>, VecDeque<Queued>) =
             std::mem::take(&mut inner.queue)
                 .into_iter()
@@ -154,7 +159,68 @@ impl Hub {
     }
 
     pub fn detach(&self, client: u64) {
-        self.lock().clients.remove(&client);
+        let mut inner = self.lock();
+        if let Some(detached) = inner.clients.remove(&client)
+            && inner.typed.get(&detached.session) == Some(&client)
+        {
+            inner.typed.remove(&detached.session);
+        }
+    }
+
+    pub fn typed(&self, client: u64) {
+        let mut inner = self.lock();
+        if let Some(session) = inner
+            .clients
+            .get(&client)
+            .map(|typed| typed.session.clone())
+        {
+            inner.typed.insert(session, client);
+        }
+    }
+
+    pub fn chosen(&self, session: &SessionName) -> Option<u64> {
+        let inner = self.lock();
+        inner.typed.get(session).copied().or_else(|| {
+            inner
+                .clients
+                .iter()
+                .rev()
+                .find(|(_, client)| client.session == *session)
+                .map(|(&id, _)| id)
+        })
+    }
+
+    pub fn control(&self, client: u64, operation: Operation) -> Option<Call> {
+        let mut inner = self.lock();
+        let call = inner.next_call;
+        inner.next_call += 1;
+        let (sender, answer) = oneshot::channel();
+        let sent = inner
+            .clients
+            .get(&client)?
+            .sender
+            .send(ServerMessage::Control { call, operation });
+        if sent.is_err() {
+            return None;
+        }
+        inner.calls.insert(call, sender);
+        Some((call, answer))
+    }
+
+    pub fn send(&self, client: u64, message: ServerMessage) {
+        if let Some(client) = self.lock().clients.get(&client) {
+            let _ = client.sender.send(message);
+        }
+    }
+
+    pub fn answer(&self, call: u64, answer: Answer) {
+        if let Some(sender) = self.lock().calls.remove(&call) {
+            let _ = sender.send(answer);
+        }
+    }
+
+    pub fn forget(&self, call: u64) {
+        self.lock().calls.remove(&call);
     }
 
     pub fn clients_of(&self, session: &SessionName) -> Vec<u64> {
@@ -225,11 +291,15 @@ impl Hub {
     pub fn report(&self, error: String) {
         let mut inner = self.lock();
         inner.send_to(None, &ServerMessage::ServerError(error.clone()));
-        inner.error = Some(error);
+        inner.errors.push(error);
     }
 
-    pub fn clear_error(&self) {
-        self.lock().error = None;
+    pub fn clear_errors(&self) {
+        self.lock().errors.clear();
+    }
+
+    pub fn errors(&self) -> Vec<String> {
+        self.lock().errors.clone()
     }
 
     pub fn set_requirements(&self, requirements: Vec<Requirement>) {
@@ -414,13 +484,14 @@ mod tests {
     }
 
     #[test]
-    fn latest_error_until_cleared() {
+    fn every_error_kept_and_latest_sent_until_cleared() {
         let hub = Hub::default();
         let (sender, mut receiver) = mpsc::unbounded_channel();
         hub.attach(1, &name("work"), sender);
         hub.report("first".to_owned());
         hub.report("second".to_owned());
         assert_eq!(drain(&mut receiver).len(), 2);
+        assert_eq!(hub.errors(), ["first", "second"]);
         let (sender, _receiver) = mpsc::unbounded_channel();
         let attached = hub.attach(2, &name("work"), sender);
         assert!(
@@ -428,9 +499,56 @@ mod tests {
                 .messages
                 .contains(&ServerMessage::ServerError("second".to_owned()))
         );
-        hub.clear_error();
+        hub.clear_errors();
+        assert!(hub.errors().is_empty());
         let (sender, _receiver) = mpsc::unbounded_channel();
         let attached = hub.attach(3, &name("work"), sender);
         assert_eq!(attached.messages, [ServerMessage::Requirements(Vec::new())]);
+    }
+
+    #[test]
+    fn chosen_client_typed_last_or_attached_last() {
+        let hub = Hub::default();
+        let work = name("work");
+        assert_eq!(hub.chosen(&work), None);
+        let (first, _first_rx) = mpsc::unbounded_channel();
+        let (second, _second_rx) = mpsc::unbounded_channel();
+        let (other, _other_rx) = mpsc::unbounded_channel();
+        hub.attach(1, &work, first);
+        hub.attach(2, &work, second);
+        hub.attach(3, &name("play"), other);
+        assert_eq!(hub.chosen(&work), Some(2));
+        hub.typed(1);
+        assert_eq!(hub.chosen(&work), Some(1));
+        hub.typed(3);
+        assert_eq!(hub.chosen(&work), Some(1));
+        hub.detach(1);
+        assert_eq!(hub.chosen(&work), Some(2));
+    }
+
+    #[test]
+    fn control_answer_reaches_its_call_once() {
+        let hub = Hub::default();
+        let (sender, mut receiver) = mpsc::unbounded_channel();
+        hub.attach(1, &name("work"), sender);
+        assert!(hub.control(2, Operation::Errors).is_none());
+        let (call, mut answer) = hub.control(1, Operation::Errors).unwrap();
+        assert_eq!(
+            drain(&mut receiver),
+            [ServerMessage::Control {
+                call,
+                operation: Operation::Errors
+            }]
+        );
+        let loaded = Answer::Loaded {
+            load: 1,
+            error: None,
+        };
+        hub.answer(call, loaded.clone());
+        assert_eq!(answer.try_recv().unwrap(), loaded);
+        let (late, mut forgotten) = hub.control(1, Operation::Reload).unwrap();
+        hub.forget(late);
+        hub.answer(late, loaded);
+        assert!(forgotten.try_recv().is_err());
     }
 }

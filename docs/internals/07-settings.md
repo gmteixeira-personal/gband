@@ -1,6 +1,6 @@
 # 07 · Settings
 
-The settings window, Ctrl+Space then `s`, picks the theme, turns the sidebar on or off, and chooses the key style.
+The settings window, Ctrl+Space then `s`, picks the theme, turns the sidebar on or off, chooses the key style, and reloads the configuration.
 Each choice is saved to a small file under `user/`, and the default configuration reads those files as it loads.
 `gband.settings`, in `defaults/lua/gband/settings.lua`, is both: the window, built with `gband.win`, and the functions that read and write the saved choices.
 This chapter reads it in full.
@@ -21,11 +21,13 @@ local LABEL_WIDTH = 9
 local WIDTH = 31
 local THEME, SIDEBAR, KEYS, INTERACTIVE_ON_NEW = 1, 2, 3, 4
 local LABELS = { "theme", "sidebar", "keys", "I on new" }
+local RELOAD_LABEL = "reload"
 local KEY_STYLES = { "modal", "direct", "floating" }
 ```
 
 `NAME` is the colorscheme name rule of [03](03-colorschemes.md).
-The window has at most four lines, numbered by the four constants, and each line starts with its label padded to `LABEL_WIDTH` columns.
+The window has at most five lines, and each line starts with its label padded to `LABEL_WIDTH` columns.
+The first four are numbered by the four constants; the last, `reload`, moves up a line when `I on new` is absent, so it has a label and no number of its own.
 `KEY_STYLES` is the order in which the `keys` line cycles through the three key styles of [08](08-key-styles.md).
 
 ```lua defaults/lua/gband/settings.lua
@@ -226,6 +228,46 @@ end
 `is_open` asks `gband.win` whether the id is still open, rather than trusting that it is set.
 
 ```lua defaults/lua/gband/settings.lua
+local function reload_line()
+  return key_style() == "modal" and INTERACTIVE_ON_NEW + 1 or KEYS + 1
+end
+```
+
+```lua defaults/lua/gband/settings.lua
+local function meaning(line)
+  if line == reload_line() then
+    return RELOAD_LABEL
+  end
+  return line
+end
+```
+
+`reload_line` is the line `reload` sits on: fifth with the modal style, fourth otherwise.
+`meaning` turns a cursor line into what the keys compare with: the label for the `reload` line, and the line's own number for the others.
+Without it, the fourth line would read as `INTERACTIVE_ON_NEW` with the direct style, and `l` on `reload` would save `I on new`.
+
+```lua defaults/lua/gband/settings.lua
+local function error_count()
+  local count = #gband.errors()
+  if count == 0 then
+    return "ok"
+  elseif count == 1 then
+    return "1 error"
+  end
+  return count .. " errors"
+end
+```
+
+```lua defaults/lua/gband/settings.lua
+local function labelled(label, value)
+  return {
+    { text = label .. string.rep(" ", LABEL_WIDTH - #label), hl = "SettingsLabel" },
+    value,
+  }
+end
+```
+
+```lua defaults/lua/gband/settings.lua
 local function lines()
   local values = {
     tostring(gband.colorscheme()),
@@ -237,12 +279,9 @@ local function lines()
   end
   local out = {}
   for index, value in ipairs(values) do
-    local label = LABELS[index]
-    out[index] = {
-      { text = label .. string.rep(" ", LABEL_WIDTH - #label), hl = "SettingsLabel" },
-      value,
-    }
+    out[index] = labelled(LABELS[index], value)
   end
+  out[#out + 1] = labelled(RELOAD_LABEL, error_count())
   return out
 end
 ```
@@ -250,6 +289,7 @@ end
 Each line is two spans: the label in `SettingsLabel`, padded, and the value in the window's own style.
 The `I on new` line exists only for the modal style, since only the modal preset reads it.
 It shows `on` only for a saved `true`, so a setting never saved shows `off`, as the preset reads it.
+The `reload` line comes last and counts `gband.errors()` each time the lines are built, so the window shows the errors of the moment it draws.
 
 ```lua defaults/lua/gband/settings.lua
 local function refresh()
@@ -329,9 +369,20 @@ The `I on new` toggle compares with `true` as the line does, so the first toggle
 None of them changes anything directly: the reload that the save causes runs the default configuration again, which reads the new value.
 
 ```lua defaults/lua/gband/settings.lua
+local function reload()
+  core.reopen_settings(reload_line())
+  gband.action.reload()
+end
+```
+
+`reload` saves nothing, so no file change will reload anything: it asks for the reload itself, with the `reload` action of [08](08-key-styles.md)'s `prefix !`.
+It still records its line, as `save` does.
+The client holds that line until both its own load and the server's have ended, then reopens the window on it whether they worked or not, so the line counts the errors of both.
+
+```lua defaults/lua/gband/settings.lua
 local function change(direction)
   return function(win)
-    local line = gband.win.info(win).cursor
+    local line = meaning(gband.win.info(win).cursor)
     if line == THEME then
       step_theme(direction)
     elseif line == SIDEBAR then
@@ -349,10 +400,14 @@ end
 local open_list
 ```
 
+`change` has no branch for `reload`, so `h`, `l` and the arrows do nothing there.
+
 ```lua defaults/lua/gband/settings.lua
 local function enter(win)
-  local line = gband.win.info(win).cursor
-  if line == THEME then
+  local line = meaning(gband.win.info(win).cursor)
+  if line == RELOAD_LABEL then
+    reload()
+  elseif line == THEME then
     open_list()
   elseif line == SIDEBAR then
     toggle_sidebar()
@@ -364,7 +419,7 @@ local function enter(win)
 end
 ```
 
-Enter on the theme line opens the theme list, and on the `keys` line steps forward as `l` does.
+Enter on the theme line opens the theme list, on the `keys` line steps forward as `l` does, and on the `reload` line reloads.
 `open_list` is defined further down, after the functions it uses, so it is declared here first: `enter` captures the local, and by the time a key runs `enter` the local holds the function.
 
 ## The theme list
@@ -505,6 +560,7 @@ local function show(line)
   end
   if is_open(window) then
     gband.win.focus(window)
+    gband.win.set_lines(window, lines())
   else
     local content = lines()
     window = gband.win.open({
@@ -534,7 +590,8 @@ end
 ```
 
 `show` leaves any key table, such as the prefix table you opened it from, so keys reach the window.
-A theme list left open is cancelled, and the settings window is focused when it is already open, or opened otherwise.
+A theme list left open is cancelled, and the settings window is focused and its lines drawn again when it is already open, or opened otherwise.
+A load that fails closes no plugin window, so after a failed reload from the `reload` line the window is still open, and drawing its lines again shows the new count.
 A line, given when the window reopens after a reload, puts the cursor back where it was.
 
 ```lua defaults/lua/gband/settings.lua

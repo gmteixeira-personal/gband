@@ -12,7 +12,8 @@ use gband_core::layout::{Layout, LayoutOptions, SessionAction, WindowId};
 pub use gband_emulator::{Emulator, Grid};
 use gband_protocol::{
     ClientMessage, ExecutableId, Hello, HelloReply, IoError, MessageReader, MessageWriter,
-    PROTOCOL_VERSION, ServerMessage, SessionName, SessionSummary, Value, socket_path,
+    Operation, PROTOCOL_VERSION, ServerMessage, SessionName, SessionSummary, Target, Value,
+    socket_path,
 };
 pub use gband_scratch::Scratch;
 use gband_server::{INITIAL_AREA, ServerConfig};
@@ -120,6 +121,22 @@ impl TestServer {
 
     pub async fn attach_to(&self, name: &str, cwd: &Path, cols: u16, rows: u16) -> TestClient {
         TestClient::attach_to(&self.socket(), session(name), cwd, cols, rows).await
+    }
+
+    pub async fn control(&self, name: &str, target: Target, operation: Operation) -> ServerMessage {
+        let (mut peer, _) = TestClient::accepted(&self.socket(), 80, 24).await;
+        peer.send(&ClientMessage::Control {
+            session: session(name),
+            target,
+            operation,
+        })
+        .await;
+        let answer = timeout(TIMEOUT, peer.recv())
+            .await
+            .expect("no answer to the control request")
+            .expect("the server closed without answering");
+        assert!(peer.closes().await);
+        answer
     }
 
     pub async fn list(&self) -> Vec<SessionSummary> {
@@ -468,11 +485,14 @@ impl TestClient {
             ServerMessage::Event { .. }
             | ServerMessage::Result { .. }
             | ServerMessage::Requirements(_)
-            | ServerMessage::ServerError(_) => self.bridge.push(message.clone()),
+            | ServerMessage::ServerError(_)
+            | ServerMessage::Reloaded
+            | ServerMessage::Control { .. } => self.bridge.push(message.clone()),
             ServerMessage::Info { .. }
             | ServerMessage::Sessions(_)
             | ServerMessage::Killed
-            | ServerMessage::NoSuchSession => panic!("unexpected {message:?} after attaching"),
+            | ServerMessage::NoSuchSession
+            | ServerMessage::ControlResults(_) => panic!("unexpected {message:?} after attaching"),
         }
     }
 

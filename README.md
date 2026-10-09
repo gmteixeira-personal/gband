@@ -84,6 +84,7 @@ Run `gband` again to attach to it.
 - `gband list-sessions` lists the sessions of the running server.
 - `gband kill-session -s work` ends the session `work` and its windows.
 - `gband kill-server` stops the server and every session.
+- `gband reload`, `gband errors`, `gband eval` and `gband cmd` reload a running gband, read its errors, and run Lua and commands in it; see [Control from a shell or an agent](#control-from-a-shell-or-an-agent).
 
 Keys typed in gband go to the focused window: this is interactive mode.
 The prefix key, Ctrl+Space, gives the keys below their gband meaning, in one of three key styles:
@@ -91,7 +92,7 @@ The prefix key, Ctrl+Space, gives the keys below their gband meaning, in one of 
 - **modal**: Ctrl+Space enters navigation mode, and the sidebar shows `N`.
   Each key below acts and navigation mode stays active, so `l` `l` `l` moves three columns and `=` `=` widens the column twice.
   A key with no binding does nothing.
-  Escape or Enter returns to interactive mode, and so do `?`, `:`, `N`, `s` and Ctrl+Space once they have acted.
+  Escape or Enter returns to interactive mode, and so do `?`, `:`, `N`, `s`, `!` and Ctrl+Space once they have acted.
   `n` returns to interactive mode only when the settings window's `I on new` is `on`, which it is not until you save it on.
 - **direct**: Ctrl+Space then one key acts once, and the keys that follow reach the window again, as in tmux.
   Ctrl+Space `l` `l` moves one column and types `l`.
@@ -105,7 +106,7 @@ The prefix key, Ctrl+Space, gives the keys below their gband meaning, in one of 
 
 The key style is chosen in the settings window, which Ctrl+Space then `s` opens; see [Settings](#settings).
 
-The modal and direct styles bind the same keys after Ctrl+Space; the floating style binds only `n`, which opens a floating window, `?`, `:`, `N`, `s`, `D` and Ctrl+Space:
+The modal and direct styles bind the same keys after Ctrl+Space; the floating style binds only `n`, which opens a floating window, `?`, `:`, `N`, `s`, `!`, `D` and Ctrl+Space:
 
 | key | action |
 |---|---|
@@ -129,6 +130,7 @@ The modal and direct styles bind the same keys after Ctrl+Space; the floating st
 | `:` | open the Lua prompt, which runs one line of Lua |
 | `N` | rename the focused window; see [Window names](#window-names) |
 | `s` | open the settings window |
+| `!` | reload the configuration of this client and of the server, reading the plugins' files again |
 | `D` | detach |
 | Escape, Enter | modal only: return to interactive mode |
 | Ctrl+Space | send Ctrl+Space to the window; modal returns to interactive mode |
@@ -148,11 +150,13 @@ It has these lines:
 | `sidebar` | `on` or `off` |
 | `keys` | the key style, `modal`, `direct` or `floating` |
 | `I on new` | `on` or `off`: whether `n` in navigation mode returns to interactive mode; `off` until saved `on`; shown with the modal key style only |
+| `reload` | `ok`, or the number of errors `gband.errors()` holds, such as `1 error` or `3 errors` |
 
 `j`, `k` and the up and down arrows move between the lines.
 On `theme`, `l` or Right loads the next theme and `h` or Left the one before, and Enter opens the theme list.
 On `sidebar` and `I on new`, Enter, `h`, `l`, Left and Right switch to the other value.
 On `keys`, Enter, `l` and Right pick the next style of `modal`, `direct` and `floating`, and `h` and Left the one before.
+On `reload`, Enter reloads the configuration as Ctrl+Space then `!` does and saves nothing; once this client and the server have both loaded, the box opens again on that line with the new count, whether the loads worked or not.
 Escape or `q` closes the box and saves nothing.
 
 Each change is saved at once.
@@ -175,6 +179,35 @@ A program's 256-color and 24-bit output keeps its own colors under every theme.
 
 With the default configuration, gband opens the settings window when it starts while no theme, sidebar or key style is saved.
 Escape closes it and saves nothing: the `default` theme, the sidebar and the modal key style apply, and the next start offers it again.
+
+### Control from a shell or an agent
+
+Four subcommands talk to a running server, so a person or a coding agent in a terminal can reload gband after editing its configuration and see whether that worked:
+
+- `gband reload` makes the server load its configuration again, then every client attached to the session, reading the plugins' files as they are now, and waits for each.
+  A client's reload ends with `root` active, as Ctrl+Space then `!` does.
+- `gband errors` prints the errors of the server and of every client of the session, each with the number of the load it belongs to.
+- `gband eval '<lua>' [<arg>...]` runs a chunk of Lua in one client and prints what it returns; `-` reads the chunk from standard input.
+  `gband eval 'gband.action.focus_column_right()'` moves the focus, and `gband eval 'return gband.errors()'` returns the client's errors.
+- `gband cmd <name> ['<json>']` runs a command registered with `gband.cmd` in one client, with its arguments as JSON, and prints its result.
+
+`eval` and `cmd` run in the client you typed in last, or the one attached last when none has; `--client <n>` picks client `n`, and `--on-server` runs in the server instead, a server command for `cmd`.
+`gband reload` and `gband errors` print one line per process: `server` or `client <n>`, a tab, the load number, a tab, then `ok`, `error` and the message, or one error.
+`--json` prints one JSON document instead, which a program reads more easily:
+
+```sh
+$ gband reload
+server	3	ok
+client 4	6	error	user/init.lua:2: bad
+$ gband reload --json
+[{"process":"server","answered":true,"load":3,"error":null},{"process":"client","client":4,"answered":true,"load":6,"error":"user/init.lua:2: bad"}]
+```
+
+Each process numbers its loads from 1 when it starts, and every load, by a saved file, a key, the settings window or `gband reload`, adds one, whether it worked or not.
+A client that does not answer within 5 seconds is reported as `no answer`.
+
+Run in a gband window, these subcommands reach that window's server, through `GBAND`, and its session, through `GBAND_SESSION`; elsewhere they use the `default` session of the default server, and `-s` and `-S` choose others.
+They exit with status 0 when everything worked, 1 when a load failed, an error is listed, a chunk or a command failed, a process did not answer, or no server or session was found, and 2 for an invalid invocation.
 
 ### Mouse
 
@@ -291,6 +324,7 @@ An `n` binding of your own can compare `gband.settings.interactive_on_new()` wit
 
 Without `user/init.lua`, the defaults apply.
 Saving `user/init.lua`, or any other `.lua` file under `user/`, reloads the configuration while gband runs, and deleting `user/init.lua` returns to the defaults.
+Changing a plugin's files reloads nothing on its own: Ctrl+Space then `!`, the settings window's `reload` line or `gband reload` reads them again.
 An error in the file shows a red `!` at the bottom of the sidebar, and gband keeps the last configuration that loaded.
 Ctrl+Space then the key you bind to `errors.open` lists the errors with their files and line numbers; see [Errors](#errors).
 

@@ -1,10 +1,11 @@
 use std::fs;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use gband_client::animation::Animations;
 use gband_client::mouse::{Edges, Target, pick_edges};
-use gband_client::{Controls, Display, Step, dispatch};
-use gband_core::action::{Action, SessionCommand};
+use gband_client::{Controls, Display, Loader, Step, dispatch};
+use gband_core::action::{Action, ClientAction, SessionCommand};
 use gband_core::geometry::Size;
 use gband_core::geometry::tiles;
 use gband_core::input::{Key, Modifiers, MouseButton, MouseEvent, MouseKind, WheelDirection};
@@ -15,7 +16,7 @@ use gband_core::layout::{
 use gband_core::view::ViewAction;
 use gband_lua::keys::parse_key;
 use gband_lua::{Config, ConfigError, DEFAULTS, LoadOptions, Locations};
-use gband_protocol::{ClientMessage, ServerMessage};
+use gband_protocol::{Answer, ClientMessage, Key as ValueKey, Operation, ServerMessage, Value};
 use gband_test_support::{TIMEOUT, TestClient, TestServer};
 use tokio::time::timeout;
 
@@ -150,15 +151,25 @@ impl Scratch {
         ))
     }
 
-    fn load(&self, source: &str) -> Result<Config, ConfigError> {
+    fn write(&self, source: &str) {
         let path = gband_lua::user_file(&self.0, gband_lua::Side::Client);
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(&path, source).unwrap();
+    }
+
+    fn load(&self, source: &str) -> Result<Config, ConfigError> {
+        self.write(source);
+        self.loader()()
+    }
+
+    fn loader(&self) -> Loader {
         let locations = Locations {
             config: self.0.to_path_buf(),
             plugins: None,
         };
-        gband_lua::load(&locations, gband_lua::Side::Client, &LoadOptions::default())
+        Arc::new(move || {
+            gband_lua::load(&locations, gband_lua::Side::Client, &LoadOptions::default())
+        })
     }
 }
 
@@ -522,6 +533,151 @@ fn failed_reload_keeps_the_running_configuration_until_a_good_one() {
     );
     controls.reload(&mut display, scratch.load(""));
     assert_eq!(display.banner(), None);
+}
+
+#[test]
+fn every_load_counts_failed_ones_included() {
+    let scratch = Scratch::new("load-number");
+    let (mut display, _) = three_columns();
+    let mut controls = Controls::new(scratch.load("").unwrap(), &mut display);
+    assert_eq!(controls.load_number(), 1);
+    controls.reload(&mut display, scratch.load(""));
+    assert_eq!(controls.load_number(), 2);
+    controls.reload(&mut display, scratch.load("local = 1"));
+    assert_eq!(controls.load_number(), 3);
+    controls.set_loader(scratch.loader());
+    let (error, _) = controls.load(&mut display);
+    assert!(error.unwrap().contains("init.lua:1:"));
+    assert_eq!(controls.load_number(), 4);
+}
+
+#[test]
+fn reload_action_loads_this_client_and_asks_the_server() {
+    let scratch = Scratch::new("reload-action");
+    let (mut display, windows) = three_columns();
+    let mut controls = Controls::new(scratch.load(DEFAULTS).unwrap(), &mut display);
+    controls.place_bars(&mut display);
+    controls.set_loader(scratch.loader());
+    assert_eq!(
+        dispatch(&mut display, Action::Client(ClientAction::Reload)),
+        Step::Reload
+    );
+    assert_eq!(controls.press(&mut display, key("ctrl+space")), []);
+    scratch.write("gband.bind('alt+l', gband.action.focus_column_right)");
+    let steps = controls.forced_reload(&mut display);
+    assert_eq!(steps.last(), Some(&Step::Send(ClientMessage::Reload)));
+    assert_eq!(controls.load_number(), 2);
+    assert_eq!(
+        controls.press(&mut display, key("q")),
+        [Step::Send(ClientMessage::Key {
+            window: windows[0],
+            key: key("q"),
+        })]
+    );
+    controls.press(&mut display, key("alt+l"));
+    assert_eq!(display.focused(), Some(windows[1]));
+}
+
+fn answers(steps: &[Step]) -> Vec<(u64, Answer)> {
+    steps
+        .iter()
+        .filter_map(|step| match step {
+            Step::Send(ClientMessage::ControlAnswer { call, answer }) => {
+                Some((*call, answer.clone()))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn control_messages_are_answered() {
+    let scratch = Scratch::new("control");
+    let (mut display, windows) = three_columns();
+    let mut controls = Controls::new(
+        scratch
+            .load("gband.cmd.register('greet', function(args) return 'hi ' .. args.who end)")
+            .unwrap(),
+        &mut display,
+    );
+    display.report_server_error("server: boom".to_owned());
+    display.report_error("mine".to_owned());
+    let received = controls.receive(
+        &mut display,
+        [
+            ServerMessage::Control {
+                call: 1,
+                operation: Operation::Errors,
+            },
+            ServerMessage::Control {
+                call: 2,
+                operation: Operation::Eval {
+                    source: "gband.action.focus_column_right() return gband.side, select('#', ...)"
+                        .to_owned(),
+                    args: vec![Value::string("a"), Value::string("b")],
+                },
+            },
+            ServerMessage::Control {
+                call: 3,
+                operation: Operation::Command {
+                    name: "greet".to_owned(),
+                    args: Value::Table(vec![(ValueKey::string("who"), Value::string("you"))]),
+                },
+            },
+            ServerMessage::Control {
+                call: 4,
+                operation: Operation::Eval {
+                    source: "error('boom')".to_owned(),
+                    args: Vec::new(),
+                },
+            },
+        ],
+    );
+    let answered = answers(&received.steps);
+    assert_eq!(
+        answered[..3],
+        [
+            (
+                1,
+                Answer::Errors {
+                    load: 1,
+                    errors: vec!["mine".to_owned()],
+                },
+            ),
+            (
+                2,
+                Answer::Values(Ok(vec![Value::string("client"), Value::Int(2)])),
+            ),
+            (3, Answer::Values(Ok(vec![Value::string("hi you")]))),
+        ]
+    );
+    let (4, Answer::Values(Err(reason))) = &answered[3] else {
+        panic!("{answered:?}");
+    };
+    assert!(reason.contains("boom"), "{reason}");
+    assert_eq!(display.errors().len(), 2);
+    assert_eq!(display.focused(), Some(windows[1]));
+}
+
+#[test]
+fn reload_control_loads_without_asking_the_server() {
+    let scratch = Scratch::new("control-reload");
+    let (mut display, _) = three_columns();
+    let mut controls = Controls::new(scratch.load("").unwrap(), &mut display);
+    controls.set_loader(scratch.loader());
+    scratch.write("local = 1");
+    let received = controls.receive(
+        &mut display,
+        [ServerMessage::Control {
+            call: 7,
+            operation: Operation::Reload,
+        }],
+    );
+    assert!(!received.steps.contains(&Step::Send(ClientMessage::Reload)));
+    let [(7, Answer::Loaded { load: 2, error })] = &answers(&received.steps)[..] else {
+        panic!("{:?}", received.steps);
+    };
+    assert!(error.as_deref().unwrap().contains("init.lua:1:"));
 }
 
 #[test]

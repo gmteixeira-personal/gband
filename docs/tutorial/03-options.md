@@ -76,6 +76,7 @@ end
 Saving a setting reloads the configuration, so turning the sidebar off in the window removes it at once.
 `gband.settings.theme()`, `gband.settings.interactive_on_new()` and `gband.keystyle.saved()` read the other lines; `gband.keystyle.use()` already follows the `keys` line, which cycles through `modal`, `direct` and `floating`.
 `I on new` is off until the window saves it on, and `interactive_on_new()` returns nil until then, so an `n` binding of your own compares the value with `true`.
+The last line, `reload`, shows `ok` or how many errors `gband.errors()` holds, and Enter on it loads your configuration and the server's again, as Ctrl+Space then `!` does; it saves nothing.
 [Settings](../plugins.md#settings-gbandsettings) describes the window and its files.
 
 ## The whole file

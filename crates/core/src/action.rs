@@ -100,6 +100,7 @@ impl SessionCommand {
 pub enum ClientAction {
     Detach,
     SendPrefix,
+    Reload,
     SendKey(Key),
     DragWindow,
     DragResize(Option<Edges>),

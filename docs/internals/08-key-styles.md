@@ -178,12 +178,15 @@ set("prefix", "?", action["keylist.open"], { desc = "list the keys" })
 set("prefix", ":", action["prompt.open"], { desc = "run Lua" })
 set("prefix", "N", action["prompt.rename"], { desc = "rename the window" })
 set("prefix", "s", gband.settings.open, { desc = "settings" })
+set("prefix", "!", action.reload, { desc = "reload the configuration" })
 set("prefix", "D", action.detach, { desc = "detach" })
 set("prefix", "escape", interactive, { desc = "interactive mode" })
 set("prefix", "enter", interactive, { desc = "interactive mode" })
 ```
 
 `?`, `:` and `N` open plugin windows, which take the keys from there on, and `s` opens the settings window.
+`!` reloads the configuration of this client and of the server, reading the plugins' files again, which a saved file under `user/` alone does not do.
+A load that works starts a new keymap in `root`, and one that fails returns to `root` too, so `!` leaves navigation mode either way.
 Escape and Enter return to interactive mode.
 
 ```lua defaults/keystyle/modal.lua
@@ -288,6 +291,7 @@ set("prefix", "?", action["keylist.open"], { desc = "list the keys" })
 set("prefix", ":", action["prompt.open"], { desc = "run Lua" })
 set("prefix", "N", action["prompt.rename"], { desc = "rename the window" })
 set("prefix", "s", gband.settings.open, { desc = "settings" })
+set("prefix", "!", action.reload, { desc = "reload the configuration" })
 set("prefix", "D", action.detach, { desc = "detach" })
 ```
 
@@ -353,12 +357,13 @@ set("prefix", "?", action["keylist.open"], { desc = "list the keys" })
 set("prefix", ":", action["prompt.open"], { desc = "run Lua" })
 set("prefix", "N", action["prompt.rename"], { desc = "rename the window" })
 set("prefix", "s", gband.settings.open, { desc = "settings" })
+set("prefix", "!", action.reload, { desc = "reload the configuration" })
 set("prefix", "D", action.detach, { desc = "detach" })
 set("prefix", "prefix", action.send_prefix, { desc = "send the prefix key to the focused window" })
 ```
 
 The preset declares no mode, as the direct one does.
-Its `n` opens a floating window, through a function because the action needs a target, and the rest are the keys that make sense without a tiled layout: the key list, the Lua prompt, the rename prompt, the settings, detach, and the prefix key twice.
+Its `n` opens a floating window, through a function because the action needs a target, and the rest are the keys that make sense without a tiled layout: the key list, the Lua prompt, the rename prompt, the settings, the reload, detach, and the prefix key twice.
 
 ```lua defaults/keystyle/floating.lua
 set("root", "mod+leftmouse", action.drag_window, { desc = "move the window with the mouse" })

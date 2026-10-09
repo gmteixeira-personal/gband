@@ -34,10 +34,12 @@ use gband_emulator::{Emulator, Grid};
 use gband_lua::{
     BandState, Bar, Binding, Border, BorderChars, ClientStyles, Config, ConfigError,
     DecorationInfo, DecorationSpan, Dispatch, Event, Options, Outcome as Ran, Palette,
-    PluginManifest, PluginWindowRequest, Requirement as Needed, Runtime, Slot, Version, ViewState,
-    WindowInput, WindowName, WindowNames, WindowStates,
+    PluginManifest, PluginWindowRequest, Requirement as Needed, Runtime, Side, Slot, Version,
+    ViewState, WindowInput, WindowName, WindowNames, WindowStates,
 };
-use gband_protocol::{ClientMessage, ExecutableId, Requirement, ServerMessage, SessionName, Value};
+use gband_protocol::{
+    Answer, ClientMessage, ExecutableId, Operation, Requirement, ServerMessage, SessionName, Value,
+};
 use ratatui::layout::Rect;
 use ratatui::{DefaultTerminal, Frame};
 use tokio::signal::unix::{SignalKind, signal};
@@ -48,8 +50,8 @@ use crate::animation::{
     parse_animations,
 };
 use crate::bindings::{Command, Keymap, Leader, ROOT};
+pub use crate::channel::TestChannel;
 use crate::channel::{Channel, Served};
-pub use crate::channel::{Loader, TestChannel};
 use crate::color::ColorSupport;
 use crate::connect::terminal_size;
 pub use crate::connect::{Connection, connect};
@@ -61,7 +63,7 @@ use crate::plugin_windows::{OpenRequest, Opened, PluginWindows};
 use crate::render::{
     Lifted, Overlay, Region, RegionKind, Ribbon, Shown, Top, draw_frame, regions, tops,
 };
-pub use crate::requests::{kill_session, list_sessions};
+pub use crate::requests::{control, kill_session, list_sessions};
 pub use crate::transport::{Link, Transport, UnixTransport};
 
 pub struct ClientConfig {
@@ -71,9 +73,12 @@ pub struct ClientConfig {
     pub kill_command: String,
 }
 
+pub type Loader = Arc<dyn Fn() -> Result<Config, ConfigError> + Send + Sync>;
+
 pub struct Configuration {
     pub config: Config,
     pub error: Option<ConfigError>,
+    pub loader: Loader,
     pub reloads: mpsc::UnboundedReceiver<Result<Config, ConfigError>>,
     pub channel: Option<TestChannel>,
 }
@@ -111,6 +116,7 @@ pub fn run(
     ));
     display.set_colors(ColorSupport::detect());
     let mut controls = Controls::new(configuration.config, &mut display);
+    controls.set_loader(configuration.loader);
     let placed = controls.place_bars(&mut display);
     if let Some(error) = configuration.error {
         display.report_error(error.to_string());
@@ -210,6 +216,7 @@ pub struct Display {
     loop_bands: bool,
     banner: Option<String>,
     errors: Vec<String>,
+    from_server: Vec<bool>,
     colors: ColorSupport,
     plugin_windows: PluginWindows,
     states: Arc<WindowStates>,
@@ -225,6 +232,7 @@ pub struct Display {
     styles: ClientStyles,
     palette: Palette,
     settings_line: Option<u32>,
+    settings_waits: bool,
     pointer: Pointer,
     regions: Vec<Region>,
     framed: bool,
@@ -252,6 +260,7 @@ impl Display {
             loop_bands: true,
             banner: None,
             errors: Vec::new(),
+            from_server: Vec::new(),
             colors: ColorSupport::default(),
             plugin_windows: PluginWindows::new(),
             states: Arc::new(WindowStates::new()),
@@ -267,6 +276,7 @@ impl Display {
             styles: ClientStyles::default(),
             palette: Palette::default(),
             settings_line: None,
+            settings_waits: false,
             pointer: Pointer::default(),
             regions: Vec::new(),
             framed: false,
@@ -822,13 +832,32 @@ impl Display {
         &self.errors
     }
 
+    pub fn own_errors(&self) -> Vec<String> {
+        self.errors
+            .iter()
+            .zip(&self.from_server)
+            .filter(|(_, from_server)| !**from_server)
+            .map(|(error, _)| error.clone())
+            .collect()
+    }
+
     pub fn report_error(&mut self, error: String) {
+        self.push_error(error, false);
+    }
+
+    pub fn report_server_error(&mut self, error: String) {
+        self.push_error(error, true);
+    }
+
+    fn push_error(&mut self, error: String, from_server: bool) {
         self.errors.push(error.clone());
+        self.from_server.push(from_server);
         self.banner = Some(error);
     }
 
     pub fn clear_errors(&mut self) {
         self.errors.clear();
+        self.from_server.clear();
         self.banner = None;
     }
 
@@ -942,6 +971,12 @@ impl Display {
                 tracing::warn!("ignoring a bridge message outside the controls")
             }
             ServerMessage::Exited => return Some(Outcome::Exited),
+            ServerMessage::Reloaded | ServerMessage::Control { .. } => {
+                tracing::warn!("ignoring a control message outside the controls")
+            }
+            ServerMessage::ControlResults(_) => {
+                tracing::warn!("ignoring an answer to a request this client did not send");
+            }
             ServerMessage::Info { .. } => tracing::warn!("ignoring a repeated server info"),
             ServerMessage::Sessions(_) | ServerMessage::Killed | ServerMessage::NoSuchSession => {
                 tracing::warn!("ignoring an answer to a request this client did not send");
@@ -1068,6 +1103,7 @@ pub enum Step {
     Send(ClientMessage),
     Write(Vec<u8>),
     Detach,
+    Reload,
     Nothing,
 }
 
@@ -1139,6 +1175,8 @@ pub struct Controls {
     pending: Vec<Event>,
     awaiting: Option<String>,
     pressing: Option<Pressing>,
+    loader: Loader,
+    load: u64,
 }
 
 fn unmet(plugins: &[PluginManifest], required: &Requirement) -> Option<ConfigError> {
@@ -1197,7 +1235,23 @@ impl Controls {
             pending: Vec::new(),
             awaiting: None,
             pressing: None,
+            loader: Arc::new(|| Ok(gband_lua::defaults(Side::Client))),
+            load: 1,
         }
+    }
+
+    pub fn set_loader(&mut self, loader: Loader) {
+        self.loader = loader;
+    }
+
+    pub fn load_number(&self) -> u64 {
+        self.load
+    }
+
+    pub fn load(&mut self, display: &mut Display) -> (Option<String>, Vec<Step>) {
+        let loaded = (self.loader)();
+        let error = loaded.as_ref().err().map(ToString::to_string);
+        (error, self.reload(display, loaded))
     }
 
     pub fn decorate(&mut self, display: &mut Display, now: Instant) -> Vec<Step> {
@@ -1305,7 +1359,11 @@ impl Controls {
                     self.pending.push(Event::Attached { session });
                 }
             }
-            ServerMessage::ServerError(error) => self.report(display, format!("server: {error}")),
+            ServerMessage::ServerError(error) => {
+                let error = format!("server: {error}");
+                tracing::warn!("configuration error: {error}");
+                display.report_server_error(error);
+            }
             _ => {}
         }
     }
@@ -1353,7 +1411,23 @@ impl Controls {
         messages: impl IntoIterator<Item = ServerMessage>,
     ) -> Received {
         let mut outcome = None;
-        let steps = self.react(display, Vec::new(), |controls, display, steps| {
+        let mut calls = Vec::new();
+        let mut reloaded = false;
+        let messages: Vec<ServerMessage> = messages
+            .into_iter()
+            .filter_map(|message| match message {
+                ServerMessage::Control { call, operation } => {
+                    calls.push((call, operation));
+                    None
+                }
+                ServerMessage::Reloaded => {
+                    reloaded = true;
+                    None
+                }
+                message => Some(message),
+            })
+            .collect();
+        let mut steps = self.react(display, Vec::new(), |controls, display, steps| {
             for message in messages {
                 if let ServerMessage::Opened { request, window } = message {
                     controls.opened(display, request, window, steps);
@@ -1377,16 +1451,79 @@ impl Controls {
             }
             controls.track_windows(display, steps);
         });
-        match outcome {
-            Some(outcome) => Received {
+        if outcome.is_some() {
+            return Received {
                 steps: Vec::new(),
-                outcome: Some(outcome),
-            },
-            None => Received {
-                steps,
-                outcome: None,
-            },
+                outcome,
+            };
         }
+        if reloaded {
+            steps.extend(self.server_reloaded(display));
+        }
+        for (call, operation) in calls {
+            let (answer, more) = self.control(display, operation);
+            steps.extend(more);
+            steps.push(Step::Send(ClientMessage::ControlAnswer { call, answer }));
+        }
+        Received {
+            steps,
+            outcome: None,
+        }
+    }
+
+    fn control(&mut self, display: &mut Display, operation: Operation) -> (Answer, Vec<Step>) {
+        match operation {
+            Operation::Reload => {
+                let (error, steps) = self.load(display);
+                (
+                    Answer::Loaded {
+                        load: self.load,
+                        error,
+                    },
+                    steps,
+                )
+            }
+            Operation::Errors => (
+                Answer::Errors {
+                    load: self.load,
+                    errors: display.own_errors(),
+                },
+                Vec::new(),
+            ),
+            Operation::Eval { source, args } => {
+                let (result, steps) = self.eval(display, &source, &args);
+                (Answer::Values(result), steps)
+            }
+            Operation::Command { name, args } => {
+                let mut answer = Err(format!("the command `{name}` did not run"));
+                let steps = self.react(display, Vec::new(), |controls, display, steps| {
+                    let (result, outcome) = controls.runtime.client_command(&name, &args);
+                    answer = result;
+                    controls.apply(display, outcome, steps);
+                });
+                (Answer::Values(answer.map(|value| vec![value])), steps)
+            }
+        }
+    }
+
+    pub fn forced_reload(&mut self, display: &mut Display) -> Vec<Step> {
+        display.settings_waits = display.settings_line.is_some();
+        let (_, mut steps) = self.load(display);
+        steps.push(Step::Send(ClientMessage::Reload));
+        steps
+    }
+
+    fn server_reloaded(&mut self, display: &mut Display) -> Vec<Step> {
+        if !std::mem::take(&mut display.settings_waits) {
+            return Vec::new();
+        }
+        let Some(line) = display.settings_line.take() else {
+            return Vec::new();
+        };
+        self.react(display, Vec::new(), |controls, display, steps| {
+            let outcome = controls.runtime.open_settings(line);
+            controls.apply(display, outcome, steps);
+        })
     }
 
     pub fn resize(&mut self, display: &mut Display, terminal: Size) -> Vec<Step> {
@@ -1502,6 +1639,7 @@ impl Controls {
         result: Result<Config, ConfigError>,
     ) -> Vec<Step> {
         display.decorations = Decorations::default();
+        self.load += 1;
         match result {
             Ok(config) => {
                 tracing::info!("configuration reloaded");
@@ -1517,9 +1655,13 @@ impl Controls {
                     .collect();
                 let awaiting = self.awaiting.take();
                 let pending = std::mem::take(&mut self.pending);
+                let loader = Arc::clone(&self.loader);
+                let load = self.load;
                 *self = Self::new(config, display);
                 self.awaiting = awaiting;
                 self.pending = pending;
+                self.loader = loader;
+                self.load = load;
                 let mut events = vec![Event::ConfigReloaded];
                 if previous != ROOT {
                     events.push(Event::KeyTableChanged {
@@ -1528,7 +1670,11 @@ impl Controls {
                     });
                 }
                 self.refresh_pending = true;
-                let reopen = display.settings_line.take();
+                let reopen = if display.settings_waits {
+                    None
+                } else {
+                    display.settings_line.take()
+                };
                 let mut steps = closed;
                 steps.extend(self.react(display, events, |_, display, _| {
                     display.with_view(View::end_peek);
@@ -1543,7 +1689,9 @@ impl Controls {
             }
             Err(error) => {
                 tracing::warn!("configuration error: {error}");
-                display.settings_line = None;
+                if !display.settings_waits {
+                    display.settings_line = None;
+                }
                 display.report_error(error.to_string());
                 self.react(display, Vec::new(), |controls, _, _| {
                     controls.leader.reset()
@@ -1796,6 +1944,7 @@ pub fn dispatch(display: &mut Display, action: Action) -> Step {
             .and_then(|view| view.resolve(command))
             .map(ClientMessage::Action),
         Action::Client(ClientAction::Detach) => return Step::Detach,
+        Action::Client(ClientAction::Reload) => return Step::Reload,
         Action::Client(ClientAction::SendPrefix) => display
             .prefix
             .and_then(|prefix| display.key_to_focused(prefix)),
@@ -1809,9 +1958,12 @@ pub fn dispatch(display: &mut Display, action: Action) -> Step {
 
 pub(crate) async fn perform(
     connection: &mut Connection,
+    controls: &mut Controls,
+    display: &mut Display,
     steps: Vec<Step>,
 ) -> Result<Option<Outcome>> {
-    for step in steps {
+    let mut steps = VecDeque::from(steps);
+    while let Some(step) = steps.pop_front() {
         match step {
             Step::Send(message) => connection.send(&message).await?,
             Step::Write(bytes) => {
@@ -1823,6 +1975,11 @@ pub(crate) async fn perform(
             Step::Detach => {
                 let _ = connection.send(&ClientMessage::Detach).await;
                 return Ok(Some(Outcome::Detached));
+            }
+            Step::Reload => {
+                for step in controls.forced_reload(display).into_iter().rev() {
+                    steps.push_front(step);
+                }
             }
             Step::Nothing => {}
         }
@@ -1854,7 +2011,8 @@ async fn attach(
     let mut reloads = prepared.reloads;
     let mut channel = prepared.channel.map(Channel::new).transpose()?;
     controls.attach_when_ready(session.as_str());
-    if let Some(outcome) = perform(connection, prepared.placed).await? {
+    if let Some(outcome) = perform(connection, &mut controls, &mut display, prepared.placed).await?
+    {
         return Ok(outcome);
     }
     loop {
@@ -1868,7 +2026,9 @@ async fn attach(
                 draw(terminal, &mut display, Instant::now())?;
                 return Ok(outcome);
             }
-            if let Some(outcome) = perform(connection, received.steps).await? {
+            if let Some(outcome) =
+                perform(connection, &mut controls, &mut display, received.steps).await?
+            {
                 return Ok(outcome);
             }
         }
@@ -1877,7 +2037,7 @@ async fn attach(
         }
         let now = Instant::now();
         let steps = controls.decorate(&mut display, now);
-        if let Some(outcome) = perform(connection, steps).await? {
+        if let Some(outcome) = perform(connection, &mut controls, &mut display, steps).await? {
             return Ok(outcome);
         }
         draw(terminal, &mut display, now)?;
@@ -1911,7 +2071,7 @@ async fn attach(
             () = tokio::time::sleep_until(flush.unwrap_or_else(tokio::time::Instant::now)),
                 if flush.is_some() => {
                 let steps = controls.flush(&mut display, Instant::now());
-                if let Some(outcome) = perform(connection, steps).await? {
+                if let Some(outcome) = perform(connection, &mut controls, &mut display, steps).await? {
                     return Ok(outcome);
                 }
             }
@@ -1920,13 +2080,13 @@ async fn attach(
             () = tokio::time::sleep_until(timer.unwrap_or_else(tokio::time::Instant::now)),
                 if timer.is_some() => {
                 let steps = controls.fire_timers(&mut display, Instant::now());
-                if let Some(outcome) = perform(connection, steps).await? {
+                if let Some(outcome) = perform(connection, &mut controls, &mut display, steps).await? {
                     return Ok(outcome);
                 }
             }
             Some(result) = reloads.recv() => {
                 let steps = controls.reload(&mut display, result);
-                if let Some(outcome) = perform(connection, steps).await? {
+                if let Some(outcome) = perform(connection, &mut controls, &mut display, steps).await? {
                     return Ok(outcome);
                 }
             }
@@ -1974,7 +2134,7 @@ async fn attach(
                     .context("cannot read the terminal size")?;
                 terminal.autoresize()?;
                 let steps = controls.resize(&mut display, Size::new(cols, rows));
-                if let Some(outcome) = perform(connection, steps).await? {
+                if let Some(outcome) = perform(connection, &mut controls, &mut display, steps).await? {
                     return Ok(outcome);
                 }
             }
@@ -1996,7 +2156,7 @@ async fn deliver(
         TerminalInput::Paste(text) => controls.paste(display, text),
         TerminalInput::Focus(_) => return Ok(None),
     };
-    perform(connection, steps).await
+    perform(connection, controls, display, steps).await
 }
 
 fn spawn_input() -> mpsc::UnboundedReceiver<Vec<u8>> {

@@ -7,7 +7,7 @@ Defines the `gband` subcommands that let a person or a program, such as a coding
 ### Requirement: Control subcommands
 The `reload`, `errors`, `eval` and `cmd` subcommands SHALL each send one control request, as the wire-protocol capability's "Requests" defines, to the server the command-line capability's "Server selection" resolves, for the session its "Session option" resolves. They SHALL need no terminal, SHALL start no server, and SHALL run inside a gband window as well as outside one. Each SHALL print its result to standard output, as text by default and as one JSON document followed by a newline with the option `--json`.
 
-When no server listens on the socket path, the subcommand SHALL print one line to standard error naming the path and exit with status 1. When the server hosts no session of the name, it SHALL print one line to standard error naming the session and exit with status 1. An invalid invocation, such as an unknown option, a missing argument or `--server` given with `--client`, SHALL print one line to standard error and exit with status 2 without connecting.
+When no server listens on the socket path, the subcommand SHALL print one line to standard error naming the path and exit with status 1. When the server hosts no session of the name, it SHALL print one line to standard error naming the session and exit with status 1. An invalid invocation, such as an unknown option, a missing argument or `--on-server` given with `--client`, SHALL print one line to standard error and exit with status 2 without connecting.
 
 In text and in JSON, a process SHALL be named `server` for the server and `client <n>` for a client, where `<n>` is its client number as the wire-protocol capability defines. In text, each line break of an error message SHALL be printed as the two characters `\n`, so that every entry holds one line.
 
@@ -93,7 +93,7 @@ In text, it SHALL print one line per error, the server's errors first and then e
 - **THEN** `gband errors` prints no line for that client
 
 ### Requirement: Eval subcommand
-`gband eval <source> [<arg>...]` SHALL run the chunk `<source>` in one process, with the strings `<arg>` as `...`, and print its return values. With `-` as `<source>`, it SHALL read the chunk from standard input. The chunk SHALL run in the client that "Chosen client" defines, or in the server with the option `--server`. It SHALL run as the test-channel capability's "Evaluate a chunk" defines: in the process's current Lua state, as a callback that belongs to no plugin, with the actions it dispatches taking effect after it returns, and under the instruction limit. Its error SHALL NOT be reported as a configuration or plugin error.
+`gband eval <source> [<arg>...]` SHALL run the chunk `<source>` in one process, with the strings `<arg>` as `...`, and print its return values. With `-` as `<source>`, it SHALL read the chunk from standard input. The chunk SHALL run in the client that "Chosen client" defines, or in the server with the option `--on-server`. It SHALL run as the test-channel capability's "Evaluate a chunk" defines: in the process's current Lua state, as a callback that belongs to no plugin, with the actions it dispatches taking effect after it returns, and under the instruction limit. Its error SHALL NOT be reported as a configuration or plugin error.
 
 In text, it SHALL print each return value on a line of its own, in order: a string as it is, `nil`, `true` and `false` as Lua writes them, a number as Lua's `tostring` writes it, and a table as JSON, as "JSON values" defines. With `--json`, it SHALL print a JSON array of the return values. It SHALL exit with status 0 when the chunk returned. When the chunk fails to compile, raises an error, hits the instruction limit, returns a value that is not plain data, or its process does not answer, it SHALL print one line to standard error holding the reason and exit with status 1.
 
@@ -103,7 +103,7 @@ In text, it SHALL print each return value on a line of its own, in order: a stri
 - **AND** the process exits with status 0
 
 #### Scenario: Read the server
-- **WHEN** the user runs `gband eval --server 'return gband.side'`
+- **WHEN** the user runs `gband eval --on-server 'return gband.side'`
 - **THEN** standard output holds the line `server`
 
 #### Scenario: Act in the client
@@ -126,7 +126,7 @@ In text, it SHALL print each return value on a line of its own, in order: a stri
 - **AND** the client shows no error
 
 ### Requirement: Cmd subcommand
-`gband cmd <name> [<args>]` SHALL run the command whose full name is `<name>` with the arguments that the JSON text `<args>` gives, converted as "JSON values" defines, or with an empty table when `<args>` is absent. Without `--server`, it SHALL run a command registered with `gband.cmd` in the client that "Chosen client" defines, as `gband.cmd.run` does, and its result SHALL be the value the command's function returns. With `--server`, it SHALL run the server command of that name, as a command message from the chosen client would, or with no calling client when the session has none, and its result SHALL be the server command's result.
+`gband cmd <name> [<args>]` SHALL run the command whose full name is `<name>` with the arguments that the JSON text `<args>` gives, converted as "JSON values" defines, or with an empty table when `<args>` is absent. Without `--on-server`, it SHALL run a command registered with `gband.cmd` in the client that "Chosen client" defines, as `gband.cmd.run` does, and its result SHALL be the value the command's function returns. With `--on-server`, it SHALL run the server command of that name, as a command message from the chosen client would, or with no calling client when the session has none, and its result SHALL be the server command's result.
 
 It SHALL print the result as `gband eval` prints one return value, and print nothing for `nil`. It SHALL exit with status 0 when the command returned. When the name is unknown, the command is disabled, its function raises an error, its process does not answer, or `<args>` is not JSON, it SHALL print one line to standard error holding the reason and exit with status 1, or with status 2 for `<args>` that is not JSON. A client command that raises an error SHALL also be reported in the client, as `gband.cmd.run` reports it.
 
@@ -136,7 +136,7 @@ It SHALL print the result as `gband eval` prints one return value, and print not
 - **AND** the process exits with status 0
 
 #### Scenario: Run a server command
-- **WHEN** the agent-status plugin is installed, a window waits, and the user runs `gband cmd --server agent-status.next_waiting`
+- **WHEN** the agent-status plugin is installed, a window waits, and the user runs `gband cmd --on-server agent-status.next_waiting`
 - **THEN** the chosen client focuses the waiting window
 
 #### Scenario: Unknown command
@@ -149,7 +149,7 @@ It SHALL print the result as `gband eval` prints one return value, and print not
 - **THEN** the process exits with status 2 without connecting
 
 ### Requirement: Chosen client
-`gband eval` and `gband cmd` SHALL accept the option `--client <n>`, which chooses the client of the session whose client number is `<n>`. Without it, the chosen client SHALL be the client of the session that most recently sent the server a key, paste or mouse message, or, when none has, the client that attached to the session last. When `<n>` names no client attached to the session, or the session has no client and `--server` is not given, the subcommand SHALL print one line to standard error saying so and exit with status 1.
+`gband eval` and `gband cmd` SHALL accept the option `--client <n>`, which chooses the client of the session whose client number is `<n>`. Without it, the chosen client SHALL be the client of the session that most recently sent the server a key, paste or mouse message, or, when none has, the client that attached to the session last. When `<n>` names no client attached to the session, or the session has no client and `--on-server` is not given, the subcommand SHALL print one line to standard error saying so and exit with status 1.
 
 #### Scenario: Last client typed in
 - **WHEN** clients 1 and 2 are attached to the session, the user typed last in client 1, and runs `gband eval 'return 1'` from a window

@@ -5,6 +5,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::sync::Arc;
 
 use common::*;
+use gband_core::action::{Action, ClientAction};
 use gband_core::geometry::Size;
 use gband_core::layout::{Layout, LayoutOptions};
 use gband_lua::plugin_windows::{FloatingFrame, Frame, Run};
@@ -358,7 +359,8 @@ fn window_opens() {
             "theme    default",
             "sidebar  on",
             "keys     modal",
-            "I on new off"
+            "I on new off",
+            "reload   ok"
         ]
     );
     assert_eq!(settings.cursor(), 1);
@@ -371,7 +373,7 @@ fn window_beside_the_default_sidebar() {
     let frame = settings.frame();
     assert_eq!(
         (frame.col, frame.row, frame.width, frame.height),
-        (24, 9, 31, 6)
+        (24, 8, 31, 7)
     );
 }
 
@@ -380,11 +382,12 @@ fn window_with_the_direct_style() {
     let settings = Settings::new("window-direct", &[("keystyle.lua", "return \"direct\"\n")]);
     settings.open();
     let frame = settings.frame();
-    assert_eq!(frame.lines.len(), 3);
+    assert_eq!(frame.lines.len(), 4);
     assert_eq!(text(&frame.lines[2]), "keys     direct");
+    assert_eq!(text(&frame.lines[3]), "reload   ok");
     assert_eq!(
         (frame.col, frame.row, frame.width, frame.height),
-        (24, 9, 31, 5)
+        (24, 9, 31, 6)
     );
 }
 
@@ -396,11 +399,12 @@ fn window_with_the_floating_style() {
     );
     settings.open();
     let frame = settings.frame();
-    assert_eq!(frame.lines.len(), 3);
+    assert_eq!(frame.lines.len(), 4);
     assert_eq!(text(&frame.lines[2]), "keys     floating");
+    assert_eq!(text(&frame.lines[3]), "reload   ok");
     assert_eq!(
         (frame.col, frame.row, frame.width, frame.height),
-        (24, 9, 31, 5)
+        (24, 9, 31, 6)
     );
 }
 
@@ -857,4 +861,72 @@ fn no_offer_with_an_own_configuration() {
     scratch.write("gband.bind('alt+h', gband.action.focus_column_left)");
     let config = scratch.loaded();
     assert!(attached(&config).is_empty());
+}
+
+fn reload_dispatched(outcome: &Outcome) -> bool {
+    outcome
+        .dispatched
+        .contains(&Dispatch::Action(Action::Client(ClientAction::Reload)))
+}
+
+#[test]
+fn errors_counted_and_drawn_again_when_opened_again() {
+    let settings = Settings::new("window-errors", &[MODAL]);
+    for (errors, shown) in [
+        (Vec::new(), "reload   ok"),
+        (vec!["a".to_owned()], "reload   1 error"),
+        (vec!["a".to_owned(), "b".to_owned()], "reload   2 errors"),
+    ] {
+        clean(&settings.config.runtime.set_state(ViewState {
+            errors,
+            ..state(Size::new(79, 24))
+        }));
+        clean(&settings.open());
+        let frame = settings.frame();
+        assert_eq!(text(frame.lines.last().unwrap()), shown);
+    }
+    assert_eq!(settings.windows().len(), 1);
+}
+
+#[test]
+fn enter_on_the_reload_line() {
+    let settings = Settings::new("window-reload-enter", &[MODAL]);
+    settings.open();
+    let before = settings.user_names();
+    for _ in 0..4 {
+        clean(&settings.press("j"));
+    }
+    assert_eq!(settings.cursor(), 5);
+    let outcome = settings.press("enter");
+    clean(&outcome);
+    assert!(reload_dispatched(&outcome), "{:?}", outcome.dispatched);
+    assert_eq!(settings.config.runtime.take_settings_reopen(), Some(5));
+    assert_eq!(settings.user_names(), before);
+}
+
+#[test]
+fn arrows_on_the_reload_line() {
+    for (name, style, line) in [
+        ("window-reload-arrows", "modal", 5),
+        ("window-reload-arrows-direct", "direct", 4),
+    ] {
+        let settings = Settings::new(name, &[("keystyle.lua", &format!("return \"{style}\"\n"))]);
+        settings.open();
+        for _ in 1..line {
+            clean(&settings.press("j"));
+        }
+        assert_eq!(settings.cursor(), line);
+        let before = settings.user_names();
+        for key in ["l", "h", "right", "left"] {
+            let outcome = settings.press(key);
+            clean(&outcome);
+            assert!(!reload_dispatched(&outcome), "{style} {key}");
+        }
+        assert_eq!(
+            settings.config.runtime.take_settings_reopen(),
+            None,
+            "{style}"
+        );
+        assert_eq!(settings.user_names(), before, "{style}");
+    }
 }

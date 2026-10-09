@@ -7,7 +7,14 @@ use std::time::Duration;
 
 use common::*;
 
-const LABELS: [&str; 4] = ["theme    ", "sidebar  ", "keys     ", "I on new "];
+const LABELS: [&str; 5] = [
+    "theme    ",
+    "sidebar  ",
+    "keys     ",
+    "I on new ",
+    "reload   ",
+];
+const RELOAD: usize = 4;
 
 fn position(screen: &Grid, text: &str) -> Option<(u16, u16)> {
     screen
@@ -47,7 +54,7 @@ fn cursor_line(screen: &Grid) -> Option<usize> {
     }
     let looks: Vec<String> = LABELS
         .iter()
-        .map_while(|label| look(screen, label))
+        .filter_map(|label| look(screen, label))
         .collect();
     (0..looks.len())
         .find(|&index| looks.iter().filter(|other| **other == looks[index]).count() == 1)
@@ -296,7 +303,11 @@ fn window_with_the_floating_style() {
     );
     assert!(position(&screen, LABELS[3]).is_none());
     assert_eq!(position(&screen, LABELS[0]), Some((10, 26)));
-    assert_eq!(position(&screen, "└"), Some((13, 25)));
+    assert_eq!(
+        line_text(&screen, LABELS[RELOAD]).as_deref(),
+        Some("reload   ok")
+    );
+    assert_eq!(position(&screen, "└"), Some((14, 25)));
 }
 
 #[test]
@@ -544,4 +555,67 @@ fn own_configuration_with_the_modal_preset() {
     new_window(&mut client);
     client.run("echo modal-root");
     client.wait_for_line("modal-root");
+}
+
+fn on_the_reload_line(env: &TestEnv) -> Attached {
+    let mut client = opened(env);
+    press(&mut client, b"jjjj", RELOAD);
+    assert_eq!(
+        line_text(&client.screen(), LABELS[RELOAD]).as_deref(),
+        Some("reload   ok")
+    );
+    client
+}
+
+fn reopened_on_the_reload_line(client: &Attached, shown: &str) {
+    client.wait_for("the settings window on its reload line", |screen| {
+        cursor_line(screen) == Some(RELOAD)
+            && line_text(screen, LABELS[RELOAD]).as_deref() == Some(shown)
+    });
+}
+
+#[test]
+fn back_on_the_reload_line() {
+    let env = TestEnv::new("settings-reload-line");
+    env.write_client_plugin(
+        "label",
+        "gband.bar.add({ side = 'right', size = 6, lines = { 'old' } })\n",
+    );
+    let mut client = on_the_reload_line(&env);
+    client.wait_for_text("old");
+    let files = fs::read_dir(env.config_dir().join("user")).unwrap().count();
+    env.write_client_plugin(
+        "label",
+        "gband.bar.add({ side = 'right', size = 6, lines = { 'new' } })\n",
+    );
+    let before = reloads(&env);
+    client.send(b"\r");
+    wait_until(|| reloads(&env) > before, "the configuration to reload");
+    client.wait_for_text("new");
+    reopened_on_the_reload_line(&client, "reload   ok");
+    assert_eq!(
+        fs::read_dir(env.config_dir().join("user")).unwrap().count(),
+        files
+    );
+    assert_eq!(user_file(&env, "sidebar.lua"), None);
+}
+
+#[test]
+fn failed_reload_counted() {
+    let env = TestEnv::new("settings-reload-failed");
+    env.write_client_plugin("fragile", "local fine = true\n");
+    let mut client = on_the_reload_line(&env);
+    env.write_client_plugin("fragile", "error('bad')\n");
+    client.send(b"\r");
+    reopened_on_the_reload_line(&client, "reload   1 error");
+}
+
+#[test]
+fn server_error_counted() {
+    let env = TestEnv::new("settings-reload-server-error");
+    env.write_server_plugin("fragile", "local fine = true\n");
+    let mut client = on_the_reload_line(&env);
+    env.write_server_plugin("fragile", "error('bad')\n");
+    client.send(b"\r");
+    reopened_on_the_reload_line(&client, "reload   1 error");
 }

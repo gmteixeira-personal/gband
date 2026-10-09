@@ -122,6 +122,10 @@ Each file runs once per load.
 
 Saving any `.lua` file under `user/` reloads the configuration of each process that watches it: every client, and the server.
 Changes in the plugins directory do not.
+The `reload` action does: it loads this client's configuration again and asks the server to load its own, each reading the plugins' files as they are then, and ends with `root` active whether the load worked or not.
+Other clients keep theirs.
+`gband reload` does the same from a shell for the server and every client of a session.
+Each process numbers its loads from 1, and every load, after a saved file, by `reload` or by `gband reload`, adds one, whether it worked or not; `gband errors` prints that number beside each error.
 A server reload keeps every window state, every queued event and every session; the old state's handlers and commands stop, and the new configuration's `ConfigReloaded` handlers run.
 
 ## The side guard
@@ -301,6 +305,7 @@ The built-in actions, with the description `gband.action.list()` gives each:
 | `reset_window_height` | session | reset the height of the window |
 | `detach` | client | detach |
 | `send_prefix` | client | send the prefix key to the focused window |
+| `reload` | client | reload the configuration |
 | `drag_window` | client | move the window with the mouse |
 | `drag_resize_window` | client | resize the window with the mouse |
 | `drag_band` | client | slide the band or switch bands with the mouse |
@@ -1138,7 +1143,7 @@ The window list closes by keeping what it shows or by cancelling:
 - A right press that opens a menu, and a `prefix` key, keep.
 
 The keys `n`, `s` and `0` to `9` belong to the list, whatever `prefix` binds: each picks the entry with that shortcut, and a digit no entry has does nothing.
-Any other key that `prefix` binds keeps and runs that binding, so with the floating preset `D` detaches, `:` opens the Lua prompt, `?` opens the key list and `N` renames the window the list shows; a `prefix` binding of a digit, `n` or `s` stays reachable from the key list.
+Any other key that `prefix` binds keeps and runs that binding, so with the floating preset `D` detaches, `!` reloads the configuration, `:` opens the Lua prompt, `?` opens the key list and `N` renames the window the list shows; a `prefix` binding of a digit, `n` or `s` stays reachable from the key list.
 
 The window menu, titled with the window's name, holds `Close`, `Maximize` or `Restore`, `Minimize`, `Tile left` and `Tile right`, closes when its window leaves the layout, and leaves the focused window as it was when it closes.
 
@@ -1156,8 +1161,8 @@ Each is a file of plain top-level calls, as a `user/init.lua` is: it sets up `gb
 The modal preset declares `prefix` a mode labelled `navigation` and binds Escape and Enter to return to interactive mode.
 Its `n` opens a window and returns to interactive mode only when `gband.settings.interactive_on_new()` returned `true` when the preset loaded, and otherwise leaves navigation mode active.
 The direct preset declares no mode, so each key after the prefix key acts once; it binds `n` to `open_window` and the prefix key to `send_prefix` directly.
-Both bind Ctrl+Space then `s` to `gband.settings.open`, described `settings`, right after `:`.
-The floating preset also sets up `gband.desktop`, declares no mode, and binds only `n` (a floating window), `?`, `:`, `N`, `s`, `D` and the prefix key in `prefix`, and `leftmouse` and `rightmouse` in `root`, as "The desktop" describes.
+Both bind Ctrl+Space then `s` to `gband.settings.open`, described `settings`, right after `:`, and then `!` to `reload`, described `reload the configuration`, before `D`.
+The floating preset also sets up `gband.desktop`, declares no mode, and binds only `n` (a floating window), `?`, `:`, `N`, `s`, `!`, `D` and the prefix key in `prefix`, and `leftmouse` and `rightmouse` in `root`, as "The desktop" describes.
 gband writes copies of all three to `defaults/keystyle/` for you to read; loading never reads the copies.
 
 `gband.keystyle` is a client API:
@@ -1200,7 +1205,7 @@ These four are callable while the configuration loads and in any callback.
 Called while the theme list is open, it closes the list as Escape does and focuses the settings window.
 
 The settings window is a floating plugin window with a border, titled `settings`, 31 columns wide and as high as its lines plus its border, at most the ribbon's size, centred in the ribbon, with its cursor line on its first line.
-It holds these lines, each a label in `SettingsLabel` padded to 9 cells, then the value; the `I on new` line only while the `keys` line shows `modal`:
+It holds these lines, each a label in `SettingsLabel` padded to 9 cells, then the value; the `I on new` line only while the `keys` line shows `modal`, and the `reload` line last:
 
 | line | value | Enter | `h`, Left, `l`, Right |
 |---|---|---|---|
@@ -1208,6 +1213,7 @@ It holds these lines, each a label in `SettingsLabel` padded to 9 cells, then th
 | `sidebar` | `off` when `sidebar()` returns `false`, `on` otherwise | saves the other value | the same as Enter |
 | `keys` | the style `gband.keystyle.saved()` returns, or `modal` | saves the next style of `modal`, `direct`, `floating`, wrapping | `l` and Right save the next style, as Enter does, `h` and Left the previous one |
 | `I on new` | `on` when `interactive_on_new()` returns `true`, `off` otherwise | saves the other value | the same as Enter |
+| `reload` | `ok` when `gband.errors()` is empty, `1 error` for one, and `<n> errors` otherwise | dispatches `gband.action.reload` and saves nothing | nothing |
 
 The `theme` line wraps at both ends of the list, and an active colorscheme missing from it steps to the first or the last theme.
 A theme that fails to load is reported, as "Colorschemes" describes, and not saved.
@@ -1223,6 +1229,8 @@ Closing the list focuses the settings window.
 Saving writes `return "<name>"`, `return true` or `return false`, or `return "<style>"`, and a newline, to a temporary file in `user/`, and renames it over `user/theme.lua`, `user/sidebar.lua`, `user/keystyle.lua` or `user/interactive_on_new.lua`.
 That reloads the configuration, as any saved `.lua` file under `user/` does.
 The client keeps the line the setting belongs to across that reload, and when the load succeeds it opens the settings window again with its cursor line there, whatever configuration file is in use.
+Enter on the `reload` line keeps that line until the client has loaded and the server has answered that its own load ended, then opens the settings window on it whether the loads worked or not, so the line counts the errors of both.
+Calling `open` while the window is open draws its lines again, so a window a failed load left open shows the new count.
 When there is no configuration directory or the write fails, the key raises an error naming the file and the reason, the settings window stays open, and the setting in use stays.
 
 The saved theme applies to every configuration, since it loads before the init file.
@@ -1564,7 +1572,7 @@ A bar table is a slot with `id`, the bar's id, `base`, its style, and `lines`, l
 
 | primitive | effect |
 |---|---|
-| `reopen_settings(line)` | remembers the settings window line to reopen after the next load succeeds, or forgets it for nil |
+| `reopen_settings(line)` | remembers the settings window line to reopen after the next load succeeds, or after a `reload` action and the server's answer to it, or forgets it for nil |
 | `provide(kind, implementation)` | registers the implementation the client calls for `kind`, replacing an earlier one; every load starts with none |
 
 The kinds of provider:

@@ -203,6 +203,10 @@ fn help_lists_subcommands() {
                 "list-sessions",
                 "kill-session",
                 "kill-server",
+                "reload",
+                "errors",
+                "eval",
+                "cmd",
                 "completions",
                 "install-completions",
                 "test"
@@ -304,6 +308,10 @@ fn session_requests_without_a_server_fail_and_create_nothing() {
             "requests_no_server_kill_named",
             &["-s", "work", "kill-session"],
         ),
+        ("requests_no_server_reload", &["reload"]),
+        ("requests_no_server_errors", &["errors", "--json"]),
+        ("requests_no_server_eval", &["eval", "return 1"]),
+        ("requests_no_server_cmd", &["cmd", "--on-server", "x"]),
     ] {
         let state = state_home(name);
         let socket = runtime_home(&state).join("gband").join("default.sock");
@@ -331,6 +339,8 @@ fn session_request_events_name_their_server() {
     for (name, subcommand) in [
         ("request_socket_list", "list-sessions"),
         ("request_socket_kill", "kill-session"),
+        ("request_socket_reload", "reload"),
+        ("request_socket_errors", "errors"),
     ] {
         let state = state_home(name);
         let socket = runtime_home(&state).join("gband").join("a.sock");

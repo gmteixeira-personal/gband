@@ -41,13 +41,13 @@ ServerMessage::Reloaded
 ServerMessage::Control { call: u64, operation: Operation }
 ServerMessage::ControlResults(Vec<Entry>)
 
-enum Target { Server, EveryClient, Client(u64), Chosen }
+enum Target { Server, EveryClient, All, Client(u64), Chosen }
 enum Operation { Reload, Errors, Eval { source, args }, Command { name, args } }
 enum Answer { Loaded { load, error }, Errors { load, errors }, Values(Result<Vec<Value>, String>) }
 struct Entry { process: Process, answer: Option<Answer> }   // None: no answer
 ```
 
-`Target::Chosen` lets the server pick the client with the information only it has. A server command reuses `Answer::Values` with one value.
+`Target::All` addresses the server and every client, for `reload` and `errors`. `Target::Chosen` lets the server pick the client with the information only it has. A server command reuses `Answer::Values` with one value.
 
 *Alternative:* one request type per subcommand. Rejected: four request variants with the same forwarding logic.
 

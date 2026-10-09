@@ -1,4 +1,6 @@
-use std::io::{IsTerminal, Write};
+mod control;
+
+use std::io::{IsTerminal, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::Arc;
@@ -14,8 +16,8 @@ use gband::paths::{self, ServerName};
 use gband_client::{ClientConfig, Configuration, Outcome, UnixTransport};
 use gband_core::geometry::Size;
 use gband_lua::{Config, ConfigError, LoadOptions, Locations, Side};
-use gband_protocol::SessionName;
 use gband_protocol::test;
+use gband_protocol::{Operation, SessionName, Target, Value};
 use gband_server::{INITIAL_AREA, SUN_PATH_MAX, Scripting, ServerConfig, TestChannel};
 use tokio::sync::watch;
 
@@ -108,6 +110,14 @@ enum Command {
     KillSession,
     #[command(about = "Stop the running server and every session")]
     KillServer,
+    #[command(about = "Reload the configuration of the server and of the session's clients")]
+    Reload(Output),
+    #[command(about = "Print the configuration errors of the server and of the session's clients")]
+    Errors(Output),
+    #[command(about = "Run a Lua chunk in a client of the session, or in the server")]
+    Eval(EvalArgs),
+    #[command(about = "Run a command in a client of the session, or a server command")]
+    Cmd(CmdArgs),
     #[command(about = "Print the completion script for SHELL")]
     Completions {
         #[arg(value_name = "SHELL")]
@@ -120,6 +130,81 @@ enum Command {
     },
     #[command(about = "Run Lua test files against real gband clients and servers")]
     Test(TestArgs),
+}
+
+#[derive(Args)]
+struct Output {
+    #[arg(long, help = "Print one JSON document instead of text")]
+    json: bool,
+}
+
+#[derive(Args)]
+struct Place {
+    #[arg(
+        long = "on-server",
+        conflicts_with = "client",
+        help = "Run in the server instead of a client"
+    )]
+    on_server: bool,
+    #[arg(
+        long,
+        value_name = "N",
+        help = "Run in the client numbered N [default: the client typed in last]"
+    )]
+    client: Option<u64>,
+}
+
+impl Place {
+    fn target(&self) -> Target {
+        match (self.on_server, self.client) {
+            (true, _) => Target::Server,
+            (false, Some(client)) => Target::Client(client),
+            (false, None) => Target::Chosen,
+        }
+    }
+
+    fn missing(&self, session: &SessionName) -> String {
+        match self.client {
+            Some(client) => format!("no client {client} is attached to session {session}"),
+            None => format!("session {session} has no client"),
+        }
+    }
+}
+
+#[derive(Args)]
+struct EvalArgs {
+    #[command(flatten)]
+    output: Output,
+    #[command(flatten)]
+    place: Place,
+    #[arg(
+        value_name = "SOURCE",
+        help = "The Lua chunk to run, or - to read it from standard input"
+    )]
+    source: String,
+    #[arg(
+        value_name = "ARG",
+        trailing_var_arg = true,
+        allow_hyphen_values = true,
+        help = "Strings passed to the chunk as ..."
+    )]
+    args: Vec<String>,
+}
+
+#[derive(Args)]
+struct CmdArgs {
+    #[command(flatten)]
+    output: Output,
+    #[command(flatten)]
+    place: Place,
+    #[arg(value_name = "NAME", help = "The command's full name")]
+    name: String,
+    #[arg(
+        value_name = "ARGS",
+        value_parser = parse_json,
+        help = "The command's arguments as JSON [default: {}]"
+    )]
+    args: Option<serde_json::Value>,
 }
 
 #[derive(Args)]
@@ -154,7 +239,11 @@ impl Command {
             Command::Attach
             | Command::ListSessions
             | Command::KillSession
-            | Command::KillServer => Some(Role::Client),
+            | Command::KillServer
+            | Command::Reload(_)
+            | Command::Errors(_)
+            | Command::Eval(_)
+            | Command::Cmd(_) => Some(Role::Client),
             Command::Completions { .. } | Command::InstallCompletions { .. } | Command::Test(_) => {
                 None
             }
@@ -168,6 +257,10 @@ impl Command {
             Command::Server { .. }
             | Command::Attach
             | Command::KillSession
+            | Command::Reload(_)
+            | Command::Errors(_)
+            | Command::Eval(_)
+            | Command::Cmd(_)
             | Command::Completions { .. }
             | Command::InstallCompletions { .. }
             | Command::Test(_) => None,
@@ -183,8 +276,19 @@ impl Command {
             | Command::Attach
             | Command::ListSessions
             | Command::KillSession
-            | Command::KillServer => None,
+            | Command::KillServer
+            | Command::Reload(_)
+            | Command::Errors(_)
+            | Command::Eval(_)
+            | Command::Cmd(_) => None,
         }
+    }
+
+    fn follows_the_window(&self) -> bool {
+        matches!(
+            self,
+            Command::Reload(_) | Command::Errors(_) | Command::Eval(_) | Command::Cmd(_)
+        )
     }
 }
 
@@ -237,7 +341,10 @@ fn main() -> ExitCode {
             ExitCode::FAILURE
         });
     };
-    let session = cli.session.unwrap_or_default();
+    let session = cli
+        .session
+        .or_else(|| command.follows_the_window().then(window_session).flatten())
+        .unwrap_or_default();
 
     let _guard = match logging::init(role) {
         Ok(guard) => guard,
@@ -265,6 +372,20 @@ fn main() -> ExitCode {
         Command::ListSessions => list_sessions(socket, &cli.selection),
         Command::KillSession => kill_session(socket, session, &cli.selection),
         Command::KillServer => kill_server(&socket),
+        Command::Reload(output) => {
+            let remote = Remote::new(socket, session, &cli.selection);
+            remote.run(Target::All, Operation::Reload, |entries| {
+                control::reload(entries, output.json)
+            })
+        }
+        Command::Errors(output) => {
+            let remote = Remote::new(socket, session, &cli.selection);
+            remote.run(Target::All, Operation::Errors, |entries| {
+                control::errors(entries, output.json)
+            })
+        }
+        Command::Eval(args) => eval(Remote::new(socket, session, &cli.selection), args),
+        Command::Cmd(args) => cmd(Remote::new(socket, session, &cli.selection), args),
         Command::Completions { .. } | Command::InstallCompletions { .. } | Command::Test(_) => {
             unreachable!("standalone subcommands return before logging starts")
         }
@@ -321,6 +442,14 @@ fn install_completions(shell: Shell) -> Result<ExitCode> {
     Ok(ExitCode::SUCCESS)
 }
 
+fn parse_json(text: &str) -> Result<serde_json::Value, String> {
+    serde_json::from_str(text).map_err(|error| format!("`{text}` is not JSON: {error}"))
+}
+
+fn window_session() -> Option<SessionName> {
+    std::env::var("GBAND_SESSION").ok()?.parse().ok()
+}
+
 fn parse_area(text: &str) -> Result<Size, String> {
     let invalid = || format!("`{text}` is not a size of the form COLSxROWS with both above 0");
     let (cols, rows) = text.split_once('x').ok_or_else(invalid)?;
@@ -350,35 +479,20 @@ fn server(
         .transpose()?;
     let loaded = configuration(Side::Server);
     let (options_tx, options) = watch::channel(loaded.config.options.layout.clone());
-    let options_tx = Arc::new(options_tx);
-    let (scripting, reloader) = Scripting::new(loaded.config, loaded.error);
-    let channel = joined.map(|stream| {
-        let locations = loaded.locations.clone();
-        let options_tx = Arc::clone(&options_tx);
-        TestChannel {
-            stream,
-            reload: Box::new(move || {
-                let result = reload(locations.as_ref(), Side::Server);
-                if let Ok(config) = &result {
-                    options_tx.send_replace(config.options.layout.clone());
-                }
-                result
-            }),
+    let locations = loaded.locations.clone();
+    let loader: gband_server::Loader = Arc::new(move || {
+        let result = reload(locations.as_ref(), Side::Server);
+        if let Ok(config) = &result {
+            options_tx.send_replace(config.options.layout.clone());
         }
+        result
     });
-    let _watcher = loaded.locations.map(|locations| {
-        gband_lua::watch(
-            locations,
-            Side::Server,
-            LoadOptions::default(),
-            move |result| {
-                if let Ok(config) = &result {
-                    options_tx.send_replace(config.options.layout.clone());
-                }
-                reloader.reload(result);
-            },
-        )
-    });
+    let (scripting, reloader) = Scripting::new(loaded.config, loaded.error);
+    let scripting = scripting.with_loader(Arc::clone(&loader));
+    let channel = joined.map(|stream| TestChannel { stream });
+    let _watcher = loaded
+        .locations
+        .map(|locations| gband_lua::watch(locations.config, move || reloader.reload(loader())));
     let config = ServerConfig {
         socket,
         session,
@@ -489,27 +603,20 @@ fn attach(socket: PathBuf, session: SessionName, selection: &Selection) -> Resul
     let kill_command = config.kill_command.clone();
     let loaded = configuration(Side::Client);
     log_errors(&loaded);
-    let channel = joined.map(|stream| {
-        let locations = loaded.locations.clone();
-        gband_client::TestChannel {
-            stream,
-            reload: Box::new(move || reload(locations.as_ref(), Side::Client)),
-        }
-    });
+    let channel = joined.map(|stream| gband_client::TestChannel { stream });
+    let locations = loaded.locations.clone();
+    let loader: gband_client::Loader = Arc::new(move || reload(locations.as_ref(), Side::Client));
     let (reloads_tx, reloads) = tokio::sync::mpsc::unbounded_channel();
     let _watcher = loaded.locations.map(|locations| {
-        gband_lua::watch(
-            locations,
-            Side::Client,
-            LoadOptions::default(),
-            move |result| {
-                let _ = reloads_tx.send(result);
-            },
-        )
+        let loader = Arc::clone(&loader);
+        gband_lua::watch(locations.config, move || {
+            let _ = reloads_tx.send(loader());
+        })
     });
     let configuration = Configuration {
         config: loaded.config,
         error: loaded.error,
+        loader,
         reloads,
         channel,
     };
@@ -546,6 +653,79 @@ fn kill_session(socket: PathBuf, session: SessionName, selection: &Selection) ->
     let (config, transport) = client(socket, session, selection, false)?;
     gband_client::kill_session(&config, &transport)?;
     Ok(ExitCode::SUCCESS)
+}
+
+struct Remote<'a> {
+    socket: PathBuf,
+    session: SessionName,
+    selection: &'a Selection,
+}
+
+impl<'a> Remote<'a> {
+    fn new(socket: PathBuf, session: SessionName, selection: &'a Selection) -> Self {
+        Self {
+            socket,
+            session,
+            selection,
+        }
+    }
+
+    fn run(
+        self,
+        target: Target,
+        operation: Operation,
+        report: impl FnOnce(&[gband_protocol::Entry]) -> control::Report,
+    ) -> Result<ExitCode> {
+        let (config, transport) = client(self.socket, self.session, self.selection, false)?;
+        let entries = gband_client::control(&config, &transport, target, operation)?;
+        let report = report(&entries);
+        std::io::stdout()
+            .write_all(&report.stdout)
+            .context("cannot write to standard output")?;
+        if let Some(reason) = &report.stderr {
+            tracing::warn!("{reason}");
+            eprintln!("gband: {reason}");
+        }
+        Ok(if report.success {
+            ExitCode::SUCCESS
+        } else {
+            ExitCode::FAILURE
+        })
+    }
+}
+
+fn eval(remote: Remote, args: EvalArgs) -> Result<ExitCode> {
+    let source = if args.source == "-" {
+        let mut source = String::new();
+        std::io::stdin()
+            .read_to_string(&mut source)
+            .context("cannot read the chunk from standard input")?;
+        source
+    } else {
+        args.source
+    };
+    let missing = args.place.missing(&remote.session);
+    let operation = Operation::Eval {
+        source,
+        args: args.args.into_iter().map(Value::string).collect(),
+    };
+    remote.run(args.place.target(), operation, |entries| {
+        control::eval(entries, &missing, args.output.json)
+    })
+}
+
+fn cmd(remote: Remote, args: CmdArgs) -> Result<ExitCode> {
+    let missing = args.place.missing(&remote.session);
+    let operation = Operation::Command {
+        name: args.name,
+        args: args
+            .args
+            .as_ref()
+            .map_or_else(|| Value::Table(Vec::new()), control::from_json),
+    };
+    remote.run(args.place.target(), operation, |entries| {
+        control::cmd(entries, &missing, args.output.json)
+    })
 }
 
 fn kill_server(socket: &Path) -> Result<ExitCode> {

@@ -443,7 +443,7 @@ mod tests {
             .map(|(key, _, _)| key)
             .collect();
         let order = "h l j k u i c n q [ ] r f - = _ + R v V ctrl+h ctrl+l ctrl+j ctrl+k \
-            ctrl+left ctrl+right ctrl+down ctrl+up ? : N s D escape enter left right down up prefix \
+            ctrl+left ctrl+right ctrl+down ctrl+up ? : N s ! D escape enter left right down up prefix \
             leftmouse rightmouse middlemouse mod+leftmouse mod+rightmouse mod+middlemouse \
             mod+wheeldown mod+wheelup";
         assert_eq!(keys, order.split_whitespace().collect::<Vec<_>>());
@@ -611,6 +611,7 @@ mod tests {
                 (":", Some("prompt.open"), "run Lua"),
                 ("N", Some("prompt.rename"), "rename the window"),
                 ("s", None, "settings"),
+                ("!", Some("reload"), "reload the configuration"),
                 ("D", Some("detach"), "detach"),
                 (
                     "prefix",

@@ -325,6 +325,7 @@ fn defaults_reproduce_the_built_in_behaviour() {
             ctrl_key(KeyCode::Up),
             Action::Session(SessionCommand::MoveWindow(Vertical::Up)),
         ),
+        (char_key('!'), Action::Client(ClientAction::Reload)),
         (char_key('D'), Action::Client(ClientAction::Detach)),
         (
             ("prefix", Chord::Key(Key::plain(KeyCode::Left))),
@@ -517,11 +518,11 @@ fn every_default_binding_is_described() {
     for (config, count, open) in [
         (
             gband_lua::defaults(gband_lua::Side::Client),
-            48,
+            49,
             "open a window",
         ),
-        (direct, 46, "open a window"),
-        (floating, 7, "open a floating window"),
+        (direct, 47, "open a window"),
+        (floating, 8, "open a floating window"),
     ] {
         assert_described(&config, count, open);
     }
@@ -559,7 +560,7 @@ fn floating_style_from_the_saved_choice() {
     assert!(config.modes.is_empty());
     assert_eq!(
         prefix_keys(&config),
-        ["n", "?", ":", "N", "s", "D", "prefix"]
+        ["n", "?", ":", "N", "s", "!", "D", "prefix"]
     );
     let mut root = MOD_ROWS.map(str::to_owned).to_vec();
     root.extend(["leftmouse".to_owned(), "rightmouse".to_owned()]);
@@ -736,7 +737,8 @@ fn settings_bound_by_the_defaults() {
     );
     let position = |key: &str| keys.iter().position(|bound| bound == key).unwrap();
     assert_eq!(position("s"), position("N") + 1);
-    assert!(position("s") < position("D"));
+    assert_eq!(position("!"), position("s") + 1);
+    assert!(position("!") < position("D"));
     let desc: String = eval(
         &config,
         "for _, entry in ipairs(gband.keymap.list('prefix')) do if entry.key == 's' then return entry.desc end end",
@@ -805,6 +807,7 @@ fn every_action_is_named() {
         "reset_window_height",
         "detach",
         "send_prefix",
+        "reload",
         "drag_window",
         "drag_resize_window",
         "drag_band",
@@ -839,6 +842,16 @@ fn built_in_descriptions() {
         "for _, action in ipairs(gband.action.list()) do if action.name == 'cycle_column_width' then return action.desc end end",
     );
     assert_eq!(desc, "cycle the width of the window's column");
+}
+
+#[test]
+fn reload_description() {
+    let config = gband_lua::defaults(gband_lua::Side::Client);
+    let desc: String = eval(
+        &config,
+        "for _, action in ipairs(gband.action.list()) do if action.name == 'reload' then return action.desc end end",
+    );
+    assert_eq!(desc, "reload the configuration");
 }
 
 #[test]

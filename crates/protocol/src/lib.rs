@@ -11,7 +11,8 @@ use std::path::{Path, PathBuf};
 pub use frame::{Decoder, FrameError, HEADER_LEN, MAX_FRAME_LEN, decode, encode, leading_version};
 pub use io::{IoError, MessageReader, MessageWriter};
 pub use message::{
-    ClientMessage, ExecutableId, Hello, HelloReply, PROTOCOL_VERSION, Requirement, ServerMessage,
+    Answer, ClientMessage, Entry, ExecutableId, Hello, HelloReply, Operation, PROTOCOL_VERSION,
+    Process, Requirement, ServerMessage, Target,
 };
 pub use session::{DEFAULT_SESSION, SESSION_NAME_MAX, SessionName, SessionSummary};
 pub use value::{Key, MAX_DEPTH, Value, varint_len};

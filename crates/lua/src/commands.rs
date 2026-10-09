@@ -220,6 +220,28 @@ pub(crate) fn invoke(
     call(lua, name, callback, args, caller)
 }
 
+pub(crate) fn invoke_client(
+    lua: &Lua,
+    name: &str,
+    args: &Data,
+) -> mlua::Result<Result<Data, String>> {
+    let callback = commands(lua).0.get(name).map(|command| command.callback);
+    let Some(callback) = callback else {
+        return Ok(Err(format!("unknown command `{name}`")));
+    };
+    let args = match value::into_lua(lua, args)? {
+        Value::Nil => lua.create_table()?,
+        Value::Table(args) => args,
+        _ => return Ok(Err(format!("the arguments of `{name}` must be a table"))),
+    };
+    Ok(match callbacks::run::<Value>(lua, callback, args)? {
+        Ran::Returned(result) => value::from_lua(&result, "result")
+            .map_err(|reason| format!("the command `{name}` returned {reason}")),
+        Ran::Failed(error) => Err(error.to_string()),
+        Ran::Disabled => Err(format!("the command `{name}` is disabled")),
+    })
+}
+
 fn list(lua: &Lua, (): ()) -> mlua::Result<Table> {
     let list = lua.create_table()?;
     let commands = commands(lua);

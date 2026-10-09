@@ -305,7 +305,7 @@ local function settings_focused(g)
   local focused = view(g).plugin_window
   t.ok(focused, "a plugin window has focus")
   t.eq(lists(g), { focused })
-  t.eq(info(g, focused).line_count, 4)
+  t.eq(info(g, focused).line_count, 5)
 end
 
 t.case("open the settings from the list", function(g)

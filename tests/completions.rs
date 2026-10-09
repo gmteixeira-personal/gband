@@ -4,12 +4,16 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
-const SUBCOMMANDS: [&str; 7] = [
+const SUBCOMMANDS: [&str; 11] = [
     "server",
     "attach",
     "list-sessions",
     "kill-session",
     "kill-server",
+    "reload",
+    "errors",
+    "eval",
+    "cmd",
     "completions",
     "install-completions",
 ];

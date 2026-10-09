@@ -934,6 +934,7 @@ dependencies = [
  "portable-pty",
  "ratatui",
  "rustix",
+ "serde_json",
  "tokio",
  "tracing",
  "tracing-appender",
