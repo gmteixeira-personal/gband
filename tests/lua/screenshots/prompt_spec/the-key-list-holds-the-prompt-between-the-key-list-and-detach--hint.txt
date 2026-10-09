@@ -9,14 +9,14 @@ size 80x24 cursor 17:68 hidden
  7| │         │N        rename the window                              │
  8| │         │s        settings                                       │
  9| │         │!        reload the configuration                       │
-10| │         │D        detach                                         │
-11| │         │esc      interactive mode                               │
-12| │         │enter    interactive mode                               │
-13| │         │left     focus the column to the left                   │
-14| │         │right    focus the column to the right                  │
-15| │         │down     focus the window below                         │
-16| │         │up       focus the window above                         │
-17| │         │C-space  send the prefix key                            │
+10| │         │m        multi mode                                     │
+11| │         │D        detach                                         │
+12| │         │esc      interactive mode                               │
+13| │         │enter    interactive mode                               │
+14| │         │left     focus the column to the left                   │
+15| │         │right    focus the column to the right                  │
+16| │         │down     focus the window below                         │
+17| │         │up       focus the window above                         │
 18| │         └────────────────────────────────────────────────────────┘
 19| │                                     │
 20| │                                     │
@@ -43,9 +43,8 @@ size 80x24 cursor 17:68 hidden
 5:0 bg=0
 5:1 fg=4 bold
 5:11 fg=8 bg=0
-5:12-20 fg=4 bg=0 bold
-5:21-33 fg=8 bg=0
-5:34-67 fg=7 bg=0
+5:12-20 fg=0 bg=4 bold
+5:21-67 fg=0 bg=4
 5:68 fg=8 bg=0
 6:0 bg=0
 6:1 fg=4 bold
@@ -116,8 +115,8 @@ size 80x24 cursor 17:68 hidden
 17:0 bg=0
 17:1 fg=4 bold
 17:11 fg=8 bg=0
-17:12-20 fg=0 bg=4 bold
-17:21-67 fg=0 bg=4
+17:12-20 fg=4 bg=0 bold
+17:21-67 fg=7 bg=0
 17:68 fg=8 bg=0
 18:0 bg=0
 18:1 fg=4 bold

@@ -423,6 +423,7 @@ mod tests {
             char_key(':'),
             char_key('N'),
             char_key('s'),
+            char_key('m'),
             char_key('n'),
             Key::plain(KeyCode::Escape),
             Key::plain(KeyCode::Enter),
@@ -443,7 +444,7 @@ mod tests {
             .map(|(key, _, _)| key)
             .collect();
         let order = "h l j k u i c n q [ ] r f - = _ + R v V ctrl+h ctrl+l ctrl+j ctrl+k \
-            ctrl+left ctrl+right ctrl+down ctrl+up ? : N s ! D escape enter left right down up prefix \
+            ctrl+left ctrl+right ctrl+down ctrl+up ? : N s ! m D escape enter left right down up prefix \
             leftmouse rightmouse middlemouse mod+leftmouse mod+rightmouse mod+middlemouse \
             mod+wheeldown mod+wheelup";
         assert_eq!(keys, order.split_whitespace().collect::<Vec<_>>());
@@ -542,6 +543,12 @@ mod tests {
                 "open_window",
                 "open a window running the user's shell",
                 Action::Session(SessionCommand::OpenWindow),
+            ),
+            (
+                "m",
+                "toggle_multi",
+                "toggle multi mode",
+                Action::Client(ClientAction::ToggleMulti),
             ),
             (
                 "prefix",
@@ -902,6 +909,7 @@ gband.keymap.mode('resize')",
             ("enter", "interactive mode"),
             ("prefix", "send the prefix key"),
             ("s", "settings"),
+            ("m", "multi mode"),
         ];
         for table in [PREFIX, ROOT] {
             let entries = table_entries(&config, table);

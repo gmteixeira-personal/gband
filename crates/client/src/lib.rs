@@ -238,6 +238,7 @@ pub struct Display {
     framed: bool,
     drawn: Option<Drawn>,
     decorations: Decorations,
+    multi: bool,
 }
 
 impl Display {
@@ -282,6 +283,7 @@ impl Display {
             framed: false,
             drawn: None,
             decorations: Decorations::default(),
+            multi: false,
         }
     }
 
@@ -821,6 +823,7 @@ impl Display {
                 .view
                 .as_ref()
                 .is_some_and(|view| view.peeked().is_some()),
+            multi: self.multi,
         }
     }
 
@@ -1092,9 +1095,25 @@ impl Display {
         }
     }
 
-    fn key_to_focused(&self, key: Key) -> Option<ClientMessage> {
-        self.focused()
-            .map(|window| ClientMessage::Key { window, key })
+    fn input_targets(&self) -> Vec<WindowId> {
+        if !self.multi {
+            return self.focused().into_iter().collect();
+        }
+        let viewed = match &self.view {
+            Some(view) => Some(view.band()),
+            None => self.layout.bands().first().map(|band| band.id),
+        };
+        viewed
+            .and_then(|id| self.layout.band(id))
+            .map(|band| band.windows().collect())
+            .unwrap_or_default()
+    }
+
+    fn send_to_targets(&self, message: impl Fn(WindowId) -> ClientMessage) -> Vec<Step> {
+        self.input_targets()
+            .into_iter()
+            .map(|window| Step::Send(message(window)))
+            .collect()
     }
 }
 
@@ -1544,7 +1563,7 @@ impl Controls {
                         let outcome = controls.runtime.plugin_window_key(plugin_window, key);
                         controls.apply(display, outcome, steps);
                     }
-                    None => steps.push(dispatch(
+                    None => steps.extend(dispatch(
                         display,
                         Action::Client(ClientAction::SendKey(key)),
                     )),
@@ -1586,11 +1605,10 @@ impl Controls {
             });
         }
         display.pointer.selection = None;
-        display
-            .focused()
-            .map(|window| Step::Send(ClientMessage::Paste { window, text }))
-            .into_iter()
-            .collect()
+        display.send_to_targets(|window| ClientMessage::Paste {
+            window,
+            text: text.clone(),
+        })
     }
 
     fn opened(
@@ -1647,6 +1665,7 @@ impl Controls {
                     tracing::warn!("configuration error: {error}");
                 }
                 let previous = self.leader.active().to_owned();
+                display.multi = false;
                 let closed: Vec<Step> = display
                     .plugin_windows
                     .close_all()
@@ -1812,7 +1831,7 @@ impl Controls {
                 return;
             }
         }
-        steps.push(dispatch(display, action));
+        steps.extend(dispatch(display, action));
     }
 
     fn apply(&mut self, display: &mut Display, outcome: Ran, steps: &mut Vec<Step>) {
@@ -1919,7 +1938,8 @@ fn spawn(display: &mut Display, program: Option<Program>) -> Step {
     }
 }
 
-pub fn dispatch(display: &mut Display, action: Action) -> Step {
+pub fn dispatch(display: &mut Display, action: Action) -> Vec<Step> {
+    let key = |key| move |window| ClientMessage::Key { window, key };
     let message = match action {
         Action::View(ViewAction::CenterColumn)
             if display
@@ -1943,17 +1963,26 @@ pub fn dispatch(display: &mut Display, action: Action) -> Step {
             .as_ref()
             .and_then(|view| view.resolve(command))
             .map(ClientMessage::Action),
-        Action::Client(ClientAction::Detach) => return Step::Detach,
-        Action::Client(ClientAction::Reload) => return Step::Reload,
-        Action::Client(ClientAction::SendPrefix) => display
-            .prefix
-            .and_then(|prefix| display.key_to_focused(prefix)),
-        Action::Client(ClientAction::SendKey(key)) => display.key_to_focused(key),
+        Action::Client(ClientAction::Detach) => return vec![Step::Detach],
+        Action::Client(ClientAction::Reload) => return vec![Step::Reload],
+        Action::Client(ClientAction::ToggleMulti) => {
+            display.multi = !display.multi;
+            None
+        }
+        Action::Client(ClientAction::SendPrefix) => {
+            return display
+                .prefix
+                .map(|prefix| display.send_to_targets(key(prefix)))
+                .unwrap_or_default();
+        }
+        Action::Client(ClientAction::SendKey(pressed)) => {
+            return display.send_to_targets(key(pressed));
+        }
         Action::Client(
             ClientAction::DragWindow | ClientAction::DragResize(_) | ClientAction::DragBand,
         ) => None,
     };
-    message.map_or(Step::Nothing, Step::Send)
+    vec![message.map_or(Step::Nothing, Step::Send)]
 }
 
 pub(crate) async fn perform(

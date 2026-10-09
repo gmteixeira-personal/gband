@@ -97,3 +97,10 @@ pub fn sidebar_error(screen: &Grid) -> bool {
     let rows = usize::from(screen.size().rows);
     rows > 0 && sidebar_cell(screen, rows - 1) == "!"
 }
+
+pub fn tiles_with_line(screen: &Grid, line: &str) -> usize {
+    tiles(screen)
+        .iter()
+        .filter(|tile| tile.lines(screen).iter().any(|shown| shown == line))
+        .count()
+}

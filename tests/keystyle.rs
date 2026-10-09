@@ -292,7 +292,7 @@ fn leader_after_a_preview() {
     });
     client.send(b"\x00");
     client.wait_for_text("┌windows");
-    client.send(b"jjj");
+    client.send(b"jjjj");
     client.wait_for_text("$ cat -v");
     client.send(b"\x00");
     client.wait_for("the window list closed", |screen| {
@@ -460,4 +460,74 @@ fn reset_height_keeps_its_key() {
             .is_some_and(|tile| tile.bottom - tile.top == automatic)
     });
     assert_eq!(client_load(&env), 1);
+}
+
+fn modal_with_two_windows(name: &str) -> (TestEnv, Attached) {
+    let env = TestEnv::new(name);
+    let mut client = Attached::start(&env, 80, 24);
+    client.wait_for_prompt();
+    client.shell_pid(&env);
+    labelled(&mut client, "W1");
+    client.send(b"\x00n\r");
+    client.wait_for("the second window", second_window);
+    labelled(&mut client, "W2");
+    (env, client)
+}
+
+fn printed_by(client: &Attached, line: &str, count: usize) {
+    client.wait_for(&format!("{count} windows printing {line}"), |screen| {
+        tiles_with_line(screen, line) == count
+    });
+}
+
+#[test]
+fn multi_mode_from_navigation_mode() {
+    let (_env, mut client) = modal_with_two_windows("keystyle-multi");
+    client.send(b"\x00m");
+    client.wait_for("the multi mode letter", |screen| {
+        sidebar_mode(screen) == "M"
+    });
+    client.run("echo hi");
+    printed_by(&client, "hi", 2);
+    client.send(b"\x00m");
+    client.wait_for("the interactive mode letter", |screen| {
+        sidebar_mode(screen) == "I"
+    });
+    client.run("echo solo");
+    client.wait_for_line("solo");
+    assert_eq!(tiles_with_line(&client.screen(), "solo"), 1);
+}
+
+#[test]
+fn multi_mode_with_the_direct_key_style() {
+    let (_env, mut client) = direct_with_two_windows("keystyle-multi-direct");
+    client.send(b"\x00m");
+    client.wait_for("the multi mode letter", |screen| {
+        sidebar_mode(screen) == "M"
+    });
+    client.run("echo hi");
+    printed_by(&client, "hi", 2);
+}
+
+#[test]
+fn navigation_mode_keeps_multi_mode() {
+    let (_env, mut client) = modal_with_two_windows("keystyle-multi-navigation");
+    client.send(b"\x00h\r");
+    client.wait_for("the first window focused", |screen| {
+        focused_lines(screen).iter().any(|line| line == "W1")
+    });
+    client.send(b"\x00m");
+    client.wait_for("the multi mode letter", |screen| {
+        sidebar_mode(screen) == "M"
+    });
+    client.send(b"\x00l");
+    client.wait_for("the second window focused in navigation mode", |screen| {
+        sidebar_mode(screen) == "N" && focused_lines(screen).iter().any(|line| line == "W2")
+    });
+    client.send(b"\x1b");
+    client.wait_for("the multi mode letter again", |screen| {
+        sidebar_mode(screen) == "M"
+    });
+    client.run("echo hi");
+    printed_by(&client, "hi", 2);
 }

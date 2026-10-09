@@ -20,12 +20,12 @@ local function floating_style()
   return gband.keystyle.current() == "floating"
 end
 
-local function mode_letter(active)
+local function mode_letter(active, multi)
   if floating_style() then
     return APPS
   end
   if active == "root" then
-    return "I"
+    return multi and "M" or "I"
   end
   local label = gband.keymap.label(active)
   local letter = label:match("^" .. utf8.charpattern) or ""
@@ -63,11 +63,11 @@ local function lines_for(state, height)
     if marker then
       lines[1] = { { text = "!", hl = "SidebarError" } }
     else
-      lines[1] = { { text = mode_letter(state.table), hl = "SidebarMode" } }
+      lines[1] = { { text = mode_letter(state.table, state.multi), hl = "SidebarMode" } }
     end
     return lines, marker
   end
-  lines[1] = { { text = mode_letter(state.table), hl = "SidebarMode" } }
+  lines[1] = { { text = mode_letter(state.table, state.multi), hl = "SidebarMode" } }
   if marker then
     lines[height] = { { text = "!", hl = "SidebarError" } }
   end

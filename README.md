@@ -92,14 +92,14 @@ The prefix key, Ctrl+Space, gives the keys below their gband meaning, in one of 
 - **modal**: Ctrl+Space enters navigation mode, and the sidebar shows `N`.
   Each key below acts and navigation mode stays active, so `l` `l` `l` moves three columns and `=` `=` widens the column twice.
   A key with no binding does nothing.
-  Escape or Enter returns to interactive mode, and so do `?`, `:`, `N`, `s`, `!` and Ctrl+Space once they have acted.
+  Escape or Enter returns to interactive mode, and so do `?`, `:`, `N`, `s`, `!`, `m` and Ctrl+Space once they have acted.
   `n` returns to interactive mode only when the settings window's `I on new` is `on`, which it is not until you save it on.
 - **direct**: Ctrl+Space then one key acts once, and the keys that follow reach the window again, as in tmux.
   Ctrl+Space `l` `l` moves one column and types `l`.
   Escape, Enter and any other key with no binding after Ctrl+Space are discarded.
 - **floating**: every window floats, as on a desktop like MS Windows, and Ctrl+Space opens the window list.
   Each floating window has `[_][□][X]` on its title bar to minimize, maximize and close it, and its border moves and resizes it with the left button; see [Mouse](#mouse).
-  The window list holds `New window`, `Settings` and every window, the most recent first, each with a shortcut: `n`, `s`, then `1` to `9` and `0`.
+  The window list holds `New window`, `Settings`, `Multi mode` and every window, the most recent first, each with a shortcut: `n`, `s`, `m`, then `1` to `9` and `0`.
   `j`, `k`, the arrows and the pointer move through it, and moving onto a window shows it, from another band or minimized, without changing anything yet.
   Enter, a click or a shortcut keeps the window shown, and Escape or `q` returns to how things were when the list opened.
   Its other keys from the table below, such as `D`, `:` and `?`, keep the window shown and run from the list, and Ctrl+Space again sends Ctrl+Space to it.
@@ -131,6 +131,7 @@ The modal and direct styles bind the same keys after Ctrl+Space; the floating st
 | `N` | rename the focused window; see [Window names](#window-names) |
 | `s` | open the settings window |
 | `!` | reload the configuration of this client and of the server, reading the plugins' files again |
+| `m` | turn multi mode on or off, so what you type reaches every window of the band; see [Multi mode](#multi-mode) |
 | `D` | detach |
 | Escape, Enter | modal only: return to interactive mode |
 | Ctrl+Space | send Ctrl+Space to the window; modal returns to interactive mode |
@@ -138,6 +139,18 @@ The modal and direct styles bind the same keys after Ctrl+Space; the floating st
 Navigation mode changed two habits.
 Enter no longer opens a window: `n` does.
 After Ctrl+Space and a layout key, what you type no longer reaches the window until Escape or Enter returns to interactive mode.
+
+### Multi mode
+
+Multi mode sends what you type to every window of the band you view, such as one update run on several hosts at once.
+Ctrl+Space then `m` turns it on or off with the modal and direct styles, and the window list's `Multi mode` does with the floating style.
+While it is on, the sidebar shows `M` in place of `I`, and the window list's entry reads `Multi mode (on)`.
+
+Each key and paste that would reach the focused window reaches every window of the viewed band instead: its columns from left to right, then its floating windows, minimized ones included.
+Viewing another band moves the input to that band's windows, and the windows of other bands receive nothing.
+Ctrl+Space twice sends Ctrl+Space to each of them too.
+The mouse still reaches only the window under the pointer, a focused key list, Lua prompt or other floating plugin window still takes the keys, and other clients attached to the session are not affected.
+Multi mode is off when a client attaches, and a reload of the configuration turns it off.
 
 ### Settings
 
@@ -627,7 +640,7 @@ The windows keep the size they would have without it: they are drawn in the colu
 
 | row | shows |
 |---|---|
-| first | the mode: `I` in interactive mode, `N` in navigation mode, or the first letter of another mode's label, uppercased |
+| first | the mode: `I` in interactive mode, `M` in interactive mode while [multi mode](#multi-mode) is on, `N` in navigation mode, or the first letter of another mode's label, uppercased |
 | second | nothing |
 | from the third | one label per band, from the top band down, the empty last band included: `1` to `9`, then `a` to `z` |
 | last | a red `!` while a configuration or plugin error is reported |

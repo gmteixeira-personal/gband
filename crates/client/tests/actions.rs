@@ -20,8 +20,13 @@ use gband_protocol::{Answer, ClientMessage, Key as ValueKey, Operation, ServerMe
 use gband_test_support::{TIMEOUT, TestClient, TestServer};
 use tokio::time::timeout;
 
+fn one(display: &mut Display, action: Action) -> Step {
+    let [step] = <[Step; 1]>::try_from(dispatch(display, action)).expect("one step");
+    step
+}
+
 async fn run(client: &mut TestClient, display: &mut Display, action: Action) {
-    let Step::Send(message) = dispatch(display, action) else {
+    let Step::Send(message) = one(display, action) else {
         panic!("{action:?} sent nothing");
     };
     client.send(&message).await;
@@ -87,10 +92,7 @@ async fn report(
     action: Option<ViewAction>,
 ) -> Option<ClientMessage> {
     if let Some(action) = action {
-        assert!(matches!(
-            dispatch(display, Action::View(action)),
-            Step::Nothing
-        ));
+        assert!(matches!(one(display, Action::View(action)), Step::Nothing));
     }
     let message = display.report_shown();
     if let Some(message) = &message {
@@ -226,9 +228,8 @@ fn new_actions_resolve_against_the_view() {
         layout,
     });
     assert_eq!(display.focused(), Some(windows[0]));
-    let sent = |display: &mut Display, command: SessionCommand| {
-        dispatch(display, Action::Session(command))
-    };
+    let sent =
+        |display: &mut Display, command: SessionCommand| one(display, Action::Session(command));
     assert_eq!(
         sent(&mut display, SessionCommand::MoveColumn(Direction::Right)),
         Step::Send(ClientMessage::Action(SessionAction::MoveColumn {
@@ -237,7 +238,7 @@ fn new_actions_resolve_against_the_view() {
         }))
     );
     assert_eq!(
-        dispatch(&mut display, Action::View(ViewAction::SwitchLayer)),
+        one(&mut display, Action::View(ViewAction::SwitchLayer)),
         Step::Nothing
     );
     assert_eq!(display.focused(), Some(windows[1]));
@@ -370,7 +371,7 @@ fn center_column_on_a_floating_window_sends_its_centred_position() {
     );
     let camera = display.present(Instant::now()).unwrap().bands[0].camera;
     assert_eq!(
-        dispatch(&mut display, Action::View(ViewAction::CenterColumn)),
+        one(&mut display, Action::View(ViewAction::CenterColumn)),
         Step::Send(ClientMessage::Action(SessionAction::SetPosition {
             window: floating,
             col: 20,
@@ -559,7 +560,7 @@ fn reload_action_loads_this_client_and_asks_the_server() {
     controls.place_bars(&mut display);
     controls.set_loader(scratch.loader());
     assert_eq!(
-        dispatch(&mut display, Action::Client(ClientAction::Reload)),
+        one(&mut display, Action::Client(ClientAction::Reload)),
         Step::Reload
     );
     assert_eq!(controls.press(&mut display, key("ctrl+space")), []);
@@ -2875,4 +2876,142 @@ fn hover_without_on_mouse() {
         mouse.eval::<i64>(&format!("return gband.win.info({id}).cursor")),
         1
     );
+}
+
+const MULTI: &str = "gband.bind('alt+m', gband.action.toggle_multi)\n";
+
+impl Mouse {
+    fn multi(&self) -> bool {
+        self.display.view_state("root").multi
+    }
+
+    fn keys_to(&mut self, name: &str) -> Vec<WindowId> {
+        self.key(name)
+            .iter()
+            .filter_map(|step| match step {
+                Step::Send(ClientMessage::Key { window, key: sent }) => {
+                    assert_eq!(*sent, key(name));
+                    Some(*window)
+                }
+                _ => None,
+            })
+            .collect()
+    }
+}
+
+#[test]
+fn toggle_multi_twice() {
+    let (layout, windows) = columns_of(2, None);
+    let mut mouse = Mouse::new("multi-twice", MULTI, layout);
+    assert!(!mouse.multi());
+    assert_eq!(mouse.key("alt+m"), [Step::Nothing]);
+    assert!(mouse.multi());
+    assert_eq!(mouse.key("alt+m"), [Step::Nothing]);
+    assert!(!mouse.multi());
+    assert_eq!(mouse.controls.active_table(), "root");
+    assert_eq!(mouse.display.focused(), Some(windows[0]));
+}
+
+#[test]
+fn reload_turns_multi_mode_off() {
+    let (layout, _) = columns_of(2, None);
+    let mut mouse = Mouse::new("multi-reload", MULTI, layout);
+    mouse.controls.set_loader(mouse._scratch.loader());
+    mouse.key("alt+m");
+    assert!(mouse.multi());
+    mouse.controls.forced_reload(&mut mouse.display);
+    assert!(!mouse.multi());
+}
+
+#[test]
+fn multi_mode_sends_keys_in_layout_order() {
+    let (mut layout, windows) = columns_of(4, None);
+    layout.apply(
+        SessionAction::ConsumeOrExpel {
+            window: windows[2],
+            direction: Direction::Left,
+        },
+        AREA,
+        &LayoutOptions::default(),
+    );
+    float(&mut layout, windows[0], Proportion::ONE_HALF, 10, 5, 5);
+    open_in(&mut layout, 1, None);
+    let mut mouse = Mouse::new("multi-order", MULTI, layout);
+    let focused = mouse.display.focused().unwrap();
+    assert_eq!(mouse.keys_to("x"), [focused]);
+    mouse.key("alt+m");
+    assert_eq!(
+        mouse.keys_to("x"),
+        [windows[1], windows[2], windows[3], windows[0]]
+    );
+}
+
+#[test]
+fn multi_mode_pastes_to_every_window() {
+    let (layout, windows) = columns_of(2, None);
+    let mut mouse = Mouse::new("multi-paste", MULTI, layout);
+    mouse.key("alt+m");
+    assert_eq!(
+        mouse.controls.paste(&mut mouse.display, "hi".to_owned()),
+        windows
+            .iter()
+            .map(|&window| Step::Send(ClientMessage::Paste {
+                window,
+                text: "hi".to_owned(),
+            }))
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn multi_mode_sends_the_prefix_key_to_every_window() {
+    let (layout, windows) = columns_of(2, None);
+    let mut mouse = Mouse::new("multi-prefix", &format!("{DEFAULTS}\n{MULTI}"), layout);
+    mouse.key("alt+m");
+    mouse.key("ctrl+space");
+    assert_eq!(mouse.keys_to("ctrl+space"), windows);
+    assert!(mouse.multi());
+}
+
+#[test]
+fn multi_mode_on_the_empty_band_sends_nothing() {
+    let (layout, _) = two_bands(1, None);
+    let mut mouse = Mouse::new("multi-empty", MULTI, layout);
+    mouse.key("alt+m");
+    for _ in 0..2 {
+        dispatch(&mut mouse.display, Action::View(ViewAction::BandDown));
+    }
+    assert_eq!(mouse.display.focused(), None);
+    assert!(messages(&mouse.key("x")).is_empty());
+}
+
+#[test]
+fn multi_mode_leaves_keys_to_a_focused_plugin_window() {
+    let (layout, _) = columns_of(2, None);
+    let mut mouse = Mouse::new(
+        "multi-plugin-window",
+        &format!(
+            "{MULTI}gband.bind('alt+o', function() gband.win.open({{ lines = {{ 'a' }}, focus = true, keys = {{ x = function() got = true end }} }}) end)"
+        ),
+        layout,
+    );
+    mouse.key("alt+m");
+    mouse.key("alt+o");
+    assert!(messages(&mouse.key("x")).is_empty());
+    assert!(mouse.global::<bool>("got"));
+}
+
+#[test]
+fn multi_mode_leaves_the_mouse_to_one_window() {
+    let (layout, windows) = columns_of(2, None);
+    let mut mouse = Mouse::new("multi-mouse", MULTI, layout);
+    mouse.report_mouse(windows[0]);
+    mouse.report_mouse(windows[1]);
+    mouse.key("alt+m");
+    let steps = mouse.click(MouseButton::Left, (45, 3));
+    let targets: Vec<WindowId> = mouse_messages(&steps)
+        .into_iter()
+        .map(|(window, _)| window)
+        .collect();
+    assert_eq!(targets, [windows[1], windows[1]]);
 }

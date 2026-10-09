@@ -141,6 +141,27 @@ fn one_row() {
     assert_eq!(rows(&bar), ["!"]);
 }
 
+#[test]
+fn multi_mode_letter() {
+    let (_scratch, config) = loaded("multi", "gband.plugin('gband.sidebar')");
+    let mut state = drawn(80);
+    state.multi = true;
+    assert_eq!(rows(&presented(&config, state.clone()))[0], "M");
+    state.table = "prefix".to_owned();
+    assert_ne!(rows(&presented(&config, state.clone()))[0], "M");
+    state.table = "root".to_owned();
+    state.multi = false;
+    assert_eq!(rows(&presented(&config, state))[0], "I");
+}
+
+#[test]
+fn multi_mode_with_the_floating_style() {
+    let (_scratch, config) = floating("apps-multi");
+    let mut state = drawn(80);
+    state.multi = true;
+    assert_eq!(rows(&presented(&config, state))[0], "∷");
+}
+
 fn floating(name: &str) -> (Scratch, Config) {
     let scratch = Scratch::new(name);
     scratch.user_file("keystyle.lua", "return \"floating\"\n");

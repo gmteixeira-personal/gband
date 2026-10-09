@@ -10,11 +10,11 @@ size 80x24 cursor 22:62 hidden
  8|                     │ │    ┌windows────────[□][X]─┐         │
  9|                     │ │    │ n New window         │         │
 10|                     │ │    │ s Settings           │         │
-11|                     │ │    ├──────────────────────┤         │
-12|                     │ │    │ 1 notes              │         │
-13|                     │ │    │ 2 logs (minimized)   │         │
-14|                     │ │    └───────────────? keys─┘         │
-15|                     │ │                                     │
+11|                     │ │    │ m Multi mode         │         │
+12|                     │ │    ├──────────────────────┤         │
+13|                     │ │    │ 1 notes              │         │
+14|                     │ │    │ 2 logs (minimized)   │         │
+15|                     │ │    └───────────────? keys─┘         │
 16|                     │ │                                     │
 17|                     │ │                                     │
 18|                     │ │                                     │
@@ -79,34 +79,39 @@ size 80x24 cursor 22:62 hidden
 11:0 bg=0
 11:21 fg=8
 11:23 fg=4 bold
-11:28-51 fg=8 bg=0
+11:28 fg=8 bg=0
+11:29 fg=7 bg=0
+11:30 fg=4 bg=0 bold
+11:31-50 fg=7 bg=0
+11:51 fg=8 bg=0
 11:61 fg=4 bold
 12:0 bg=0
 12:21 fg=8
 12:23 fg=4 bold
-12:28 fg=8 bg=0
-12:29 fg=7 bg=0
-12:30 fg=4 bg=0 bold
-12:31-50 fg=7 bg=0
-12:51 fg=8 bg=0
+12:28-51 fg=8 bg=0
 12:61 fg=4 bold
 13:0 bg=0
 13:21 fg=8
 13:23 fg=4 bold
 13:28 fg=8 bg=0
-13:29-50 fg=0 bg=4
+13:29 fg=7 bg=0
+13:30 fg=4 bg=0 bold
+13:31-50 fg=7 bg=0
 13:51 fg=8 bg=0
 13:61 fg=4 bold
 14:0 bg=0
 14:21 fg=8
 14:23 fg=4 bold
-14:28-43 fg=8 bg=0
-14:44-49 fg=4 bg=0 bold
-14:50-51 fg=8 bg=0
+14:28 fg=8 bg=0
+14:29-50 fg=0 bg=4
+14:51 fg=8 bg=0
 14:61 fg=4 bold
 15:0 bg=0
 15:21 fg=8
 15:23 fg=4 bold
+15:28-43 fg=8 bg=0
+15:44-49 fg=4 bg=0 bold
+15:50-51 fg=8 bg=0
 15:61 fg=4 bold
 16:0 bg=0
 16:21 fg=8

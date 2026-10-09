@@ -24,7 +24,8 @@ Running the same command in several shells, such as an update on a set of hosts,
 - `actions`: "Lua names of actions" lists `toggle_multi` and says what `send_prefix` does while multi mode is on.
 - `sidebar`: "Mode letter" shows `M` while multi mode is on in interactive mode.
 - `lua-control`: "Read the view" holds `multi`.
-- `floating-key-style`: "Window list" gains the `Multi mode` entry and its shortcut, with its scenarios renumbered; "Desktop menus" and "Leader" scenarios follow the extra row.
+- `lua-api`: "Core primitives" runs `on_state` functions when multi mode changes, and `state()` holds `multi`.
+- `floating-key-style`: "Window list" gains the `Multi mode` entry and its shortcut, with its scenarios renumbered; "Desktop menus", "Right press" and "Leader" scenarios follow the extra row.
 
 ## Impact
 

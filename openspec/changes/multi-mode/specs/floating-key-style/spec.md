@@ -281,6 +281,33 @@ While the window list is open, it SHALL build its rows again when `WindowOpened`
 - **WHEN** the floating style is in use, the window list is open, the user presses `?`, then `!`
 - **THEN** the configuration reloads as the configuration capability's "Forced reload" defines, the key list is closed, and `root` is active
 
+### Requirement: Right press
+The floating preset binds `rightmouse` in `root` to `desktop.menu`, as "Floating bindings" defines. `desktop.menu` SHALL take these presses:
+
+- A press whose `target` is `"window"`, whose `window` floats and runs a program, and whose cell is a border cell SHALL open the window menu for that window, as "Window menu" defines.
+- A press whose `target` is `"ribbon"` SHALL open the window list, as "Window list" defines.
+
+It SHALL decline every other press by returning `false`, so a right press on content pastes the copy buffer and a press on a tiled window, a plugin window or a bar takes its own default. Opening a menu from a right press SHALL NOT change the focused window.
+
+A menu opened by a right press SHALL have its top-left cell at the pointer's cell in the ribbon area: the press's column less the columns that the shown bars on the left side take, as `gband.bar.list()` gives them, and the press's row. The box SHALL then be cut so that it ends inside the ribbon area, as the plugin-windows capability places a floating plugin window at a given row and column.
+
+#### Scenario: Window menu at the pointer
+- **WHEN** `user/init.lua` calls only `gband.keystyle.use("floating")`, the client's 80×24 terminal sets the screen area, window 1 is named `notes` and floats with a 40×12 box at column 20 and row 4, and the user presses the right button at column 30 and row 4
+- **THEN** a focused floating plugin window 16 columns wide and 7 rows high opens at column 30 and row 4
+- **AND** the focused window does not change
+
+#### Scenario: Window list at the pointer, cut to the ribbon area
+- **WHEN** the floating style is in use with no bar, the client's terminal is 80×24, the only window floats with a box that does not cover column 70 and row 20, and the user presses the right button at column 70 and row 20
+- **THEN** the window list opens 24 columns wide and 7 rows high at column 56 and row 17
+
+#### Scenario: Right press in content pastes
+- **WHEN** the floating style is in use, the copy buffer holds `ls`, and the user right-clicks the content of a floating shell window whose program reports no mouse
+- **THEN** the window is focused and receives `ls` as a paste, and no menu opens
+
+#### Scenario: Right press on the sidebar
+- **WHEN** no `user/init.lua` exists, `user/keystyle.lua` holds `return "floating"`, and the user presses the right button on column 0 and row 5
+- **THEN** no floating plugin window opens
+
 ### Requirement: Leader
 The floating preset SHALL register one handler of `KeyTableChanged`. When the event's `table` is `prefix`, the handler SHALL call `gband.keymap.enter("root")` and then dispatch `desktop.leader`. `prefix` is not a mode with the floating style, and it holds bindings, so the prefix key makes it active, as the client-attach capability's "Key bindings" defines, and the handler then returns to `root` before the next key.
 
