@@ -93,8 +93,9 @@ fn focused_top(screen: &Grid) -> Option<u16> {
 }
 
 fn echo_keys(client: &mut Attached) {
+    let shell = client.last_pid();
     client.run("clear; cat -v");
-    thread::sleep(Duration::from_millis(300));
+    client.wait_for_child(shell, "cat");
 }
 
 #[test]

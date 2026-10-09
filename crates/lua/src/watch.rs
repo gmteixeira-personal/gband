@@ -1,142 +1,129 @@
+use std::collections::{BTreeMap, HashSet};
+use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::{self, RecvTimeoutError};
-use std::sync::{Arc, Mutex, Weak};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::thread;
-use std::time::{Duration, Instant};
-
-use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher as _};
+use std::time::{Duration, SystemTime};
 
 use crate::user_dir;
 
-const DEBOUNCE: Duration = Duration::from_millis(100);
+const POLL: Duration = Duration::from_secs(1);
+const QUIET: Duration = Duration::from_millis(100);
 
 pub struct Watcher {
-    _watcher: Option<Arc<Mutex<RecommendedWatcher>>>,
+    _stop: Option<Sender<()>>,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Watching {
-    Directory,
-    Parent,
+#[derive(PartialEq, Eq)]
+struct Stamp {
+    modified: Option<SystemTime>,
+    len: u64,
+    target: Option<PathBuf>,
 }
+
+type Snapshot = BTreeMap<PathBuf, Stamp>;
 
 pub fn watch<F>(config: PathBuf, changed: F) -> Watcher
 where
     F: FnMut() + Send + 'static,
 {
-    let idle = Watcher { _watcher: None };
     let directory = user_dir(&config);
-    let (events_tx, events) = mpsc::channel();
-    let watcher = match notify::recommended_watcher(move |event| {
-        let _ = events_tx.send(event);
-    }) {
-        Ok(watcher) => Arc::new(Mutex::new(watcher)),
-        Err(error) => {
-            tracing::warn!("cannot watch the configuration: {error}");
-            return idle;
-        }
-    };
-    let watching = {
-        let mut inner = watcher.lock().expect("watcher lock");
-        if inner.watch(&directory, RecursiveMode::Recursive).is_ok() {
-            Watching::Directory
-        } else if inner.watch(&config, RecursiveMode::NonRecursive).is_ok() {
-            Watching::Parent
-        } else {
-            tracing::info!(
-                "not watching the configuration: {} does not exist",
-                directory.display()
-            );
-            return idle;
-        }
-    };
-    let weak = Arc::downgrade(&watcher);
+    let seen = snapshot(&directory);
+    let (stop_tx, stop) = mpsc::channel();
     let spawned = thread::Builder::new()
         .name("gband-config".to_owned())
-        .spawn(move || {
-            reload(
-                Target { config, directory },
-                watching,
-                events,
-                weak,
-                changed,
-            )
-        });
-    if let Err(error) = spawned {
-        tracing::warn!("cannot watch the configuration: {error}");
-        return idle;
-    }
-    Watcher {
-        _watcher: Some(watcher),
+        .spawn(move || poll(&directory, seen, &stop, changed));
+    match spawned {
+        Ok(_) => Watcher {
+            _stop: Some(stop_tx),
+        },
+        Err(error) => {
+            tracing::warn!("cannot watch the configuration: {error}");
+            Watcher { _stop: None }
+        }
     }
 }
 
-struct Target {
-    config: PathBuf,
-    directory: PathBuf,
-}
-
-fn reload<F>(
-    target: Target,
-    mut watching: Watching,
-    events: mpsc::Receiver<notify::Result<Event>>,
-    watcher: Weak<Mutex<RecommendedWatcher>>,
-    mut changed: F,
-) where
+fn poll<F>(directory: &Path, mut seen: Snapshot, stop: &Receiver<()>, mut changed: F)
+where
     F: FnMut(),
 {
-    let Target { config, directory } = target;
-    while let Ok(event) = events.recv() {
-        let relevant = match watching {
-            Watching::Directory => touches_lua(&event, &directory),
-            Watching::Parent => touches(&event, &directory),
-        };
-        if !relevant {
+    while wait(stop, POLL) {
+        let mut current = snapshot(directory);
+        if current == seen {
             continue;
         }
-        if watching == Watching::Parent && directory.is_dir() {
-            let Some(watcher) = watcher.upgrade() else {
-                return;
-            };
-            let mut watcher = watcher.lock().expect("watcher lock");
-            if watcher.watch(&directory, RecursiveMode::Recursive).is_ok() {
-                let _ = watcher.unwatch(&config);
-                watching = Watching::Directory;
-            }
-        }
-        let deadline = Instant::now() + DEBOUNCE;
         loop {
-            let left = deadline.saturating_duration_since(Instant::now());
-            match events.recv_timeout(left) {
-                Ok(_) => {}
-                Err(RecvTimeoutError::Timeout) => break,
-                Err(RecvTimeoutError::Disconnected) => return,
+            if !wait(stop, QUIET) {
+                return;
             }
+            let settled = snapshot(directory);
+            if settled == current {
+                break;
+            }
+            current = settled;
         }
+        seen = current;
         changed();
     }
 }
 
-fn changed(event: &notify::Result<Event>) -> Option<&Event> {
-    event
-        .as_ref()
-        .ok()
-        .filter(|event| !matches!(event.kind, EventKind::Access(_)))
+fn wait(stop: &Receiver<()>, period: Duration) -> bool {
+    matches!(stop.recv_timeout(period), Err(RecvTimeoutError::Timeout))
 }
 
-fn touches(event: &notify::Result<Event>, target: &Path) -> bool {
-    changed(event).is_some_and(|event| event.paths.iter().any(|path| path == target))
+fn snapshot(directory: &Path) -> Snapshot {
+    let mut files = Snapshot::new();
+    scan(directory, &mut HashSet::new(), &mut files);
+    files
 }
 
-fn touches_lua(event: &notify::Result<Event>, directory: &Path) -> bool {
-    changed(event).is_some_and(|event| {
-        event.paths.iter().any(|path| {
-            path.starts_with(directory)
-                && path
-                    .file_name()
-                    .is_some_and(|name| name.as_encoded_bytes().ends_with(b".lua"))
-        })
-    })
+fn scan(directory: &Path, followed: &mut HashSet<PathBuf>, files: &mut Snapshot) {
+    let Ok(entries) = fs::read_dir(directory) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let Ok(kind) = entry.file_type() else {
+            continue;
+        };
+        let path = entry.path();
+        if kind.is_dir() {
+            scan(&path, followed, files);
+        } else if kind.is_symlink() {
+            linked(path, followed, files);
+        } else if kind.is_file()
+            && is_lua(&path)
+            && let Ok(metadata) = entry.metadata()
+        {
+            files.insert(path, stamp(&metadata, None));
+        }
+    }
+}
+
+fn linked(path: PathBuf, followed: &mut HashSet<PathBuf>, files: &mut Snapshot) {
+    let (Ok(metadata), Ok(target)) = (fs::metadata(&path), fs::canonicalize(&path)) else {
+        return;
+    };
+    if metadata.is_dir() {
+        if followed.insert(target) {
+            scan(&path, followed, files);
+        }
+    } else if is_lua(&path) {
+        files.insert(path, stamp(&metadata, Some(target)));
+    }
+}
+
+fn stamp(metadata: &fs::Metadata, target: Option<PathBuf>) -> Stamp {
+    Stamp {
+        modified: metadata.modified().ok(),
+        len: metadata.len(),
+        target,
+    }
+}
+
+fn is_lua(path: &Path) -> bool {
+    path.file_name()
+        .is_some_and(|name| name.as_encoded_bytes().ends_with(b".lua"))
 }
 
 #[cfg(test)]
@@ -174,8 +161,8 @@ mod tests {
     }
 
     fn next(rx: &Receiver<Result<Config, ConfigError>>) -> Config {
-        rx.recv_timeout(Duration::from_secs(1))
-            .expect("a reload within one second")
+        rx.recv_timeout(Duration::from_secs(2))
+            .expect("a reload within two seconds")
             .expect("a good configuration")
     }
 
@@ -213,6 +200,21 @@ mod tests {
     }
 
     #[test]
+    fn successive_writes_each_reload() {
+        let scratch = Scratch::new("quick");
+        let dir = scratch.dir();
+        crate::prepare(&dir).unwrap();
+        let path = user_file(&dir, Side::Client);
+        let (_watcher, rx) = watched(&dir);
+
+        fs::write(&path, "gband.set { prefix = 'ctrl+b' }").unwrap();
+        assert!(prefix_of(&next(&rx)).contains("'b'"));
+
+        fs::write(&path, "gband.set { prefix = 'ctrl+x' }").unwrap();
+        assert!(prefix_of(&next(&rx)).contains("'x'"));
+    }
+
+    #[test]
     fn user_plugin_file_edited() {
         let scratch = Scratch::new("user-plugin");
         let dir = scratch.dir();
@@ -236,7 +238,7 @@ mod tests {
         assert_eq!(config.keymap["root"].len(), 1);
         settle(&rx);
         fs::write(modules.join("notes.txt"), "notes").unwrap();
-        assert!(rx.recv_timeout(Duration::from_secs(1)).is_err());
+        assert!(rx.recv_timeout(Duration::from_secs(2)).is_err());
     }
 
     #[test]
@@ -250,11 +252,11 @@ mod tests {
             "gband.set { prefix = 'ctrl+b' }",
         )
         .unwrap();
-        assert!(rx.recv_timeout(Duration::from_secs(1)).is_err());
+        assert!(rx.recv_timeout(Duration::from_secs(2)).is_err());
     }
 
     #[test]
-    fn missing_user_directory_is_watched_through_the_configuration_directory() {
+    fn missing_user_directory_is_watched_once_created() {
         let scratch = Scratch::new("parent");
         let dir = scratch.dir();
         fs::create_dir_all(&dir).unwrap();
@@ -270,5 +272,27 @@ mod tests {
             }
         };
         assert!(prefix_of(&config).contains("'b'"));
+    }
+
+    #[test]
+    fn symlinks_are_followed_without_looping() {
+        let scratch = Scratch::new("symlink");
+        let dir = scratch.dir();
+        crate::prepare(&dir).unwrap();
+        let user = dir.join("user");
+        let elsewhere = scratch.0.join("elsewhere");
+        fs::create_dir_all(&elsewhere).unwrap();
+        std::os::unix::fs::symlink(&user, user.join("loop")).unwrap();
+        std::os::unix::fs::symlink(&elsewhere, user.join("lua")).unwrap();
+        fs::write(user_file(&dir, Side::Client), "require('keys')").unwrap();
+        fs::write(elsewhere.join("keys.lua"), "").unwrap();
+        let (_watcher, rx) = watched(&dir);
+        fs::write(
+            elsewhere.join("keys.lua"),
+            "gband.bind('alt+k', gband.action.focus_window_up)",
+        )
+        .unwrap();
+        let config = next(&rx);
+        assert_eq!(config.keymap["root"].len(), 1);
     }
 }
