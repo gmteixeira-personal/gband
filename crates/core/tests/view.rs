@@ -1635,6 +1635,51 @@ fn band_stops_looping_and_resets_the_travel() {
 }
 
 #[test]
+fn strip_width_change_after_a_lap_keeps_the_travel_on_the_camera() {
+    let (layout, windows) = row_of_columns(4);
+    let mut view = View::new(scene(&layout));
+    act(&mut view, &layout, &[ViewAction::FocusLeft]);
+    assert_eq!((view.camera(), view.travel()), (120, -40));
+    let wide = Scene {
+        layout: &layout,
+        area: Size::new(100, 24),
+        viewport: Size::new(100, 24),
+    };
+    view.sync(wide);
+    let strip = i64::from(view.strip(wide).expect("the strip loops"));
+    assert_eq!((view.focused(), view.camera()), (Some(windows[3]), 120));
+    assert_eq!(view.travel().rem_euclid(strip), view.camera());
+    assert_eq!(view.travel(), -80);
+    assert_eq!(
+        drawn_in(&view, wide),
+        [(windows[2], -20), (windows[3], 30), (windows[0], 80)]
+    );
+}
+
+#[test]
+fn column_width_change_after_a_lap_keeps_the_travel_on_the_camera() {
+    let (mut layout, windows) = row_of_columns(4);
+    let mut view = View::new(scene(&layout));
+    act(&mut view, &layout, &[ViewAction::FocusLeft]);
+    assert_eq!((view.camera(), view.travel()), (120, -40));
+    apply(
+        &mut layout,
+        SessionAction::SetWidth {
+            window: windows[0],
+            width: Proportion::ONE_THIRD,
+        },
+    );
+    view.sync(scene(&layout));
+    let strip = i64::from(view.strip(scene(&layout)).expect("the strip loops"));
+    assert_eq!((view.focused(), view.camera()), (Some(windows[3]), 106));
+    assert_eq!(view.travel().rem_euclid(strip), view.camera());
+    assert_eq!(
+        drawn(&view, &layout),
+        [(windows[3], 0), (windows[0], 40), (windows[1], 66)]
+    );
+}
+
+#[test]
 fn opening_across_the_seam() {
     let (mut layout, windows) = row_of_columns(2);
     let mut view = View::new(scene(&layout));

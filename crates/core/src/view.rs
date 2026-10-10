@@ -762,7 +762,9 @@ impl View {
                 .unwrap_or(x)
         });
         let moved = place(copy);
-        state.travel += moved - camera;
+        let travel = state.travel + moved - camera;
+        let laps = (travel - moved + period / 2).div_euclid(period);
+        state.travel = moved + laps * period;
         state.camera = moved.rem_euclid(period);
     }
 }

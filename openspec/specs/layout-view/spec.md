@@ -152,6 +152,7 @@ A band's strip SHALL loop while the configuration's `loop_bands` is on and the s
 - A tile's drawn copy SHALL be the copy of its column that has at least one cell inside the view. The strip's length ensures that a tile has at most one.
 - The policies below SHALL place the focused column at one of its copies. When focus moved to the column to the left or right, it SHALL be the copy next to the previously focused column's drawn copy, on the side of the move. When focus moved to a column the layout opened beside the previously focused column, it SHALL be the copy next to the previously focused column's drawn copy, on the side the column opened. Otherwise, or when that column has no drawn copy, it SHALL be the copy that needs the smallest camera move, the one with the smaller start on a tie.
 - After every move, the camera SHALL be held at least 0 and below the strip's width, by adding or subtracting a whole multiple of the strip's width. Holding it SHALL NOT change what the view shows.
+- When the strip's width changes, by a change of the layout, of the screen area or of the terminal's width, each tile SHALL be drawn at its drawn copy for the camera held within the new width, however many times the camera crossed the seam before.
 
 Under `"never"`, the default:
 
@@ -263,6 +264,16 @@ Under `"on-overflow"`, when focus moves from one column to another column C of t
 #### Scenario: Centred camera keeps its blank strip
 - **WHEN** `loop_bands` is off, the policy is `"always"`, the terminal is 80 columns wide, a band holds three columns of 40 cells at strip positions 0, 40 and 80, the third is focused, and the screen area changes so the columns are 30 cells wide at strip positions 0, 30 and 60
 - **THEN** the camera moves to 35 and cells 55 to 79 are drawn empty
+
+#### Scenario: Wider terminal after crossing the seam
+- **WHEN** `loop_bands` is on, the policy is `"never"`, the terminal is 80 columns wide, a band holds four columns of 40 cells at strip positions 0, 40, 80 and 120, the first is focused with the camera at 0, the client focuses the column to the left, which focuses the fourth column with the camera held at 120, and the terminal and the screen area then widen to 100 columns, so the columns are 50 cells wide at strip positions 0, 50, 100 and 150
+- **THEN** the camera stays at 120
+- **AND** the terminal shows the last 30 cells of the third column in cells 0 to 29, the fourth column in cells 30 to 79 and the first 20 cells of the first column in cells 80 to 99
+
+#### Scenario: Narrower column after crossing the seam
+- **WHEN** `loop_bands` is on, the policy is `"never"`, the terminal is 80 columns wide, a band holds four columns of 40 cells at strip positions 0, 40, 80 and 120, the first is focused with the camera at 0, the client focuses the column to the left, which focuses the fourth column with the camera held at 120, and the first column's width then becomes 26 cells, so the columns stand at strip positions 0, 26, 66 and 106
+- **THEN** the camera moves to 106
+- **AND** the terminal shows the fourth column in cells 0 to 39, the first column in cells 40 to 65 and the first 14 cells of the second column in cells 66 to 79
 
 ### Requirement: Center the focused column
 While the tiled layer is active, the `center_column` view action SHALL move the viewed band's camera so that the focused window's column sits in the middle of the client's terminal, as niri's `center-column` does. The camera SHALL move to the column's start less half the difference between the terminal's width and the column's width, rounded down. When the column is at least as wide as the terminal, the camera SHALL move to the column's start. While the band's strip loops, as the Camera requirement defines, the column's start SHALL be that of the copy needing the smallest camera move, and the camera SHALL then be held within the strip. The action SHALL change neither the focused window nor the viewed band, and SHALL send nothing to the server. On a band with no focused window, it SHALL leave the view unchanged.
