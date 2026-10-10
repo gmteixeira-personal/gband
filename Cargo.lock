@@ -907,7 +907,7 @@ dependencies = [
 
 [[package]]
 name = "gband"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -934,7 +934,7 @@ dependencies = [
 
 [[package]]
 name = "gband-client"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "crossterm",
@@ -961,7 +961,7 @@ dependencies = [
 
 [[package]]
 name = "gband-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "serde",
  "thiserror 2.0.21",
@@ -969,7 +969,7 @@ dependencies = [
 
 [[package]]
 name = "gband-emulator"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "gband-core",
  "ratatui",
@@ -980,7 +980,7 @@ dependencies = [
 
 [[package]]
 name = "gband-harness"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "gband-core",
  "gband-emulator",
@@ -995,7 +995,7 @@ dependencies = [
 
 [[package]]
 name = "gband-lua"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "gband-core",
  "gband-protocol",
@@ -1010,7 +1010,7 @@ dependencies = [
 
 [[package]]
 name = "gband-protocol"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "gband-core",
  "postcard",
@@ -1022,14 +1022,14 @@ dependencies = [
 
 [[package]]
 name = "gband-scratch"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "rustix",
 ]
 
 [[package]]
 name = "gband-server"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "gband-core",
@@ -1048,7 +1048,7 @@ dependencies = [
 
 [[package]]
 name = "gband-test-support"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "gband-client",

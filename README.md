@@ -14,14 +14,14 @@ gband is written in Rust.
 Install a stable Rust toolchain, version 1.89 or newer, and a C compiler such as `gcc` or `clang`.
 The C compiler builds the Lua runtime that gband bundles, so no system Lua is needed.
 
-Install release 0.1.0 with Cargo:
+Install release 0.1.1 with Cargo:
 
 ```sh
-cargo install --locked --git https://github.com/gmteixeira-personal/gband --tag v0.1.0
+cargo install --locked --git https://github.com/gmteixeira-personal/gband --tag v0.1.1
 ```
 
 Cargo puts the `gband` binary in `~/.cargo/bin/`, which must be on your `PATH`.
-To install the development version instead, replace `--tag v0.1.0` with `--branch dev`.
+To install the development version instead, replace `--tag v0.1.1` with `--branch dev`.
 
 ## Features
 
