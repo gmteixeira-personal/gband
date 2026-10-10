@@ -9,6 +9,20 @@ gband is animated, includes themes and is fully scriptable in Lua.
 Much of gband itself is written in Lua, and every part of it starts with sensible defaults, so it works without any configuration.
 gband is written in Rust.
 
+## Installing
+
+Install a stable Rust toolchain, version 1.89 or newer, and a C compiler such as `gcc` or `clang`.
+The C compiler builds the Lua runtime that gband bundles, so no system Lua is needed.
+
+Install release 0.1.0 with Cargo:
+
+```sh
+cargo install --locked --git https://github.com/gmteixeira-personal/gband --tag v0.1.0
+```
+
+Cargo puts the `gband` binary in `~/.cargo/bin/`, which must be on your `PATH`.
+To install the development version instead, replace `--tag v0.1.0` with `--branch dev`.
+
 ## Features
 
 - **Multiple bands.** Each band holds its own row of windows, and the view slides up and down between bands.
@@ -706,20 +720,6 @@ In the server, it can watch window output and input, keep state per window, emit
 [docs/plugins.md](docs/plugins.md) explains how to write one.
 [examples/plugins/hello](examples/plugins/hello) is a sample to start from, [examples/plugins/window](examples/plugins/window) adds a side bar and a colorscheme, and [examples/plugins/agent-status](examples/plugins/agent-status) notifies you when a coding agent in a window waits for an answer.
 `gband test` runs a plugin's Lua tests against a real client and server in a terminal of their own, and compares what they draw with committed screenshots; [docs/testing.md](docs/testing.md) explains how to write them.
-
-## Installing
-
-Install a stable Rust toolchain, version 1.89 or newer, and a C compiler such as `gcc` or `clang`.
-The C compiler builds the Lua runtime that gband bundles, so no system Lua is needed.
-
-Install release 0.1.0 with Cargo:
-
-```sh
-cargo install --locked --git https://github.com/gmteixeira-personal/gband --tag v0.1.0
-```
-
-Cargo puts the `gband` binary in `~/.cargo/bin/`, which must be on your `PATH`.
-To install the development version instead, replace `--tag v0.1.0` with `--branch dev`.
 
 ## Building
 
