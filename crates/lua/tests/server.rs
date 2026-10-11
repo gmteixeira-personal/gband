@@ -489,6 +489,59 @@ fn layout_of_a_session() {
 }
 
 #[test]
+fn tabbed_column_in_the_structure() {
+    let host = Arc::new(Fake::default());
+    let mut layout = layout_of(2);
+    let options = LayoutOptions::default();
+    for action in [
+        SessionAction::ConsumeOrExpel {
+            window: WindowId(2),
+            direction: gband_core::layout::Direction::Left,
+        },
+        SessionAction::ToggleTabbed(WindowId(1)),
+    ] {
+        layout.apply(action, AREA, &options);
+    }
+    host.sessions
+        .lock()
+        .unwrap()
+        .insert("work".to_owned(), (layout_of(1), vec![]));
+    host.sessions
+        .lock()
+        .unwrap()
+        .insert("play".to_owned(), (layout, vec![]));
+    let (_scratch, config) = server(
+        "gband.on('ConfigReloaded', function()
+           tabbed = gband.session('play').bands[1].columns[1].tabbed
+           untabbed = gband.session('work').bands[1].columns[1].tabbed
+         end)",
+        host,
+    );
+    clean(&config.runtime.emit_server(&Event::ConfigReloaded));
+    assert!(global::<bool>(&config, "tabbed"));
+    assert!(!global::<bool>(&config, "untabbed"));
+}
+
+#[test]
+fn tabbed_display_from_the_server() {
+    let (_scratch, config) = server(
+        "gband.on('WindowOpened', function(ev)
+           gband.action.toggle_column_tabbed({ session = ev.session, window = ev.window })
+         end)",
+        Arc::new(Fake::default()),
+    );
+    let outcome = config.runtime.emit_server(&opened("work", 1));
+    clean(&outcome);
+    assert_eq!(
+        outcome.dispatched,
+        [Dispatch::Targeted {
+            session: "work".to_owned(),
+            action: SessionAction::ToggleTabbed(WindowId(1)),
+        }]
+    );
+}
+
+#[test]
 fn floating_window_in_the_structure() {
     let host = Arc::new(Fake::default());
     let mut layout = layout_of(2);

@@ -312,9 +312,12 @@ struct Shown {
     strip: Option<u32>,
     vertical: Spring,
     tiles: HashMap<WindowId, TileSprings>,
-    parked: HashMap<WindowId, [i64; 4]>,
+    places: HashMap<WindowId, (usize, usize)>,
+    parked: HashMap<WindowId, Parked>,
     leaving: Vec<(BandId, i64, Option<u32>)>,
 }
+
+type Parked = ([i64; 4], Option<(usize, usize)>);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct HeldBands {
@@ -377,7 +380,7 @@ impl Presentation {
         if let Some(shown) = &mut self.shown
             && let Some(springs) = shown.tiles.get_mut(&window)
         {
-            let target = springs.target();
+            let target = (springs.target(), shown.places.get(&window).copied());
             *springs = TileSprings::placed(&tile, now, self.pace);
             shown.parked.insert(window, target);
         }
@@ -504,6 +507,7 @@ impl Shown {
                 .iter()
                 .map(|tile| (tile.window, TileSprings::at_rest(tile, now, pace)))
                 .collect(),
+            places: places(&targets.tiles),
             parked: HashMap::new(),
             leaving: Vec::new(),
         }
@@ -581,8 +585,9 @@ impl Shown {
                 i64::from(tile.width),
                 i64::from(tile.height),
             ];
+            let place = Some((tile.column, tile.row));
             match self.parked.get(&tile.window) {
-                Some(parked) if *parked == target => continue,
+                Some(parked) if *parked == (target, place) => continue,
                 Some(_) => {
                     self.parked.remove(&tile.window);
                 }
@@ -593,5 +598,13 @@ impl Shown {
                 .and_modify(|springs| springs.retarget(tile, now))
                 .or_insert_with(|| TileSprings::at_rest(tile, now, pace));
         }
+        self.places = places(&targets.tiles);
     }
+}
+
+fn places(tiles: &[Tile]) -> HashMap<WindowId, (usize, usize)> {
+    tiles
+        .iter()
+        .map(|tile| (tile.window, (tile.column, tile.row)))
+        .collect()
 }

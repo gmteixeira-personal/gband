@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::event::LayoutEvent;
 use crate::geometry::{
-    MIN_TILE_HEIGHT, Size, WindowBox, fixed_height_limit, height_step, placed, width_step,
-    window_heights,
+    MIN_TILE_HEIGHT, Size, WindowBox, fixed_height_limit, height_step, placed, tab_height,
+    width_step, window_heights,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -205,6 +205,8 @@ pub struct Column {
     pub heights: Vec<WindowHeight>,
     pub width: Proportion,
     pub full_width: bool,
+    pub tabbed: bool,
+    pub tab_rows: Option<u16>,
 }
 
 impl Column {
@@ -214,6 +216,8 @@ impl Column {
             heights: vec![WindowHeight::DEFAULT],
             width,
             full_width: false,
+            tabbed: false,
+            tab_rows: None,
         }
     }
 
@@ -409,6 +413,7 @@ pub enum SessionAction {
     },
     CycleWidth(WindowId),
     ToggleFullWidth(WindowId),
+    ToggleTabbed(WindowId),
     StepWidth {
         window: WindowId,
         step: Step,
@@ -677,38 +682,48 @@ impl Layout {
             SessionAction::ToggleFullWidth(window) => {
                 self.with_width(window, area, |(width, full_width)| (width, !full_width))
             }
+            SessionAction::ToggleTabbed(window) => self.with_tabs(window, |column| {
+                column.tabbed = !column.tabbed;
+            }),
             SessionAction::StepWidth { window, step, by } => {
                 self.with_width(window, area, |width| step_width(width, step, by))
             }
             SessionAction::SetWidth { window, width } => {
                 self.with_width(window, area, |_| set_width(width))
             }
-            SessionAction::StepHeight { window, step, by } => self.with_height(
-                window,
-                area,
-                |column, row| column.step_height(row, step, by, area),
-                |height| {
-                    Some(match step {
-                        Step::Grow => height.saturating_add(by.rows_of(area.rows)),
-                        Step::Shrink => height.saturating_sub(by.rows_of(area.rows)),
-                    })
-                },
-            ),
+            SessionAction::StepHeight { window, step, by } => {
+                let stepped = |height: u16| match step {
+                    Step::Grow => height.saturating_add(by.rows_of(area.rows)),
+                    Step::Shrink => height.saturating_sub(by.rows_of(area.rows)),
+                };
+                self.with_height(
+                    window,
+                    area,
+                    |column, row| column.step_height(row, step, by, area),
+                    |height| Some(stepped(height)),
+                    |height| Some(stepped(height)),
+                )
+            }
             SessionAction::ResetHeight(window) => self.with_height(
                 window,
                 area,
                 |column, row| column.heights[row] = WindowHeight::DEFAULT,
+                |_| None,
                 |_| Some(opening_rows(area)),
             ),
-            SessionAction::SetHeight { window, height } => self.with_height(
-                window,
-                area,
-                |column, row| column.set_height(row, height, area),
-                |_| match height {
+            SessionAction::SetHeight { window, height } => {
+                let fixed = match height {
                     WindowHeight::Fixed(rows) => Some(rows),
                     WindowHeight::Auto(_) => None,
-                },
-            ),
+                };
+                self.with_height(
+                    window,
+                    area,
+                    |column, row| column.set_height(row, height, area),
+                    |_| fixed,
+                    |_| fixed,
+                )
+            }
             SessionAction::ToggleFloating {
                 window,
                 after,
@@ -933,9 +948,18 @@ impl Layout {
         window: WindowId,
         area: Size,
         tiled: impl FnOnce(&mut Column, usize),
+        tab: impl FnOnce(u16) -> Option<u16>,
         floating: impl FnOnce(u16) -> Option<u16>,
     ) -> Vec<LayoutEvent> {
         match self.place(window) {
+            Some(Place::Tiled(location))
+                if self.bands[location.band].columns[location.column].tabbed =>
+            {
+                self.with_tabs(window, |column| {
+                    column.tab_rows = tab(tab_height(column, area.rows))
+                        .map(|rows| rows.clamp(MIN_TILE_HEIGHT, area.rows.max(MIN_TILE_HEIGHT)));
+                })
+            }
             Some(Place::Tiled(_)) => self.with_heights(window, tiled),
             Some(Place::Floating { .. }) => self.with_box(window, area, |record, placed| {
                 if let Some(rows) = floating(placed.height) {
@@ -988,6 +1012,29 @@ impl Layout {
             band: band.id,
             column: location.column,
             heights: column.heights.clone(),
+        }]
+    }
+
+    fn with_tabs(
+        &mut self,
+        window: WindowId,
+        change: impl FnOnce(&mut Column),
+    ) -> Vec<LayoutEvent> {
+        let Some(location) = self.locate(window) else {
+            return Vec::new();
+        };
+        let band = &mut self.bands[location.band];
+        let column = &mut band.columns[location.column];
+        let before = (column.tabbed, column.tab_rows);
+        change(column);
+        if (column.tabbed, column.tab_rows) == before {
+            return Vec::new();
+        }
+        vec![LayoutEvent::ColumnTabsChanged {
+            band: band.id,
+            column: location.column,
+            tabbed: column.tabbed,
+            tab_rows: column.tab_rows,
         }]
     }
 

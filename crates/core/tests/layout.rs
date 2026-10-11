@@ -2073,3 +2073,213 @@ fn move_to_place_ignores_floating_and_invalid_references() {
     assert!(move_to_place(&mut layout, b, other, TargetPlace::Above).is_empty());
     assert_eq!(layout, before);
 }
+
+fn toggle_tabbed(layout: &mut Layout, window: WindowId) -> Vec<LayoutEvent> {
+    act(layout, SessionAction::ToggleTabbed(window), AREA)
+}
+
+fn tabs_of(layout: &Layout, window: WindowId) -> (bool, Option<u16>) {
+    let column = column_of(layout, window);
+    (column.tabbed, column.tab_rows)
+}
+
+fn tabbed_stack(count: usize) -> (Layout, Vec<WindowId>) {
+    let (mut layout, windows) = stacked(count);
+    toggle_tabbed(&mut layout, windows[0]);
+    (layout, windows)
+}
+
+#[test]
+fn turn_tabs_on() {
+    let (mut layout, windows) = stacked(3);
+    let events = toggle_tabbed(&mut layout, windows[1]);
+    assert_eq!(
+        events,
+        [LayoutEvent::ColumnTabsChanged {
+            band: band_id(&layout, 0),
+            column: 0,
+            tabbed: true,
+            tab_rows: None,
+        }]
+    );
+    assert_eq!(tabs_of(&layout, windows[0]), (true, None));
+    assert_eq!(heights_of(&layout, windows[0]), [auto(1, 1); 3]);
+}
+
+#[test]
+fn toggle_tabbed_on_a_floating_window() {
+    let (mut layout, windows) = floated(2);
+    let before = layout.clone();
+    assert!(toggle_tabbed(&mut layout, windows[1]).is_empty());
+    assert!(toggle_tabbed(&mut layout, WindowId(99)).is_empty());
+    assert_eq!(layout, before);
+}
+
+#[test]
+fn tabs_on_a_lone_window() {
+    let (mut layout, first) = started();
+    assert!(!toggle_tabbed(&mut layout, first).is_empty());
+    assert_eq!(tabs_of(&layout, first), (true, None));
+}
+
+#[test]
+fn consume_into_a_tabbed_column() {
+    let (mut layout, windows) = row_of_columns(3);
+    let [p1, p2, p3] = windows[..] else { panic!() };
+    shift(&mut layout, p3, Direction::Left);
+    toggle_tabbed(&mut layout, p2);
+    shift(&mut layout, p1, Direction::Right);
+    assert_eq!(columns(&layout, 0), vec![vec![p2, p3, p1]]);
+    assert_eq!(tabs_of(&layout, p1), (true, None));
+}
+
+#[test]
+fn expel_from_a_tabbed_column() {
+    let (mut layout, windows) = tabbed_stack(2);
+    let [p2, p3] = windows[..] else { panic!() };
+    shift(&mut layout, p3, Direction::Right);
+    assert_eq!(columns(&layout, 0), vec![vec![p2], vec![p3]]);
+    assert_eq!(tabs_of(&layout, p2), (true, None));
+    assert_eq!(tabs_of(&layout, p3), (false, None));
+}
+
+#[test]
+fn new_column_is_not_tabbed() {
+    let (mut layout, first) = started();
+    toggle_tabbed(&mut layout, first);
+    let opened = open(&mut layout, 0, Some(first));
+    assert_eq!(tabs_of(&layout, opened), (false, None));
+}
+
+#[test]
+fn move_a_tabbed_column() {
+    let (mut layout, windows) = row_of_columns(2);
+    let [a, b] = windows[..] else { panic!() };
+    toggle_tabbed(&mut layout, a);
+    set_height(&mut layout, a, WindowHeight::Fixed(16));
+    move_column(&mut layout, a, Direction::Right, AREA);
+    assert_eq!(columns(&layout, 0), vec![vec![b], vec![a]]);
+    assert_eq!(tabs_of(&layout, a), (true, Some(16)));
+}
+
+#[test]
+fn shrink_a_tab() {
+    let (mut layout, windows) = tabbed_stack(2);
+    let events = step_height(&mut layout, windows[0], Shrink, AREA);
+    assert_eq!(
+        events,
+        [LayoutEvent::ColumnTabsChanged {
+            band: band_id(&layout, 0),
+            column: 0,
+            tabbed: true,
+            tab_rows: Some(22),
+        }]
+    );
+    assert_eq!(heights_of(&layout, windows[0]), [auto(1, 1); 2]);
+}
+
+#[test]
+fn grow_a_tab_above_the_screen_area() {
+    let (mut layout, windows) = tabbed_stack(2);
+    set_height(&mut layout, windows[0], WindowHeight::Fixed(23));
+    step_height(&mut layout, windows[1], Grow, AREA);
+    assert_eq!(tabs_of(&layout, windows[0]), (true, Some(24)));
+    assert!(step_height(&mut layout, windows[1], Grow, AREA).is_empty());
+}
+
+#[test]
+fn shrink_a_tab_at_the_lower_limit() {
+    let (mut layout, windows) = tabbed_stack(2);
+    set_height(&mut layout, windows[0], WindowHeight::Fixed(4));
+    step_height(&mut layout, windows[0], Shrink, AREA);
+    assert_eq!(tabs_of(&layout, windows[0]), (true, Some(3)));
+    assert!(step_height(&mut layout, windows[0], Shrink, AREA).is_empty());
+}
+
+#[test]
+fn reset_the_tab_height() {
+    let (mut layout, windows) = tabbed_stack(2);
+    set_height(&mut layout, windows[0], WindowHeight::Fixed(16));
+    let reset = act(&mut layout, SessionAction::ResetHeight(windows[1]), AREA);
+    assert!(!reset.is_empty());
+    assert_eq!(tabs_of(&layout, windows[0]), (true, None));
+    assert!(act(&mut layout, SessionAction::ResetHeight(windows[1]), AREA).is_empty());
+}
+
+#[test]
+fn set_tab_rows_above_the_limit() {
+    let (mut layout, windows) = tabbed_stack(2);
+    set_height(&mut layout, windows[1], WindowHeight::Fixed(30));
+    assert_eq!(tabs_of(&layout, windows[0]), (true, Some(24)));
+}
+
+#[test]
+fn set_a_weight_in_a_tabbed_column() {
+    let (mut layout, windows) = tabbed_stack(2);
+    set_height(&mut layout, windows[0], WindowHeight::Fixed(16));
+    set_height(&mut layout, windows[0], auto(2, 1));
+    assert_eq!(tabs_of(&layout, windows[0]), (true, None));
+    assert_eq!(heights_of(&layout, windows[0]), [auto(1, 1); 2]);
+}
+
+#[test]
+fn turn_tabs_off_gives_the_stack_back() {
+    let (mut layout, windows) = stacked(2);
+    set_height(&mut layout, windows[0], WindowHeight::Fixed(16));
+    toggle_tabbed(&mut layout, windows[0]);
+    toggle_tabbed(&mut layout, windows[0]);
+    assert_eq!(tabs_of(&layout, windows[0]), (false, None));
+    assert_eq!(rows_of(&layout, windows[0], AREA), [16, 8]);
+}
+
+#[test]
+fn stack_heights_survive_tab_resizing() {
+    let (mut layout, windows) = stacked(2);
+    set_height(&mut layout, windows[0], WindowHeight::Fixed(16));
+    toggle_tabbed(&mut layout, windows[0]);
+    step_height(&mut layout, windows[1], Shrink, AREA);
+    assert_eq!(tabs_of(&layout, windows[0]), (true, Some(22)));
+    toggle_tabbed(&mut layout, windows[0]);
+    assert_eq!(rows_of(&layout, windows[0], AREA), [16, 8]);
+}
+
+#[test]
+fn grow_in_a_tabbed_column() {
+    let (mut layout, windows) = tabbed_stack(2);
+    set_height(&mut layout, windows[0], WindowHeight::Fixed(16));
+    step_height(&mut layout, windows[0], Grow, AREA);
+    assert_eq!(tabs_of(&layout, windows[0]), (true, Some(18)));
+    assert_eq!(heights_of(&layout, windows[0]), [auto(1, 1); 2]);
+}
+
+#[test]
+fn set_rows_in_a_tabbed_column() {
+    let (mut layout, windows) = stacked(2);
+    set_height(&mut layout, windows[0], WindowHeight::Fixed(14));
+    toggle_tabbed(&mut layout, windows[0]);
+    set_height(&mut layout, windows[1], WindowHeight::Fixed(10));
+    assert_eq!(tabs_of(&layout, windows[0]), (true, Some(10)));
+    assert_eq!(
+        heights_of(&layout, windows[0]),
+        [WindowHeight::Fixed(14), auto(1, 1)]
+    );
+}
+
+#[test]
+fn toggling_keeps_the_tab_height() {
+    let (mut layout, windows) = tabbed_stack(2);
+    set_height(&mut layout, windows[0], WindowHeight::Fixed(16));
+    let off = toggle_tabbed(&mut layout, windows[0]);
+    assert_eq!(
+        off,
+        [LayoutEvent::ColumnTabsChanged {
+            band: band_id(&layout, 0),
+            column: 0,
+            tabbed: false,
+            tab_rows: Some(16),
+        }]
+    );
+    assert_eq!(rows_of(&layout, windows[0], AREA), [12, 12]);
+    toggle_tabbed(&mut layout, windows[0]);
+    assert_eq!(tabs_of(&layout, windows[0]), (true, Some(16)));
+}

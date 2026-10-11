@@ -1,6 +1,9 @@
 use std::collections::HashMap;
+use std::ops::Range;
 
-use gband_core::geometry::{BORDER, Size, Tile, WindowBox, drawn_copy, placed, tiles};
+use gband_core::geometry::{
+    BORDER, Size, Tile, WindowBox, drawn_copy, placed, tab_segments, tiles,
+};
 use gband_core::layout::{BandId, Layout, WindowId};
 use gband_core::view::{Scene, View};
 use gband_emulator::{Emulator, Grid};
@@ -26,6 +29,7 @@ pub struct Shown<'a> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RegionKind {
     Tile { column: usize, row: usize },
+    TabSegment { column: usize, row: usize },
     Lifted,
     Floating,
     PluginFloat(u32),
@@ -378,6 +382,21 @@ struct Layer {
     placement: Placement,
     border: Border,
     focused: bool,
+    tabs: Option<Tabs>,
+}
+
+struct Tabs {
+    windows: Vec<WindowId>,
+    shown: usize,
+}
+
+impl Tabs {
+    fn segments(&self, height: u16) -> impl Iterator<Item = (WindowId, Range<u16>)> + '_ {
+        self.windows
+            .iter()
+            .zip(tab_segments(height, self.windows.len()))
+            .filter_map(|(&window, segment)| Some((window, segment?)))
+    }
 }
 
 fn layers(ribbon: &Ribbon<'_>, target: Rect) -> Vec<Layer> {
@@ -389,7 +408,8 @@ fn layers(ribbon: &Ribbon<'_>, target: Rect) -> Vec<Layer> {
                      band,
                      tile: DrawnTile,
                      placement: Placement,
-                     (border, focused_chars): (&Border, &BorderChars)| {
+                     (border, focused_chars): (&Border, &BorderChars),
+                     tabs: Option<Tabs>| {
         let focused = focused == Some(window);
         let clip = &placement.clip;
         let x = i64::from(target.x) + placement.left;
@@ -423,6 +443,7 @@ fn layers(ribbon: &Ribbon<'_>, target: Rect) -> Vec<Layer> {
                 },
             },
             focused,
+            tabs,
         });
     };
     for drawn in &ribbon.drawn.bands {
@@ -430,16 +451,28 @@ fn layers(ribbon: &Ribbon<'_>, target: Rect) -> Vec<Layer> {
             continue;
         };
         let band_tiles = tiles(band, ribbon.area);
-        let mut placed: Vec<(&Tile, DrawnTile)> = band_tiles
+        let kept = |window: &WindowId| lifted.is_none_or(|lifted| lifted.window != *window);
+        let tabs = |tile: &Tile| {
+            let column = &band.columns[tile.column];
+            if !column.tabbed {
+                return Some(None);
+            }
+            let windows: Vec<WindowId> = column.windows.iter().copied().filter(kept).collect();
+            let tab = ribbon.view.shown_tab(&windows)?;
+            let shown = windows.iter().position(|&window| window == tab)?;
+            (windows[shown] == tile.window).then_some(Some(Tabs { windows, shown }))
+        };
+        let mut placed: Vec<(&Tile, DrawnTile, Option<Tabs>)> = band_tiles
             .iter()
-            .filter(|tile| lifted.is_none_or(|lifted| lifted.window != tile.window))
-            .map(|tile| {
+            .filter(|tile| kept(&tile.window))
+            .filter_map(|tile| Some((tile, tabs(tile)?)))
+            .map(|(tile, tabs)| {
                 let moving = ribbon.drawn.tiles.get(&tile.window).copied();
-                (tile, moving.unwrap_or_else(|| DrawnTile::from(tile)))
+                (tile, moving.unwrap_or_else(|| DrawnTile::from(tile)), tabs)
             })
             .collect();
-        placed.sort_by_key(|&(tile, _)| focused == Some(tile.window));
-        for (tile, drawn_tile) in placed {
+        placed.sort_by_key(|&(tile, _, _)| focused == Some(tile.window));
+        for (tile, drawn_tile, tabs) in placed {
             let Some(placement) =
                 Placement::new(&drawn_tile, drawn.camera, drawn.strip, drawn.top, target)
             else {
@@ -456,6 +489,7 @@ fn layers(ribbon: &Ribbon<'_>, target: Rect) -> Vec<Layer> {
                 drawn_tile,
                 placement,
                 (ribbon.tile_border, ribbon.focused_tile_chars),
+                tabs,
             );
         }
     }
@@ -474,6 +508,7 @@ fn layers(ribbon: &Ribbon<'_>, target: Rect) -> Vec<Layer> {
                 tile,
                 placement,
                 (ribbon.tile_border, ribbon.focused_tile_chars),
+                None,
             );
         }
     }
@@ -502,6 +537,7 @@ fn layers(ribbon: &Ribbon<'_>, target: Rect) -> Vec<Layer> {
             tile,
             placement,
             (ribbon.floating_border, ribbon.focused_floating_chars),
+            None,
         );
     }
     layers
@@ -509,10 +545,34 @@ fn layers(ribbon: &Ribbon<'_>, target: Rect) -> Vec<Layer> {
 
 pub fn regions(ribbon: &Ribbon<'_>, area: Rect) -> Vec<Region> {
     let target = ribbon.region.intersection(area);
-    let mut regions: Vec<Region> = layers(ribbon, target)
-        .into_iter()
-        .map(|layer| layer.region)
-        .collect();
+    let mut regions = Vec::new();
+    for layer in layers(ribbon, target) {
+        let region = layer.region;
+        regions.push(region);
+        let (Some(tabs), RegionKind::Tile { column, .. }) = (&layer.tabs, region.kind) else {
+            continue;
+        };
+        for (window, segment) in tabs.segments(layer.tile.height) {
+            let top = (region.y + i64::from(segment.start)).max(0);
+            let bottom = region.y + i64::from(segment.end);
+            if region.x < 0 || bottom <= top {
+                continue;
+            }
+            let cells = Rect::new(region.x as u16, top as u16, 1, (bottom - top) as u16);
+            let visible = cells.intersection(region.visible);
+            let Some(location) = ribbon.layout.locate(window).filter(|_| !visible.is_empty())
+            else {
+                continue;
+            };
+            let row = location.row;
+            regions.push(Region {
+                kind: RegionKind::TabSegment { column, row },
+                window: Some(window),
+                visible,
+                ..region
+            });
+        }
+    }
     for &(id, float) in &ribbon.floats {
         let placed = Rect::new(
             ribbon.region.x.saturating_add(float.col),
@@ -566,6 +626,7 @@ pub fn render(ribbon: &Ribbon<'_>, buffer: &mut Buffer) -> Option<Position> {
             placement,
             border,
             focused,
+            tabs,
         } = layer;
         let Some(window) = region.window else {
             continue;
@@ -608,6 +669,22 @@ pub fn render(ribbon: &Ribbon<'_>, buffer: &mut Buffer) -> Option<Position> {
                     .collect()
             })
             .unwrap_or_default();
+        let indicator = tabs.as_ref().map(|tabs| Indicator {
+            segments: tabs
+                .segments(tile.height)
+                .enumerate()
+                .map(|(index, (_, rows))| {
+                    if index != tabs.shown {
+                        (rows, "░", ribbon.styles.tab_indicator)
+                    } else if focused {
+                        (rows, "█", ribbon.styles.tab_indicator_active)
+                    } else {
+                        (rows, "█", ribbon.styles.tab_indicator)
+                    }
+                })
+                .map(|(rows, symbol, style)| (rows, symbol, ribbon.colors.style(&style)))
+                .collect(),
+        });
         paint(
             buffer,
             target,
@@ -619,6 +696,7 @@ pub fn render(ribbon: &Ribbon<'_>, buffer: &mut Buffer) -> Option<Position> {
                 style: ribbon.colors.style(style),
                 title,
                 decorations,
+                indicator,
             },
             selection,
         );
@@ -779,6 +857,11 @@ struct Edge<'a> {
     style: Style,
     title: Option<&'a str>,
     decorations: Vec<(&'a str, Style)>,
+    indicator: Option<Indicator>,
+}
+
+struct Indicator {
+    segments: Vec<(Range<u16>, &'static str, Style)>,
 }
 
 fn draw_decorations(line: &mut Buffer, width: u16, decorations: &[(&str, Style)]) -> Option<u16> {
@@ -809,6 +892,7 @@ fn draw_tile(
         style,
         title,
         ref decorations,
+        ref indicator,
     } = *edge;
     let cut_left = u16::from(clip.start > 0);
     let cut_right = u16::from(clip.end < tile.width);
@@ -826,6 +910,23 @@ fn draw_tile(
     );
     let mut scratch = Buffer::empty(area);
     draw_border(&mut scratch, area, border, style);
+    if let Some(indicator) = indicator {
+        let mut put = |row: u16, symbol: &str, style: Style| {
+            let at = (0u16.wrapping_sub(shift.cols), row.wrapping_sub(shift.rows));
+            if let Some(cell) = scratch.cell_mut(at) {
+                cell.reset();
+                cell.set_symbol(symbol).set_style(style);
+            }
+        };
+        for row in BORDER..tile.height.saturating_sub(BORDER) {
+            put(row, " ", style);
+        }
+        for (rows, symbol, style) in &indicator.segments {
+            for row in rows.clone() {
+                put(row, symbol, *style);
+            }
+        }
+    }
     if border.sides.top && clip.top == 0 {
         let row = Rect::new(0, 0, tile.width, 1);
         let mut line = Buffer::empty(row);

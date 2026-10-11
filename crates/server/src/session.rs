@@ -250,7 +250,18 @@ impl Session {
 
     fn settle(&mut self) {
         self.settle_at = None;
-        let shown: HashSet<WindowId> = self.shown.values().flatten().copied().collect();
+        let mut shown: HashSet<WindowId> = self.shown.values().flatten().copied().collect();
+        let tabs: Vec<WindowId> = self
+            .layout
+            .bands()
+            .iter()
+            .flat_map(|band| &band.columns)
+            .filter(|column| {
+                column.tabbed && column.windows.iter().any(|window| shown.contains(window))
+            })
+            .flat_map(|column| column.windows.iter().copied())
+            .collect();
+        shown.extend(tabs);
         for band in self.layout.bands() {
             let tiled = tiles(band, self.area)
                 .into_iter()

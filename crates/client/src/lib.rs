@@ -356,18 +356,19 @@ impl Display {
                 window,
                 origin: self.floating_box(window)?,
             }),
-            (ClientAction::DragWindow, RegionKind::Tile { .. } | RegionKind::Lifted) => {
-                Some(Motion::Lift {
-                    window,
-                    region,
-                    drawn: self
-                        .drawn
-                        .as_ref()
-                        .and_then(|drawn| drawn.tiles.get(&window).copied()),
-                    columns: drop_columns(&self.regions, self.view.as_ref()?.band()),
-                    lifted: false,
-                })
-            }
+            (
+                ClientAction::DragWindow,
+                RegionKind::Tile { .. } | RegionKind::TabSegment { .. } | RegionKind::Lifted,
+            ) => Some(Motion::Lift {
+                window,
+                region,
+                drawn: self
+                    .drawn
+                    .as_ref()
+                    .and_then(|drawn| drawn.tiles.get(&window).copied()),
+                columns: drop_columns(&self.regions, self.view.as_ref()?.band()),
+                lifted: false,
+            }),
             (ClientAction::DragResize(_), RegionKind::Floating) => Some(Motion::Resize {
                 target: Resized::Floating {
                     window,
@@ -375,17 +376,18 @@ impl Display {
                 },
                 edges,
             }),
-            (ClientAction::DragResize(_), RegionKind::Tile { .. } | RegionKind::Lifted) => {
-                Some(Motion::Resize {
-                    target: Resized::Tile {
-                        window,
-                        width: region.width,
-                        height: region.height,
-                        travel,
-                    },
-                    edges,
-                })
-            }
+            (
+                ClientAction::DragResize(_),
+                RegionKind::Tile { .. } | RegionKind::TabSegment { .. } | RegionKind::Lifted,
+            ) => Some(Motion::Resize {
+                target: Resized::Tile {
+                    window,
+                    width: region.width,
+                    height: region.height,
+                    travel,
+                },
+                edges,
+            }),
             _ => None,
         }
     }
@@ -902,7 +904,15 @@ impl Display {
                     let columns = band
                         .columns
                         .iter()
-                        .map(|column| (column.windows.clone(), column.width, column.full_width))
+                        .map(|column| {
+                            (
+                                column.windows.clone(),
+                                column.width,
+                                column.full_width,
+                                column.tabbed,
+                                column.tab_rows,
+                            )
+                        })
                         .collect();
                     (band.id, columns, band.floating.clone())
                 })
@@ -1136,7 +1146,7 @@ pub struct Observed {
     shape: Vec<(BandId, Vec<ColumnShape>, Vec<FloatingWindow>)>,
 }
 
-type ColumnShape = (Vec<WindowId>, Proportion, bool);
+type ColumnShape = (Vec<WindowId>, Proportion, bool, bool, Option<u16>);
 
 fn changes(before: Option<Observed>, after: Option<&Observed>) -> Vec<Event> {
     let (Some(before), Some(after)) = (before, after) else {

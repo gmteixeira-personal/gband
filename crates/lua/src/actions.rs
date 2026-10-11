@@ -23,7 +23,7 @@ const fn builtin(name: &'static str, action: Action, desc: &'static str) -> Buil
     BuiltinAction { name, action, desc }
 }
 
-pub const ACTIONS: [BuiltinAction; 32] = [
+pub const ACTIONS: [BuiltinAction; 33] = [
     builtin(
         "focus_column_left",
         Action::View(ViewAction::FocusLeft),
@@ -123,6 +123,11 @@ pub const ACTIONS: [BuiltinAction; 32] = [
         "toggle_full_width",
         Action::Session(SessionCommand::ToggleFullWidth),
         "toggle full width of the window's column",
+    ),
+    builtin(
+        "toggle_column_tabbed",
+        Action::Session(SessionCommand::ToggleTabbed),
+        "toggle tabbed display of the window's column",
     ),
     builtin(
         "grow_column_width",

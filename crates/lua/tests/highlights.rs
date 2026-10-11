@@ -311,3 +311,33 @@ fn no_event_during_the_load() {
     );
     assert_eq!(global::<Vec<String>>(&config, "log"), Vec::<String>::new());
 }
+
+#[test]
+fn tab_indicator_defaults_link_to_the_borders() {
+    let (_scratch, config) = loaded("tab-defaults", "");
+    assert_eq!(
+        get(&config, "TabIndicatorActive"),
+        ["link=WindowBorderFocused"]
+    );
+    assert_eq!(get(&config, "TabIndicator"), ["link=WindowBorder"]);
+    assert_eq!(
+        resolved(&config, "TabIndicatorActive"),
+        ["bold=true", "fg=#b1b9f9"]
+    );
+    assert_eq!(resolved(&config, "TabIndicator"), ["dim=true"]);
+}
+
+#[test]
+fn tab_indicator_styles_follow_the_borders() {
+    let (_scratch, config) = loaded(
+        "tab-styles",
+        "gband.hl.set('WindowBorder', { fg = 3 })\ngband.hl.set('WindowBorderFocused', { fg = 4 })",
+    );
+    clean(&config.runtime.set_state(drawn(80)));
+    clean(&config.runtime.refresh_plugins());
+    let styles = config.runtime.take_client_styles().unwrap();
+    assert_eq!(styles.tab_indicator, styles.border);
+    assert_eq!(styles.tab_indicator_active, styles.border_focused);
+    assert_eq!(styles.tab_indicator.fg, Some(Color::Index(3)));
+    assert_eq!(styles.tab_indicator_active.fg, Some(Color::Index(4)));
+}

@@ -57,6 +57,11 @@ fn bundled_sidebar() {
 }
 
 #[test]
+fn tabbed_columns() {
+    gband_test(root(), &["tests/lua/tabbed_spec.lua"]);
+}
+
+#[test]
 fn mouse() {
     gband_test(root(), &["tests/lua/mouse_spec.lua"]);
 }

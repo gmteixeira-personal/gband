@@ -238,6 +238,7 @@ fn session(lua: &Lua, name: Value) -> mlua::Result<Option<Table>> {
                 f64::from(column.width.num) / f64::from(column.width.den),
             )?;
             described.set("full_width", column.full_width)?;
+            described.set("tabbed", column.tabbed)?;
             let windows = lua.create_table()?;
             for window in &column.windows {
                 let item = lua.create_table()?;

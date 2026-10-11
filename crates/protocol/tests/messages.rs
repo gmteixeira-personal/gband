@@ -453,6 +453,31 @@ fn layout_round_trips() {
 }
 
 #[test]
+fn tabbed_column_in_the_layout_round_trips() {
+    let mut layout = Layout::new();
+    let options = LayoutOptions::default();
+    let window = layout.allocate_window();
+    let band = layout.bands()[0].id;
+    layout.open(window, band, None, None, &options);
+    for action in [
+        SessionAction::ToggleTabbed(window),
+        SessionAction::SetHeight {
+            window,
+            height: WindowHeight::Fixed(16),
+        },
+    ] {
+        layout.apply(action, AREA, &options);
+    }
+    let column = &layout.bands()[0].columns[0];
+    assert_eq!((column.tabbed, column.tab_rows), (true, Some(16)));
+    round_trip(ServerMessage::Layout {
+        cols: 80,
+        rows: 24,
+        layout,
+    });
+}
+
+#[test]
 fn floating_windows_in_the_layout_round_trip() {
     let mut layout = Layout::new();
     let options = LayoutOptions::default();

@@ -21,6 +21,7 @@ pub enum SessionCommand {
     ToggleFloating,
     CycleWidth,
     ToggleFullWidth,
+    ToggleTabbed,
     StepWidth { step: Step, by: Proportion },
     StepHeight { step: Step, by: Proportion },
     ResetHeight,
@@ -87,6 +88,7 @@ impl SessionCommand {
 
             SessionCommand::CycleWidth => SessionAction::CycleWidth(window),
             SessionCommand::ToggleFullWidth => SessionAction::ToggleFullWidth(window),
+            SessionCommand::ToggleTabbed => SessionAction::ToggleTabbed(window),
             SessionCommand::StepWidth { step, by } => SessionAction::StepWidth { window, step, by },
             SessionCommand::StepHeight { step, by } => {
                 SessionAction::StepHeight { window, step, by }

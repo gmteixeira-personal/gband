@@ -29,6 +29,12 @@ pub enum LayoutEvent {
         column: usize,
         heights: Vec<WindowHeight>,
     },
+    ColumnTabsChanged {
+        band: BandId,
+        column: usize,
+        tabbed: bool,
+        tab_rows: Option<u16>,
+    },
     ColumnMoved {
         band: BandId,
         from: usize,

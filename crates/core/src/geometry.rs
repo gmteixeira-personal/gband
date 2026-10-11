@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use serde::{Deserialize, Serialize};
 
 use crate::layout::{Band, Column, FloatingWindow, Weight, WindowHeight, WindowId, gcd};
@@ -241,6 +243,10 @@ pub fn window_heights(column: &Column, rows: u16) -> Vec<u16> {
     heights
 }
 
+pub fn tab_height(column: &Column, rows: u16) -> u16 {
+    column.tab_rows.unwrap_or(rows).min(rows)
+}
+
 pub fn tiles(band: &Band, area: Size) -> Vec<Tile> {
     band.columns
         .iter()
@@ -248,10 +254,16 @@ pub fn tiles(band: &Band, area: Size) -> Vec<Tile> {
         .enumerate()
         .flat_map(|(column_index, (column, span))| {
             let mut y = 0;
+            let heights = if column.tabbed {
+                vec![tab_height(column, area.rows); column.windows.len()]
+            } else {
+                window_heights(column, area.rows)
+            };
+            let stacked = !column.tabbed;
             column
                 .windows
                 .iter()
-                .zip(window_heights(column, area.rows))
+                .zip(heights)
                 .enumerate()
                 .map(move |(row, (&window, height))| {
                     let tile = Tile {
@@ -263,10 +275,37 @@ pub fn tiles(band: &Band, area: Size) -> Vec<Tile> {
                         width: span.width,
                         height,
                     };
-                    y += height;
+                    if stacked {
+                        y += height;
+                    }
                     tile
                 })
                 .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+pub fn tab_segments(rows: u16, tabs: usize) -> Vec<Option<Range<u16>>> {
+    let inner = usize::from(rows.saturating_sub(2 * BORDER));
+    let (drawn, gap) = if inner + 1 >= 2 * tabs {
+        (tabs, 1)
+    } else {
+        (tabs.min(inner), 0)
+    };
+    if drawn == 0 {
+        return vec![None; tabs];
+    }
+    let shared = inner - gap * (drawn - 1);
+    let mut start = usize::from(BORDER);
+    (0..tabs)
+        .map(|index| {
+            if index >= drawn {
+                return None;
+            }
+            let length = shared / drawn + usize::from(index < shared % drawn);
+            let segment = start as u16..(start + length) as u16;
+            start += length + gap;
+            Some(segment)
         })
         .collect()
 }

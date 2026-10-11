@@ -2571,3 +2571,113 @@ fn attach_starts_the_focus_order_again() {
     assert_eq!(again.last_focus().get(&windows[1]), None);
     assert_eq!(again.peeked(), None);
 }
+
+fn toggle_tabbed(layout: &mut Layout, window: WindowId) {
+    layout.apply(
+        SessionAction::ToggleTabbed(window),
+        AREA,
+        &LayoutOptions::default(),
+    );
+}
+
+fn tabbed_then_column() -> (Layout, Vec<WindowId>) {
+    let (mut layout, windows) = row_of_columns(4);
+    stack_into_left(&mut layout, windows[1]);
+    stack_into_left(&mut layout, windows[2]);
+    toggle_tabbed(&mut layout, windows[0]);
+    (layout, windows)
+}
+
+fn shown_tab(view: &View, layout: &Layout, window: WindowId) -> Option<WindowId> {
+    let location = layout.locate(window).unwrap();
+    view.shown_tab(&layout.bands()[location.band].columns[location.column].windows)
+}
+
+#[test]
+fn focused_tab_shown() {
+    let (layout, windows) = tabbed_then_column();
+    let mut view = View::new(scene(&layout));
+    act(&mut view, &layout, &[ViewAction::FocusDown]);
+    assert_eq!(shown_tab(&view, &layout, windows[0]), Some(windows[1]));
+    assert_eq!(view.shown(scene(&layout)), [windows[1], windows[3]]);
+}
+
+#[test]
+fn next_tab() {
+    let (layout, windows) = tabbed_then_column();
+    let mut view = View::new(scene(&layout));
+    act(
+        &mut view,
+        &layout,
+        &[ViewAction::FocusDown, ViewAction::FocusDown],
+    );
+    assert_eq!(view.focused(), Some(windows[2]));
+    assert_eq!(view.shown(scene(&layout)), [windows[2], windows[3]]);
+}
+
+#[test]
+fn remembered_tab() {
+    let (layout, windows) = tabbed_then_column();
+    let mut view = View::new(scene(&layout));
+    act(
+        &mut view,
+        &layout,
+        &[
+            ViewAction::FocusDown,
+            ViewAction::FocusDown,
+            ViewAction::FocusRight,
+        ],
+    );
+    assert_eq!(view.focused(), Some(windows[3]));
+    assert_eq!(shown_tab(&view, &layout, windows[0]), Some(windows[2]));
+    assert_eq!(view.shown(scene(&layout)), [windows[2], windows[3]]);
+}
+
+#[test]
+fn never_focused_tab_column_shows_its_top_window() {
+    let (mut layout, windows) = row_of_columns(4);
+    let [p4, p1, p2, p3] = windows[..] else {
+        panic!()
+    };
+    stack_into_left(&mut layout, p2);
+    stack_into_left(&mut layout, p3);
+    toggle_tabbed(&mut layout, p1);
+    let view = View::new(scene(&layout));
+    assert_eq!(view.focused(), Some(p4));
+    assert_eq!(shown_tab(&view, &layout, p1), Some(p1));
+    assert_eq!(view.shown(scene(&layout)), [p4, p1]);
+}
+
+#[test]
+fn hidden_tab_not_shown() {
+    let (mut layout, windows) = row_of_columns(2);
+    stack_into_left(&mut layout, windows[1]);
+    toggle_tabbed(&mut layout, windows[0]);
+    let mut view = View::new(scene(&layout));
+    act(&mut view, &layout, &[ViewAction::FocusDown]);
+    assert_eq!(view.shown(scene(&layout)), [windows[1]]);
+    act(&mut view, &layout, &[ViewAction::FocusUp]);
+    assert_eq!(view.shown(scene(&layout)), [windows[0]]);
+}
+
+#[test]
+fn peeked_tab_is_shown() {
+    let (layout, windows) = tabbed_then_column();
+    let mut view = View::new(scene(&layout));
+    act(&mut view, &layout, &[ViewAction::FocusRight]);
+    act(&mut view, &layout, &[ViewAction::Peek(windows[2])]);
+    assert_eq!(view.shown(scene(&layout)), [windows[2], windows[3]]);
+    view.end_peek(scene(&layout));
+    assert_eq!(view.shown(scene(&layout)), [windows[0], windows[3]]);
+}
+
+#[test]
+fn closing_the_focused_tab_shows_the_next_tab() {
+    let (mut layout, windows) = tabbed_then_column();
+    let mut view = View::new(scene(&layout));
+    act(&mut view, &layout, &[ViewAction::FocusDown]);
+    layout.remove(windows[1]);
+    view.sync(scene(&layout));
+    assert_eq!(view.focused(), Some(windows[2]));
+    assert_eq!(view.shown(scene(&layout)), [windows[2], windows[3]]);
+}

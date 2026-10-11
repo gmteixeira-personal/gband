@@ -298,6 +298,7 @@ The built-in actions, with the description `gband.action.list()` gives each:
 | `toggle_window_floating` | session | float or tile the window |
 | `cycle_column_width` | session | cycle the width of the window's column |
 | `toggle_full_width` | session | toggle full width of the window's column |
+| `toggle_column_tabbed` | session | toggle tabbed display of the window's column |
 | `grow_column_width` | session | grow the width of the window's column |
 | `shrink_column_width` | session | shrink the width of the window's column |
 | `grow_window_height` | session | grow the height of the window |
@@ -596,7 +597,7 @@ end, { desc = "the navigation n" })
 
 - `cols` and `rows`: the size of the screen area.
 - `bands`: one table per band, in order, each with `id`, `columns` and `floating`.
-- `columns`: one table per column, left to right, each with `width` as a number, `full_width` and `windows`.
+- `columns`: one table per column, left to right, each with `width` as a number, `full_width`, `tabbed`, true when the column shows its windows as tabs, `tab_rows`, the height its tabs share in rows, only when that height is fixed, and `windows`.
 - `windows`: one table per window, top to bottom, each with `id` and either `rows`, a fixed height, or `weight`, an automatic height's weight. A window that shows a tiled plugin window this client opened also has `plugin_window`. A window that runs a program also has `name`, the name its border shows, with ` #n` when another window of the band has the same name, and `manual_name`, the name set by `gband.window.rename`, when it has one. A window this client has focused has `last_focus`, as described below.
 - `floating`: one table per floating window, in the band's floating order, each with `id`, `width` and `full_width` as a column has them, `rows`, the box's height, and `col` and `row`, the box's top-left cell as placed in the screen area. A window that shows a plugin window this client opened also has `plugin_window`, and one that runs a program has `name` and `manual_name` as a window table has them. A window this client has focused has `last_focus`. A window this client has minimized has `minimized`, true; other windows have no `minimized`.
 
@@ -627,7 +628,7 @@ end, { desc = "describe the layout" })
 
 ## Action targets
 
-A built-in action that acts on the focused window also takes a target, a table naming the window: `close_window`, `consume_or_expel_left`, `consume_or_expel_right`, `move_column_left`, `move_column_right`, `move_window_down`, `move_window_up`, `cycle_column_width`, `toggle_full_width`, `grow_column_width`, `shrink_column_width`, `grow_window_height`, `shrink_window_height` and `reset_window_height`.
+A built-in action that acts on the focused window also takes a target, a table naming the window: `close_window`, `consume_or_expel_left`, `consume_or_expel_right`, `move_column_left`, `move_column_right`, `move_window_down`, `move_window_up`, `cycle_column_width`, `toggle_full_width`, `toggle_column_tabbed`, `grow_column_width`, `shrink_column_width`, `grow_window_height`, `shrink_window_height` and `reset_window_height`.
 `gband.action.close_window({ window = 3 })` closes window 3, whichever window is focused.
 
 `grow_column_width`, `shrink_column_width`, `grow_window_height` and `shrink_window_height` also take `step`, the amount to grow or shrink by as a fraction of the screen: greater than 0 and at most 10000 for a width, and at most 1 for a height.
@@ -1312,6 +1313,8 @@ The client draws its own parts with these groups, which it defines as defaults b
 |---|---|---|
 | `WindowBorder` | `{ dim = true }` | the border of each tiled or floating window that is not focused |
 | `WindowBorderFocused` | `{ fg = "#b1b9f9", bold = true }` | the focused tiled or floating window's border, and a lifted tile's drop outline |
+| `TabIndicatorActive` | `{ link = "WindowBorderFocused" }` | the shown tab's segment of the tab indicator of the focused window's tabbed column |
+| `TabIndicator` | `{ link = "WindowBorder" }` | every other segment of a tab indicator |
 | `ErrorBanner` | `{ fg = "red", reverse = true }` | the error banner on the ribbon's bottom row |
 | `SettingsLabel` | `{ dim = true }` | the labels of the settings window |
 
@@ -1839,7 +1842,7 @@ end)
 
 ### Session actions in the server
 
-The server's `gband.action` holds the session actions: `open_window`, `close_window`, `consume_or_expel_left`, `consume_or_expel_right`, `move_column_left`, `move_column_right`, `move_window_down`, `move_window_up`, `toggle_window_floating`, `cycle_column_width`, `toggle_full_width`, `grow_column_width`, `shrink_column_width`, `grow_window_height`, `shrink_window_height` and `reset_window_height`.
+The server's `gband.action` holds the session actions: `open_window`, `close_window`, `consume_or_expel_left`, `consume_or_expel_right`, `move_column_left`, `move_column_right`, `move_window_down`, `move_window_up`, `toggle_window_floating`, `cycle_column_width`, `toggle_full_width`, `toggle_column_tabbed`, `grow_column_width`, `shrink_column_width`, `grow_window_height`, `shrink_window_height` and `reset_window_height`.
 Each takes one target table naming `session` and, in `window`, the window it acts on:
 
 ```lua
@@ -1866,7 +1869,7 @@ They can be called only in a callback.
 `gband.session(name)` returns `{ name, bands, clients }`, or nil for an unknown session:
 
 - `bands` lists the bands from the top, each `{ band, columns, floating }`
-- each column is `{ width, full_width, windows }`, from the left
+- each column is `{ width, full_width, tabbed, windows }`, from the left, where `tabbed` is true when the column shows its windows as tabs
 - each window is `{ window }`, from the top
 - each floating window is `{ window, width, full_width, rows, col, row }`, in the band's floating order, with `col` and `row` the box's top-left cell as placed in the session's screen area
 - `clients` lists the numbers of the attached clients, ascending

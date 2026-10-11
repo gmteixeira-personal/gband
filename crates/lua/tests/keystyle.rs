@@ -177,6 +177,28 @@ fn arrow_keys_beside_hjkl() {
 }
 
 #[test]
+fn tabbed_display_follows_full_width() {
+    for style in ["modal", "direct"] {
+        let scratch = Scratch::new(&format!("keystyle-tabbed-{style}"));
+        scratch.write(&format!("gband.keystyle.use('{style}')"));
+        let config = scratch.loaded();
+        let entries = prefix_entries(&config);
+        let at = |key: &str| entries.iter().position(|(bound, ..)| bound == key);
+        let w = at("w").expect(style);
+        assert_eq!(at("f"), Some(w - 1), "{style}");
+        assert_eq!(
+            entries[w],
+            (
+                "w".to_owned(),
+                Some("toggle_column_tabbed".to_owned()),
+                Some("toggle tabbed display of the window's column".to_owned()),
+            ),
+            "{style}"
+        );
+    }
+}
+
+#[test]
 fn every_preset_binding_is_described() {
     let functions = [
         ("n", "open a window"),
