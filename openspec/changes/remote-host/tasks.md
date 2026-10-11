@@ -1,0 +1,25 @@
+## 1. Server working directory
+
+- [ ] 1.1 Give `Registry` in `crates/server/src/registry.rs` a `cwd: PathBuf` from `ServerConfig::cwd`, and make `Request::Attach` create a missing session in the client's `cwd` when it is a directory and in the registry's otherwise. Add "Empty working directory" and "Missing working directory" to `crates/server/tests/sessions.rs`. Verify with `cargo test -p gband-server --test sessions`
+
+## 2. Client transport
+
+- [ ] 2.1 Add `fn remote(&self) -> bool`, `async fn diagnose(&self) -> Option<anyhow::Error>` and `async fn finish(&self)` to `Transport` in `crates/client/src/transport.rs`, with `false`, `None` and a no-op for `UnixTransport` and for `RelayTransport` in `crates/test-support/src/lib.rs`. Make `connect::handshake` skip the identity comparison and `connect` call `diagnose` on a failure before the info arrives, and make `gband_client::run` send an empty `cwd` for a remote transport and call `finish` after the terminal is restored. Verify with `cargo test -p gband-client --test transport --test connect`
+- [ ] 2.2 Add `SshTransport` in a new `crates/client/src/ssh.rs`: spawn `ssh -T -- <destination>` and the remote command with piped standard input, output and error, read standard error into the log and the last-line slot, and implement `diagnose` with the 127 and `cannot reach` lines and `finish` with the 2-second wait and kill. Add unit tests in that file for both `diagnose` lines and for `ssh exited with status <n>` when ssh wrote nothing. Verify with `cargo test -p gband-client ssh`
+- [ ] 2.3 Add `relay` in a new `crates/client/src/relay.rs`: open a `UnixTransport` with `start_server: true`, copy standard input to the socket with a shutdown on end of input, copy the socket to standard output with a flush per read, and return when both copies end. Add a test to `crates/client/tests/transport.rs` that drives `relay` over in-memory pipes to a `TestServer` and checks "Relay to a running server" and "Server ends the session". Verify with `cargo test -p gband-client --test transport`
+
+## 3. Command line
+
+- [ ] 3.1 Add `shell_quote` and the remote command builders to a new `src/remote.rs`, with unit tests for a plain word, a space, a single quote and an empty string, and for the argument list that drops `-r host`, `-rhost`, `--remote host`, `--remote=host`, `--remote-gband X` and `--remote-gband=X` by clap index. Verify with `cargo test --bin gband remote`
+- [ ] 3.2 In `src/main.rs`, add the global `-r`/`--remote` and `--remote-gband` options and the hidden `Relay { size }` subcommand logging to the client series. Refuse `-r` for `server`, `relay`, `test`, `completions` and `install-completions`, an empty destination, and `--remote-gband` without `-r`, each with status 2 and no log file. Add those cases and "Relay is hidden" and the `-r` help line to `tests/subcommands.rs`. Verify with `cargo test --test subcommands`
+- [ ] 3.3 In `src/main.rs`, with `-r`, skip `Selection::resolve`, open the log span with the destination, add the destination to `Selection::kill_command`, run `attach` over `SshTransport` with the terminal check first and no nesting check, and run every other subcommand through `remote::run` with standard input from `/dev/null` except for `eval -`, mapping ssh's 255 to a destination line and status 1. Verify with `cargo build --workspace` and task 4.1
+
+## 4. End-to-end tests
+
+- [ ] 4.1 Add `tests/remote.rs` with a fake `ssh` written to a scratch directory first on `PATH`, recording its arguments and running `exec sh -c "$*"`, and with `--remote-gband` set to the built binary. Cover "Remote command line", "Remote gband with a tilde", "Socket path with a space", "Attach through ssh", "Remote named session", "Remote session starts in the login directory", "New remote session on a running server", "Local bindings over ssh", "Remote attach from a gband window", "Remote attach without a terminal", "Remote list-sessions", "Remote eval from standard input", "Window variables stay local", "Relay starts the server", "Run relay", "Remote events" and "Remote server" for the different-build note. Verify with `cargo test --test remote`
+- [ ] 4.2 Add a failing fake `ssh` variant to `tests/remote.rs` and cover "Unreachable host", "gband missing on the remote host", "ssh fails for a subcommand", "Connection drops" by killing the fake ssh, and "Incompatible remote server" with a server answering another protocol version. Verify with `cargo test --test remote`
+
+## 5. Docs and gate
+
+- [ ] 5.1 Add remote attach to the Usage section of `README.md`: `gband -r user@host`, `-s` and `-S` selecting the remote session and server, `--remote-gband`, gband needed on the remote host, and the shell start-up output that breaks the stream. Verify by reading the rendered section
+- [ ] 5.2 Run `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings` and `cargo test --workspace`, and attach to a real host with `gband -r` once, by hand, to confirm the password prompt appears before the client takes the terminal. Verify all three commands exit with status 0
