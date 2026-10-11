@@ -5,13 +5,16 @@ pub mod color;
 mod connect;
 pub mod mouse;
 pub mod plugin_windows;
+mod relay;
 pub mod render;
 mod requests;
+mod ssh;
 mod transport;
 
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::io::{Read, Write, stdin, stdout};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -60,10 +63,12 @@ use crate::mouse::{
     Sends, drop_columns, drop_place,
 };
 use crate::plugin_windows::{OpenRequest, Opened, PluginWindows};
+pub use crate::relay::{relay, run_relay};
 use crate::render::{
     Lifted, Overlay, Region, RegionKind, Ribbon, Shown, Top, draw_frame, regions, tops,
 };
 pub use crate::requests::{control, kill_session, list_sessions};
+pub use crate::ssh::{RemoteCommand, SshTransport};
 pub use crate::transport::{Link, Transport, UnixTransport};
 
 pub struct ClientConfig {
@@ -108,7 +113,11 @@ pub fn run(
     transport: impl Transport,
     configuration: Configuration,
 ) -> Result<Report> {
-    let cwd = std::env::current_dir().context("cannot read the current directory")?;
+    let cwd = if transport.remote() {
+        PathBuf::new()
+    } else {
+        std::env::current_dir().context("cannot read the current directory")?
+    };
     let animations = parse_animations(std::env::var(ANIMATIONS_VARIABLE).ok().as_deref());
     let mut display = Display::new(terminal_size(), animations);
     display.allow_titles(parse_window_titles(
@@ -127,33 +136,46 @@ pub fn run(
         placed,
     };
     runtime()?.block_on(async {
-        let mut connection = connect(&config, &transport, display.reported_size()).await?;
-        connection
-            .send(&ClientMessage::Attach {
-                session: config.session.clone(),
-                cwd,
-            })
-            .await?;
-        tracing::info!(pid = connection.pid, session = %config.session, "attached");
-        let stale_server = connection.stale_server;
-        let outcome = {
-            let _restore = TerminalGuard::enter()?;
-            let mut terminal = ratatui::init();
-            attach(
-                &mut terminal,
-                &mut connection,
-                display,
-                controls,
-                prepared,
-                &config.session,
-            )
-            .await?
-        };
-        tracing::info!("client finished: {outcome:?}");
-        Ok(Report {
-            outcome,
-            stale_server,
+        let report = session(&config, &transport, cwd, display, controls, prepared).await;
+        transport.finish().await;
+        report
+    })
+}
+
+async fn session(
+    config: &ClientConfig,
+    transport: &impl Transport,
+    cwd: PathBuf,
+    display: Display,
+    controls: Controls,
+    prepared: Prepared,
+) -> Result<Report> {
+    let mut connection = connect(config, transport, display.reported_size()).await?;
+    connection
+        .send(&ClientMessage::Attach {
+            session: config.session.clone(),
+            cwd,
         })
+        .await?;
+    tracing::info!(pid = connection.pid, session = %config.session, "attached");
+    let stale_server = connection.stale_server;
+    let outcome = {
+        let _restore = TerminalGuard::enter()?;
+        let mut terminal = ratatui::init();
+        attach(
+            &mut terminal,
+            &mut connection,
+            display,
+            controls,
+            prepared,
+            &config.session,
+        )
+        .await?
+    };
+    tracing::info!("client finished: {outcome:?}");
+    Ok(Report {
+        outcome,
+        stale_server,
     })
 }
 

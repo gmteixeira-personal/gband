@@ -63,6 +63,7 @@ pub struct Registry {
     sessions: BTreeMap<SessionName, Arc<SessionHandle>>,
     program: Vec<OsString>,
     socket: PathBuf,
+    cwd: PathBuf,
     requests: mpsc::UnboundedSender<Request>,
     events: broadcast::Sender<Published>,
     options: watch::Receiver<LayoutOptions>,
@@ -82,6 +83,7 @@ impl Registry {
     pub fn new(
         program: Vec<OsString>,
         socket: PathBuf,
+        cwd: PathBuf,
         requests: mpsc::UnboundedSender<Request>,
         shared: Shared,
     ) -> Self {
@@ -89,6 +91,7 @@ impl Registry {
             sessions: BTreeMap::new(),
             program,
             socket,
+            cwd,
             requests,
             events: shared.events,
             options: shared.options,
@@ -177,7 +180,10 @@ impl Registry {
             } => {
                 let handle = match self.live(&name) {
                     Some(handle) => Ok(Arc::clone(handle)),
-                    None => self.create(name, cwd, area),
+                    None => {
+                        let cwd = if cwd.is_dir() { cwd } else { self.cwd.clone() };
+                        self.create(name, cwd, area)
+                    }
                 };
                 let _ = reply.send(handle);
             }

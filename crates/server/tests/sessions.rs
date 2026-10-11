@@ -54,6 +54,26 @@ async fn attach_creates_a_missing_session_in_the_client_directory() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn empty_working_directory_takes_the_server_directory() {
+    let server = TestServer::start("empty-cwd", &["/bin/sh"]).await;
+    let mut work = server.attach_to("work", Path::new(""), 80, 24).await;
+    work.type_line("echo cwd=$(pwd)").await;
+    let expected = format!("cwd={}\n", server.runtime_dir.display());
+    work.wait_for_text(&expected).await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn missing_working_directory_takes_the_server_directory() {
+    let server = TestServer::start("missing-cwd", &["/bin/sh"]).await;
+    let mut work = server
+        .attach_to("work", Path::new("/no/such/dir"), 80, 24)
+        .await;
+    work.type_line("echo cwd=$(pwd)").await;
+    let expected = format!("cwd={}\n", server.runtime_dir.display());
+    work.wait_for_text(&expected).await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn key_before_a_request_closes_the_connection() {
     let server = TestServer::start("key-first", &["/bin/sh"]).await;
     let (mut peer, _) = TestClient::accepted(&server.socket(), 80, 24).await;

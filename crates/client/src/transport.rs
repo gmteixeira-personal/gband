@@ -30,6 +30,9 @@ pub trait Transport: fmt::Display {
     fn open(&self, size: Size) -> impl Future<Output = Result<Link>> + Send;
     fn may_replace_server(&self) -> bool;
     fn replace_server(&self) -> impl Future<Output = Result<()>> + Send;
+    fn remote(&self) -> bool;
+    fn diagnose(&self) -> impl Future<Output = Option<anyhow::Error>> + Send;
+    fn finish(&self) -> impl Future<Output = ()> + Send;
 }
 
 pub struct UnixTransport {
@@ -62,6 +65,16 @@ impl Transport for UnixTransport {
     async fn replace_server(&self) -> Result<()> {
         stop_server(&self.executable_path, &self.socket)
     }
+
+    fn remote(&self) -> bool {
+        false
+    }
+
+    async fn diagnose(&self) -> Option<anyhow::Error> {
+        None
+    }
+
+    async fn finish(&self) {}
 }
 
 impl UnixTransport {
