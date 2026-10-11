@@ -52,11 +52,10 @@ A column that stacks several windows splits its height between them, so each win
 ### Expected Files
 - openspec/changes/tabbed-columns/
 - README.md
+- crates/client/src/animation.rs
+- crates/client/src/bindings.rs
 - crates/client/src/lib.rs
-- crates/client/src/mouse.rs
 - crates/client/src/render.rs
-- crates/client/tests/actions.rs
-- crates/client/tests/animation.rs
 - crates/client/tests/events.rs
 - crates/client/tests/look.rs
 - crates/client/tests/render.rs
@@ -80,14 +79,15 @@ A column that stacks several windows splits its height between them, so each win
 - crates/lua/tests/control.rs
 - crates/lua/tests/highlights.rs
 - crates/lua/tests/keystyle.rs
+- crates/lua/tests/plugins.rs
 - crates/lua/tests/server.rs
 - crates/protocol/tests/messages.rs
-- crates/server/tests/events.rs
+- crates/server/src/session.rs
+- crates/server/tests/resize.rs
 - docs/internals/02-highlights.md
 - docs/internals/08-key-styles.md
 - docs/plugins.md
 - tests/keystyle.rs
-- tests/lua/screenshots/keylist_spec/
 - tests/lua/screenshots/tabbed_spec/
 - tests/lua/tabbed_spec.lua
 - tests/lua_specs.rs
