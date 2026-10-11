@@ -23,7 +23,7 @@ Every message in either direction SHALL be sent as one frame. A frame is a 4-byt
 - **AND** it keeps serving its other clients
 
 ### Requirement: Handshake
-The first frame a client sends SHALL be a hello. The hello's payload SHALL begin with the client's protocol version, encoded the same way in every protocol version, followed by the client's terminal size. The first frame the server sends SHALL answer it. The server SHALL decode the leading version on its own, and compare it with its own version before it decodes anything that follows it. When the versions differ, the answer SHALL reject the client and carry the server's protocol version, whatever bytes follow the version, and the server SHALL then close the connection. When the versions are equal and the rest of the hello decodes, the answer SHALL accept the client and carry the server's protocol version. The leading version and the answer SHALL keep the same encoding in every later protocol version, so that two versions can always detect each other. The fields after the leading version MAY change in a later protocol version. The current protocol version SHALL be 12.
+The first frame a client sends SHALL be a hello. The hello's payload SHALL begin with the client's protocol version, encoded the same way in every protocol version, followed by the client's terminal size. The first frame the server sends SHALL answer it. The server SHALL decode the leading version on its own, and compare it with its own version before it decodes anything that follows it. When the versions differ, the answer SHALL reject the client and carry the server's protocol version, whatever bytes follow the version, and the server SHALL then close the connection. When the versions are equal and the rest of the hello decodes, the answer SHALL accept the client and carry the server's protocol version. The leading version and the answer SHALL keep the same encoding in every later protocol version, so that two versions can always detect each other. The fields after the leading version MAY change in a later protocol version. The current protocol version SHALL be 13.
 
 #### Scenario: Matching versions
 - **WHEN** a version 2 client sends its hello to a version 2 server
@@ -82,6 +82,10 @@ The first frame a client sends SHALL be a hello. The hello's payload SHALL begin
 #### Scenario: Version 11 client meets a version 12 server
 - **WHEN** a client speaking protocol version 11 sends its hello to a server speaking version 12
 - **THEN** the server rejects it with version 12 and closes the connection
+
+#### Scenario: Version 12 client meets a version 13 server
+- **WHEN** a client speaking protocol version 12 sends its hello to a server speaking version 13
+- **THEN** the server rejects it with version 13 and closes the connection
 
 ### Requirement: Client messages
 After an attach request, a client SHALL send only these messages:
