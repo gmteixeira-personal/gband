@@ -502,7 +502,7 @@ On start, the server SHALL create one session, named by the `-s` option the comm
 - **THEN** the session's first window, in a column of width 1/2, has a PTY of 37 columns by 22 rows
 
 ### Requirement: Attach creates a missing session
-When a client asks to attach to a session the server does not host, the server SHALL create that session and attach the client to it. The new session's working directory SHALL be the working directory the client sent with its request, and its screen area SHALL start as the size the client's hello carries, which is its reported size. A client attaching to a session that exists SHALL NOT create one.
+When a client asks to attach to a session the server does not host, the server SHALL create that session and attach the client to it. The new session's working directory SHALL be the working directory the client sent with its request, or the server's working directory when the client sent an empty path or one that is not a directory on the server's machine, and its screen area SHALL start as the size the client's hello carries, which is its reported size. A client attaching to a session that exists SHALL NOT create one.
 
 #### Scenario: Second session
 - **WHEN** a server hosts `default` and the user runs `gband attach -s work` in `/tmp`
@@ -513,6 +513,14 @@ When a client asks to attach to a session the server does not host, the server S
 #### Scenario: Reattach by name
 - **WHEN** the user runs `sleep 100` in session `work`, detaches, and runs `gband attach -s work` again
 - **THEN** the client shows `sleep 100` still running
+
+#### Scenario: Empty working directory
+- **WHEN** a server started in `/home/u` hosts `default` and a client asks to attach to `work` with an empty working directory
+- **THEN** `pwd` in the window of `work` prints `/home/u`
+
+#### Scenario: Missing working directory
+- **WHEN** a server started in `/home/u` hosts `default` and a client asks to attach to `work` with the working directory `/no/such/dir`
+- **THEN** `pwd` in the window of `work` prints `/home/u`
 
 ### Requirement: Kill-session subcommand
 `gband kill-session` SHALL end the session `-s` names, in the server the client selects. The server SHALL send SIGHUP to every window's program in that session. A program still running 2 seconds later SHALL receive SIGKILL, along with its window's foreground process group. The session SHALL then end as "Session ends with its last window" defines. `gband kill-session` SHALL exit with status 0, printing nothing, once the session has ended. When the session has not ended 5 seconds after the request, it SHALL print one line to standard error naming the session and exit with status 1. When the server hosts no session of that name, it SHALL print one line to standard error naming the session and exit with status 1. When no server is running, it SHALL print one line to standard error naming the socket path and exit with status 1. When the server speaks a different protocol version, it SHALL print one line to standard error naming both versions and `gband kill-server`, and exit with status 1. It SHALL NOT replace or start a server, and SHALL NOT create the runtime directory.

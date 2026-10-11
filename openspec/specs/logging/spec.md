@@ -7,7 +7,7 @@ Defines how `gband` processes record diagnostics. The server runs without a term
 ## Requirements
 
 ### Requirement: Log to a file per role
-The `server`, `attach`, `list-sessions`, `kill-session`, `kill-server`, `reload`, `errors`, `eval` and `cmd` subcommands SHALL write their logs to files in the log directory. No `gband` subcommand SHALL write log events to standard output or standard error. The `server` subcommand SHALL log to the `server` file series, and the `attach`, `list-sessions`, `kill-session`, `kill-server`, `reload`, `errors`, `eval` and `cmd` subcommands to the `client` file series. Subcommands that other capabilities define, such as shell-completions' `completions` and `install-completions`, SHALL log only as those capabilities state. Each line SHALL carry a timestamp, the level, the event's source module and its message, with no terminal colour codes.
+The `server`, `attach`, `list-sessions`, `kill-session`, `kill-server`, `reload`, `errors`, `eval`, `cmd` and `relay` subcommands SHALL write their logs to files in the log directory. No `gband` subcommand SHALL write log events to standard output or standard error. The `server` subcommand SHALL log to the `server` file series, and the `attach`, `list-sessions`, `kill-session`, `kill-server`, `reload`, `errors`, `eval`, `cmd` and `relay` subcommands to the `client` file series. Subcommands that other capabilities define, such as shell-completions' `completions` and `install-completions`, SHALL log only as those capabilities state. Each line SHALL carry a timestamp, the level, the event's source module and its message, with no terminal colour codes.
 
 #### Scenario: Server logs to its own series
 - **WHEN** the user runs `gband server`
@@ -42,6 +42,11 @@ The `server`, `attach`, `list-sessions`, `kill-session`, `kill-server`, `reload`
 #### Scenario: No colour codes in the file
 - **WHEN** any subcommand writes a log line
 - **THEN** the line contains no ANSI escape sequence
+
+#### Scenario: Relay logs to the client series
+- **WHEN** the user runs `gband relay < /dev/null`
+- **THEN** a file whose name starts with `client.` and ends with `.log` exists in the log directory
+- **AND** no file of the `server` series was written by that run
 
 ### Requirement: Log directory location
 The log directory SHALL be `gband/log` under the XDG state directory: `$XDG_STATE_HOME/gband/log/` when `XDG_STATE_HOME` is set to an absolute path, and `~/.local/state/gband/log/` otherwise. On a platform with no state directory, it SHALL be `log` under gband's local data directory. `gband` SHALL create the directory and any missing parents when a subcommand that logs starts.
@@ -98,7 +103,7 @@ When the log directory cannot be created or its file cannot be opened, `gband` S
 - **AND** the process exits with status 1
 
 ### Requirement: Events name their server
-Servers on different socket paths share one log directory and one file series per role. Every log event that the `server`, `attach`, `list-sessions`, `kill-session`, `kill-server`, `reload`, `errors`, `eval` and `cmd` subcommands write after resolving their socket path SHALL carry that socket path, so the lines of one server can be told from another's.
+Servers on different socket paths share one log directory and one file series per role. Every log event that the `server`, `attach`, `list-sessions`, `kill-session`, `kill-server`, `reload`, `errors`, `eval`, `cmd` and `relay` subcommands write after resolving their socket path SHALL carry that socket path, so the lines of one server can be told from another's. A subcommand given `-r` resolves no socket path, and every log event it writes after start SHALL carry the destination instead.
 
 #### Scenario: Two servers in one file
 - **WHEN** servers named `a` and `b` run on the same day
@@ -117,3 +122,7 @@ Servers on different socket paths share one log directory and one file series pe
 - **WHEN** the user runs `gband -S a kill-session` with no server running
 - **THEN** the `client` file holds at least one event from that run after start
 - **AND** every such event names `a.sock`
+
+#### Scenario: Remote events
+- **WHEN** the user runs `gband -r u@h list-sessions`
+- **THEN** every event in the `client` file from that run after start names `u@h`
