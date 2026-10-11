@@ -9,7 +9,7 @@ use gband_core::input::{Modifiers, MouseButton, MouseEvent, MouseKind, WheelDire
 use gband_core::layout::{Layout, LayoutOptions, WindowId};
 use gband_lua::keys::parse_key;
 use gband_lua::{Bar, Color, Config, ConfigError, DEFAULTS, LoadOptions, Locations, Style};
-use gband_protocol::{ClientMessage, ServerMessage};
+use gband_protocol::{ClientMessage, Key, ServerMessage, Value};
 use insta::assert_snapshot;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
@@ -257,7 +257,10 @@ fn rows_of_a_new_session() {
     );
     assert_eq!(client.sidebar_area(), Some(Rect::new(0, 0, 1, 24)));
     assert_eq!(client.display.ribbon_area(), Rect::new(1, 0, 79, 24));
-    assert_eq!(client.rows(), [line(0, "I"), line(2, "1"), line(3, "2")]);
+    assert_eq!(
+        client.rows(),
+        [line(0, "I"), line(2, "1"), line(3, "2"), line(12, "─")]
+    );
 }
 
 #[test]
@@ -328,7 +331,13 @@ fn window_opened_in_the_empty_band() {
     client.open_in_band(1);
     assert_eq!(
         client.rows(),
-        [line(0, "I"), line(2, "1"), line(3, "2"), line(4, "3")]
+        [
+            line(0, "I"),
+            line(2, "1"),
+            line(3, "2"),
+            line(4, "3"),
+            line(12, "─")
+        ]
     );
 }
 
@@ -339,18 +348,19 @@ fn band_removed() {
     assert_eq!(client.row(4), "3");
     let second = client.windows[1];
     client.close(second);
-    assert_eq!(client.rows(), [line(0, "I"), line(2, "1"), line(3, "2")]);
+    assert_eq!(
+        client.rows(),
+        [line(0, "I"), line(2, "1"), line(3, "2"), line(12, "─")]
+    );
 }
 
 #[test]
 fn tenth_band() {
     let (_scratch, mut client) = defaults("tenth", "", Size::new(80, 24));
     client.attach_bands(10);
-    let labels: Vec<String> = (2..=12).map(|row| client.row(row)).collect();
-    assert_eq!(
-        labels,
-        ["1", "2", "3", "4", "5", "6", "7", "8", "9", "a", "b"]
-    );
+    let labels: Vec<String> = (2..=11).map(|row| client.row(row)).collect();
+    assert_eq!(labels, ["1", "2", "3", "4", "5", "6", "7", "8", "9", "a"]);
+    assert_eq!(client.row(12), "─");
 }
 
 #[test]
@@ -359,14 +369,7 @@ fn more_bands_than_rows() {
     client.attach_bands(5);
     assert_eq!(
         client.rows(),
-        [
-            line(0, "I"),
-            line(2, "1"),
-            line(3, "2"),
-            line(4, "3"),
-            line(5, "4"),
-            line(6, "5")
-        ]
+        [line(0, "I"), line(2, "1"), line(3, "2"), line(4, "─")]
     );
 }
 
@@ -640,7 +643,7 @@ fn error_marker_snapshot() {
     client.controls.refresh(&mut client.display);
     assert_eq!(
         client.rows(),
-        [line(0, "I"), line(2, "1"), line(3, "2"), line(5, "!")]
+        [line(0, "I"), line(2, "1"), line(3, "─"), line(5, "!")]
     );
     assert_snapshot!(client.screen(Size::new(40, 6)));
 }
@@ -777,4 +780,126 @@ fn wheel_in_navigation_mode() {
     client.wheel(WheelDirection::Down, 0, 2, Modifiers::NONE);
     assert_eq!(client.viewed(), 2);
     assert_eq!(client.row(0), "N");
+}
+
+fn agent_state(state: &str) -> Value {
+    Value::Table(vec![
+        (Key::string("agent"), Value::string("claude")),
+        (Key::string("state"), Value::string(state)),
+    ])
+}
+
+impl Client {
+    fn set_agent(&mut self, window: WindowId, state: Option<&str>) {
+        let message = ServerMessage::WindowState {
+            window,
+            key: "agent_state".to_owned(),
+            value: state.map(agent_state),
+        };
+        self.controls.receive(&mut self.display, vec![message]);
+    }
+
+    fn focused(&self) -> Option<WindowId> {
+        self.display.focused()
+    }
+
+    fn ready(&mut self) {
+        self.controls.receive(
+            &mut self.display,
+            vec![ServerMessage::Requirements(Vec::new())],
+        );
+    }
+}
+
+#[test]
+fn rows_with_agents() {
+    let (_scratch, mut client) = defaults("agent-rows", "", Size::new(80, 24));
+    client.attach(2, 0);
+    client.ready();
+    let windows = client.windows.clone();
+    client.set_agent(windows[0], Some("idle"));
+    client.set_agent(windows[1], Some("working"));
+    assert_eq!(
+        client.rows(),
+        [
+            line(0, "I"),
+            line(2, "1"),
+            line(3, "2"),
+            line(12, "─"),
+            line(13, "1"),
+            line(14, "2")
+        ]
+    );
+}
+
+#[test]
+fn agent_exits() {
+    let (_scratch, mut client) = defaults("agent-exits", "", Size::new(80, 24));
+    client.attach(1, 0);
+    client.ready();
+    let window = client.windows[0];
+    client.set_agent(window, Some("idle"));
+    assert_eq!(client.row(13), "1");
+    client.set_agent(window, None);
+    assert_eq!(
+        client.rows(),
+        [line(0, "I"), line(2, "1"), line(3, "2"), line(12, "─")]
+    );
+}
+
+#[test]
+fn agent_state_recolors_its_labels() {
+    let (_scratch, mut client) = defaults("agent-recolor", "", Size::new(80, 24));
+    client.attach(2, 0);
+    client.ready();
+    let windows = client.windows.clone();
+    client.set_agent(windows[1], Some("working"));
+    assert_eq!(client.style(13).fg, Some(Color::Index(3)));
+    client.set_agent(windows[1], Some("blocked"));
+    assert_eq!(client.row(13), "1");
+    assert_eq!(client.style(13).fg, Some(Color::Index(1)));
+    assert_eq!(client.style(2).fg, Some(Color::Index(9)));
+    assert!(client.style(2).bold);
+}
+
+#[test]
+fn focused_agent_label_is_brighter() {
+    let (_scratch, mut client) = defaults("agent-focus", "", Size::new(80, 24));
+    client.attach(2, 0);
+    client.ready();
+    let windows = client.windows.clone();
+    client.set_agent(windows[1], Some("working"));
+    assert!(!client.style(13).bold);
+    client.focus(windows[1]);
+    assert_eq!(client.style(13).fg, Some(Color::Index(11)));
+    assert!(client.style(13).bold);
+}
+
+#[test]
+fn click_an_agent_label() {
+    let (_scratch, mut client) = defaults("agent-click", "", Size::new(80, 24));
+    client.attach_bands(2);
+    client.ready();
+    let windows = client.windows.clone();
+    client.set_agent(windows[0], Some("idle"));
+    client.set_agent(windows[1], Some("working"));
+    assert_eq!(client.row(14), "2");
+    client.click(MouseButton::Left, 0, 14);
+    assert_eq!(client.viewed(), 2);
+    assert_eq!(client.focused(), Some(windows[1]));
+    assert!(client.style(14).bold);
+}
+
+#[test]
+fn click_beside_the_agent_labels() {
+    let (_scratch, mut client) = defaults("agent-click-beside", "", Size::new(80, 24));
+    client.attach_bands(2);
+    client.ready();
+    let windows = client.windows.clone();
+    client.set_agent(windows[1], Some("working"));
+    for row in [5, 12, 14, 22] {
+        client.click(MouseButton::Left, 0, row);
+        assert_eq!(client.viewed(), 1, "{row}");
+        assert_eq!(client.focused(), Some(windows[0]), "{row}");
+    }
 }

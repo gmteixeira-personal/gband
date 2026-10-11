@@ -13,7 +13,7 @@ use gband_protocol::test::{FromProcess, Role, ToProcess};
 use gband_protocol::{
     Answer, ClientMessage, Decoder, Entry, ExecutableId, Hello, HelloReply, Key as ValueKey,
     Operation, PROTOCOL_VERSION, Process, Requirement, ServerMessage, SessionName, SessionSummary,
-    Target, Value, encode,
+    Target, Value, encode, leading_version,
 };
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -32,8 +32,8 @@ fn session(name: &str) -> SessionName {
 }
 
 #[test]
-fn protocol_version_is_thirteen() {
-    assert_eq!(PROTOCOL_VERSION, 13);
+fn protocol_version_is_fourteen() {
+    assert_eq!(PROTOCOL_VERSION, 14);
 }
 
 #[test]
@@ -775,4 +775,30 @@ fn test_channel_messages_round_trip() {
         id: 5,
         error: Some("init.lua:1: bad".to_owned()),
     });
+}
+
+#[test]
+fn focus_round_trip() {
+    round_trip(ClientMessage::Focused(Some(WindowId(4))));
+    round_trip(ClientMessage::Focused(None));
+}
+
+#[test]
+fn version_thirteen_client_meets_a_version_fourteen_server() {
+    let hello = encode(&Hello {
+        version: 13,
+        cols: 80,
+        rows: 24,
+    })
+    .unwrap();
+    let version = leading_version(&hello[4..]).unwrap();
+    assert_eq!(version, 13);
+    assert_ne!(version, PROTOCOL_VERSION);
+    assert_eq!(
+        encode(&HelloReply::Rejected {
+            version: PROTOCOL_VERSION
+        })
+        .unwrap(),
+        [0, 0, 0, 2, 0x01, 0x0e]
+    );
 }

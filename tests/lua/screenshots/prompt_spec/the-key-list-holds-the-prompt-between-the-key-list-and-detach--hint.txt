@@ -11,7 +11,7 @@ size 80x24 cursor 17:68 hidden
  9| │         │!        reload the configuration                       │
 10| │         │m        multi mode                                     │
 11| │         │D        detach                                         │
-12| │         │esc      interactive mode                               │
+12|─│         │esc      interactive mode                               │
 13| │         │enter    interactive mode                               │
 14| │         │left     focus the column to the left                   │
 15| │         │right    focus the column to the right                  │
@@ -82,7 +82,7 @@ size 80x24 cursor 17:68 hidden
 11:12-20 fg=4 bg=0 bold
 11:21-67 fg=7 bg=0
 11:68 fg=8 bg=0
-12:0 bg=0
+12:0 fg=8 bg=0
 12:1 fg=4 bold
 12:11 fg=8 bg=0
 12:12-20 fg=4 bg=0 bold

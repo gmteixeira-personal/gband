@@ -1,0 +1,12 @@
+◐ Lighthouse keeper story
+ ▐▛███▛█   Claude Code v2.1.296
+▝▜██████▀  Haiku 5.5 · Claude Max
+ ▝▝   ▝▝   ~/repos/gband/.claude/worktrees/agent-state/target/claude-capture
+❯ Write a 300 word story about a lighthouse keeper. Do not use any tools.
+✻ Whirlpooling… (14s · ↓ 2.8k tokens · thinking)
+─────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+─────────────────────────────────────────────────────────────────────────────────────────────────
+  gband/claude-capture:change/agent-state
+  [clean] [Haiku:medium]
+  -- INSERT -- ⏸ manual mode on · ← 1 agent

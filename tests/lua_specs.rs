@@ -122,6 +122,11 @@ fn looping_bands() {
 }
 
 #[test]
+fn agents() {
+    gband_test(root(), &["tests/lua/agents_spec.lua"]);
+}
+
+#[test]
 fn window_names() {
     gband_test(root(), &["tests/lua/window_names_spec.lua"]);
 }

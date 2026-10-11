@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::session::{SessionName, SessionSummary};
 use crate::value::Value;
 
-pub const PROTOCOL_VERSION: u32 = 13;
+pub const PROTOCOL_VERSION: u32 = 14;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Hello {
@@ -74,6 +74,7 @@ pub enum ClientMessage {
         call: u64,
         answer: Answer,
     },
+    Focused(Option<WindowId>),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

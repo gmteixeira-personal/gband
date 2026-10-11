@@ -232,6 +232,7 @@ pub struct Display {
     grids: HashMap<WindowId, Grid>,
     view: Option<View>,
     shown: Option<Vec<WindowId>>,
+    reported_focus: Option<Option<WindowId>>,
     presentation: Presentation,
     prefix: Option<Key>,
     policy: CenterFocusedColumn,
@@ -277,6 +278,7 @@ impl Display {
             grids: HashMap::new(),
             view: None,
             shown: None,
+            reported_focus: None,
             presentation: Presentation::new(animations),
             prefix: None,
             policy: CenterFocusedColumn::default(),
@@ -895,6 +897,15 @@ impl Display {
         }
         self.shown = Some(shown.clone());
         Some(ClientMessage::Shown(shown))
+    }
+
+    pub fn report_focused(&mut self) -> Option<ClientMessage> {
+        let focused = self.view.as_ref()?.focused();
+        if self.reported_focus == Some(focused) {
+            return None;
+        }
+        self.reported_focus = Some(focused);
+        Some(ClientMessage::Focused(focused))
     }
 
     pub fn focused(&self) -> Option<WindowId> {
@@ -2093,7 +2104,10 @@ async fn attach(
                 return Ok(outcome);
             }
         }
-        if let Some(message) = display.report_shown() {
+        for message in [display.report_shown(), display.report_focused()]
+            .into_iter()
+            .flatten()
+        {
             let _ = connection.send(&message).await;
         }
         let now = Instant::now();

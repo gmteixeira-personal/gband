@@ -14,6 +14,18 @@ pub fn foreground_command(group: Option<i32>, program: &str) -> String {
         .unwrap_or_default()
 }
 
+pub fn foreground_args(group: Option<i32>) -> Option<Vec<String>> {
+    let group = group.filter(|&group| group > 0)?;
+    let cmdline = fs::read(format!("/proc/{group}/cmdline")).ok()?;
+    let cmdline = cmdline.strip_suffix(&[0]).unwrap_or(&cmdline);
+    Some(
+        cmdline
+            .split(|&byte| byte == 0)
+            .map(|argument| String::from_utf8_lossy(argument).into_owned())
+            .collect(),
+    )
+}
+
 fn from_cmdline(pid: i32) -> Option<String> {
     let cmdline = fs::read(format!("/proc/{pid}/cmdline")).ok()?;
     let first = cmdline.split(|&byte| byte == 0).next()?;
@@ -95,6 +107,17 @@ mod tests {
     fn empty_argument_falls_back_to_comm() {
         let running = sleeping("");
         assert_eq!(foreground_command(pid(&running), "bash"), "sleep");
+    }
+
+    #[test]
+    fn arguments_read_from_cmdline() {
+        let running = sleeping("claude");
+        assert_eq!(
+            foreground_args(pid(&running)),
+            Some(vec!["claude".to_owned(), "30".to_owned()])
+        );
+        assert_eq!(foreground_args(Some(i32::MAX)), None);
+        assert_eq!(foreground_args(None), None);
     }
 
     #[test]

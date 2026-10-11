@@ -165,6 +165,55 @@ fn focus_change() {
     assert_eq!(client.log(), ["FocusChanged previous=2,window=1"]);
 }
 
+fn focus_reporting(name: &str) -> (Scratch, Client, Vec<WindowId>) {
+    let (scratch, mut client) = recording(
+        name,
+        "gband.bind('alt+l', gband.action.focus_column_right)
+gband.bind('alt+u', gband.action.focus_band_down)",
+    );
+    assert_eq!(client.display.report_focused(), None);
+    let (layout, windows) = layout_of(2);
+    client.receive([shown(&layout), ServerMessage::Focus(windows[0])]);
+    assert_eq!(
+        client.display.report_focused(),
+        Some(ClientMessage::Focused(Some(windows[0])))
+    );
+    (scratch, client, windows)
+}
+
+#[test]
+fn focus_after_attach() {
+    focus_reporting("focus-attach");
+}
+
+#[test]
+fn focus_follows_a_move() {
+    let (_scratch, mut client, windows) = focus_reporting("focus-move");
+    client.press("alt+l");
+    assert_eq!(
+        client.display.report_focused(),
+        Some(ClientMessage::Focused(Some(windows[1])))
+    );
+}
+
+#[test]
+fn no_repeated_report() {
+    let (_scratch, mut client, windows) = focus_reporting("focus-repeat");
+    let (layout, _) = layout_of(2);
+    client.receive([shown(&layout), ServerMessage::Focus(windows[0])]);
+    assert_eq!(client.display.report_focused(), None);
+}
+
+#[test]
+fn empty_band() {
+    let (_scratch, mut client, _) = focus_reporting("focus-empty");
+    client.press("alt+u");
+    assert_eq!(
+        client.display.report_focused(),
+        Some(ClientMessage::Focused(None))
+    );
+}
+
 #[test]
 fn band_change() {
     let (_scratch, mut client) =

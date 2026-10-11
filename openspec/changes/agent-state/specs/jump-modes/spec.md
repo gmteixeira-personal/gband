@@ -1,6 +1,6 @@
 ## Purpose
 
-Defines agents mode and bands mode: two key modes, entered after the prefix key, that reach an agent window or a band by its sidebar position with a digit, or step through them with Up and Down.
+Defines agents mode and bands mode: two key modes, entered after the prefix key, that reach an agent window or a band by its sidebar position with a digit, or step through them with `k`, `j`, Up and Down.
 
 ## ADDED Requirements
 
@@ -26,12 +26,15 @@ The `agents` table SHALL hold these bindings, each a Lua function with the descr
 | key | Lua binding | does | description |
 |---|---|---|---|
 | `1` to `9` | `agents 1` to `agents 9` | focus the agent at that position, as `gband.agents.focus` does, then return to interactive mode; when there is no agent at that position, change nothing and keep agents mode active | `focus agent 1` to `focus agent 9` |
+| `k` | `agents k` | focus the previous agent, as `gband.agents.step(-1)` does | `focus the previous agent` |
 | Up | `agents up` | focus the previous agent, as `gband.agents.step(-1)` does | `focus the previous agent` |
+| `j` | `agents j` | focus the next agent, as `gband.agents.step(1)` does | `focus the next agent` |
 | Down | `agents down` | focus the next agent, as `gband.agents.step(1)` does | `focus the next agent` |
+| `b` | `agents b` | enter bands mode | `bands mode` |
 | Escape | `agents escape` | return to interactive mode | `interactive mode` |
 | Enter | `agents enter` | return to interactive mode | `interactive mode` |
 
-Up and Down SHALL keep agents mode active. The position of an agent SHALL be its position in `gband.agents.list()`, which is the label the sidebar shows for it.
+`k`, `j`, Up and Down SHALL keep agents mode active. The position of an agent SHALL be its position in `gband.agents.list()`, which is the label the sidebar shows for it.
 
 #### Scenario: Jump to an agent
 - **WHEN** `gband.agents.list()` holds entries for windows 3 and 2, the client focuses window 1, and the user presses Ctrl+Space, `a`, then `2`
@@ -50,6 +53,10 @@ Up and Down SHALL keep agents mode active. The position of an agent SHALL be its
 - **THEN** window 2 is focused and agents mode stays active
 - **AND** after Enter, `root` is the active table and window 2 stays focused
 
+#### Scenario: Step with j and k
+- **WHEN** `gband.agents.list()` holds entries for windows 3, 1 and 2, the client focuses window 3, and the user presses Ctrl+Space, `a`, `j`, `j`, then `k`
+- **THEN** window 1 is focused and agents mode stays active
+
 #### Scenario: Up with no agent focused
 - **WHEN** `gband.agents.list()` holds entries for windows 3 and 2, the client focuses window 1, which runs bash, and the user presses Ctrl+Space, `a`, then Up
 - **THEN** window 2 is focused
@@ -59,21 +66,25 @@ Up and Down SHALL keep agents mode active. The position of an agent SHALL be its
 - **THEN** window 1 stays focused and `root` is the active table
 
 ### Requirement: Bands mode
-The `bands` table SHALL hold these bindings. A binding whose row gives a description is a Lua function with that description, and every other binding is bound to the action its row names:
+The `bands` table SHALL hold these bindings, each with the description its row gives. A row whose `does` names an action SHALL be bound to that action, and every other row SHALL be a Lua function:
 
-| key | Lua binding | does | description of a function |
+| key | Lua binding | does | description |
 |---|---|---|---|
-| `1` to `9` | `bands 1` to `bands 9` | view the band at that position of `gband.layout().bands`, as `gband.band.view` does, then return to interactive mode; when there is no band at that position, change nothing and keep bands mode active | `view band 1` to `view band 9` |
-| Up | `bands up` | view the band above, the `focus_band_up` action | |
-| Down | `bands down` | view the band below, the `focus_band_down` action | |
+| `1` to `9` | `bands 1` to `bands 9` | view the band at that position of `gband.layout().bands`, as `gband.band.view` does; when there is no band at that position, change nothing | `view band 1` to `view band 9` |
+| `k` | `bands k` | the `focus_band_up` action | `view the band above` |
+| Up | `bands up` | the `focus_band_up` action | `view the band above` |
+| `j` | `bands j` | the `focus_band_down` action | `view the band below` |
+| Down | `bands down` | the `focus_band_down` action | `view the band below` |
+| `a` | `bands a` | enter agents mode | `agents mode` |
 | Escape | `bands escape` | return to interactive mode | `interactive mode` |
 | Enter | `bands enter` | return to interactive mode | `interactive mode` |
 
-Up and Down SHALL keep bands mode active, and SHALL follow the `loop_bands` setting as those actions do. The position of a band SHALL be its label in the sidebar.
+Only Escape and Enter SHALL leave bands mode. The digits, `k`, `j`, Up and Down SHALL keep it active, so the user can view band after band in one visit. `k`, `j`, Up and Down SHALL follow the `loop_bands` setting as those actions do. The position of a band SHALL be its label in the sidebar.
 
 #### Scenario: Jump to a band
 - **WHEN** the layout holds bands 1, 2 and 3, the client views band 1, and the user presses Ctrl+Space, `b`, then `3`
-- **THEN** the client views band 3 and `root` is the active table
+- **THEN** the client views band 3 and bands mode stays active
+- **AND** after `2` the client views band 2, and after Escape `root` is the active table and band 2 is still viewed
 
 #### Scenario: Band past the layout
 - **WHEN** the layout holds bands 1 and 2, the client views band 1, and the user presses Ctrl+Space, `b`, then `7`
@@ -83,3 +94,12 @@ Up and Down SHALL keep bands mode active, and SHALL follow the `loop_bands` sett
 - **WHEN** the layout holds bands 1, 2 and 3, the client views band 1, and the user presses Ctrl+Space, `b`, Down, Down
 - **THEN** the client views band 3 and bands mode stays active
 - **AND** after Up it views band 2
+
+#### Scenario: Switch between the modes
+- **WHEN** agents mode is active and the user presses `b`
+- **THEN** bands mode is active and the sidebar's mode letter is `B`
+- **AND** after `a` agents mode is active and the mode letter is `A`
+
+#### Scenario: Step bands with j and k
+- **WHEN** the layout holds bands 1, 2 and 3, the client views band 1, and the user presses Ctrl+Space, `b`, `j`, `j`, then `k`
+- **THEN** the client views band 2 and bands mode stays active

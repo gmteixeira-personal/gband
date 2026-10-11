@@ -11,6 +11,7 @@ use crate::error::ConfigError;
 use crate::value;
 
 pub const MAX_STATE: usize = 64 * 1024;
+pub const AGENT_STATE_KEY: &str = "agent_state";
 
 pub fn state_size(state: &BTreeMap<String, Data>) -> usize {
     state
@@ -319,6 +320,12 @@ fn proxy(lua: &Lua, host: Arc<dyn Host>, session: String, window: WindowId) -> m
                     ));
                 }
             };
+            if key == AGENT_STATE_KEY {
+                return Err(ConfigError::raise(
+                    lua,
+                    format!("`{AGENT_STATE_KEY}` is set by gband's agent detection and cannot be assigned"),
+                ));
+            }
             let value = match value {
                 Value::Nil => None,
                 value => Some(

@@ -11,7 +11,7 @@ size 80x24 cursor 1:4 shown
  9| │                                     │
 10| │                                     │
 11| │                                     │
-12| │                                     │
+12|─│                                     │
 13| │                                     │
 14| │                                     │
 15| │                                     │
@@ -59,7 +59,7 @@ size 80x24 cursor 1:4 shown
 11:0 bg=0
 11:1 fg=4 bold
 11:39 fg=4 bold
-12:0 bg=0
+12:0 fg=8 bg=0
 12:1 fg=4 bold
 12:39 fg=4 bold
 13:0 bg=0

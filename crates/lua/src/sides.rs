@@ -9,7 +9,7 @@ use crate::actions::ACTIONS;
 use crate::error::{ConfigError, caller};
 use crate::removed;
 
-pub(crate) const CLIENT_ONLY: [&str; 24] = [
+pub(crate) const CLIENT_ONLY: [&str; 26] = [
     "bind",
     "unbind",
     "spawn",
@@ -34,6 +34,8 @@ pub(crate) const CLIENT_ONLY: [&str; 24] = [
     "clipboard",
     "open",
     "core",
+    "agents",
+    "jump",
 ];
 
 pub(crate) const SERVER_ONLY: [&str; 2] = ["sessions", "session"];

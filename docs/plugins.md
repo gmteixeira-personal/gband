@@ -940,7 +940,9 @@ On a bar of height `h`, counting rows from 0:
 |---|---|---|
 | 0 | the mode letter, or `∷` with the floating key style | `SidebarMode` |
 | 1 | nothing | `Bar` |
-| 2 to `h - 2` | one band label each, in layout order | `SidebarBandActive` for the viewed band, `SidebarBand` for the others |
+| 2 to `d - 1` | one band label each, in layout order | the band's agent group, or `SidebarBandActive` for the viewed band and `SidebarBand` for the others |
+| `d`, which is `h // 2` | the divider `─` | `SidebarDivider` |
+| `d + 1` to `h - 2` | one agent label each, in the order of `gband.agents.list()` | the agent's state group |
 | `h - 1` | `!` while the client reports an error, otherwise nothing | `SidebarError` |
 
 The mode letter is `I` while the active key table is `root`, or `M` while multi mode is on, as `gband.view().multi` says.
@@ -951,17 +953,36 @@ A configuration that requires `gband.keystyle.floating` by name, without `gband.
 
 A band's label is its position in the layout, counted from 1, not its number: `1` to `9`, then `a` to `z` for positions 10 to 35.
 The empty last band has a label too, so a new session shows `1` and `2`.
-A band past the 35th, or whose row would be the last row or below, is not drawn.
+A band past the 35th, or whose row would be the divider's row or below, is not drawn.
+A bar of 5 rows or fewer has no divider and shows no agent: its band labels run from row 2 to `h - 2`.
 A bar of 3 rows or fewer shows the mode letter and the marker and no band, and a bar of 1 row shows the marker while an error is reported and the mode letter otherwise.
 The viewed band differs from the others by its group alone, so a screenshot without styles reads the same whichever band is viewed.
+
+Below the divider the sidebar shows the agent section, one label per entry of `gband.agents.list()`, as "Agents" describes.
+The split is fixed at the middle row, as in herdr's sidebar, so a label keeps its row when an agent starts or exits or a band is added.
+An agent's label is its position, `1` to `9` then `a` to `z`, so the labels of `gband.agents.focus` and agents mode match it.
+An agent past the 35th, or whose row would be the last row or below, is not drawn.
+
+| agent state | group | group while this client focuses the agent's window |
+|---|---|---|
+| `blocked` | `SidebarAgentBlocked` | `SidebarAgentBlockedActive` |
+| `done` | `SidebarAgentDone` | `SidebarAgentDoneActive` |
+| `working` | `SidebarAgentWorking` | `SidebarAgentWorkingActive` |
+| `idle` | `SidebarAgentIdle` | `SidebarAgentIdleActive` |
+| `unknown` | `SidebarAgentUnknown` | `SidebarAgentUnknownActive` |
+
+A band that holds agent windows takes the group of its most urgent agent, in the order `blocked`, `done`, `working`, `idle`, `unknown`, with the `Active` group while the client views the band.
+A band with no agent keeps `SidebarBand` and `SidebarBandActive`.
 
 The error marker shows no text; `gband.errors()` and the `errors.open` action give the errors' text.
 The client draws no banner while the marker is drawn, and draws the banner on the ribbon's bottom row when an error is reported and no marker is drawn: without the sidebar, or while it is not shown.
 
 The sidebar redraws in the frame that follows a change of the viewed band, the bands, the active key table or the error list, and when one of its groups changes.
+Its handlers in the group `gband.sidebar` redraw it on `WindowStateChanged` with `key` `agent_state`, `LayoutChanged`, `FocusChanged` and `Attached`, so an agent's label follows its state and the focus.
 
 A press of the left button on a band's label views that band, as `gband.band.view` does, whatever key table is active.
 The sidebar does this from its own `MousePressed` handler, since a press on a bar cell reaches handlers with the target `outside`.
+A press of the left button on an agent's label focuses that agent's window, as `gband.window.focus` does, viewing its band, whatever key table is active.
 A press of the left button on `∷` dispatches `desktop.list`, which opens the window list, when `gband.action` holds it.
 Any other press on the sidebar does nothing.
 
@@ -1161,6 +1182,46 @@ Pressing the prefix key again from the list keeps the window it shows and sends 
 The plugin defines `DesktopButton` as `{ bold = true }`, `DesktopClose` as `{ bold = true }`, `DesktopMinimized` as `{ dim = true }` and `DesktopShortcut` as `{ link = "KeyListKey" }` when its module is first required, so `[X]` takes the border's colour and the shortcuts take the key list's.
 No bundled theme sets `DesktopClose`; `gband.hl.set("DesktopClose", { fg = 1, bold = true })` brings back a red close button.
 
+## Agents: `gband.agents`
+
+The server detects coding agents in windows, as [the README](../README.md#agents) describes, and publishes each agent window's agent and state in the window state key `agent_state`, as "Window state" describes.
+The client module `gband.agents`, which the prelude loads, reads that key from `gband.window_state` and the layout from `gband.layout()` on each call, and keeps nothing between calls:
+
+| function | effect |
+|---|---|
+| `gband.agents.list()` | a new array with one entry per window of the layout whose state holds `agent_state`: bands in layout order, each band's tiled windows column by column from the left and each column from the top, then its floating windows; each entry holds `window`, `band`, the band's id, `agent`, the agent's name such as `claude`, and `state` |
+| `gband.agents.focus(n)` | focuses the window of entry `n`, as `gband.window.focus` does, viewing its band, and returns `true`; returns `false` and focuses nothing when there is no entry `n` |
+| `gband.agents.step(delta)` | with `1` focuses the entry after the focused window's entry, with `-1` the one before, wrapping at either end, and returns the window it focused; when the focused window has no entry, `1` focuses the first entry and `-1` the last; returns nil when the list is empty |
+
+A `focus` argument that is not a positive integer, and a `step` argument other than `1` and `-1`, are errors at the line of the call.
+
+```lua
+gband.keymap.set("prefix", "B", function()
+  for _, agent in ipairs(gband.agents.list()) do
+    if agent.state == "blocked" then
+      gband.window.focus(agent.window)
+      return
+    end
+  end
+end, { desc = "focus a blocked agent" })
+```
+
+## Jump modes: `gband.jump`
+
+The client module `gband.jump`, which the prelude loads, holds one function, `gband.jump.setup()`.
+It declares two modes and binds `a` and `b` in `prefix` to enter them, so the modal and the direct presets call it right after their `i` binding:
+
+| mode | label | sidebar letter | keys |
+|---|---|---|---|
+| `agents` | `agents` | `A` | `1` to `9` focus that agent, as `gband.agents.focus` does, and return to interactive mode; `k` and Up call `gband.agents.step(-1)`, and `j` and Down call `gband.agents.step(1)`; `b` enters bands mode; Escape and Enter return to interactive mode |
+| `bands` | `bands` | `B` | `1` to `9` view the band at that position of `gband.layout().bands`; `k` and Up are bound to `focus_band_up`, and `j` and Down to `focus_band_down`; `a` enters agents mode; Escape and Enter return to interactive mode |
+
+Only Escape, Enter and a digit of agents mode that finds an agent return to interactive mode.
+Every other binding keeps its mode active, and a digit with no agent or band at its position changes nothing.
+Any other key is discarded, as in any mode.
+The floating preset does not call `setup`: its window list already reaches every window.
+A configuration of your own calls `require("gband.jump").setup()` to get the same bindings.
+
 ## Key styles: `gband.keystyle`
 
 gband bundles three key style presets, the modules `gband.keystyle.modal`, `gband.keystyle.direct` and `gband.keystyle.floating`.
@@ -1168,6 +1229,7 @@ Each is a file of plain top-level calls, as a `user/init.lua` is: it sets up `gb
 The modal preset declares `prefix` a mode labelled `navigation` and binds Escape and Enter to return to interactive mode.
 Its `n` opens a window and returns to interactive mode only when `gband.settings.interactive_on_new()` returned `true` when the preset loaded, and otherwise leaves navigation mode active.
 The direct preset declares no mode, so each key after the prefix key acts once; it binds `n` to `open_window` and the prefix key to `send_prefix` directly.
+Both call `gband.jump.setup()` right after their `i` binding, binding `a` to agents mode and `b` to bands mode, as "Jump modes" describes.
 Both bind Ctrl+Space then `s` to `gband.settings.open`, described `settings`, right after `:`, then `!` to `reload`, described `reload the configuration`, and then `m`, before `D`.
 The direct preset binds `m` to `toggle_multi`; the modal preset binds it to a function described `multi mode` that dispatches `toggle_multi` and returns to interactive mode, so the sidebar shows `M` at once.
 The floating preset also sets up `gband.desktop`, declares no mode, and binds only `n` (a floating window), `?`, `:`, `N`, `s`, `!`, `D` and the prefix key in `prefix`, and `leftmouse` and `rightmouse` in `root`, as "The desktop" describes.
@@ -1292,6 +1354,17 @@ The sidebar defines these groups, as defaults, when its module is first required
 | `SidebarBand` | `{ dim = true }` | the labels of the bands not viewed |
 | `SidebarBandActive` | `{ bold = true }` | the viewed band's label |
 | `SidebarError` | `{ fg = 1, bold = true }` | the error marker |
+| `SidebarAgentBlocked` | `{ fg = "red" }` | a blocked agent, and a band whose most urgent agent is blocked |
+| `SidebarAgentBlockedActive` | `{ fg = "bright_red", bold = true }` | the same, for the focused agent and the viewed band |
+| `SidebarAgentDone` | `{ fg = "green" }` | a done agent and its band |
+| `SidebarAgentDoneActive` | `{ fg = "bright_green", bold = true }` | the same, focused or viewed |
+| `SidebarAgentWorking` | `{ fg = "yellow" }` | a working agent and its band |
+| `SidebarAgentWorkingActive` | `{ fg = "bright_yellow", bold = true }` | the same, focused or viewed |
+| `SidebarAgentIdle` | `{ fg = "blue" }` | an idle agent and its band |
+| `SidebarAgentIdleActive` | `{ fg = "bright_blue", bold = true }` | the same, focused or viewed |
+| `SidebarAgentUnknown` | `{ link = "SidebarBand" }` | an agent whose screen matches no rule, and its band |
+| `SidebarAgentUnknownActive` | `{ link = "SidebarBandActive" }` | the same, focused or viewed |
+| `SidebarDivider` | `{ link = "SidebarBand" }` | the `─` between the bands and the agents |
 
 The key list adds `KeyListKey`, `{ bold = true }`, and `KeyListMuted`, `{ dim = true }`, the same way.
 The Lua prompt adds `PromptCursor`, `{ reverse = true }`, which draws its cursor cell.
@@ -1450,6 +1523,8 @@ The bundled prelude requires the API modules in this order, because they call in
 | `gband.win` | `gband.win`, and provides the plugin windows |
 | `gband.settings` | `gband.settings`, and provides the settings window |
 | `gband.keystyle` | `gband.keystyle` |
+| `gband.agents` | `gband.agents` |
+| `gband.jump` | `gband.jump` |
 
 It then loads the start theme with `require("gband.colorscheme").start()`.
 An error while the prelude loads fails the load, as an error in the init file does.
@@ -1816,6 +1891,10 @@ States live in the server, outside the Lua state, so a reload keeps them.
 Keys are not namespaced, so plugins can read each other's keys.
 Prefix a key you do not mean to share with your plugin's name.
 
+The key `agent_state` belongs to the server's agent detection.
+While a window runs a known agent it holds a table such as `{ agent = "claude", state = "working" }`, and the key is removed within one second after the agent exits.
+Reading it works as for any key, and assigning it from Lua is an error at the line of the assignment naming `agent_state`, which leaves the state unchanged.
+
 ### Server commands
 
 `gband.cmd.register`, `gband.cmd.run` and `gband.cmd.list` work in the server as in a client, but a server command's function is called with two arguments: the arguments table, and a context.
@@ -1936,7 +2015,7 @@ The server runs each client's commands in the order it calls them.
 `gband.rpc` can be called only in a callback.
 
 ```lua
-gband.keymap.set("prefix", "a", function()
+gband.keymap.set("prefix", "W", function()
   gband.rpc("agent-status.next_waiting", { after = gband.view().window }, function(ok, result)
     if not ok then print(result) end
   end)

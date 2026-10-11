@@ -52,6 +52,6 @@ gband.on("ServerEvent", function(ev)
   gband.notify("Agent waiting in window " .. tostring(ev.data.window), { title = "gband" })
 end, { pattern = "agent.waiting" })
 
-gband.keymap.set("prefix", "a", function()
+gband.keymap.set("prefix", "W", function()
   gband.rpc("agent-status.next_waiting", { after = gband.view().window })
 end, { desc = "focus the next waiting agent" })

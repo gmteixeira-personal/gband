@@ -14,13 +14,13 @@ A gband user runs coding agents in several windows and cannot see which agent wa
 - The server publishes the state in the window state key `agent_state`, as `{ agent = "claude", state = "working" }`. The existing window state messages carry it, and `WindowStateChanged` reports each change. Server Lua can read the key and cannot assign it.
 - The client reports the window it focuses to the server in a new **focus** message, so the server can turn `done` into `idle` when a client focuses the window. The protocol version rises from 13 to 14. **BREAKING** for a mix of builds: a version 13 client and a version 14 server refuse each other at the handshake.
 - A bundled client module `gband.agents` lists the agent windows of the client's layout in layout order, focuses the agent at a position, and steps to the previous or next agent.
-- The sidebar shows an **agent section** below the band labels: a blank row, then one label per agent window. A label is the agent's position, `1` to `9` then `a` to `z`, as band labels are. The label's color shows the agent's state, with no icon.
+- The sidebar splits in two halves, as herdr's does: the band labels in the top half, a divider `─` on the middle row, and the **agent section** in the bottom half, one label per agent window. A label is the agent's position, `1` to `9` then `a` to `z`, as band labels are. The label's color shows the agent's state, with no icon.
 - A band label that holds agent windows takes the color of its most urgent agent: blocked, then done, working, idle and unknown. A band with no agent keeps today's groups.
 - Each state has two highlight groups, such as `SidebarAgentWorking` and `SidebarAgentWorkingActive`. The brighter `Active` group draws the viewed band's label and the label of the agent this client focuses.
 - A left click on an agent label focuses that agent's window, viewing its band.
 - Two new key modes. In the modal and the direct key styles:
-  - `a` after the prefix key enters **agents mode**, labelled `agents`. A digit `1` to `9` focuses that agent and returns to interactive mode. Up and Down focus the previous and the next agent, and the mode stays active.
-  - `b` after the prefix key enters **bands mode**, labelled `bands`. A digit `1` to `9` views that band and returns to interactive mode. Up and Down view the band above and the band below, and the mode stays active.
+  - `a` after the prefix key enters **agents mode**, labelled `agents`. A digit `1` to `9` focuses that agent and returns to interactive mode. `k` or Up and `j` or Down focus the previous and the next agent, and the mode stays active.
+  - `b` after the prefix key enters **bands mode**, labelled `bands`. A digit `1` to `9` views that band. `k` or Up and `j` or Down view the band above and the band below. Only Escape and Enter leave the mode, so the user can look through band after band. `b` in agents mode switches to bands mode, and `a` in bands mode switches back.
   - Escape and Enter leave either mode. The sidebar's mode letter shows `A` or `B`.
 - The `agent-status` example moves its jump binding from `prefix a` to `prefix W`, because `prefix a` now enters agents mode.
 
@@ -28,10 +28,10 @@ A gband user runs coding agents in several windows and cannot see which agent wa
 
 ### New Capabilities
 - `agent-state`: agent windows and their identification, the five states and Claude Code's screen rules, the change from `done` to `idle`, timing, the `agent_state` window state key, and the client module `gband.agents`.
-- `jump-modes`: agents mode and bands mode, their key tables, digits, Up and Down, and how each leaves.
+- `jump-modes`: agents mode and bands mode, their key tables, digits, `j`, `k`, Up and Down, and how each leaves.
 
 ### Modified Capabilities
-- `sidebar`: "Sidebar rows" adds the agent section; "Viewed band emphasis" colors band labels by agent state; "Band click" leaves agent labels to the new "Agent click"; "Sidebar groups" adds the ten state groups. New requirements "Agent labels", "Agent colors" and "Agent click".
+- `sidebar`: "Sidebar rows" splits the sidebar at the divider and adds the agent section; "Band labels" stops the bands at the divider; "Viewed band emphasis" colors band labels by agent state; "Band click" leaves agent labels to the new "Agent click"; "Sidebar groups" adds the ten state groups and `SidebarDivider`. New requirements "Agent labels", "Agent colors" and "Agent click".
 - `client-attach`: "Key bindings" gains the `a` and `b` rows in the modal and direct tables. New requirement "Report the focused window".
 - `wire-protocol`: "Handshake" raises the protocol version to 14; "Client messages" lists the focus message.
 - `server-runtime`: "Shared window state" refuses a server Lua assignment to `agent_state`.

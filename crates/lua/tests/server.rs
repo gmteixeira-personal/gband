@@ -431,6 +431,54 @@ fn state_size_limit() {
 }
 
 #[test]
+fn agent_state_is_read_only() {
+    for assignment in ["state.agent_state = 'x'", "state.agent_state = nil"] {
+        let (outcome, host) = failed_handler(&format!(
+            "gband.on('WindowOpened', function(ev)
+               local state = gband.window_state(ev.session, ev.window)
+               state.agent = 'waiting'
+               local x = 1
+               local y = 2
+               local z = 3
+               {assignment}
+             end)"
+        ));
+        let [error] = outcome.errors.as_slice() else {
+            panic!("{assignment}: {:?}", outcome.errors);
+        };
+        assert_eq!(error.location.as_ref().map(|(_, line)| *line), Some(7));
+        assert!(error.message.contains("agent_state"), "{error}");
+        assert_eq!(
+            host.state("work", 1),
+            BTreeMap::from([("agent".to_owned(), text("waiting"))])
+        );
+    }
+}
+
+#[test]
+fn agent_state_is_readable() {
+    let host = Fake::with_window("work", 2);
+    host.states.lock().unwrap().insert(
+        ("work".to_owned(), 2),
+        BTreeMap::from([(
+            "agent_state".to_owned(),
+            Value::Table(vec![
+                (Key::string("agent"), text("claude")),
+                (Key::string("state"), text("idle")),
+            ]),
+        )]),
+    );
+    let (_scratch, config) = server(
+        "gband.on('WindowOpened', function(ev)
+           seen = gband.window_state(ev.session, ev.window).agent_state.state
+         end)",
+        Arc::clone(&host),
+    );
+    clean(&config.runtime.emit_server(&opened("work", 2)));
+    assert_eq!(global::<String>(&config, "seen"), "idle");
+}
+
+#[test]
 fn equal_assignment_changes_nothing() {
     let (outcome, host) = failed_handler(
         "gband.on('WindowOpened', function(ev)

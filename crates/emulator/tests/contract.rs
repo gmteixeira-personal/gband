@@ -192,6 +192,32 @@ fn text_between_cells<E: Emulator>() {
     assert_eq!(emulator.text_between((2, 0), (6, 0)), "llo w");
 }
 
+fn bottom_lines_leave_out_blank_rows<E: Emulator>() {
+    let mut emulator = E::new(Size::new(10, 8));
+    emulator.process(b"one\r\n\r\n   \r\ntwo  \r\n  three\r\n\r\n");
+    assert_eq!(emulator.bottom_lines(10), ["one", "two", "  three"]);
+    assert_eq!(emulator.bottom_lines(2), ["two", "  three"]);
+    assert!(emulator.bottom_lines(0).is_empty());
+}
+
+fn bottom_lines_of_the_alternate_screen<E: Emulator>() {
+    let mut emulator = E::new(Size::new(10, 4));
+    emulator.process(b"main\x1b[?1049h\x1b[2;1Halternate");
+    assert_eq!(emulator.bottom_lines(5), ["alternate"]);
+    emulator.process(b"\x1b[?1049l");
+    assert_eq!(emulator.bottom_lines(5), ["main"]);
+}
+
+#[test]
+fn grid_bottom_lines_leave_out_blank_rows() {
+    bottom_lines_leave_out_blank_rows::<Grid>();
+}
+
+#[test]
+fn grid_bottom_lines_of_the_alternate_screen() {
+    bottom_lines_of_the_alternate_screen::<Grid>();
+}
+
 #[test]
 fn grid_reports_mouse_modes() {
     mouse_modes::<Grid>();

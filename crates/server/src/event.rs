@@ -1,6 +1,6 @@
 use gband_core::event::LayoutEvent;
 use gband_core::layout::WindowId;
-use gband_protocol::SessionName;
+use gband_protocol::{SessionName, Value};
 use tokio::sync::broadcast::{self, error::RecvError};
 
 pub const CAPACITY: usize = 1024;
@@ -20,6 +20,10 @@ pub enum SessionEvent {
     },
     ClientDetached {
         client: u64,
+    },
+    AgentState {
+        window: WindowId,
+        value: Option<Value>,
     },
 }
 

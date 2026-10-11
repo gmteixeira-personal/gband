@@ -11,7 +11,7 @@ size 80x24 cursor 15:52 hidden
  9|                     │      │ n New window         │       │
 10|                     │      │ s Settings           │       │
 11|                     │      │ m Multi mode         │       │
-12|                     │      ├──────────────────────┤       │
+12|─                    │      ├──────────────────────┤       │
 13|                     │      │ 1 notes       band 1 │       │
 14|                     │      │ 2 logs        band 2 │       │
 15|                     │      └───────────────? keys─┘       │

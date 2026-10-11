@@ -4,7 +4,7 @@ use std::thread;
 
 use gband_core::event::LayoutEvent;
 use gband_core::layout::WindowId;
-use gband_lua::server::{Caller, Event};
+use gband_lua::server::{AGENT_STATE_KEY, Caller, Event};
 use gband_lua::{Config, ConfigError, Dispatch, Outcome, Side};
 use gband_protocol::{Requirement, SessionName, Value};
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
@@ -222,6 +222,7 @@ pub(crate) fn start(
     let gate = Arc::new(Semaphore::new(1));
     let (barriers_tx, barriers) = tokio::sync::mpsc::unbounded_channel();
     hub.settling.set_forward(barriers_tx);
+    tokio::spawn(agent_states(bus.subscribe(), Arc::clone(&hub)));
     tokio::spawn(forward(
         bus.subscribe(),
         sender,
@@ -243,6 +244,26 @@ pub(crate) fn start(
         tracing::warn!("cannot start the Lua thread: {error}");
     }
     taps
+}
+
+async fn agent_states(mut bus: broadcast::Receiver<Published>, hub: Arc<Hub>) {
+    loop {
+        match bus.recv().await {
+            Ok(Published { session, event }) => match event {
+                SessionEvent::Layout(LayoutEvent::WindowOpened { window, .. }) => {
+                    hub.window_opened(&session, window);
+                }
+                SessionEvent::AgentState { window, value } => {
+                    hub.set_state(&session, window, AGENT_STATE_KEY, value);
+                }
+                _ => {}
+            },
+            Err(broadcast::error::RecvError::Lagged(missed)) => {
+                tracing::warn!("agent states missed {missed} session events");
+            }
+            Err(broadcast::error::RecvError::Closed) => return,
+        }
+    }
 }
 
 async fn forward(
@@ -558,6 +579,7 @@ impl Worker {
                 session: name(),
                 client,
             },
+            SessionEvent::AgentState { .. } => return,
         };
         self.emit(&event);
     }

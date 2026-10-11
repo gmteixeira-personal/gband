@@ -33,7 +33,6 @@ The client side is Lua:
 - Agent hooks that report state over a socket, as herdr's integrations do. The screen rules work without installing anything into the agent.
 - Agent names, titles or a wider agent panel in the sidebar. The sidebar stays 1 column wide.
 - Bindings in the floating key style. Its window list already reaches windows directly.
-- `j` and `k` in the new modes. Up and Down are the requested keys.
 
 ## Decisions
 
@@ -59,7 +58,7 @@ Alternative: four new `Host` methods (screen tail, title, foreground arguments, 
 
 Alternative: evaluate inside `Window::process`. Rejected: it runs on every output chunk, and a working agent prints many chunks a second. The tick also gives the idle hold a clock without a timer per window.
 
-Alternative: treat recent output as `working`, as herdr does. Rejected: the echo of typing into Claude Code's prompt would read as working. The title spinner and `esc to interrupt` mark a turn without that error.
+Alternative: treat recent output as `working`, as herdr does. Rejected: the echo of typing into Claude Code's prompt would read as working. The title spinner and the turn line, a spinner glyph followed by a verb and `…`, mark a turn without that error. Claude Code 2.1.296 prints no `esc to interrupt` during a turn, and the rule keeps that text for earlier releases.
 
 ### The tracker owns `done` and the idle hold
 
@@ -95,7 +94,7 @@ The `agent-status` example already writes `agent`, and four spec scenarios name 
 
 ### Sidebar drawing
 
-`lines_for` appends the agent section after the band labels, with one blank row and then one span per entry. The span's group comes from a table that maps each state to its group name and `Active` name. `band_group(band)` takes the most urgent state of that band's entries by the order `blocked, done, working, idle, unknown`, and falls back to `SidebarBand` or `SidebarBandActive`. `clicked` resolves a row below the band labels to an agent position, and calls `gband.window.focus`.
+`divider_row(h)` returns `⌊h / 2⌋` when `h` is 6 or more, the smallest height with room for the mode letter, a blank row, one band, the divider, one agent and the marker, and nil below it. `lines_for` draws `─` in `SidebarDivider` on that row, stops the band labels above it, and draws one span per entry below it. The halves follow herdr's sidebar, which keeps its workspaces above and its agents below a fixed split. A fixed split keeps every label on its row when an agent starts or exits, so a click lands where the label was drawn a moment before. It costs band rows: an 80×24 terminal shows 10 bands, where the whole column showed 21. The span's group comes from a table that maps each state to its group name and `Active` name. `band_group(band)` takes the most urgent state of that band's entries by the order `blocked, done, working, idle, unknown`, and falls back to `SidebarBand` or `SidebarBandActive`. `clicked` resolves a row below the divider to an agent position, and calls `gband.window.focus`.
 
 `core.on_state` does not report window state changes or focus moves within a band. The sidebar also registers handlers, in its own handler group so a reload replaces them, for `WindowStateChanged` with key `agent_state`, `LayoutChanged`, `FocusChanged` and `Attached`. Each calls `draw`.
 

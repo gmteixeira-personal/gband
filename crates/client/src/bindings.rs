@@ -444,7 +444,7 @@ mod tests {
             .into_iter()
             .map(|(key, _, _)| key)
             .collect();
-        let order = "h l j k u i c n q [ ] r f w - = _ + R v V ctrl+h ctrl+l ctrl+j ctrl+k \
+        let order = "h l j k u i a b c n q [ ] r f w - = _ + R v V ctrl+h ctrl+l ctrl+j ctrl+k \
             ctrl+left ctrl+right ctrl+down ctrl+up ? : N s ! m D escape enter left right down up prefix \
             leftmouse rightmouse middlemouse mod+leftmouse mod+rightmouse mod+middlemouse \
             mod+wheeldown mod+wheelup";
@@ -536,7 +536,7 @@ mod tests {
             .filter(|key| !matches!(*key, "escape" | "enter"))
             .collect();
         assert_eq!(keys, expected);
-        assert!(keymap.modes.is_empty());
+        assert_eq!(keymap.modes.iter().collect::<Vec<_>>(), ["agents", "bands"]);
         assert_mouse_rows(&keymap);
         let own = [
             (
@@ -580,7 +580,7 @@ mod tests {
                     matches!(
                         action.as_deref(),
                         Some("keylist.open" | "prompt.open" | "prompt.rename")
-                    ) || key == "s",
+                    ) || matches!(key.as_str(), "s" | "a" | "b"),
                     "{key}"
                 ),
             }
@@ -911,6 +911,8 @@ gband.keymap.mode('resize')",
             ("prefix", "send the prefix key"),
             ("s", "settings"),
             ("m", "multi mode"),
+            ("a", "agents mode"),
+            ("b", "bands mode"),
         ];
         for table in [PREFIX, ROOT] {
             let entries = table_entries(&config, table);

@@ -3,7 +3,7 @@
 A sample gband plugin with both sides. It notices when a coding agent in a window stops to ask a question, and tells you wherever your client runs.
 
 - `server.lua` runs in the server. It keeps the last 512 bytes each window printed. When they hold a prompt such as `Do you want to proceed?`, it sets the window's state key `agent` to `"waiting"` and emits the event `agent.waiting` to the clients of the session. A key or a paste into the window clears the key. It registers the command `agent-status.next_waiting`, which focuses the next waiting window in the calling client.
-- `client.lua` runs in each client. It raises a desktop notification on `agent.waiting`, and binds `prefix a` to the command. It keeps the set of waiting windows from `WindowStateChanged` with `key` `agent` and from `WindowClosed`, reads it again from `gband.window_state` when it attaches or reloads, and shows its size in a right bar 3 columns wide, empty while no agent waits.
+- `client.lua` runs in each client. It raises a desktop notification on `agent.waiting`, and binds `prefix W` to the command. It keeps the set of waiting windows from `WindowStateChanged` with `key` `agent` and from `WindowClosed`, reads it again from `gband.window_state` when it attaches or reloads, and shows its size in a right bar 3 columns wide, empty while no agent waits.
 - `plugin.lua` is the manifest. Its `client = ">= 0.1"` asks every client that attaches to load `agent-status` 0.1 or later; a client without it reports an error naming the plugin.
 
 The server keeps the state and queues the event while no client is attached, so an agent that stops while you are detached notifies you when you attach again.
@@ -20,7 +20,7 @@ ln -s "$PWD/examples/plugins/agent-status" ~/.local/share/gband/plugins/agent-st
 ```
 
 Start a new server with `gband kill-server` and attach again, then run `printf 'Do you want to proceed?\n'` in a window.
-The top row of the terminal's last 3 columns shows `1`, your terminal shows a notification, and Ctrl+Space then `a` focuses that window.
+The top row of the terminal's last 3 columns shows `1`, your terminal shows a notification, and Ctrl+Space then `W` focuses that window.
 
 ## Tests
 

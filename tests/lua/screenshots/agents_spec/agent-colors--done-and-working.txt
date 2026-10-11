@@ -1,0 +1,142 @@
+size 80x24 cursor 22:41 shown
+ 0|I╭─────────────────────────────────────╮╭─────────────────────────────────────╮
+ 1| │  The next morning Tiago climbed the ││ ▐▛███▛█   Claude Code v2.1.296      │
+ 2|1│112 steps with a crate of sardines. H││▝▜██████▀  Haiku 5.5 · Claude Max    │
+ 3|2│e set it on the stone                ││ ▝▝   ▝▝   ~/repos/gband/.claude/work│
+ 4| │  landing, said nothing, and nodded u││trees/agent-state/target/claude-captu│
+ 5| │p at the lens.                       ││re                                   │
+ 6| │  That week Marta mailed the ministry││❯ Write a 300 word story about a ligh│
+ 7| │ her answer on the back of its own le││thouse keeper. Do not use any tools. │
+ 8| │tter: Not yet.                       ││✻ Whirlpooling… (14s · ↓ 2.8k tokens │
+ 9| │✻ Crunched for 15s · done 4:39 PM    ││· thinking)                          │
+10| │─────────────────────────────────────││─────────────────────────────────────│
+11| │─────────────────────────────────────││─────────────────────────────────────│
+12|─│───────────────────────              ││───────────────────────              │
+13|1│❯                                    ││❯                                    │
+14|2│─────────────────────────────────────││─────────────────────────────────────│
+15| │─────────────────────────────────────││─────────────────────────────────────│
+16| │───────────────────────              ││───────────────────────              │
+17| │  gband/claude-capture:change/agent-s││  gband/claude-capture:change/agent-s│
+18| │tate                                 ││tate                                 │
+19| │  [clean] [Haiku:medium] 4%          ││  [clean] [Haiku:medium]             │
+20| │  -- INSERT -- ⏸ manual mode on · ← 1││  -- INSERT -- ⏸ manual mode on · ← 1│
+21| │ agent                               ││ agent                               │
+22| │                                     ││                                     │
+23| ╰─────────────────────────────────────╯╰─────────────────────────────────────╯
+--
+0:0 fg=4 bg=0 bold
+0:1-39 fg=8
+0:40-78 fg=4 bold
+1:0 bg=0
+1:1 fg=8
+1:39 fg=8
+1:40 fg=4 bold
+1:78 fg=4 bold
+2:0 fg=10 bg=0 bold
+2:1 fg=8
+2:39 fg=8
+2:40 fg=4 bold
+2:78 fg=4 bold
+3:0 fg=8 bg=0
+3:1 fg=8
+3:39 fg=8
+3:40 fg=4 bold
+3:78 fg=4 bold
+4:0 bg=0
+4:1 fg=8
+4:39 fg=8
+4:40 fg=4 bold
+4:78 fg=4 bold
+5:0 bg=0
+5:1 fg=8
+5:39 fg=8
+5:40 fg=4 bold
+5:78 fg=4 bold
+6:0 bg=0
+6:1 fg=8
+6:39 fg=8
+6:40 fg=4 bold
+6:78 fg=4 bold
+7:0 bg=0
+7:1 fg=8
+7:39 fg=8
+7:40 fg=4 bold
+7:78 fg=4 bold
+8:0 bg=0
+8:1 fg=8
+8:39 fg=8
+8:40 fg=4 bold
+8:78 fg=4 bold
+9:0 bg=0
+9:1 fg=8
+9:39 fg=8
+9:40 fg=4 bold
+9:78 fg=4 bold
+10:0 bg=0
+10:1 fg=8
+10:39 fg=8
+10:40 fg=4 bold
+10:78 fg=4 bold
+11:0 bg=0
+11:1 fg=8
+11:39 fg=8
+11:40 fg=4 bold
+11:78 fg=4 bold
+12:0 fg=8 bg=0
+12:1 fg=8
+12:39 fg=8
+12:40 fg=4 bold
+12:78 fg=4 bold
+13:0 fg=2 bg=0
+13:1 fg=8
+13:39 fg=8
+13:40 fg=4 bold
+13:78 fg=4 bold
+14:0 fg=11 bg=0 bold
+14:1 fg=8
+14:39 fg=8
+14:40 fg=4 bold
+14:78 fg=4 bold
+15:0 bg=0
+15:1 fg=8
+15:39 fg=8
+15:40 fg=4 bold
+15:78 fg=4 bold
+16:0 bg=0
+16:1 fg=8
+16:39 fg=8
+16:40 fg=4 bold
+16:78 fg=4 bold
+17:0 bg=0
+17:1 fg=8
+17:39 fg=8
+17:40 fg=4 bold
+17:78 fg=4 bold
+18:0 bg=0
+18:1 fg=8
+18:39 fg=8
+18:40 fg=4 bold
+18:78 fg=4 bold
+19:0 bg=0
+19:1 fg=8
+19:39 fg=8
+19:40 fg=4 bold
+19:78 fg=4 bold
+20:0 bg=0
+20:1 fg=8
+20:39 fg=8
+20:40 fg=4 bold
+20:78 fg=4 bold
+21:0 bg=0
+21:1 fg=8
+21:39 fg=8
+21:40 fg=4 bold
+21:78 fg=4 bold
+22:0 bg=0
+22:1 fg=8
+22:39 fg=8
+22:40 fg=4 bold
+22:78 fg=4 bold
+23:0 bg=0
+23:1-39 fg=8
+23:40-78 fg=4 bold

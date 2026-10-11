@@ -238,6 +238,22 @@ fn defaults_reproduce_the_built_in_behaviour() {
         ]
     };
     let expected = [
+        (
+            ("bands", Chord::Key(Key::plain(KeyCode::Char('k')))),
+            Action::View(ViewAction::BandUp),
+        ),
+        (
+            ("bands", Chord::Key(Key::plain(KeyCode::Up))),
+            Action::View(ViewAction::BandUp),
+        ),
+        (
+            ("bands", Chord::Key(Key::plain(KeyCode::Char('j')))),
+            Action::View(ViewAction::BandDown),
+        ),
+        (
+            ("bands", Chord::Key(Key::plain(KeyCode::Down))),
+            Action::View(ViewAction::BandDown),
+        ),
         (char_key('h'), Action::View(ViewAction::FocusLeft)),
         (char_key('l'), Action::View(ViewAction::FocusRight)),
         (char_key('j'), Action::View(ViewAction::FocusDown)),
@@ -363,7 +379,10 @@ fn defaults_reproduce_the_built_in_behaviour() {
     .map(|((table, chord), action)| (table.to_owned(), chord, action))
     .collect::<Vec<_>>();
     assert_eq!(actions(&config), expected);
-    assert_eq!(config.modes.iter().collect::<Vec<_>>(), ["prefix"]);
+    assert_eq!(
+        config.modes.iter().collect::<Vec<_>>(),
+        ["agents", "bands", "prefix"]
+    );
     let label: String = eval(&config, "return gband.keymap.label('prefix')");
     assert_eq!(label, "navigation");
     let root = || Dispatch::Enter("root".to_owned());
@@ -376,6 +395,8 @@ fn defaults_reproduce_the_built_in_behaviour() {
         ),
         (prefixed("escape"), vec![root()]),
         (prefixed("enter"), vec![root()]),
+        (prefixed("a"), vec![Dispatch::Enter("agents".to_owned())]),
+        (prefixed("b"), vec![Dispatch::Enter("bands".to_owned())]),
         (
             ("prefix", Chord::Prefix),
             vec![
@@ -519,10 +540,10 @@ fn every_default_binding_is_described() {
     for (config, count, open) in [
         (
             gband_lua::defaults(gband_lua::Side::Client),
-            51,
+            53,
             "open a window",
         ),
-        (direct, 49, "open a window"),
+        (direct, 51, "open a window"),
         (floating, 8, "open a floating window"),
     ] {
         assert_described(&config, count, open);
@@ -534,7 +555,7 @@ fn direct_style_from_the_saved_choice() {
     let (_scratch, config) = with_saved_style("saved-direct", "direct");
     let label: String = eval(&config, "return gband.keymap.label('prefix')");
     assert_eq!(label, "prefix");
-    assert!(config.modes.is_empty());
+    assert_eq!(config.modes.iter().collect::<Vec<_>>(), ["agents", "bands"]);
     let modal = prefix_keys(&gband_lua::defaults(gband_lua::Side::Client));
     let expected: Vec<String> = modal
         .into_iter()
@@ -626,6 +647,8 @@ fn assert_described(config: &Config, count: usize, open: &str) {
            prefix = 'send the prefix key',
            s = 'settings',
            m = 'multi mode',
+           a = 'agents mode',
+           b = 'bands mode',
          }}
          local wrong = {{}}
          for _, table in ipairs({{ 'prefix', 'root' }}) do

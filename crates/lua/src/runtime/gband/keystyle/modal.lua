@@ -16,6 +16,7 @@ set("prefix", "j", action.focus_window_down, { desc = "focus the window below" }
 set("prefix", "k", action.focus_window_up, { desc = "focus the window above" })
 set("prefix", "u", action.focus_band_down, { desc = "view the band below" })
 set("prefix", "i", action.focus_band_up, { desc = "view the band above" })
+require("gband.jump").setup()
 set("prefix", "c", action.center_column, { desc = "center the focused column" })
 local interactive_on_new = gband.settings.interactive_on_new() == true
 

@@ -568,6 +568,40 @@ function gband.keystyle.saved() end
 ---@return gband.KeyStyle?
 function gband.keystyle.current() end
 
+---@alias gband.AgentState "blocked"|"working"|"done"|"idle"|"unknown"
+
+---An agent window of the client's layout.
+---@class gband.AgentEntry
+---@field window integer
+---@field band integer
+---@field agent string
+---@field state gband.AgentState
+
+---(client) The agent windows of the client's layout.
+---@class gband.Agents
+gband.agents = {}
+
+---(client) A new list with one entry per agent window, in layout order.
+---@return gband.AgentEntry[]
+function gband.agents.list() end
+
+---(client) Focuses the window of entry `n` of `list()` and returns true, or returns false when there is no entry `n`.
+---@param n integer
+---@return boolean
+function gband.agents.focus(n) end
+
+---(client) Focuses the agent after the focused one with 1, or before it with -1, wrapping; returns the focused window, or nil when there is no agent.
+---@param delta 1|-1
+---@return integer?
+function gband.agents.step(delta) end
+
+---(client) The agents and bands key modes.
+---@class gband.Jump
+gband.jump = {}
+
+---(client) Declares the `agents` and `bands` modes with their bindings, and binds `a` and `b` in `prefix` to enter them.
+function gband.jump.setup() end
+
 ---(client) The settings window and the settings it saves.
 ---@class gband.Settings
 gband.settings = {}

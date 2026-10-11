@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::ffi::OsString;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant as StdInstant};
 
 use anyhow::{Result, bail};
 use gband_core::geometry::{Size, boxes, tiles};
@@ -16,6 +16,7 @@ use tokio::sync::{mpsc, oneshot, watch};
 use tokio::time::Instant;
 use tracing::Instrument;
 
+use crate::agent::AgentChange;
 use crate::event::{Bus, SessionEvent};
 use crate::scripting::{Taps, signal_number};
 use crate::window::{self, SpawnRequest, Window, WindowEntry, WindowExit};
@@ -23,6 +24,7 @@ use crate::window::{self, SpawnRequest, Window, WindowEntry, WindowExit};
 const KILL_GRACE: Duration = Duration::from_secs(2);
 const SETTLE: Duration = Duration::from_millis(100);
 const NAME_CHECK: Duration = Duration::from_secs(1);
+const AGENT_CHECK: Duration = Duration::from_millis(100);
 pub const INITIAL_AREA: Size = Size::new(80, 24);
 
 pub struct State {
@@ -53,6 +55,13 @@ pub enum Command {
     Rename {
         window: WindowId,
         name: Option<String>,
+    },
+    Focused {
+        client: u64,
+        window: Option<WindowId>,
+    },
+    Seen {
+        window: WindowId,
     },
     Leave {
         client: u64,
@@ -115,6 +124,7 @@ pub struct Session {
     exits: mpsc::UnboundedSender<WindowExit>,
     last_status: Option<ExitStatus>,
     shown: HashMap<u64, HashSet<WindowId>>,
+    focused: HashMap<u64, WindowId>,
     settle_at: Option<Instant>,
 }
 
@@ -136,6 +146,7 @@ impl Session {
             exits,
             last_status: None,
             shown: HashMap::new(),
+            focused: HashMap::new(),
             settle_at: None,
         };
         let band = session.layout.bands()[0].id;
@@ -194,7 +205,10 @@ impl Session {
                 }
             },
             Command::Rename { window, name } => self.rename(window, name),
+            Command::Focused { client, window } => self.focus(client, window),
+            Command::Seen { window } => self.seen(window),
             Command::Leave { client } => {
+                self.focused.remove(&client);
                 let owned: Vec<WindowId> = self
                     .plugins
                     .iter()
@@ -227,6 +241,50 @@ impl Session {
         for live in self.windows.values() {
             live.entry.window.refresh_name();
         }
+    }
+
+    pub fn refresh_agents(&self) {
+        let now = StdInstant::now();
+        let focused: HashSet<WindowId> = self.focused.values().copied().collect();
+        for (&window, live) in &self.windows {
+            if let Some(change) = live
+                .entry
+                .window
+                .check_agent(now, focused.contains(&window))
+            {
+                self.publish_agent(window, change);
+            }
+        }
+    }
+
+    fn focus(&mut self, client: u64, window: Option<WindowId>) {
+        match window {
+            Some(window) if self.layout.contains(window) => {
+                self.focused.insert(client, window);
+                self.seen(window);
+            }
+            Some(window) => {
+                tracing::debug!(window = %window, "ignoring focus on a window not in the layout");
+            }
+            None => {
+                self.focused.remove(&client);
+            }
+        }
+    }
+
+    fn seen(&self, window: WindowId) {
+        if let Some(live) = self.windows.get(&window)
+            && let Some(change) = live.entry.window.agent_seen()
+        {
+            self.publish_agent(window, change);
+        }
+    }
+
+    fn publish_agent(&self, window: WindowId, change: AgentChange) {
+        self.config.events.send(SessionEvent::AgentState {
+            window,
+            value: change.value(),
+        });
     }
 
     fn show(&mut self, client: u64, windows: Vec<WindowId>) {
@@ -534,12 +592,15 @@ pub async fn drive(
 ) {
     let mut names = tokio::time::interval(NAME_CHECK);
     names.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    let mut agents = tokio::time::interval(AGENT_CHECK);
+    agents.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     while !session.is_over() {
         let settle_at = session.settle_at;
         tokio::select! {
             Some(command) = commands.recv() => session.handle(command),
             Some(exit) = exits.recv() => session.exited(exit),
             _ = names.tick() => session.refresh_names(),
+            _ = agents.tick() => session.refresh_agents(),
             () = async { tokio::time::sleep_until(settle_at.unwrap()).await }, if settle_at.is_some() => {
                 session.settle();
             }

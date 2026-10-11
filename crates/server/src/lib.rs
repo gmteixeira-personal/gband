@@ -1,3 +1,4 @@
+pub mod agent;
 mod channel;
 mod connection;
 mod event;

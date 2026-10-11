@@ -1,10 +1,10 @@
 use std::ffi::OsString;
 use std::io::{Read, Write};
 use std::path::Path;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, mpsc as std_mpsc};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use gband_core::geometry::Size;
@@ -19,6 +19,7 @@ use portable_pty::{
 use tokio::sync::{mpsc, watch};
 use tracing::Span;
 
+use crate::agent::{self, AgentChange, Tracker};
 use crate::process;
 use crate::scripting::Taps;
 
@@ -38,12 +39,16 @@ pub struct Window {
     generation: AtomicU64,
     changed: Arc<watch::Sender<u64>>,
     write_back: mpsc::WeakUnboundedSender<Input>,
+    agent_dirty: AtomicBool,
 }
 
 struct Terminal {
     grid: Grid,
     master: Option<Box<dyn MasterPty + Send>>,
     names: Option<Names>,
+    tracker: Option<Tracker>,
+    agent_published: bool,
+    agent_changed: bool,
 }
 
 struct Names {
@@ -79,6 +84,14 @@ impl Terminal {
         if reread || group_changed {
             names.group = group;
             names.command = process::foreground_command(group, &names.program);
+            let agent = match process::foreground_args(group) {
+                Some(args) => agent::identify(&args),
+                None => agent::identify(std::slice::from_ref(&names.command)),
+            };
+            if self.tracker.as_ref().map(Tracker::agent) != agent {
+                self.tracker = agent.map(Tracker::new);
+                self.agent_changed = true;
+            }
         }
         let automatic = self
             .grid
@@ -140,10 +153,14 @@ impl Window {
                 grid: Grid::new(size),
                 master: None,
                 names: None,
+                tracker: None,
+                agent_published: false,
+                agent_changed: false,
             }),
             generation: AtomicU64::new(0),
             changed: Arc::clone(changed),
             write_back: input.downgrade(),
+            agent_dirty: AtomicBool::new(false),
         });
         WindowEntry { window, input }
     }
@@ -194,9 +211,50 @@ impl Window {
     }
 
     pub fn refresh_name(&self) {
-        let changed = self.terminal.lock().unwrap().update_name(true);
+        let changed = {
+            let mut terminal = self.terminal.lock().unwrap();
+            let changed = terminal.update_name(true);
+            self.mark_agent(&mut terminal);
+            changed
+        };
         if changed {
             self.notify();
+        }
+    }
+
+    pub fn check_agent(&self, now: Instant, focused: bool) -> Option<AgentChange> {
+        if !self.agent_dirty.swap(false, Ordering::AcqRel) {
+            return None;
+        }
+        let mut terminal = self.terminal.lock().unwrap();
+        let terminal = &mut *terminal;
+        let Some(tracker) = &mut terminal.tracker else {
+            return std::mem::take(&mut terminal.agent_published).then_some(AgentChange::Removed);
+        };
+        let lines = terminal.grid.bottom_lines(agent::SCREEN_LINES);
+        let title = terminal.grid.title().unwrap_or_default();
+        let screen = agent::screen_state(tracker.agent(), title, &lines);
+        let change = tracker.observe(screen, now, focused);
+        if tracker.holding() {
+            self.agent_dirty.store(true, Ordering::Release);
+        }
+        let agent = tracker.agent();
+        change.map(|state| {
+            terminal.agent_published = true;
+            AgentChange::Set(agent, state)
+        })
+    }
+
+    pub fn agent_seen(&self) -> Option<AgentChange> {
+        let mut terminal = self.terminal.lock().unwrap();
+        let tracker = terminal.tracker.as_mut()?;
+        let agent = tracker.agent();
+        tracker.seen().map(|state| AgentChange::Set(agent, state))
+    }
+
+    fn mark_agent(&self, terminal: &mut Terminal) {
+        if terminal.tracker.is_some() || std::mem::take(&mut terminal.agent_changed) {
+            self.agent_dirty.store(true, Ordering::Release);
         }
     }
 
@@ -252,6 +310,7 @@ impl Window {
             let mut terminal = self.terminal.lock().unwrap();
             terminal.grid.process(bytes);
             terminal.update_name(false);
+            self.mark_agent(&mut terminal);
             self.generation.fetch_add(1, Ordering::AcqRel);
             let write_back = terminal.grid.take_write_back();
             if !write_back.is_empty()
@@ -325,13 +384,18 @@ pub fn spawn(
             manual: None,
             generation: 0,
         }),
+        tracker: None,
+        agent_published: false,
+        agent_changed: false,
     };
     terminal.update_name(true);
+    let agent_dirty = AtomicBool::new(std::mem::take(&mut terminal.agent_changed));
     let window = Arc::new(Window {
         terminal: Mutex::new(terminal),
         generation: AtomicU64::new(0),
         changed: Arc::clone(changed),
         write_back: input.downgrade(),
+        agent_dirty,
     });
 
     let (drained_tx, drained) = std_mpsc::channel::<()>();
