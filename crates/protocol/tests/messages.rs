@@ -32,8 +32,8 @@ fn session(name: &str) -> SessionName {
 }
 
 #[test]
-fn protocol_version_is_twelve() {
-    assert_eq!(PROTOCOL_VERSION, 12);
+fn protocol_version_is_thirteen() {
+    assert_eq!(PROTOCOL_VERSION, 13);
 }
 
 #[test]
