@@ -57,7 +57,7 @@ The screen state of a window running Claude Code SHALL be the state of the first
 |---|---|---|
 | 1 | `working` | the title begins with a character from U+2800 to U+28FF or from U+25D0 to U+25D3, followed by a space |
 | 2 | `blocked` | one of the bottom 20 non-empty lines contains `esc to cancel`, and one of them contains `do you want to proceed?`, `enter to confirm` or `enter to select` |
-| 3 | `working` | one of the bottom 12 non-empty lines contains `esc to interrupt` |
+| 3 | `working` | one of the bottom 12 non-empty lines contains `esc to interrupt`, or begins, after any spaces, with one of `·`, `✢`, `✳`, `✶`, `✻` and `✽` followed by a space, and contains `…`, U+2026 |
 | 4 | `idle` | one of the bottom 12 non-empty lines begins with `❯`, U+276F, after any spaces |
 | 5 | `unknown` | no rule above matches |
 
@@ -70,8 +70,12 @@ The screen state of a window running Claude Code SHALL be the state of the first
 - **THEN** the window's screen state is `blocked`
 
 #### Scenario: Turn without a spinner title
-- **WHEN** the title of a window running Claude Code is `claude`, and its last non-empty line holds `✶ Thinking… (esc to interrupt)`
+- **WHEN** the title of a window running Claude Code is `claude`, and its bottom lines hold `✻ Whirlpooling… (14s · ↓ 2.8k tokens · thinking)` above a prompt line `❯ `
 - **THEN** the window's screen state is `working`
+
+#### Scenario: Finished turn line
+- **WHEN** the title of a window running Claude Code is `✳ Claude Code`, and its bottom lines hold `✻ Crunched for 15s` above a prompt line `❯ `
+- **THEN** the window's screen state is `idle`
 
 #### Scenario: Prompt shown
 - **WHEN** the title of a window running Claude Code is `✳ Claude Code`, and one of its bottom lines is `❯ `

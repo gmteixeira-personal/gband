@@ -71,7 +71,7 @@ With one window open, the clock sits at the right edge and the sidebar at the le
 I╭───────────────╮                 12:00
  │               │
 1│               │
-2│               │
+─│               │
  │               │
  ╰───────────────╯
 ```

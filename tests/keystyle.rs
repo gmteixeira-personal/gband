@@ -578,3 +578,264 @@ fn tabs_with_the_direct_key_style() {
     client.run("echo typed");
     client.wait_for_line("typed");
 }
+
+const STAND_IN: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/crates/server/tests/fixtures/claude/stand-in.sh"
+);
+const UP: &[u8] = b"\x1b[A";
+const DOWN: &[u8] = b"\x1b[B";
+
+fn focused_label(client: &Attached, label: &str) {
+    client.wait_for_focused(&format!("{label} focused"), |lines| {
+        lines.iter().any(|line| line == label)
+    });
+}
+
+fn mode_letter(client: &Attached, letter: &str) {
+    client.wait_for(&format!("the mode letter {letter}"), |screen| {
+        sidebar_mode(screen) == letter
+    });
+}
+
+fn shell_line_untouched(client: &Attached, label: &str) {
+    let screen = client.screen();
+    let tile = tiles(&screen)
+        .into_iter()
+        .find(|tile| tile.lines(&screen).iter().any(|line| line == label))
+        .unwrap_or_else(|| panic!("no tile shows {label}:\n{}", screen.contents()));
+    let lines = tile.lines(&screen);
+    let last = lines.iter().rfind(|line| !line.is_empty()).unwrap();
+    assert!(last.ends_with('$'), "{last:?}\n{}", screen.contents());
+}
+
+fn with_agents(name: &str, style: &str) -> (TestEnv, Attached) {
+    let env = TestEnv::new(name);
+    env.save_key_style(style);
+    let mut client = Attached::start(&env, 120, 30);
+    client.wait_for_prompt();
+    labelled(&mut client, "W1");
+    let open: &[u8] = if style == "modal" {
+        b"\x00n\r"
+    } else {
+        b"\x00n"
+    };
+    for window in 2..=4 {
+        client.send(open);
+        client.wait_for_focused("a new shell", |lines| {
+            !lines
+                .iter()
+                .any(|line| line == "W1" || line.starts_with("agent "))
+                && lines
+                    .iter()
+                    .rfind(|line| !line.is_empty())
+                    .is_some_and(|line| line.ends_with('$'))
+        });
+        client.run(&format!("bash -c 'exec -a claude bash {STAND_IN}'"));
+        focused_label(&client, &format!("agent {window}"));
+    }
+    client.wait_for("three agent labels", |screen| {
+        sidebar_cell(screen, 18) == "3"
+    });
+    let back: &[u8] = if style == "modal" {
+        b"\x00hhh\r"
+    } else {
+        b"\x00h\x00h\x00h"
+    };
+    client.send(back);
+    focused_label(&client, "W1");
+    (env, client)
+}
+
+#[test]
+fn agents_mode_letter() {
+    let (_env, mut client) = with_agents("agents-letter", "modal");
+    client.send(b"\x00a");
+    mode_letter(&client, "A");
+    client.send(b"\x1b");
+    mode_letter(&client, "I");
+}
+
+#[test]
+fn unbound_key_discarded_in_agents_mode() {
+    let (_env, mut client) = with_agents("agents-unbound", "modal");
+    client.send(b"\x00ax");
+    mode_letter(&client, "A");
+    client.send(b"\x1b");
+    mode_letter(&client, "I");
+    focused_label(&client, "W1");
+    shell_line_untouched(&client, "W1");
+}
+
+#[test]
+fn jump_to_an_agent() {
+    let (_env, mut client) = with_agents("agents-jump", "modal");
+    client.send(b"\x00a3");
+    focused_label(&client, "agent 4");
+    mode_letter(&client, "I");
+    shell_line_untouched(&client, "W1");
+}
+
+#[test]
+fn jump_with_the_direct_style() {
+    let (_env, mut client) = with_agents("agents-jump-direct", "direct");
+    client.send(b"\x00a1");
+    focused_label(&client, "agent 2");
+    mode_letter(&client, "I");
+}
+
+#[test]
+fn position_past_the_list() {
+    let (_env, mut client) = with_agents("agents-past", "modal");
+    client.send(b"\x00a5");
+    mode_letter(&client, "A");
+    client.send(b"\x1b");
+    mode_letter(&client, "I");
+    focused_label(&client, "W1");
+}
+
+#[test]
+fn step_down_twice() {
+    let (_env, mut client) = with_agents("agents-down", "modal");
+    client.send(b"\x00a1");
+    focused_label(&client, "agent 2");
+    client.send(b"\x00a");
+    client.send(DOWN);
+    client.send(DOWN);
+    focused_label(&client, "agent 4");
+    mode_letter(&client, "A");
+    client.send(b"\r");
+    mode_letter(&client, "I");
+    focused_label(&client, "agent 4");
+}
+
+#[test]
+fn step_agents_with_j_and_k() {
+    let (_env, mut client) = with_agents("agents-jk", "modal");
+    client.send(b"\x00a1");
+    focused_label(&client, "agent 2");
+    client.send(b"\x00aj");
+    focused_label(&client, "agent 3");
+    client.send(b"j");
+    focused_label(&client, "agent 4");
+    client.send(b"k");
+    focused_label(&client, "agent 3");
+    mode_letter(&client, "A");
+}
+
+#[test]
+fn up_with_no_agent_focused() {
+    let (_env, mut client) = with_agents("agents-up", "modal");
+    client.send(b"\x00a");
+    client.send(UP);
+    focused_label(&client, "agent 4");
+}
+
+#[test]
+fn escape_keeps_the_new_focus() {
+    let (_env, mut client) = with_agents("agents-escape", "modal");
+    client.send(b"\x00a1");
+    focused_label(&client, "agent 2");
+    client.send(b"\x00a");
+    client.send(DOWN);
+    focused_label(&client, "agent 3");
+    client.send(b"\x1b");
+    mode_letter(&client, "I");
+    focused_label(&client, "agent 3");
+}
+
+fn with_bands(name: &str) -> (TestEnv, Attached) {
+    let env = TestEnv::new(name);
+    let mut client = Attached::start(&env, 80, 24);
+    client.wait_for_prompt();
+    labelled(&mut client, "B1");
+    client.send(b"\x00un\r");
+    client.wait_for_focused("a shell in band 2", |lines| {
+        !lines.iter().any(|line| line == "B1")
+            && lines
+                .iter()
+                .rfind(|line| !line.is_empty())
+                .is_some_and(|line| line.ends_with('$'))
+    });
+    labelled(&mut client, "B2");
+    client.wait_for("band 3", |screen| sidebar_cell(screen, 4) == "3");
+    client.send(b"\x00i\r");
+    focused_label(&client, "B1");
+    (env, client)
+}
+
+fn empty_band(client: &Attached) {
+    client.wait_for("an empty band", |screen| tiles(screen).is_empty());
+}
+
+#[test]
+fn bands_mode_letter() {
+    let (_env, mut client) = with_bands("bands-letter");
+    client.send(b"\x00b");
+    mode_letter(&client, "B");
+    client.send(b"\x1b");
+    mode_letter(&client, "I");
+}
+
+#[test]
+fn jump_to_a_band() {
+    let (_env, mut client) = with_bands("bands-jump");
+    client.send(b"\x00b3");
+    empty_band(&client);
+    mode_letter(&client, "B");
+    client.send(b"2");
+    focused_label(&client, "B2");
+    mode_letter(&client, "B");
+    client.send(b"\x1b");
+    mode_letter(&client, "I");
+    focused_label(&client, "B2");
+}
+
+#[test]
+fn band_past_the_layout() {
+    let (_env, mut client) = with_bands("bands-past");
+    client.send(b"\x00b7");
+    mode_letter(&client, "B");
+    focused_label(&client, "B1");
+}
+
+#[test]
+fn step_through_bands() {
+    let (_env, mut client) = with_bands("bands-step");
+    client.send(b"\x00b");
+    client.send(DOWN);
+    client.send(DOWN);
+    empty_band(&client);
+    mode_letter(&client, "B");
+    client.send(UP);
+    focused_label(&client, "B2");
+    mode_letter(&client, "B");
+}
+
+#[test]
+fn switch_between_the_modes() {
+    let (_env, mut client) = with_bands("modes-switch");
+    client.send(b"\x00a");
+    mode_letter(&client, "A");
+    client.send(b"b");
+    mode_letter(&client, "B");
+    client.send(b"j");
+    focused_label(&client, "B2");
+    client.send(b"a");
+    mode_letter(&client, "A");
+    client.send(b"\x1b");
+    mode_letter(&client, "I");
+    focused_label(&client, "B2");
+}
+
+#[test]
+fn step_bands_with_j_and_k() {
+    let (_env, mut client) = with_bands("bands-jk");
+    client.send(b"\x00bj");
+    focused_label(&client, "B2");
+    client.send(b"j");
+    empty_band(&client);
+    client.send(b"k");
+    focused_label(&client, "B2");
+    mode_letter(&client, "B");
+}

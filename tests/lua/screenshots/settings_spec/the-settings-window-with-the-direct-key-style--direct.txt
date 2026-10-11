@@ -11,7 +11,7 @@ size 80x24 cursor 14:56 hidden
  9| │                       ┌settings─────────────────────┐
 10| │                       │theme    terminal            │
 11| │                       │sidebar  on                  │
-12| │                       │keys     direct              │
+12|─│                       │keys     direct              │
 13| │                       │reload   ok                  │
 14| │                       └─────────────────────────────┘
 15| │                                     │
@@ -65,7 +65,7 @@ size 80x24 cursor 14:56 hidden
 11:25-34 fg=8 bg=0
 11:35-54 fg=7 bg=0
 11:55 fg=8 bg=0
-12:0 bg=0
+12:0 fg=8 bg=0
 12:1 fg=4 bold
 12:25-34 fg=8 bg=0
 12:35-54 fg=7 bg=0

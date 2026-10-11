@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use gband_core::input::{Key, KeyCode};
-use gband_core::layout::{Proportion, WindowId};
+use gband_core::layout::{Program, Proportion, SessionAction, WindowId};
 use gband_lua::{LoadOptions, Locations, Side};
 use gband_protocol::{
     Answer, ClientMessage, Entry, Key as DataKey, Operation, Process, Requirement, ServerMessage,
@@ -843,4 +843,213 @@ end)",
     assert_eq!(field(&described, "windows"), Some(&Value::Int(1)));
     assert_eq!(field(&described, "clients"), Some(&Value::Int(1)));
     assert_eq!(field(&described, "missing"), Some(&Value::Bool(true)));
+}
+
+const STAND_IN: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/tests/fixtures/claude/stand-in.sh"
+);
+
+fn agent_state(client: &TestClient, window: WindowId) -> Option<String> {
+    let value = client.states.get(&window)?.get("agent_state")?;
+    assert_eq!(field(value, "agent"), Some(&text("claude")), "{value:?}");
+    match field(value, "state") {
+        Some(Value::Bytes(state)) => Some(String::from_utf8_lossy(state).into_owned()),
+        other => panic!("{other:?}"),
+    }
+}
+
+async fn wait_for_agent(client: &mut TestClient, window: WindowId, state: Option<&str>) {
+    client
+        .wait_until(|client| agent_state(client, window).as_deref() == state)
+        .await;
+}
+
+async fn press(client: &mut TestClient, window: WindowId, key: char) {
+    client.key_to(window, Key::plain(KeyCode::Char(key))).await;
+}
+
+async fn run_stand_in(client: &mut TestClient, window: WindowId) {
+    client.wait_for_prompt(window).await;
+    client
+        .type_line_to(window, &format!("bash -c 'exec -a claude bash {STAND_IN}'"))
+        .await;
+    wait_for_agent(client, window, Some("idle")).await;
+}
+
+async fn agent_beside_a_shell(client: &mut TestClient) -> (WindowId, WindowId) {
+    let first = client.first();
+    let agent = client.open_after(first).await;
+    run_stand_in(client, agent).await;
+    (first, agent)
+}
+
+async fn done_agent(client: &mut TestClient) -> (WindowId, WindowId) {
+    let (first, agent) = agent_beside_a_shell(client).await;
+    client.send(&ClientMessage::Focused(Some(first))).await;
+    press(client, agent, 'w').await;
+    wait_for_agent(client, agent, Some("working")).await;
+    press(client, agent, 'i').await;
+    wait_for_agent(client, agent, Some("done")).await;
+    (first, agent)
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn agent_identified_from_its_arguments() {
+    let scripted = start("agent-identified", "").await;
+    let mut client = scripted.attach().await;
+    let first = client.first();
+    let band = client.layout.bands()[0].id;
+    let opened = std::time::Instant::now();
+    client
+        .act(SessionAction::open(
+            band,
+            Some(first),
+            Some(Program::Argv(vec![
+                "bash".to_owned(),
+                "-c".to_owned(),
+                "exec -a claude sleep 3".to_owned(),
+            ])),
+        ))
+        .await;
+    client.wait_until(|client| !client.focus.is_empty()).await;
+    let window = client.focus[0];
+    client
+        .wait_until(|client| agent_state(client, window).is_some())
+        .await;
+    assert!(
+        opened.elapsed() < Duration::from_secs(2),
+        "{:?}",
+        opened.elapsed()
+    );
+    assert_eq!(agent_state(&client, window).as_deref(), Some("unknown"));
+    assert_eq!(agent_state(&client, first), None);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn agent_dropped_after_it_exits() {
+    let scripted = start("agent-dropped", "").await;
+    let mut client = scripted.attach().await;
+    let first = client.first();
+    client.wait_for_prompt(first).await;
+    client
+        .type_line_to(first, "bash -c 'exec -a claude sleep 3'")
+        .await;
+    wait_for_agent(&mut client, first, Some("unknown")).await;
+    let exited = std::time::Instant::now();
+    wait_for_agent(&mut client, first, None).await;
+    assert!(
+        exited.elapsed() < Duration::from_secs(3),
+        "{:?}",
+        exited.elapsed()
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn key_while_working() {
+    let scripted = start("agent-working", "").await;
+    let mut client = scripted.attach().await;
+    let first = client.first();
+    run_stand_in(&mut client, first).await;
+    press(&mut client, first, 'w').await;
+    wait_for_agent(&mut client, first, Some("working")).await;
+    assert_eq!(
+        client.states[&first]["agent_state"],
+        Value::Table(vec![
+            (DataKey::string("agent"), text("claude")),
+            (DataKey::string("state"), text("working")),
+        ])
+    );
+    press(&mut client, first, 'b').await;
+    wait_for_agent(&mut client, first, Some("blocked")).await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn key_removed() {
+    let scripted = start("agent-removed", "").await;
+    let mut client = scripted.attach().await;
+    let first = client.first();
+    run_stand_in(&mut client, first).await;
+    press(&mut client, first, 'q').await;
+    wait_for_agent(&mut client, first, None).await;
+    assert!(!client.states[&first].contains_key("agent_state"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn state_at_attach() {
+    let scripted = start("agent-attach", "").await;
+    let mut client = scripted.attach().await;
+    let first = client.first();
+    run_stand_in(&mut client, first).await;
+    press(&mut client, first, 'b').await;
+    wait_for_agent(&mut client, first, Some("blocked")).await;
+    let second = scripted.attach().await;
+    assert_eq!(agent_state(&second, first).as_deref(), Some("blocked"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn agent_finishes_in_the_focused_window() {
+    let scripted = start("agent-focused", "").await;
+    let mut client = scripted.attach().await;
+    let (_, agent) = agent_beside_a_shell(&mut client).await;
+    client.send(&ClientMessage::Focused(Some(agent))).await;
+    press(&mut client, agent, 'w').await;
+    wait_for_agent(&mut client, agent, Some("working")).await;
+    press(&mut client, agent, 'i').await;
+    wait_for_agent(&mut client, agent, Some("idle")).await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn another_client_looks() {
+    let scripted = start("agent-looks", "").await;
+    let mut client = scripted.attach().await;
+    let (_, agent) = done_agent(&mut client).await;
+    let mut second = scripted.attach().await;
+    assert_eq!(agent_state(&second, agent).as_deref(), Some("done"));
+    second.send(&ClientMessage::Focused(Some(agent))).await;
+    wait_for_agent(&mut second, agent, Some("idle")).await;
+    wait_for_agent(&mut client, agent, Some("idle")).await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn done_across_a_detach() {
+    let scripted = start("agent-detach", "").await;
+    let mut client = scripted.attach().await;
+    let (first, agent) = agent_beside_a_shell(&mut client).await;
+    client.send(&ClientMessage::Focused(Some(agent))).await;
+    press(&mut client, agent, 'l').await;
+    wait_for_agent(&mut client, agent, Some("working")).await;
+    client.send(&ClientMessage::Detach).await;
+    drop(client);
+    tokio::time::sleep(Duration::from_millis(2000)).await;
+    let mut client = scripted.attach().await;
+    client.send(&ClientMessage::Focused(Some(first))).await;
+    client.pump(Duration::from_millis(300)).await;
+    assert_eq!(agent_state(&client, agent).as_deref(), Some("done"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn typed_into() {
+    let scripted = start("agent-typed", "").await;
+    let mut client = scripted.attach().await;
+    let (_, agent) = done_agent(&mut client).await;
+    client
+        .send(&ClientMessage::Paste {
+            window: agent,
+            text: "x".to_owned(),
+        })
+        .await;
+    wait_for_agent(&mut client, agent, Some("idle")).await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn focus_outside_the_session_ignored() {
+    let scripted = start("agent-outside", "").await;
+    let mut client = scripted.attach().await;
+    let (_, agent) = done_agent(&mut client).await;
+    client
+        .send(&ClientMessage::Focused(Some(WindowId(99))))
+        .await;
+    client.pump(Duration::from_millis(300)).await;
+    assert_eq!(agent_state(&client, agent).as_deref(), Some("done"));
 }

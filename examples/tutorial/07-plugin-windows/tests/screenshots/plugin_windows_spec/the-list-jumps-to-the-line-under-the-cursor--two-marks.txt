@@ -3,7 +3,7 @@ size 40x8 cursor 5:31 hidden
 1| │                 ││                 │
 2|1│       ┌marks───────────────┐       │
 3|2│       │a window 2 in band 1│       │
-4| │       │b window 1 in band 1│       │
+4|─│       │b window 1 in band 1│       │
 5| │       └────────────────────┘       │
 6| │                 ││                 │
 7| ╰─────────────────╯╰─────────────────╯
@@ -29,7 +29,7 @@ size 40x8 cursor 5:31 hidden
 3:11-29 fg=0 bg=4
 3:30 fg=8 bg=0
 3:38 fg=8
-4:0 bg=0
+4:0 fg=8 bg=0
 4:1 fg=4 bold
 4:9 fg=8 bg=0
 4:10 fg=3 bg=0 bold

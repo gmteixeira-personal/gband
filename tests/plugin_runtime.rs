@@ -58,7 +58,7 @@ fn agent_status_example() {
     client.wait_for("the first tile focused", |screen| {
         focused_left(screen) == Some(1)
     });
-    client.send(b"a");
+    client.send(b"W");
     client.wait_for("the waiting tile focused", |screen| {
         focused_left(screen) == Some(49)
     });

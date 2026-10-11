@@ -1,9 +1,19 @@
 mod common;
 
+use std::collections::BTreeMap;
+use std::sync::Arc;
+
 use common::*;
+use gband_core::action::Action;
 use gband_core::geometry::Size;
 use gband_core::input::{Modifiers, MouseButton};
-use gband_lua::{BarSide, Config, Event, Pointer, PointerTarget, ViewState};
+use gband_core::layout::{Layout, LayoutOptions, WindowId};
+use gband_core::view::ViewAction;
+use gband_lua::{
+    BandState, Bar, BarSide, Color, Config, Dispatch, Event, Outcome, Pointer, PointerTarget,
+    ViewState, WindowStates,
+};
+use gband_protocol::{Key, Value};
 
 fn loaded(name: &str, source: &str) -> (Scratch, Config) {
     let scratch = Scratch::new(name);
@@ -111,7 +121,8 @@ fn rows_follow_the_pushed_state() {
             (0, "I".to_owned()),
             (2, "1".to_owned()),
             (3, "2".to_owned()),
-            (4, "3".to_owned())
+            (4, "3".to_owned()),
+            (12, "─".to_owned())
         ]
     );
     state.error = Some("broken".to_owned());
@@ -123,11 +134,32 @@ fn rows_follow_the_pushed_state() {
 #[test]
 fn band_labels_past_nine() {
     let (_scratch, config) = loaded("labels", "gband.plugin('gband.sidebar')");
-    let mut state = sized(80, 40);
+    let mut state = sized(80, 80);
     state.band.count = 36;
     let bar = presented(&config, state);
     let labels: String = rows(&bar)[2..38].concat();
     assert_eq!(labels, "123456789abcdefghijklmnopqrstuvwxyz");
+}
+
+#[test]
+fn bands_cut_at_the_divider() {
+    let (_scratch, config) = loaded("labels-cut", "gband.plugin('gband.sidebar')");
+    let mut state = drawn(80);
+    state.band.count = 12;
+    let bar = presented(&config, state);
+    let labels: String = rows(&bar)[2..12].concat();
+    assert_eq!(labels, "123456789a");
+    assert_eq!(rows(&bar)[12], "─");
+    assert!(rows(&bar)[13..].iter().all(String::is_empty));
+}
+
+#[test]
+fn no_divider_on_a_short_sidebar() {
+    let (_scratch, config) = loaded("short", "gband.plugin('gband.sidebar')");
+    let mut state = sized(80, 5);
+    state.band.count = 2;
+    let bar = presented(&config, state);
+    assert_eq!(rows(&bar), ["I", "", "1", "2", ""]);
 }
 
 #[test]
@@ -207,7 +239,8 @@ fn apps_character_with_the_floating_style() {
         [
             (0, "∷".to_owned()),
             (2, "1".to_owned()),
-            (3, "2".to_owned())
+            (3, "2".to_owned()),
+            (12, "─".to_owned())
         ]
     );
 }
@@ -265,4 +298,415 @@ fn click_the_mode_letters_row_with_the_modal_style() {
     clean(&outcome);
     assert!(outcome.dispatched.is_empty(), "{:?}", outcome.dispatched);
     assert_eq!(plugin_windows(&config), 0);
+}
+
+const GROUPS: [&str; 13] = [
+    "SidebarBand",
+    "SidebarDivider",
+    "SidebarBandActive",
+    "SidebarAgentBlocked",
+    "SidebarAgentBlockedActive",
+    "SidebarAgentDone",
+    "SidebarAgentDoneActive",
+    "SidebarAgentWorking",
+    "SidebarAgentWorkingActive",
+    "SidebarAgentIdle",
+    "SidebarAgentIdleActive",
+    "SidebarAgentUnknown",
+    "SidebarAgentUnknownActive",
+];
+
+const FIRST_GROUP_COLOR: u8 = 20;
+
+fn marked() -> String {
+    let marks: String = GROUPS
+        .iter()
+        .zip(FIRST_GROUP_COLOR..)
+        .map(|(group, color)| format!("gband.hl.set('{group}', {{ fg = {color} }})\n"))
+        .collect();
+    format!("gband.plugin('gband.sidebar')\n{marks}")
+}
+
+fn group_at(bar: &Bar, row: usize) -> &'static str {
+    let [run] = bar.lines[row].as_slice() else {
+        panic!("row {row}: {:?}", bar.lines[row]);
+    };
+    match run.style.fg {
+        Some(Color::Index(color)) if color >= FIRST_GROUP_COLOR => {
+            GROUPS[usize::from(color - FIRST_GROUP_COLOR)]
+        }
+        other => panic!("row {row}: {other:?}"),
+    }
+}
+
+fn opened(layout: &mut Layout, band: usize, after: Option<WindowId>) -> WindowId {
+    let window = layout.allocate_window();
+    let id = layout.bands()[band].id;
+    layout.open(window, id, after, None, &LayoutOptions::default());
+    window
+}
+
+fn agent_state(state: &str) -> Value {
+    Value::Table(vec![
+        (Key::string("agent"), Value::string("claude")),
+        (Key::string("state"), Value::string(state)),
+    ])
+}
+
+fn agents_view(
+    layout: Layout,
+    agents: &[(WindowId, &str)],
+    focused: Option<WindowId>,
+    band: u32,
+    height: u16,
+) -> ViewState {
+    let states: WindowStates = agents
+        .iter()
+        .map(|&(window, state)| {
+            (
+                window,
+                BTreeMap::from([("agent_state".to_owned(), agent_state(state))]),
+            )
+        })
+        .collect();
+    let count = layout.bands().len() as u32;
+    ViewState {
+        band: BandState {
+            number: band,
+            index: band,
+            count,
+        },
+        window: focused.map(|window| window.0),
+        layout: Arc::new(layout),
+        area: Size::new(80, height),
+        ribbon: Size::new(79, height),
+        states: Arc::new(states),
+        ..sized(80, height)
+    }
+}
+
+fn one_band(windows: usize) -> (Layout, Vec<WindowId>) {
+    let mut layout = Layout::new();
+    let mut opened_windows: Vec<WindowId> = Vec::new();
+    for _ in 0..windows {
+        let after = opened_windows.last().copied();
+        opened_windows.push(opened(&mut layout, 0, after));
+    }
+    (layout, opened_windows)
+}
+
+fn changed(config: &Config, window: WindowId, previous: &str, state: &str) -> Outcome {
+    config.runtime.emit(&Event::WindowStateChanged {
+        window,
+        key: "agent_state".to_owned(),
+        value: Some(agent_state(state)),
+        previous: Some(agent_state(previous)),
+    })
+}
+
+fn press(config: &Config, row: u16, table: &str) -> Outcome {
+    config.runtime.emit(&Event::MousePressed {
+        button: MouseButton::Left,
+        pointer: Pointer {
+            col: 0,
+            row,
+            modifiers: Modifiers::NONE,
+            target: PointerTarget::Outside,
+            window: None,
+            plugin_window: None,
+            content: None,
+            boxed: None,
+            table: table.to_owned(),
+        },
+    })
+}
+
+#[test]
+fn rows_with_agents() {
+    let (_scratch, config) = loaded("agent-rows", "gband.plugin('gband.sidebar')");
+    let (layout, windows) = one_band(2);
+    let agents = [(windows[0], "idle"), (windows[1], "working")];
+    let bar = presented(&config, agents_view(layout, &agents, None, 1, 24));
+    assert_eq!(
+        shown_rows(&bar),
+        [
+            (0, "I".to_owned()),
+            (2, "1".to_owned()),
+            (3, "2".to_owned()),
+            (12, "─".to_owned()),
+            (13, "1".to_owned()),
+            (14, "2".to_owned()),
+        ]
+    );
+}
+
+#[test]
+fn divider_in_its_group() {
+    let (_scratch, config) = loaded("agent-divider", &marked());
+    let (layout, windows) = one_band(1);
+    let bar = presented(
+        &config,
+        agents_view(layout, &[(windows[0], "idle")], None, 1, 24),
+    );
+    assert_eq!(group_at(&bar, 12), "SidebarDivider");
+}
+
+#[test]
+fn bands_and_agents_cut_at_the_divider() {
+    let (_scratch, config) = loaded("agent-bands-cut", "gband.plugin('gband.sidebar')");
+    let mut layout = Layout::new();
+    let agent = opened(&mut layout, 0, None);
+    for band in 1..4 {
+        opened(&mut layout, band, None);
+    }
+    assert_eq!(layout.bands().len(), 5);
+    let bar = presented(
+        &config,
+        agents_view(layout, &[(agent, "working")], None, 1, 8),
+    );
+    assert_eq!(
+        shown_rows(&bar),
+        [
+            (0, "I".to_owned()),
+            (2, "1".to_owned()),
+            (3, "2".to_owned()),
+            (4, "─".to_owned()),
+            (5, "1".to_owned()),
+        ]
+    );
+}
+
+#[test]
+fn no_room_for_agents() {
+    let (_scratch, config) = loaded("agent-no-room", "gband.plugin('gband.sidebar')");
+    let (layout, windows) = one_band(1);
+    let bar = presented(
+        &config,
+        agents_view(layout, &[(windows[0], "working")], None, 1, 5),
+    );
+    assert_eq!(rows(&bar), ["I", "", "1", "2", ""]);
+}
+
+#[test]
+fn agents_cut_at_the_last_row() {
+    let (_scratch, config) = loaded("agent-cut", "gband.plugin('gband.sidebar')");
+    let (layout, windows) = one_band(4);
+    let four: Vec<(WindowId, &str)> = windows.iter().map(|&w| (w, "idle")).collect();
+    let bar = presented(&config, agents_view(layout, &four, None, 1, 10));
+    let agent_rows: Vec<(usize, String)> = shown_rows(&bar).into_iter().skip(4).collect();
+    let expected: Vec<(usize, String)> = (6..9).map(|row| (row, (row - 5).to_string())).collect();
+    assert_eq!(agent_rows, expected);
+    assert_eq!(rows(&bar)[9], "");
+}
+
+#[test]
+fn band_of_a_working_agent() {
+    let (_scratch, config) = loaded("agent-band", &marked());
+    let mut layout = Layout::new();
+    opened(&mut layout, 0, None);
+    let agent = opened(&mut layout, 1, None);
+    let bar = presented(
+        &config,
+        agents_view(layout, &[(agent, "working")], None, 1, 24),
+    );
+    assert_eq!(group_at(&bar, 2), "SidebarBandActive");
+    assert_eq!(group_at(&bar, 3), "SidebarAgentWorking");
+    assert_eq!(group_at(&bar, 4), "SidebarBand");
+}
+
+#[test]
+fn most_urgent_agent_wins() {
+    let (_scratch, config) = loaded("agent-urgent", &marked());
+    let (layout, windows) = one_band(3);
+    let agents = [
+        (windows[0], "idle"),
+        (windows[1], "blocked"),
+        (windows[2], "working"),
+    ];
+    let bar = presented(&config, agents_view(layout, &agents, None, 1, 24));
+    assert_eq!(group_at(&bar, 2), "SidebarAgentBlockedActive");
+}
+
+#[test]
+fn band_follows_its_agent() {
+    let (_scratch, config) = loaded("agent-band-follows", &marked());
+    let mut layout = Layout::new();
+    let plain = opened(&mut layout, 0, None);
+    let agent = opened(&mut layout, 1, None);
+    let view = |state| agents_view(layout.clone(), &[(agent, state)], Some(plain), 1, 24);
+    presented(&config, view("working"));
+    clean(&config.runtime.set_state(view("done")));
+    clean(&changed(&config, agent, "working", "done"));
+    let bar = sidebar(&config).expect("the sidebar is redrawn");
+    assert_eq!(group_at(&bar, 3), "SidebarAgentDone");
+    assert_eq!(group_at(&bar, 13), "SidebarAgentDone");
+}
+
+#[test]
+fn blocked_agent() {
+    let (_scratch, config) = loaded("agent-blocked", &marked());
+    let (layout, windows) = one_band(2);
+    let agents = [(windows[1], "blocked")];
+    let bar = presented(
+        &config,
+        agents_view(layout, &agents, Some(windows[0]), 1, 24),
+    );
+    assert_eq!(rows(&bar)[13], "1");
+    assert_eq!(group_at(&bar, 13), "SidebarAgentBlocked");
+}
+
+#[test]
+fn focused_agent_is_brighter() {
+    let (_scratch, config) = loaded("agent-focused", &marked());
+    let (layout, windows) = one_band(2);
+    let agents = [(windows[0], "idle"), (windows[1], "working")];
+    let bar = presented(
+        &config,
+        agents_view(layout, &agents, Some(windows[1]), 1, 24),
+    );
+    assert_eq!(group_at(&bar, 13), "SidebarAgentIdle");
+    assert_eq!(group_at(&bar, 14), "SidebarAgentWorkingActive");
+}
+
+#[test]
+fn every_state_has_its_group() {
+    let (_scratch, config) = loaded("agent-states", &marked());
+    let (layout, windows) = one_band(5);
+    let states = ["blocked", "done", "working", "idle", "unknown"];
+    let agents: Vec<(WindowId, &str)> = windows.iter().copied().zip(states).collect();
+    let bar = presented(&config, agents_view(layout, &agents, None, 1, 24));
+    let groups: Vec<&str> = (13..18).map(|row| group_at(&bar, row)).collect();
+    assert_eq!(
+        groups,
+        [
+            "SidebarAgentBlocked",
+            "SidebarAgentDone",
+            "SidebarAgentWorking",
+            "SidebarAgentIdle",
+            "SidebarAgentUnknown"
+        ]
+    );
+}
+
+#[test]
+fn state_change_recolors() {
+    let (_scratch, config) = loaded("agent-recolor", &marked());
+    let (layout, windows) = one_band(2);
+    let view = |state| {
+        agents_view(
+            layout.clone(),
+            &[(windows[1], state)],
+            Some(windows[0]),
+            1,
+            24,
+        )
+    };
+    presented(&config, view("working"));
+    clean(&config.runtime.set_state(view("blocked")));
+    clean(&changed(&config, windows[1], "working", "blocked"));
+    let bar = sidebar(&config).expect("the sidebar is redrawn");
+    assert_eq!(rows(&bar)[13], "1");
+    assert_eq!(group_at(&bar, 13), "SidebarAgentBlocked");
+}
+
+#[test]
+fn state_colors_follow_the_palette() {
+    let (_scratch, config) = loaded("agent-palette", "gband.plugin('gband.sidebar')");
+    let (layout, windows) = one_band(3);
+    let agents = [(windows[1], "blocked"), (windows[2], "blocked")];
+    let bar = presented(
+        &config,
+        agents_view(layout, &agents, Some(windows[2]), 1, 24),
+    );
+    let style = |row: usize| bar.lines[row][0].style;
+    assert_eq!(style(13).fg, Some(Color::Index(1)));
+    assert!(!style(13).bold);
+    assert_eq!(style(14).fg, Some(Color::Index(9)));
+    assert!(style(14).bold);
+}
+
+#[test]
+fn agent_group_defaults() {
+    let scratch = Scratch::new("agent-defaults");
+    scratch.user_file("colors/plain.lua", "");
+    scratch.write("gband.plugin('gband.sidebar')\ngband.colorscheme('plain')");
+    let config = scratch.loaded();
+    assert_eq!(resolved(&config, "SidebarAgentWorking"), ["fg=yellow"]);
+    assert_eq!(
+        resolved(&config, "SidebarAgentWorkingActive"),
+        ["bold=true", "fg=bright_yellow"]
+    );
+    assert_eq!(resolved(&config, "SidebarAgentBlocked"), ["fg=red"]);
+    assert_eq!(resolved(&config, "SidebarAgentDone"), ["fg=green"]);
+    assert_eq!(resolved(&config, "SidebarAgentIdle"), ["fg=blue"]);
+    assert_eq!(resolved(&config, "SidebarAgentUnknown"), ["dim=true"]);
+    assert_eq!(
+        resolved(&config, "SidebarAgentUnknownActive"),
+        ["bold=true"]
+    );
+    assert_eq!(resolved(&config, "SidebarDivider"), ["dim=true"]);
+}
+
+fn three_bands_with_agents() -> (Layout, WindowId, WindowId) {
+    let mut layout = Layout::new();
+    let first = opened(&mut layout, 0, None);
+    let second = opened(&mut layout, 1, None);
+    opened(&mut layout, 2, None);
+    let fourth = opened(&mut layout, 1, Some(second));
+    assert_eq!(layout.bands().len(), 4);
+    (layout, first, fourth)
+}
+
+#[test]
+fn click_an_agent_in_another_band() {
+    let (_scratch, config) = loaded("agent-click", "gband.plugin('gband.sidebar')");
+    let (layout, first, fourth) = three_bands_with_agents();
+    let agents = [(first, "idle"), (fourth, "working")];
+    presented(&config, agents_view(layout, &agents, Some(first), 1, 24));
+    let outcome = press(&config, 14, "root");
+    clean(&outcome);
+    assert_eq!(
+        outcome.dispatched,
+        [Dispatch::Action(Action::View(ViewAction::FocusWindow(
+            fourth
+        )))]
+    );
+}
+
+#[test]
+fn click_in_navigation_mode() {
+    let (_scratch, config) = loaded(
+        "agent-click-navigation",
+        "gband.keystyle.use('modal')\ngband.plugin('gband.sidebar')",
+    );
+    let (layout, first, fourth) = three_bands_with_agents();
+    let agents = [(first, "idle"), (fourth, "working")];
+    let mut view = agents_view(layout, &agents, Some(fourth), 1, 24);
+    view.table = "prefix".to_owned();
+    presented(&config, view);
+    let outcome = press(&config, 13, "prefix");
+    clean(&outcome);
+    assert_eq!(
+        outcome.dispatched,
+        [Dispatch::Action(Action::View(ViewAction::FocusWindow(
+            first
+        )))]
+    );
+}
+
+#[test]
+fn click_beside_the_agent_labels() {
+    let (_scratch, config) = loaded("agent-click-beside", "gband.plugin('gband.sidebar')");
+    let (layout, first, fourth) = three_bands_with_agents();
+    let agents = [(first, "idle"), (fourth, "working")];
+    presented(&config, agents_view(layout, &agents, Some(first), 1, 24));
+    for row in [1, 6, 12, 15, 22] {
+        let outcome = press(&config, row, "root");
+        clean(&outcome);
+        assert!(
+            outcome.dispatched.is_empty(),
+            "row {row}: {:?}",
+            outcome.dispatched
+        );
+    }
 }

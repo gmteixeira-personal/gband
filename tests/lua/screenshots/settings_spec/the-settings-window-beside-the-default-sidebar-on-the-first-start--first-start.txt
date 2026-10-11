@@ -11,7 +11,7 @@ size 80x24 cursor 10:55 hidden
  9| │                       │theme    default             │
 10| │                       │sidebar  on                  │
 11| │                       │keys     modal               │
-12| │                       │I on new off                 │
+12|─│                       │I on new off                 │
 13| │                       │reload   ok                  │
 14| │                       └─────────────────────────────┘
 15| │                                     │
@@ -59,6 +59,7 @@ size 80x24 cursor 10:55 hidden
 11:25 fg=8
 11:26-34 dim
 11:55 fg=8
+12:0 dim
 12:1 fg=#b1b9f9 bold
 12:25 fg=8
 12:26-34 dim

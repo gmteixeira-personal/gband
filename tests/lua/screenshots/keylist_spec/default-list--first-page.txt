@@ -10,13 +10,13 @@ size 80x24 cursor 18:69 hidden
  8| │         │k        focus the window above                         │
  9| │         │u        view the band below                            │
 10| │         │i        view the band above                            │
-11| │         │c        center the focused column                      │
-12| │         │n        open a window                                  │
-13| │         │q        close the window                               │
-14| │         │[        consume or expel the window to the left        │
-15| │         │]        consume or expel the window to the right       │
-16| │         │r        cycle the width of the window's column         │
-17| │         │f        toggle full width of the window's column       │
+11| │         │a        agents mode                                    │
+12|─│         │b        bands mode                                     │
+13| │         │c        center the focused column                      │
+14| │         │n        open a window                                  │
+15| │         │q        close the window                               │
+16| │         │[        consume or expel the window to the left        │
+17| │         │]        consume or expel the window to the right       │
 18| │         └────────────────────────────────────────────────────────┘
 19| │                                     │
 20| │                                     │
@@ -82,7 +82,7 @@ size 80x24 cursor 18:69 hidden
 11:12-20 fg=4 bg=0 bold
 11:21-67 fg=7 bg=0
 11:68 fg=8 bg=0
-12:0 bg=0
+12:0 fg=8 bg=0
 12:1 fg=4 bold
 12:11 fg=8 bg=0
 12:12-20 fg=4 bg=0 bold

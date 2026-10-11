@@ -407,18 +407,21 @@ fn dispatch(
         match message {
             ClientMessage::Key { window, key } => {
                 context.hub.typed(client);
+                session.command(Command::Seen { window });
                 forward(session, window, Input::Key(key), || {
                     context.taps.notice(&session.name, window, client);
                 });
             }
             ClientMessage::Paste { window, text } => {
                 context.hub.typed(client);
+                session.command(Command::Seen { window });
                 forward(session, window, Input::Paste(text), || {
                     context.taps.notice(&session.name, window, client);
                 });
             }
             ClientMessage::Mouse { window, event } => {
                 context.hub.typed(client);
+                session.command(Command::Seen { window });
                 forward(session, window, Input::Mouse(event), || {});
             }
             ClientMessage::Command { call, name, args } => {
@@ -456,6 +459,7 @@ fn dispatch(
                 output,
             }),
             ClientMessage::Shown(windows) => session.command(Command::Shown { client, windows }),
+            ClientMessage::Focused(window) => session.command(Command::Focused { client, window }),
             ClientMessage::Rename { window, name } => {
                 session.command(Command::Rename { window, name });
             }

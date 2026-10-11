@@ -34,6 +34,7 @@ gband.keystyle.use()
 
 Save, and Ctrl+Space works again: with the modal style it enters navigation mode, where `h`, `j`, `k` and `l` move focus and `n` opens a window.
 Ctrl+Space then `?` lists every key.
+The modal and direct styles also call `gband.jump.setup()`, which binds Ctrl+Space then `a` to agents mode and `b` to bands mode, where a digit jumps to an agent or a band.
 [Key styles](../plugins.md#key-styles-gbandkeystyle) describes the three styles, and chapter 01 binds keys of your own.
 
 Next, set up two plugins that gband bundles, the error list and the sidebar:
@@ -45,6 +46,7 @@ gband.plugin("gband.sidebar")
 
 The sidebar is the column on the left.
 Its first row shows the mode, `I` for interactive and `N` for navigation, or `∷` with the floating style, and the rows below list the bands.
+A `─` on its middle row splits it in two: the bands above, and below it the windows that run a coding agent, such as Claude Code, colored by what the agent does; `gband.agents.list()` returns the same list.
 [The sidebar](../plugins.md#the-sidebar-gbandsidebar) describes every row.
 
 The error list has no key yet.
@@ -61,7 +63,7 @@ I╭─────────────────╮
  │                 │
 1│                 │
 2│                 │
- │                 │
+─│                 │
  │                 │
  │                 │
  ╰─────────────────╯
@@ -98,7 +100,7 @@ I╭─────────────────╮
  │                 │
 1│                 │
 2│                 │
- │                 │
+─│                 │
  │                 │
  │                 │
 !╰─────────────────╯

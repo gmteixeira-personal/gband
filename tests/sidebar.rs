@@ -70,7 +70,10 @@ fn default_sidebar() {
     client.wait_for("the default sidebar", |screen| {
         sidebar_at(screen, 0)
             && cell(screen, 1, 0).is_empty()
-            && (4..24).all(|row| cell(screen, row, 0).is_empty())
+            && cell(screen, 12, 0) == "─"
+            && (4..24)
+                .filter(|row| *row != 12)
+                .all(|row| cell(screen, row, 0).is_empty())
     });
 }
 

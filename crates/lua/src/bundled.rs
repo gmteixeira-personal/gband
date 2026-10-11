@@ -9,7 +9,7 @@ pub(crate) const KEY_STYLES: [(&str, &str); 3] = [
     ),
 ];
 
-pub(crate) const MODULES: [(&str, &str); 19] = [
+pub(crate) const MODULES: [(&str, &str); 21] = [
     ("prelude.lua", include_str!("runtime/gband/prelude.lua")),
     ("hl.lua", include_str!("runtime/gband/hl.lua")),
     ("palette.lua", include_str!("runtime/gband/palette.lua")),
@@ -35,6 +35,8 @@ pub(crate) const MODULES: [(&str, &str); 19] = [
     ("keystyle/floating.lua", KEY_STYLES[2].1),
     ("desktop.lua", include_str!("runtime/gband/desktop.lua")),
     ("sidebar.lua", include_str!("runtime/gband/sidebar.lua")),
+    ("agents.lua", include_str!("runtime/gband/agents.lua")),
+    ("jump.lua", include_str!("runtime/gband/jump.lua")),
 ];
 
 const COLORS: [(&str, &str); 16] = [

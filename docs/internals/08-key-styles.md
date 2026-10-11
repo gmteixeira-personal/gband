@@ -4,7 +4,7 @@ gband's keys come in three styles.
 In the modal style, the prefix key, Ctrl+Space, enters a navigation mode where each key acts until you leave it.
 In the direct style, each key after the prefix acts once.
 In the floating style, every window floats as on a desktop, and the prefix key opens a list of the windows.
-This chapter reads the module that chooses between them, `defaults/lua/gband/keystyle.lua`, the three presets it chooses from, `defaults/keystyle/modal.lua`, `defaults/keystyle/direct.lua` and `defaults/keystyle/floating.lua`, and the bundled plugin the floating preset sets up, `defaults/lua/gband/desktop.lua`, in full.
+This chapter reads the module that chooses between them, `defaults/lua/gband/keystyle.lua`, the three presets it chooses from, `defaults/keystyle/modal.lua`, `defaults/keystyle/direct.lua` and `defaults/keystyle/floating.lua`, the bundled plugin the floating preset sets up, `defaults/lua/gband/desktop.lua`, and the two modules behind the agents and bands modes of the other presets, `defaults/lua/gband/agents.lua` and `defaults/lua/gband/jump.lua`, in full.
 
 ## `gband.keystyle`
 
@@ -122,10 +122,20 @@ set("prefix", "j", action.focus_window_down, { desc = "focus the window below" }
 set("prefix", "k", action.focus_window_up, { desc = "focus the window above" })
 set("prefix", "u", action.focus_band_down, { desc = "view the band below" })
 set("prefix", "i", action.focus_band_up, { desc = "view the band above" })
-set("prefix", "c", action.center_column, { desc = "center the focused column" })
 ```
 
 The navigation keys, `h`, `j`, `k` and `l` for columns and windows, and `u` and `i` for bands.
+
+```lua defaults/keystyle/modal.lua
+require("gband.jump").setup()
+```
+
+`a` and `b` enter agents mode and bands mode, which [the last sections of this chapter](#the-agent-list-gbandagents) read.
+`setup` declares both modes and binds `a` and `b` in `prefix` itself, so each preset makes the bindings with one line, at the place in `prefix` where the key list shows them.
+
+```lua defaults/keystyle/modal.lua
+set("prefix", "c", action.center_column, { desc = "center the focused column" })
+```
 
 ```lua defaults/keystyle/modal.lua
 local interactive_on_new = gband.settings.interactive_on_new() == true
@@ -261,6 +271,16 @@ set("prefix", "j", action.focus_window_down, { desc = "focus the window below" }
 set("prefix", "k", action.focus_window_up, { desc = "focus the window above" })
 set("prefix", "u", action.focus_band_down, { desc = "view the band below" })
 set("prefix", "i", action.focus_band_up, { desc = "view the band above" })
+```
+
+```lua defaults/keystyle/direct.lua
+require("gband.jump").setup()
+```
+
+The direct preset gets agents mode and bands mode from the same call, so both presets bind `a` and `b` right after `i`.
+Agents mode and bands mode are modes here too, so each stays active after a key until Escape, Enter or a digit that finds an agent leaves it, although `prefix` itself acts once.
+
+```lua defaults/keystyle/direct.lua
 set("prefix", "c", action.center_column, { desc = "center the focused column" })
 ```
 
@@ -1769,6 +1789,222 @@ return {
 ```
 
 `setup` takes no options, registers the four actions, the decorations provider and the handlers.
+
+## The agent list: `gband.agents`
+
+The server finds the coding agents in windows and publishes each one's state in the window state key `agent_state`, as a table such as `{ agent = "claude", state = "working" }`.
+`gband.agents` turns those keys into a list in the order of the layout, which the sidebar draws and agents mode jumps through.
+The prelude requires it, and the sidebar and `gband.jump` require it too, so a prelude of your own that leaves it out still draws the agents.
+
+```lua defaults/lua/gband/agents.lua
+local function entry(window, band)
+  local state = gband.window_state(window)
+  local agent = state and state.agent_state
+  if type(agent) ~= "table" then
+    return nil
+  end
+  return { window = window, band = band, agent = agent.agent, state = agent.state }
+end
+```
+
+`gband.window_state` returns a copy of the window's state, or nil for a window not in the layout, so `entry` gives an entry for a window that runs an agent and nil for any other.
+
+```lua defaults/lua/gband/agents.lua
+local function list()
+  local entries = {}
+  local function add(window, band)
+    local found = entry(window, band)
+    if found then
+      entries[#entries + 1] = found
+    end
+  end
+  for _, band in ipairs(gband.layout().bands) do
+    for _, column in ipairs(band.columns) do
+      for _, window in ipairs(column.windows) do
+        add(window.id, band.id)
+      end
+    end
+    for _, window in ipairs(band.floating) do
+      add(window.id, band.id)
+    end
+  end
+  return entries
+end
+```
+
+`list` reads the layout and the states again on each call and keeps no cache, so it cannot disagree with what the client holds.
+Each band's tiled windows come column by column, each column from the top, then its floating windows, the order the sidebar draws.
+
+```lua defaults/lua/gband/agents.lua
+local function focus(n)
+  if type(n) ~= "number" or n < 1 or n ~= math.floor(n) then
+    error("gband.agents.focus expects a positive integer, got `" .. tostring(n) .. "`", 2)
+  end
+  local found = list()[n]
+  if not found then
+    return false
+  end
+  gband.window.focus(found.window)
+  return true
+end
+```
+
+`focus` focuses through `gband.window.focus`, which views the agent's band too.
+It returns whether it found the entry, so a binding can leave its mode only when something was focused.
+
+```lua defaults/lua/gband/agents.lua
+local function step(delta)
+  if delta ~= 1 and delta ~= -1 then
+    error("gband.agents.step expects 1 or -1, got `" .. tostring(delta) .. "`", 2)
+  end
+  local entries = list()
+  if #entries == 0 then
+    return nil
+  end
+  local focused = gband.view().window
+  local index
+  for i, found in ipairs(entries) do
+    if found.window == focused then
+      index = i
+    end
+  end
+  if index then
+    index = (index - 1 + delta) % #entries + 1
+  elseif delta == 1 then
+    index = 1
+  else
+    index = #entries
+  end
+  local window = entries[index].window
+  gband.window.focus(window)
+  return window
+end
+```
+
+`step` finds the focused window's entry and moves one entry on, wrapping at either end.
+From a window that is not an agent, `1` starts at the first entry and `-1` at the last.
+
+```lua defaults/lua/gband/agents.lua
+gband.agents = {
+  list = list,
+  focus = focus,
+  step = step,
+}
+return gband.agents
+```
+
+The module installs `gband.agents` and returns it, so `require("gband.agents")` works from a module the prelude did not load.
+
+## Agents mode and bands mode: `gband.jump`
+
+`gband.jump` declares the two modes that the modal and the direct presets enter with `a` and `b`.
+
+```lua defaults/lua/gband/jump.lua
+local agents = require("gband.agents")
+
+local POSITIONS = 9
+local PREVIOUS = { "k", "up" }
+local NEXT = { "j", "down" }
+```
+
+Both modes reach at most nine positions, one per digit; the sidebar labels the rest with letters, which a click or a step reaches.
+`k` and Up step to the previous agent or the band above, and `j` and Down to the next agent or the band below, as `j` and `k` move the focus in the presets.
+
+```lua defaults/lua/gband/jump.lua
+local function interactive()
+  gband.keymap.enter("root")
+end
+
+local function enter_agents_mode()
+  gband.keymap.enter("agents")
+end
+
+local function enter_bands_mode()
+  gband.keymap.enter("bands")
+end
+```
+
+Leaving a mode is entering `root`, as in the modal preset.
+The other two functions enter the modes themselves, and both `prefix` and the modes bind them, so `b` in agents mode switches to bands mode and `a` in bands mode switches back.
+
+```lua defaults/lua/gband/jump.lua
+local function agents_mode()
+  local set = gband.keymap.set
+  gband.keymap.mode("agents", { label = "agents" })
+  for position = 1, POSITIONS do
+    set("agents", tostring(position), function()
+      if agents.focus(position) then
+        interactive()
+      end
+    end, { desc = "focus agent " .. position })
+  end
+  for _, key in ipairs(PREVIOUS) do
+    set("agents", key, function()
+      agents.step(-1)
+    end, { desc = "focus the previous agent" })
+  end
+  for _, key in ipairs(NEXT) do
+    set("agents", key, function()
+      agents.step(1)
+    end, { desc = "focus the next agent" })
+  end
+  set("agents", "b", enter_bands_mode, { desc = "bands mode" })
+  set("agents", "escape", interactive, { desc = "interactive mode" })
+  set("agents", "enter", interactive, { desc = "interactive mode" })
+end
+```
+
+A digit leaves agents mode only when `gband.agents.focus` found an agent at that position, so a digit past the list changes nothing and keeps the mode.
+`b` switches to bands mode, and `a` is not bound here, so pressing it in agents mode keeps agents mode.
+A step through the agents keeps the mode active, as every binding of a mode does unless it enters another table, so `j` pressed three times moves three agents down.
+
+```lua defaults/lua/gband/jump.lua
+local function bands_mode()
+  local set = gband.keymap.set
+  gband.keymap.mode("bands", { label = "bands" })
+  for position = 1, POSITIONS do
+    set("bands", tostring(position), function()
+      local band = gband.layout().bands[position]
+      if band then
+        gband.band.view(band.id)
+      end
+    end, { desc = "view band " .. position })
+  end
+  for _, key in ipairs(PREVIOUS) do
+    set("bands", key, gband.action.focus_band_up, { desc = "view the band above" })
+  end
+  for _, key in ipairs(NEXT) do
+    set("bands", key, gband.action.focus_band_down, { desc = "view the band below" })
+  end
+  set("bands", "a", enter_agents_mode, { desc = "agents mode" })
+  set("bands", "escape", interactive, { desc = "interactive mode" })
+  set("bands", "enter", interactive, { desc = "interactive mode" })
+end
+```
+
+Bands mode reads its digits from `gband.layout().bands`, and its steps are the actions `focus_band_up` and `focus_band_down`, which follow the `loop_bands` option.
+`a` switches to agents mode, as `b` in agents mode switches here.
+No binding of bands mode but Escape and Enter enters `root`, so digits and steps can look through band after band in one visit.
+
+```lua defaults/lua/gband/jump.lua
+local function setup()
+  agents_mode()
+  bands_mode()
+  gband.keymap.set("prefix", "a", enter_agents_mode, { desc = "agents mode" })
+  gband.keymap.set("prefix", "b", enter_bands_mode, { desc = "bands mode" })
+end
+```
+
+`setup` binds `a` and `b` in `prefix` last, so a preset that calls it right after `i` lists them there in the key list.
+
+```lua defaults/lua/gband/jump.lua
+gband.jump = {
+  setup = setup,
+}
+return gband.jump
+```
+
+The module installs `gband.jump` and returns it, which is what the presets' `require("gband.jump").setup()` calls.
 
 ## Why the presets are written to `defaults/keystyle/`
 

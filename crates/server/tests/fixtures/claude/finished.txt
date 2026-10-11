@@ -1,0 +1,21 @@
+✳ Lighthouse keeper story
+  letter said, and enjoy a view of the trams.
+  Marta read the letter twice, then placed it in the drawer with the logbooks.
+  In October a fog rolled in from the south and stayed nine days. The foghorn groaned without
+  pause, and most boats stayed tied in harbor. Tiago Rebelo's boat, the Santa Clara, was still
+  out and three hours overdue.
+  Marta lit the lamp at four and kept it burning through the dark hours. When the clockwork
+  jammed, she turned the lens by hand, one heavy crank at a time. By midnight her wrists ached,
+  and she kept turning.
+  At dawn the fog thinned to gray, and a hull appeared, low and slow. Then a second hull appeared
+  behind it, and both boats came home.
+  The next morning Tiago climbed the 112 steps with a crate of sardines. He set it on the stone
+  landing, said nothing, and nodded up at the lens.
+  That week Marta mailed the ministry her answer on the back of its own letter: Not yet.
+✻ Crunched for 15s · done 4:39 PM
+─────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+─────────────────────────────────────────────────────────────────────────────────────────────────
+  gband/claude-capture:change/agent-state
+  [clean] [Haiku:medium] 4%
+  -- INSERT -- ⏸ manual mode on · ← 1 agent

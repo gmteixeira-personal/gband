@@ -1,0 +1,9 @@
+✳ Claude Code
+ ▐▛███▛█   Claude Code v2.1.296
+▝▜██████▀  Haiku 5.5 · Claude Max
+ ▝▝   ▝▝   ~/repos/gband/.claude/worktrees/agent-state/target/claude-capture
+                                                                             ◐ medium · /effort
+─────────────────────────────────────────────────────────────────────────────────────────────────
+❯ Try "write a test for config.rs"
+─────────────────────────────────────────────────────────────────────────────────────────────────
+  -- INSERT -- ⏸ manual mode on · ← for agents

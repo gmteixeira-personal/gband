@@ -207,6 +207,8 @@ fn every_preset_binding_is_described() {
         ("prefix", "send the prefix key"),
         ("s", "settings"),
         ("m", "multi mode"),
+        ("a", "agents mode"),
+        ("b", "bands mode"),
     ];
     for style in ["modal", "direct"] {
         let scratch = Scratch::new(&format!("keystyle-described-{style}"));
@@ -427,7 +429,7 @@ fn explicit_style() {
     let config = scratch.loaded();
     assert_eq!(global::<String>(&config, "style"), "direct");
     assert_eq!(label(&config).as_deref(), Some("prefix"));
-    assert!(config.modes.is_empty());
+    assert_eq!(config.modes.iter().collect::<Vec<_>>(), ["agents", "bands"]);
 }
 
 #[test]
@@ -528,4 +530,18 @@ fn change_a_preset_binding() {
             .iter()
             .any(|(_, action, _)| action.as_deref() == Some("close_window"))
     );
+}
+
+#[test]
+fn jump_mode_labels() {
+    for style in ["modal", "direct"] {
+        let scratch = Scratch::new(&format!("keystyle-jump-labels-{style}"));
+        scratch.write(&format!("gband.keystyle.use('{style}')"));
+        let config = scratch.loaded();
+        let labels: Vec<String> = eval(
+            &config,
+            "return { gband.keymap.label('agents'), gband.keymap.label('bands') }",
+        );
+        assert_eq!(labels, ["agents", "bands"], "{style}");
+    }
 }

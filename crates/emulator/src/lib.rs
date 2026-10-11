@@ -19,6 +19,7 @@ pub trait Emulator: Send + 'static {
     fn alternate_screen(&self) -> bool;
     fn contents(&self) -> String;
     fn text_between(&self, start: (u16, u16), end: (u16, u16)) -> String;
+    fn bottom_lines(&self, count: usize) -> Vec<String>;
     fn screen(&self) -> &Self::Screen;
     fn checkpoint(&self) -> Self::Checkpoint;
     fn snapshot(&self) -> Vec<u8>;
@@ -159,6 +160,21 @@ impl Emulator for Vt100 {
             }
         }
         text
+    }
+
+    fn bottom_lines(&self, count: usize) -> Vec<String> {
+        let screen = self.parser.screen();
+        let (_, cols) = screen.size();
+        let rows: Vec<String> = screen.rows(0, cols).collect();
+        let mut lines: Vec<String> = rows
+            .into_iter()
+            .rev()
+            .map(|row| row.trim_end_matches(' ').to_owned())
+            .filter(|row| !row.is_empty())
+            .take(count)
+            .collect();
+        lines.reverse();
+        lines
     }
 
     fn screen(&self) -> &vt100::Screen {
