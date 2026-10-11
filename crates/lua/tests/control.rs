@@ -122,7 +122,7 @@ fn read_the_layout() {
         for _, band in ipairs(layout.bands) do
           parts[#parts + 1] = "band " .. band.id
           for _, column in ipairs(band.columns) do
-            parts[#parts + 1] = string.format("%.4f %s", column.width, tostring(column.full_width))
+            parts[#parts + 1] = string.format("%.4f %s %s %s", column.width, tostring(column.full_width), tostring(column.tabbed), tostring(column.tab_rows))
             for _, window in ipairs(column.windows) do
               parts[#parts + 1] = string.format("%d %s %s %s", window.id, tostring(window.rows), tostring(window.weight), tostring(window.plugin_window))
             end
@@ -133,8 +133,37 @@ fn read_the_layout() {
     );
     assert_eq!(
         summary,
-        "band 1; 0.5000 false; 1 nil 1.0 nil; 0.3333 true; 2 10 nil nil; 3 nil 1.0 nil; band 2"
+        "band 1; 0.5000 false false nil; 1 nil 1.0 nil; 0.3333 true false nil; 2 10 nil nil; 3 nil 1.0 nil; band 2"
     );
+}
+
+#[test]
+fn tabbed_column_in_the_layout() {
+    let mut layout = Layout::new();
+    let options = LayoutOptions::default();
+    let band = layout.bands()[0].id;
+    let (p1, p2) = (layout.allocate_window(), layout.allocate_window());
+    layout.open(p1, band, None, None, &options);
+    layout.open(p2, band, Some(p1), None, &options);
+    for action in [
+        SessionAction::ConsumeOrExpel {
+            window: p2,
+            direction: Direction::Left,
+        },
+        SessionAction::ToggleTabbed(p1),
+        SessionAction::SetHeight {
+            window: p1,
+            height: WindowHeight::Fixed(16),
+        },
+    ] {
+        layout.apply(action, AREA, &options);
+    }
+    let read = "local column = gband.layout().bands[1].columns[1]\nreturn tostring(column.tabbed) .. ' ' .. tostring(column.tab_rows)";
+    let (_scratch, config) = loaded_with("tabbed", "", state(layout.clone(), 1, Some(1), "root"));
+    assert_eq!(eval::<String>(&config, read), "true 16");
+    layout.apply(SessionAction::ResetHeight(p2), AREA, &options);
+    let (_scratch, config) = loaded_with("tabbed-reset", "", state(layout, 1, Some(1), "root"));
+    assert_eq!(eval::<String>(&config, read), "true nil");
 }
 
 #[test]
@@ -496,6 +525,18 @@ fn close_a_named_window() {
 }
 
 #[test]
+fn tabbed_display_of_a_named_window() {
+    assert_eq!(
+        dispatched(
+            "tabbed-named",
+            state(two_bands(), 2, Some(3), "root"),
+            "gband.action.toggle_column_tabbed({ window = 1 })"
+        ),
+        [session(SessionAction::ToggleTabbed(WindowId(1)))]
+    );
+}
+
+#[test]
 fn target_overrides_the_view() {
     assert_eq!(
         dispatched(
@@ -541,6 +582,10 @@ fn every_window_action_takes_a_target() {
         (
             "toggle_full_width",
             SessionAction::ToggleFullWidth(WindowId(1)),
+        ),
+        (
+            "toggle_column_tabbed",
+            SessionAction::ToggleTabbed(WindowId(1)),
         ),
         (
             "grow_column_width",

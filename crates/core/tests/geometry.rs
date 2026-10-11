@@ -1,6 +1,6 @@
 use gband_core::geometry::{
     Size, Span, Tile, WindowBox, boxes, column_spans, column_width, drawn_copy, height_step,
-    loop_width, placed, tiles, width_step, window_heights,
+    loop_width, placed, tab_segments, tiles, width_step, window_heights,
 };
 use gband_core::layout::{
     Band, BandId, Column, Direction, FloatingWindow, Layout, LayoutOptions, Proportion,
@@ -389,4 +389,65 @@ fn drawn_copy_is_the_one_inside_the_terminal() {
     assert_eq!(drawn_copy(40, 120, 80), 40);
     assert_eq!(drawn_copy(80, 120, 80), -40);
     assert_eq!(drawn_copy(-20, 120, 80), -20);
+}
+
+fn tabbed(heights: &[WindowHeight], tab_rows: Option<u16>) -> Vec<Tile> {
+    let mut column = column(heights);
+    column.tabbed = true;
+    column.tab_rows = tab_rows;
+    tiles(&band_of(vec![column]), AREA)
+}
+
+#[test]
+fn tabbed_column() {
+    let tiles = tabbed(&[WindowHeight::Fixed(16), auto(1, 1)], None);
+    let placed: Vec<_> = tiles
+        .iter()
+        .map(|tile| (tile.row, tile.x, tile.y, tile.width, tile.height))
+        .collect();
+    assert_eq!(placed, [(0, 0, 0, 40, 24), (1, 0, 0, 40, 24)]);
+}
+
+#[test]
+fn tabbed_column_with_a_fixed_tab_height() {
+    let tiles = tabbed(&[auto(1, 1), auto(1, 1)], Some(20));
+    let rows: Vec<_> = tiles.iter().map(|tile| (tile.y, tile.height)).collect();
+    assert_eq!(rows, [(0, 20), (0, 20)]);
+    assert_eq!(tabbed(&[auto(1, 1)], Some(30))[0].height, 24);
+}
+
+#[test]
+fn every_tab_has_the_terminal_size_of_a_lone_window() {
+    let tiles = tabbed(&[auto(1, 1); 3], None);
+    assert!(
+        tiles
+            .iter()
+            .all(|tile| tile.terminal_size() == Size::new(38, 22))
+    );
+}
+
+#[test]
+fn three_tab_segments() {
+    assert_eq!(tab_segments(24, 3), [Some(1..8), Some(9..16), Some(17..23)]);
+}
+
+#[test]
+fn one_tab_segment() {
+    assert_eq!(tab_segments(24, 1), [Some(1..23)]);
+}
+
+#[test]
+fn tab_segments_with_no_room_for_gaps() {
+    assert_eq!(tab_segments(6, 3), [Some(1..3), Some(3..4), Some(4..5)]);
+}
+
+#[test]
+fn fewer_rows_than_tabs() {
+    assert_eq!(tab_segments(3, 3), [Some(1..2), None, None]);
+    assert_eq!(tab_segments(2, 2), [None, None]);
+}
+
+#[test]
+fn tab_segments_with_exactly_room_for_gaps() {
+    assert_eq!(tab_segments(7, 3), [Some(1..2), Some(3..4), Some(5..6)]);
 }

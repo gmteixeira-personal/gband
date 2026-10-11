@@ -531,3 +531,50 @@ fn navigation_mode_keeps_multi_mode() {
     client.run("echo hi");
     printed_by(&client, "hi", 2);
 }
+
+fn tile_heights(screen: &Grid) -> Vec<u16> {
+    tiles(screen)
+        .into_iter()
+        .map(|tile| tile.bottom - tile.top + 1)
+        .collect()
+}
+
+fn one_tab_shown(screen: &Grid, line: &str) -> bool {
+    tile_heights(screen) == [24] && focused_lines(screen).iter().any(|shown| shown == line)
+}
+
+#[test]
+fn tabs_from_navigation_mode() {
+    let (_env, mut client) = modal_with_two_windows("keystyle-tabs");
+    client.send(b"\x00[");
+    client.wait_for("one column of two windows", |screen| {
+        tile_heights(screen) == [12, 12]
+    });
+    client.send(b"k");
+    client.wait_for("the top window focused", |screen| {
+        focused_lines(screen).iter().any(|line| line == "W1")
+    });
+    client.send(b"w");
+    client.wait_for("the top window as the only tab drawn", |screen| {
+        one_tab_shown(screen, "W1") && sidebar_mode(screen) == "N"
+    });
+    client.send(b"w");
+    client.wait_for("the stack again", |screen| {
+        tile_heights(screen) == [12, 12] && sidebar_mode(screen) == "N"
+    });
+}
+
+#[test]
+fn tabs_with_the_direct_key_style() {
+    let (_env, mut client) = direct_with_two_windows("keystyle-tabs-direct");
+    client.send(b"\x00[");
+    client.wait_for("one column of two windows", |screen| {
+        tile_heights(screen) == [12, 12]
+    });
+    client.send(b"\x00w");
+    client.wait_for("the focused window as the only tab drawn", |screen| {
+        one_tab_shown(screen, "W2")
+    });
+    client.run("echo typed");
+    client.wait_for_line("typed");
+}

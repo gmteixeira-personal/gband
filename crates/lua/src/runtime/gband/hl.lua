@@ -266,12 +266,16 @@ end
 
 gband.hl.default("WindowBorder", { dim = true })
 gband.hl.default("WindowBorderFocused", { fg = "#b1b9f9", bold = true })
+gband.hl.default("TabIndicatorActive", { link = "WindowBorderFocused" })
+gband.hl.default("TabIndicator", { link = "WindowBorder" })
 gband.hl.default("ErrorBanner", { fg = "red", reverse = true })
 
 core.provide("styles", function()
   return {
     border = internal.drawn("WindowBorder"),
     border_focused = internal.drawn("WindowBorderFocused"),
+    tab_indicator = internal.drawn("TabIndicator"),
+    tab_indicator_active = internal.drawn("TabIndicatorActive"),
     banner = internal.drawn("ErrorBanner"),
   }
 end)

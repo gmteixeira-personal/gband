@@ -6,7 +6,7 @@ use gband_client::animation::Animations;
 use gband_client::color::ColorSupport;
 use gband_client::{Controls, Display};
 use gband_core::geometry::Size;
-use gband_core::layout::{Layout, LayoutOptions};
+use gband_core::layout::{Direction, Layout, LayoutOptions, SessionAction, WindowId};
 use gband_lua::keys::parse_key;
 use gband_lua::{Config, LoadOptions, Locations, Side};
 use gband_protocol::ServerMessage;
@@ -49,16 +49,24 @@ struct Client {
 }
 
 impl Client {
-    fn attached((scratch, config): (gband_scratch::Scratch, Config)) -> Self {
+    fn attached(loaded: (gband_scratch::Scratch, Config)) -> Self {
+        let mut layout = Layout::new();
+        let band = layout.bands()[0].id;
+        let window = layout.allocate_window();
+        layout.open(window, band, None, None, &LayoutOptions::default());
+        Self::showing(loaded, layout, window)
+    }
+
+    fn showing(
+        (scratch, config): (gband_scratch::Scratch, Config),
+        layout: Layout,
+        window: WindowId,
+    ) -> Self {
         let mut display = Display::new(TERMINAL, Animations::Off);
         display.set_colors(ColorSupport::TrueColor);
         let mut controls = Controls::new(config, &mut display);
         controls.place_bars(&mut display);
         controls.attached(&mut display, "main");
-        let mut layout = Layout::new();
-        let band = layout.bands()[0].id;
-        let window = layout.allocate_window();
-        layout.open(window, band, None, None, &LayoutOptions::default());
         let reported = display.reported_size();
         controls.receive(
             &mut display,
@@ -126,4 +134,51 @@ fn colored_focused_border_from_a_binding() {
     let screen = client.screen();
     assert_eq!(screen[(0, 0)].fg, Color::Indexed(2));
     assert!(screen[(0, 0)].modifier.contains(Modifier::BOLD));
+}
+
+fn two_tabs() -> (Layout, WindowId) {
+    let mut layout = Layout::new();
+    let band = layout.bands()[0].id;
+    let first = layout.allocate_window();
+    layout.open(first, band, None, None, &LayoutOptions::default());
+    let second = layout.allocate_window();
+    layout.open(second, band, Some(first), None, &LayoutOptions::default());
+    for action in [
+        SessionAction::ConsumeOrExpel {
+            window: second,
+            direction: Direction::Left,
+        },
+        SessionAction::ToggleTabbed(first),
+    ] {
+        layout.apply(action, TERMINAL, &LayoutOptions::default());
+    }
+    (layout, first)
+}
+
+#[test]
+fn tab_indicator_follows_the_borders() {
+    let (layout, first) = two_tabs();
+    let mut client = Client::showing(load("tabs", ""), layout, first);
+    let screen = client.screen();
+    let shown = &screen[(0, 5)];
+    assert_eq!(shown.symbol(), "█");
+    assert_eq!(shown.fg, Color::Rgb(0xb1, 0xb9, 0xf9));
+    assert!(shown.modifier.contains(Modifier::BOLD));
+    let other = &screen[(0, 18)];
+    assert_eq!(other.symbol(), "░");
+    assert!(other.modifier.contains(Modifier::DIM));
+}
+
+#[test]
+fn colored_tab_indicator() {
+    let (layout, first) = two_tabs();
+    let config = load(
+        "tabs-colored",
+        "gband.bind('alt+t', function() gband.hl.set('TabIndicatorActive', { fg = 2 }) end)",
+    );
+    let mut client = Client::showing(config, layout, first);
+    client.press("alt+t");
+    let screen = client.screen();
+    assert_eq!(screen[(0, 5)].fg, Color::Indexed(2));
+    assert_eq!(screen[(1, 0)].fg, Color::Rgb(0xb1, 0xb9, 0xf9));
 }

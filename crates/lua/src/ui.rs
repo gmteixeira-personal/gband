@@ -115,21 +115,27 @@ impl Palette {
 pub struct ClientStyles {
     pub border: Style,
     pub border_focused: Style,
+    pub tab_indicator: Style,
+    pub tab_indicator_active: Style,
     pub banner: Style,
 }
 
 impl Default for ClientStyles {
     fn default() -> Self {
+        let border = Style {
+            dim: true,
+            ..Style::default()
+        };
+        let border_focused = Style {
+            fg: Some(Color::Rgb(0xb1, 0xb9, 0xf9)),
+            bold: true,
+            ..Style::default()
+        };
         Self {
-            border: Style {
-                dim: true,
-                ..Style::default()
-            },
-            border_focused: Style {
-                fg: Some(Color::Rgb(0xb1, 0xb9, 0xf9)),
-                bold: true,
-                ..Style::default()
-            },
+            border,
+            border_focused,
+            tab_indicator: border,
+            tab_indicator_active: border_focused,
             banner: Style {
                 fg: Some(Color::Index(1)),
                 reverse: true,
@@ -499,6 +505,8 @@ pub(crate) fn take_client_styles(lua: &Lua) -> mlua::Result<Option<ClientStyles>
     let styles = ClientStyles {
         border: read("border")?,
         border_focused: read("border_focused")?,
+        tab_indicator: read("tab_indicator")?,
+        tab_indicator_active: read("tab_indicator_active")?,
         banner: read("banner")?,
     };
     let mut look = look(lua);

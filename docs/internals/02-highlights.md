@@ -448,11 +448,14 @@ Both raise their errors at level 2, the caller's line.
 ```lua defaults/lua/gband/hl.lua
 gband.hl.default("WindowBorder", { dim = true })
 gband.hl.default("WindowBorderFocused", { fg = "#b1b9f9", bold = true })
+gband.hl.default("TabIndicatorActive", { link = "WindowBorderFocused" })
+gband.hl.default("TabIndicator", { link = "WindowBorder" })
 gband.hl.default("ErrorBanner", { fg = "red", reverse = true })
 ```
 
-The client draws three things itself: the borders of windows and the error banner.
+The client draws a few things itself: the borders of windows, the tab indicator of a tabbed column and the error banner.
 Their groups are declared here, with defaults that work on any palette.
+The two tab indicator groups are links, so the indicator takes the border colors of whatever theme is active, and no theme has to set them.
 Every other group is declared by the module that draws with it, as the next chapters show.
 
 ## The styles provider
@@ -462,6 +465,8 @@ core.provide("styles", function()
   return {
     border = internal.drawn("WindowBorder"),
     border_focused = internal.drawn("WindowBorderFocused"),
+    tab_indicator = internal.drawn("TabIndicator"),
+    tab_indicator_active = internal.drawn("TabIndicatorActive"),
     banner = internal.drawn("ErrorBanner"),
   }
 end)
@@ -469,7 +474,7 @@ end)
 
 The client knows nothing of highlight groups.
 Before each draw it calls the `styles` provider and gets plain styles back.
-This is the first provider in the prelude; without it, the client would draw borders and the banner in its built-in styles, whatever the theme.
+This is the first provider in the prelude; without it, the client would draw borders, tab indicators and the banner in its built-in styles, whatever the theme.
 
 ```lua defaults/lua/gband/hl.lua
 return internal

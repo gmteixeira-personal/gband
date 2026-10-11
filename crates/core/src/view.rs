@@ -180,6 +180,12 @@ impl View {
         recent.or_else(|| windows.first().copied())
     }
 
+    pub fn shown_tab(&self, windows: &[WindowId]) -> Option<WindowId> {
+        self.focused()
+            .filter(|focused| windows.contains(focused))
+            .or_else(|| self.recent_in(windows))
+    }
+
     pub fn slide(&mut self, travel: i64, scene: Scene<'_>) {
         let strip = self.strip(scene);
         let state = self.bands.entry(self.band).or_default();
@@ -312,6 +318,10 @@ impl View {
         let cols = scene.viewport.cols;
         let tiled = tiles(band, scene.area)
             .into_iter()
+            .filter(|tile| {
+                let column = &band.columns[tile.column];
+                !column.tabbed || self.shown_tab(&column.windows) == Some(tile.window)
+            })
             .filter(|tile| {
                 let left = i64::from(tile.x) - camera;
                 let left = strip.map_or(left, |strip| drawn_copy(left, strip, cols));

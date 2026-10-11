@@ -17,6 +17,7 @@ set("prefix", "[", action.consume_or_expel_left, { desc = "consume or expel the 
 set("prefix", "]", action.consume_or_expel_right, { desc = "consume or expel the window to the right" })
 set("prefix", "r", action.cycle_column_width, { desc = "cycle the width of the window's column" })
 set("prefix", "f", action.toggle_full_width, { desc = "toggle full width of the window's column" })
+set("prefix", "w", action.toggle_column_tabbed, { desc = "toggle tabbed display of the window's column" })
 set("prefix", "-", action.shrink_column_width, { desc = "shrink the width of the window's column" })
 set("prefix", "=", action.grow_column_width, { desc = "grow the width of the window's column" })
 set("prefix", "_", action.shrink_window_height, { desc = "shrink the height of the window" })

@@ -27,6 +27,7 @@ To install the development version instead, replace `--tag v0.1.1` with `--branc
 
 - **Multiple bands.** Each band holds its own row of windows, and the view slides up and down between bands.
 - **Circular bands.** Focus goes round from a band's last column to its first, and a long enough band is drawn as a loop.
+- **Tabbed columns.** A column can show its windows one at a time, as tabs, with an indicator on its left border; see [Tabbed columns](#tabbed-columns).
 - **Animated.** Scrolling, band switches, moving windows and resizes animate.
 - **Fully scriptable.** The configuration, key bindings and plugins are Lua, in the client and in the server; see [Scripting](#scripting).
 - **Written in Lua, as examples.** The key styles, the desktop, the key list, the sidebar, the settings window and the themes are Lua code, written that way so you can read how they use the API.
@@ -133,6 +134,7 @@ The modal and direct styles bind the same keys after Ctrl+Space; the floating st
 | `[`, `]` | move the window into or out of the column to the left or right |
 | `r` | cycle the column's width through the presets |
 | `f` | toggle full width of the column |
+| `w` | show the column's windows one at a time, as tabs, or stack them again; see [Tabbed columns](#tabbed-columns) |
 | `-`, `=` | narrow or widen the column |
 | `_`, `+` | shorten or heighten the window |
 | `R` | reset the window's height |
@@ -153,6 +155,16 @@ The modal and direct styles bind the same keys after Ctrl+Space; the floating st
 Navigation mode changed two habits.
 Enter no longer opens a window: `n` does.
 After Ctrl+Space and a layout key, what you type no longer reaches the window until Escape or Enter returns to interactive mode.
+
+### Tabbed columns
+
+Ctrl+Space then `w` turns the focused window's column into a tabbed column, as in niri, and turns it back into a stack.
+A tabbed column shows one window at a time over the whole column, and every window of the column keeps that size, so switching tabs resizes nothing.
+Each client shows its focused window when it is in the column, otherwise the window of the column it focused last.
+
+The column's left border becomes the tab indicator: one segment per window from the top, `█` for the shown window and `░` for the others.
+`j` and `k` move to the tab below or above, and a click on a segment focuses its window.
+Growing, shrinking or resetting the height of any window in a tabbed column changes the height of the whole column, and turning tabs off gives the windows back the heights they had in the stack.
 
 ### Multi mode
 
@@ -486,6 +498,7 @@ The actions in `gband.action`:
 | `toggle_window_floating` | float the focused window over the band, or tile it again |
 | `cycle_column_width` | step the column's width through the presets |
 | `toggle_full_width` | toggle full width of the column |
+| `toggle_column_tabbed` | toggle tabbed display of the column |
 | `grow_column_width`, `shrink_column_width` | widen or narrow the column by `width_step`, a tenth of the screen by default |
 | `grow_window_height`, `shrink_window_height`, `reset_window_height` | change or reset the height of the focused window |
 | `detach` | detach the client |
@@ -530,6 +543,7 @@ gband.set {
 ```
 
 The groups `WindowBorder` and `WindowBorderFocused` color the borders, and each theme other than `default` sets both; [docs/plugins.md](docs/plugins.md#highlight-groups-gbandhl) lists them.
+The groups `TabIndicatorActive` and `TabIndicator` color a tabbed column's tab indicator, and link to `WindowBorderFocused` and `WindowBorder` by default.
 
 Lua can draw decorations, such as buttons, at the right end of a window's top border, as [docs/plugins.md](docs/plugins.md#window-decorations) describes.
 

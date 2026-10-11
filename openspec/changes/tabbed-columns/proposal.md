@@ -26,6 +26,8 @@ A column that stacks several windows splits its height between them, so each win
 - `mouse`: "Pointer targets" resolves a tab indicator cell to its tab's window, and "Move a tiled window by dragging" drops above or below a tabbed column's shown tab.
 - `lua-control`: "Read the layout" gives each column `tabbed` and `tab_rows`; "Action targets" lets `toggle_column_tabbed` take a `window`.
 - `server-runtime`: "Reading structure" gives each column `tabbed`.
+- `wire-protocol`: "Server messages" lists each column's tabbed flag and tab height in the layout message.
+- `session-server`: "Window resizes" resizes every tab of a tabbed column one of whose tabs is shown, so hidden tabs keep the shown tab's size.
 - `lua-events`: "Built-in events" runs `LayoutChanged` when a tabbed flag or tab height changes.
 - `highlights`: "Client groups" lists `TabIndicatorActive` and `TabIndicator`.
 
@@ -35,7 +37,7 @@ A column that stacks several windows splits its height between them, so each win
 - Wire format: the layout message carries the two new column fields. The version handshake already refuses a server from another build, so no compatibility shim is needed.
 - Client: `crates/client/src/render.rs` draws only the shown tab and the indicator; `crates/client/src/mouse.rs` resolves segment cells and the drop place; `crates/client/src/lib.rs` passes the new fields to Lua.
 - Lua: the `toggle_column_tabbed` built-in in `crates/lua/src/actions.rs`, `tabbed` and `tab_rows` in `crates/lua/src/control.rs` and `crates/lua/src/server.rs`, the two groups in `crates/lua/src/runtime/gband/hl.lua` and the drawn styles in `crates/lua/src/ui.rs`, and `w` in the modal and direct presets.
-- Server: no new code path beyond the shared layout. PTY sizes follow the new tile geometry, so every tab of a column has the shown tab's size and switching tabs resizes nothing.
+- Server: PTY sizes follow the new tile geometry, and `crates/server/src/session.rs` resizes every tab of a tabbed column with a shown tab, so every tab of a column has the shown tab's size and switching tabs resizes nothing.
 - Docs: README key and action tables, `docs/plugins.md`, and the quoted presets in `docs/internals/08-key-styles.md`.
 - Tests: core layout, geometry and view tests, client render and mouse tests, Lua action and keystyle tests, a new screen spec for the indicator, and the key list screenshots that list the `prefix` bindings.
 
@@ -50,11 +52,10 @@ A column that stacks several windows splits its height between them, so each win
 ### Expected Files
 - openspec/changes/tabbed-columns/
 - README.md
+- crates/client/src/animation.rs
+- crates/client/src/bindings.rs
 - crates/client/src/lib.rs
-- crates/client/src/mouse.rs
 - crates/client/src/render.rs
-- crates/client/tests/actions.rs
-- crates/client/tests/animation.rs
 - crates/client/tests/events.rs
 - crates/client/tests/look.rs
 - crates/client/tests/render.rs
@@ -78,14 +79,15 @@ A column that stacks several windows splits its height between them, so each win
 - crates/lua/tests/control.rs
 - crates/lua/tests/highlights.rs
 - crates/lua/tests/keystyle.rs
+- crates/lua/tests/plugins.rs
 - crates/lua/tests/server.rs
 - crates/protocol/tests/messages.rs
-- crates/server/tests/events.rs
+- crates/server/src/session.rs
+- crates/server/tests/resize.rs
 - docs/internals/02-highlights.md
 - docs/internals/08-key-styles.md
 - docs/plugins.md
 - tests/keystyle.rs
-- tests/lua/screenshots/keylist_spec/
 - tests/lua/screenshots/tabbed_spec/
 - tests/lua/tabbed_spec.lua
 - tests/lua_specs.rs

@@ -9,7 +9,9 @@ use gband_client::{Controls, Display, Step, dispatch};
 use gband_core::action::Action;
 use gband_core::geometry::Size;
 use gband_core::input::{Key, Modifiers, MouseButton, MouseEvent, MouseKind, WheelDirection};
-use gband_core::layout::{Direction, Layout, LayoutOptions, Proportion, SessionAction, WindowId};
+use gband_core::layout::{
+    Direction, Layout, LayoutOptions, Proportion, SessionAction, WindowHeight, WindowId,
+};
 use gband_core::view::ViewAction;
 use gband_lua::keys::parse_key;
 use gband_lua::{Config, ConfigError, DEFAULTS, LoadOptions, Locations};
@@ -237,6 +239,26 @@ fn layout_change_without_a_window_change() {
     );
     client.receive([shown(&layout)]);
     assert_eq!(client.log(), ["LayoutChanged "]);
+}
+
+#[test]
+fn column_tabbed() {
+    let (_scratch, mut client) = recording("layout-tabbed", "");
+    let (mut layout, windows) = layout_of(2);
+    let options = LayoutOptions::default();
+    client.receive([shown(&layout), ServerMessage::Focus(windows[1])]);
+    for action in [
+        SessionAction::ToggleTabbed(windows[1]),
+        SessionAction::SetHeight {
+            window: windows[1],
+            height: WindowHeight::Fixed(16),
+        },
+    ] {
+        client.clear();
+        layout.apply(action, Size::new(80, 24), &options);
+        client.receive([shown(&layout)]);
+        assert_eq!(client.log(), ["LayoutChanged "]);
+    }
 }
 
 #[test]

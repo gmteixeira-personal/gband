@@ -1591,3 +1591,205 @@ fn decorations_on_a_floating_window() {
     fixture.write(windows[2], b"floating");
     assert_snapshot!(fixture.render(Size::new(80, 24)));
 }
+
+const TAB_AREA: Size = Size::new(80, 24);
+
+fn tabbed(columns: usize, tabs: usize) -> (Fixture, Vec<WindowId>) {
+    let (mut fixture, windows) = Fixture::new(TAB_AREA, columns, 80);
+    for &window in &windows[1..tabs] {
+        fixture.change(
+            SessionAction::ConsumeOrExpel {
+                window,
+                direction: Direction::Left,
+            },
+            80,
+        );
+    }
+    fixture.change(SessionAction::ToggleTabbed(windows[0]), 80);
+    fixture.styles.tab_indicator = Style {
+        fg: Some(Color::Index(3)),
+        ..Style::default()
+    };
+    fixture.styles.tab_indicator_active = Style {
+        fg: Some(Color::Index(2)),
+        ..Style::default()
+    };
+    (fixture, windows)
+}
+
+fn left_edge(screen: &Buffer, x: u16, rows: std::ops::Range<u16>) -> String {
+    rows.map(|row| screen[(x, row)].symbol()).collect()
+}
+
+fn fg(screen: &Buffer, x: u16, row: u16) -> ratatui::style::Color {
+    screen[(x, row)].fg
+}
+
+const ACTIVE: ratatui::style::Color = ratatui::style::Color::Indexed(2);
+const INACTIVE: ratatui::style::Color = ratatui::style::Color::Indexed(3);
+
+#[test]
+fn three_tabs() {
+    let (mut fixture, windows) = tabbed(3, 3);
+    for (window, text) in windows.iter().zip(["first", "second", "third"]) {
+        fixture.write(*window, text.as_bytes());
+    }
+    fixture.act(ViewAction::FocusDown, 80);
+    let screen = fixture.screen(TAB_AREA);
+    assert_eq!(
+        left_edge(&screen, 0, 0..24),
+        format!("╭{} {} {}╰", "░".repeat(7), "█".repeat(7), "░".repeat(6))
+    );
+    assert!((9..16).all(|row| fg(&screen, 0, row) == ACTIVE));
+    assert!(
+        (1..8)
+            .chain(17..23)
+            .all(|row| fg(&screen, 0, row) == INACTIVE)
+    );
+    assert!(
+        !screen[(0, 3)]
+            .modifier
+            .contains(ratatui::style::Modifier::BOLD)
+    );
+    assert!(row_text(&screen, 1).contains("second"));
+    assert!(!(0..24).any(|row| row_text(&screen, row).contains("first")));
+    assert!(!(0..24).any(|row| row_text(&screen, row).contains("third")));
+}
+
+#[test]
+fn one_tab() {
+    let (fixture, _) = tabbed(1, 1);
+    let screen = fixture.screen(TAB_AREA);
+    assert_eq!(left_edge(&screen, 0, 1..23), "█".repeat(22));
+    assert!((1..23).all(|row| fg(&screen, 0, row) == ACTIVE));
+}
+
+#[test]
+fn tab_indicator_with_no_room_for_gaps() {
+    let (mut fixture, windows) = tabbed(3, 3);
+    fixture.change(
+        SessionAction::SetHeight {
+            window: windows[0],
+            height: WindowHeight::Fixed(6),
+        },
+        80,
+    );
+    let screen = fixture.screen(TAB_AREA);
+    assert_eq!(left_edge(&screen, 0, 0..6), "╭██░░╰");
+}
+
+#[test]
+fn tab_indicator_with_fewer_rows_than_tabs() {
+    let (mut fixture, windows) = tabbed(3, 3);
+    fixture.change(
+        SessionAction::SetHeight {
+            window: windows[0],
+            height: WindowHeight::Fixed(3),
+        },
+        80,
+    );
+    fixture.act(ViewAction::FocusDown, 80);
+    fixture.act(ViewAction::FocusDown, 80);
+    assert_eq!(fixture.view.focused(), Some(windows[2]));
+    let screen = fixture.screen(TAB_AREA);
+    assert_eq!(left_edge(&screen, 0, 0..3), "╭░╰");
+    assert_eq!(fg(&screen, 0, 1), INACTIVE);
+}
+
+#[test]
+fn unfocused_tabbed_column() {
+    let (mut fixture, windows) = tabbed(3, 2);
+    fixture.act(ViewAction::FocusDown, 80);
+    fixture.act(ViewAction::FocusRight, 80);
+    assert_eq!(fixture.view.focused(), Some(windows[2]));
+    let screen = fixture.screen(TAB_AREA);
+    assert_eq!(
+        left_edge(&screen, 0, 0..24),
+        format!("╭{} {}╰", "░".repeat(11), "█".repeat(10))
+    );
+    assert!((13..23).all(|row| fg(&screen, 0, row) == INACTIVE));
+}
+
+#[test]
+fn tab_indicator_with_the_left_side_not_drawn() {
+    let (mut fixture, _) = tabbed(1, 1);
+    fixture.tile_border.sides = sides(&["top", "bottom"]);
+    let screen = fixture.screen(TAB_AREA);
+    assert_eq!(left_edge(&screen, 0, 1..23), "█".repeat(22));
+}
+
+#[test]
+fn stacked_column_has_no_indicator() {
+    let (mut fixture, windows) = Fixture::new(TAB_AREA, 2, 80);
+    fixture.change(
+        SessionAction::ConsumeOrExpel {
+            window: windows[1],
+            direction: Direction::Left,
+        },
+        80,
+    );
+    let screen = fixture.screen(TAB_AREA);
+    assert_eq!(
+        left_edge(&screen, 0, 0..24),
+        format!("╭{}╰╭{}╰", "│".repeat(10), "│".repeat(10))
+    );
+}
+
+#[test]
+fn lifted_tab_shows_the_next_tab_under_it() {
+    let (mut fixture, windows) = tabbed(3, 3);
+    for (window, text) in windows.iter().zip(["first", "second", "third"]) {
+        fixture.write(*window, text.as_bytes());
+    }
+    fixture.overlay.lifted = Some(Lifted {
+        window: windows[0],
+        x: 50,
+        y: 2,
+        width: 20,
+        height: 12,
+        outline: None,
+    });
+    let screen = fixture.screen(TAB_AREA);
+    assert!(row_text(&screen, 1).contains("second"));
+    assert_eq!(
+        left_edge(&screen, 0, 0..24),
+        format!("╭{} {}╰", "█".repeat(11), "░".repeat(10))
+    );
+    assert_eq!(
+        left_edge(&screen, 50, 2..14),
+        format!("╭{}╰", "│".repeat(10))
+    );
+}
+
+#[test]
+fn tab_indicator_segment() {
+    let (fixture, windows) = tabbed(3, 3);
+    let hit = fixture.hit(TAB_AREA, 0, 20);
+    assert_eq!(hit.target, Target::Window(windows[2]));
+    assert_eq!(hit.content, None);
+    assert_eq!(
+        hit.region
+            .map(|region| (region.x, region.y, region.width, region.height)),
+        Some((0, 0, 40, 24))
+    );
+}
+
+#[test]
+fn gap_between_segments_targets_the_shown_tab() {
+    let (fixture, windows) = tabbed(3, 3);
+    let hit = fixture.hit(TAB_AREA, 0, 8);
+    assert_eq!(hit.target, Target::Window(windows[0]));
+    assert_eq!(hit.content, None);
+    assert_eq!(
+        fixture.hit(TAB_AREA, 5, 12).target,
+        Target::Window(windows[0])
+    );
+}
+
+#[test]
+fn floating_window_over_a_segment() {
+    let (mut fixture, windows) = tabbed(4, 3);
+    floating_at(&mut fixture, windows[3], 0, 10, 80);
+    let hit = fixture.hit(TAB_AREA, 0, 12);
+    assert_eq!(hit.target, Target::Window(windows[3]));
+}

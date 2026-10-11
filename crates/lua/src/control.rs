@@ -416,6 +416,8 @@ fn layout(lua: &Lua, (): ()) -> mlua::Result<Table> {
             let described = lua.create_table()?;
             described.set("width", fraction(column.width))?;
             described.set("full_width", column.full_width)?;
+            described.set("tabbed", column.tabbed)?;
+            described.set("tab_rows", column.tab_rows)?;
             let windows = lua.create_table()?;
             for (&window, height) in column.windows.iter().zip(&column.heights) {
                 let item = lua.create_table()?;

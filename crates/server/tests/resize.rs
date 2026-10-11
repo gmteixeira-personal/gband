@@ -198,6 +198,59 @@ async fn windows_shown_by_different_clients_both_resize() {
     assert_eq!(winches.count(b), 0);
 }
 
+async fn stacked_pair(winches: &Winches) -> (TestServer, TestClient, [WindowId; 2]) {
+    let server = winches.server().await;
+    let mut client = server.attach(80, 24).await;
+    let top = client.first();
+    ready(&mut client, top).await;
+    let bottom = open(&mut client, top).await;
+    client
+        .act(SessionAction::ConsumeOrExpel {
+            window: bottom,
+            direction: Direction::Left,
+        })
+        .await;
+    client.show_all().await;
+    assert_eq!(
+        winches.settled(&mut client, top, Size::new(38, 10)).await,
+        1
+    );
+    (server, client, [top, bottom])
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn tabs_sized_when_tabs_turn_on() {
+    let winches = Winches::new("winch-tabs-on");
+    let (_server, mut client, [top, bottom]) = stacked_pair(&winches).await;
+    client.act(SessionAction::ToggleTabbed(bottom)).await;
+    client.show(&[bottom]).await;
+    assert_eq!(
+        winches.settled(&mut client, top, Size::new(38, 22)).await,
+        2
+    );
+    assert_eq!(client.window_screen(bottom).size(), Size::new(38, 22));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn hidden_tabs_sized_with_the_shown_tab() {
+    let winches = Winches::new("winch-tabs-hidden");
+    let (_server, mut client, [top, bottom]) = stacked_pair(&winches).await;
+    client.act(SessionAction::ToggleTabbed(bottom)).await;
+    client.show(&[bottom]).await;
+    winches.settled(&mut client, top, Size::new(38, 22)).await;
+    client
+        .send(&ClientMessage::Resize {
+            cols: 100,
+            rows: 30,
+        })
+        .await;
+    for window in [top, bottom] {
+        winches
+            .settled(&mut client, window, Size::new(48, 28))
+            .await;
+    }
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn window_left_alone_while_detached_keeps_its_size_until_shown() {
     let winches = Winches::new("winch-detached");

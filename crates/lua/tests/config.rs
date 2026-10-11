@@ -259,6 +259,7 @@ fn defaults_reproduce_the_built_in_behaviour() {
             char_key('f'),
             Action::Session(SessionCommand::ToggleFullWidth),
         ),
+        (char_key('w'), Action::Session(SessionCommand::ToggleTabbed)),
         (
             char_key('-'),
             Action::Session(SessionCommand::StepWidth {
@@ -518,10 +519,10 @@ fn every_default_binding_is_described() {
     for (config, count, open) in [
         (
             gband_lua::defaults(gband_lua::Side::Client),
-            50,
+            51,
             "open a window",
         ),
-        (direct, 48, "open a window"),
+        (direct, 49, "open a window"),
         (floating, 8, "open a floating window"),
     ] {
         assert_described(&config, count, open);
@@ -806,6 +807,7 @@ fn every_action_is_named() {
         "toggle_window_floating",
         "cycle_column_width",
         "toggle_full_width",
+        "toggle_column_tabbed",
         "grow_column_width",
         "shrink_column_width",
         "grow_window_height",
@@ -900,6 +902,28 @@ fn name_and_action_agree() {
         action_of(&config, direct("alt+r")),
         Some(Action::Session(SessionCommand::CycleWidth))
     );
+}
+
+#[test]
+fn tabbed_display_by_name() {
+    let config = loaded(
+        "tabbed-by-name",
+        "gband.bind('alt+w', gband.action.toggle_column_tabbed)",
+    );
+    assert_eq!(
+        action_of(&config, direct("alt+w")),
+        Some(Action::Session(SessionCommand::ToggleTabbed))
+    );
+}
+
+#[test]
+fn tabbed_display_description() {
+    let config = gband_lua::defaults(gband_lua::Side::Client);
+    let desc: String = eval(
+        &config,
+        "for _, action in ipairs(gband.action.list()) do if action.name == 'toggle_column_tabbed' then return action.desc end end",
+    );
+    assert_eq!(desc, "toggle tabbed display of the window's column");
 }
 
 #[test]

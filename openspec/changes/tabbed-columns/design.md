@@ -42,7 +42,7 @@ Alternative: reuse `WindowHeight` for the tab height. Rejected: a weight has no 
 
 ### `tiles` places tabs on top of one another
 
-`geometry::tiles` gives every window of a tabbed column `y = 0` and `height = tab_rows.unwrap_or(area.rows).min(area.rows)`, the column's span as its width, and its real `row` index. Because the server sizes PTYs from `tiles`, every tab has the shown tab's terminal size, and switching tabs resizes nothing. The client and the view filter hidden tabs out after `tiles`, so `tiles` stays per band and client-independent.
+`geometry::tiles` gives every window of a tabbed column `y = 0` and `height = tab_rows.unwrap_or(area.rows).min(area.rows)`, the column's span as its width, and its real `row` index. The server sizes PTYs from `tiles`, but resizes only shown windows, and a hidden tab is not shown. The server's settle step therefore also resizes every tab of a tabbed column one of whose tabs some client shows, so every tab has the shown tab's terminal size and switching tabs resizes nothing. The client and the view filter hidden tabs out after `tiles`, so `tiles` stays per band and client-independent.
 
 ### The shown tab is a `View` query
 

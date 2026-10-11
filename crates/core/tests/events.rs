@@ -550,3 +550,80 @@ fn floating_ops_without_change_produce_nothing() {
     let (window, col, row) = (a, 3, 3);
     assert!(apply(&mut layout, SessionAction::SetPosition { window, col, row }).is_empty());
 }
+
+#[test]
+fn toggling_tabs_reports_the_column() {
+    let mut layout = Layout::new();
+    let (first, _) = open(&mut layout, 0, None);
+    let (second, _) = open(&mut layout, 0, Some(first));
+    let ws = band(&layout, 0);
+    let changed = |tabbed, tab_rows| {
+        vec![LayoutEvent::ColumnTabsChanged {
+            band: ws,
+            column: 1,
+            tabbed,
+            tab_rows,
+        }]
+    };
+    let mut act = |action| layout.apply(action, AREA, &LayoutOptions::default());
+    assert_eq!(
+        act(SessionAction::ToggleTabbed(second)),
+        changed(true, None)
+    );
+    assert_eq!(
+        act(SessionAction::SetHeight {
+            window: second,
+            height: WindowHeight::Fixed(16),
+        }),
+        changed(true, Some(16))
+    );
+    assert_eq!(
+        act(SessionAction::ToggleTabbed(second)),
+        changed(false, Some(16))
+    );
+}
+
+#[test]
+fn toggling_tabs_of_a_floating_or_missing_window_produces_nothing() {
+    let mut layout = Layout::new();
+    let (first, _) = open(&mut layout, 0, None);
+    let (second, _) = open(&mut layout, 0, Some(first));
+    layout.apply(
+        SessionAction::ToggleFloating {
+            window: second,
+            after: None,
+            floating: None,
+        },
+        AREA,
+        &LayoutOptions::default(),
+    );
+    let before = layout.clone();
+    for window in [second, WindowId(99)] {
+        assert!(
+            layout
+                .apply(
+                    SessionAction::ToggleTabbed(window),
+                    AREA,
+                    &LayoutOptions::default()
+                )
+                .is_empty()
+        );
+    }
+    assert_eq!(layout, before);
+}
+
+#[test]
+fn unchanged_tab_height_produces_nothing() {
+    let mut layout = Layout::new();
+    let (first, _) = open(&mut layout, 0, None);
+    let mut act = |action| layout.apply(action, AREA, &LayoutOptions::default());
+    act(SessionAction::ToggleTabbed(first));
+    assert!(act(SessionAction::ResetHeight(first)).is_empty());
+    assert!(
+        act(SessionAction::SetHeight {
+            window: first,
+            height: WindowHeight::Auto(Weight::ONE),
+        })
+        .is_empty()
+    );
+}

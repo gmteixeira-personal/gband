@@ -345,6 +345,7 @@ mod tests {
             ),
             ('r', Action::Session(SessionCommand::CycleWidth)),
             ('f', Action::Session(SessionCommand::ToggleFullWidth)),
+            ('w', Action::Session(SessionCommand::ToggleTabbed)),
             (
                 '-',
                 Action::Session(SessionCommand::StepWidth {
@@ -443,7 +444,7 @@ mod tests {
             .into_iter()
             .map(|(key, _, _)| key)
             .collect();
-        let order = "h l j k u i c n q [ ] r f - = _ + R v V ctrl+h ctrl+l ctrl+j ctrl+k \
+        let order = "h l j k u i c n q [ ] r f w - = _ + R v V ctrl+h ctrl+l ctrl+j ctrl+k \
             ctrl+left ctrl+right ctrl+down ctrl+up ? : N s ! m D escape enter left right down up prefix \
             leftmouse rightmouse middlemouse mod+leftmouse mod+rightmouse mod+middlemouse \
             mod+wheeldown mod+wheelup";
