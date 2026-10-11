@@ -1971,6 +1971,27 @@ A client runs only the Lua files of its own machine, and treats every value from
 Attaching to a server, including a remote one, cannot run code in the client.
 The one other Lua a client runs is a chunk from a test runner that its own environment named with `GBAND_TEST_SOCKET`, as [the testing guide](testing.md#the-test-channel) describes; a server never forwards such a chunk.
 
+## Editor support
+
+Each process writes two files for lua-language-server into the configuration directory as it starts:
+
+- `defaults/meta/gband.lua`, a definition file whose first line is `---@meta`. It declares the `gband` global: every field of the client's and the server's `gband` table, each function's parameters and return values, and whether the field exists on the client, on the server or on both. `gband.action` also accepts any string key, so a plugin's action such as `gband.action["keylist.open"]` resolves. Each process writes it again when its content differs, as it does the other files under `defaults/`, and loading never runs it.
+- `.luarc.json` at the top of the configuration directory, which sets lua-language-server's runtime version to Lua 5.4. It is written only when no file of that name exists, and never replaced, so the settings you add to it stay.
+
+Open the configuration directory, `~/.config/gband`, as the editor's workspace.
+`.luarc.json` marks it as the workspace root for editors that look for one, such as Neovim's `lua_ls` setup, so the definition file and the modules under `defaults/lua/` apply to `user/init.lua`, `user/server.lua` and every file under `defaults/`.
+An editor that opens `user/` alone as its workspace sees no definitions.
+A `.luarc.json` of your own that does not set `runtime.version` to `Lua 5.4` gets Lua 5.4 features flagged; add that setting to it.
+
+A plugin directory outside the configuration directory, such as one under `~/.local/share/gband/plugins/`, names both directories in `workspace.library` of its own `.luarc.json`:
+
+```json
+{
+  "runtime.version": "Lua 5.4",
+  "workspace.library": ["~/.config/gband/defaults/meta", "~/.config/gband/defaults/lua"]
+}
+```
+
 ## API and stability
 
 `gband.api_version` identifies the documented API: everything this guide and [Testing a plugin](testing.md) describe, whether the executable or a bundled Lua module provides it.

@@ -80,11 +80,18 @@ pub fn key_style_file(dir: &Path, style: &str) -> PathBuf {
         .join(format!("{style}.lua"))
 }
 
+const EDITOR_SETTINGS: &str = r#"{
+  "$schema": "https://raw.githubusercontent.com/LuaLS/vscode-lua/master/setting/schema.json",
+  "runtime.version": "Lua 5.4"
+}
+"#;
+
 pub fn prepare(dir: &Path) -> io::Result<()> {
     let defaults = dir.join("defaults");
     fs::create_dir_all(defaults.join("keystyle"))?;
     fs::create_dir_all(defaults.join("lua").join("gband"))?;
     fs::create_dir_all(defaults.join("colors"))?;
+    fs::create_dir_all(defaults.join("meta"))?;
     fs::create_dir_all(dir.join("user"))?;
     write_defaults(&defaults_file(dir, Side::Client), Side::Client.defaults())?;
     for (style, content) in crate::KEY_STYLES {
@@ -97,7 +104,12 @@ pub fn prepare(dir: &Path) -> io::Result<()> {
         }
         write_defaults(&path, content)?;
     }
-    write_defaults(&defaults_file(dir, Side::Server), Side::Server.defaults())
+    write_defaults(
+        &defaults.join("meta").join("gband.lua"),
+        bundled::TYPE_DEFINITIONS,
+    )?;
+    write_defaults(&defaults_file(dir, Side::Server), Side::Server.defaults())?;
+    write_if_absent(&dir.join(".luarc.json"), EDITOR_SETTINGS)
 }
 
 fn write_defaults(defaults: &Path, content: &str) -> io::Result<()> {
@@ -107,21 +119,35 @@ fn write_defaults(defaults: &Path, content: &str) -> io::Result<()> {
         Err(error) if error.kind() == ErrorKind::NotFound => {}
         Err(error) => return Err(error),
     }
-    static WRITES: AtomicU64 = AtomicU64::new(0);
-    let name = defaults
-        .file_name()
-        .map(|name| name.to_string_lossy().into_owned())
-        .unwrap_or_default();
-    let temporary = defaults.with_file_name(format!(
-        ".{name}.{}.{}",
-        std::process::id(),
-        WRITES.fetch_add(1, Ordering::Relaxed)
-    ));
+    let temporary = temporary_path(defaults);
     let written = fs::write(&temporary, content).and_then(|()| fs::rename(&temporary, defaults));
     if written.is_err() {
         let _ = fs::remove_file(&temporary);
     }
     written
+}
+
+fn write_if_absent(target: &Path, content: &str) -> io::Result<()> {
+    let temporary = temporary_path(target);
+    let linked = fs::write(&temporary, content).and_then(|()| fs::hard_link(&temporary, target));
+    let _ = fs::remove_file(&temporary);
+    match linked {
+        Err(error) if error.kind() == ErrorKind::AlreadyExists => Ok(()),
+        linked => linked,
+    }
+}
+
+fn temporary_path(target: &Path) -> PathBuf {
+    static WRITES: AtomicU64 = AtomicU64::new(0);
+    let name = target
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    target.with_file_name(format!(
+        ".{name}.{}.{}",
+        std::process::id(),
+        WRITES.fetch_add(1, Ordering::Relaxed)
+    ))
 }
 
 #[cfg(test)]
@@ -216,6 +242,10 @@ mod tests {
         names
     }
 
+    fn type_definitions(dir: &Path) -> PathBuf {
+        dir.join("defaults").join("meta").join("gband.lua")
+    }
+
     #[test]
     fn first_run() {
         let scratch = Scratch::new("first");
@@ -235,12 +265,29 @@ mod tests {
         }
         assert_eq!(
             entries(&dir.join("defaults")),
-            ["colors", "init.lua", "keystyle", "lua", "server.lua"]
+            [
+                "colors",
+                "init.lua",
+                "keystyle",
+                "lua",
+                "meta",
+                "server.lua"
+            ]
         );
         assert_eq!(
             entries(&dir.join("defaults").join("keystyle")),
             ["direct.lua", "floating.lua", "modal.lua"]
         );
+        assert_eq!(entries(&dir.join("defaults").join("meta")), ["gband.lua"]);
+        assert_eq!(
+            fs::read_to_string(type_definitions(&dir)).unwrap(),
+            bundled::TYPE_DEFINITIONS
+        );
+        assert_eq!(
+            fs::read_to_string(dir.join(".luarc.json")).unwrap(),
+            EDITOR_SETTINGS
+        );
+        assert_eq!(entries(&dir), [".luarc.json", "defaults", "user"]);
         assert!(entries(&dir.join("user")).is_empty());
     }
 
@@ -299,6 +346,7 @@ mod tests {
             key_style_file(&dir, "modal"),
             defaults_file(&dir, Side::Server),
             sidebar.clone(),
+            type_definitions(&dir),
         ];
         for file in &edited {
             fs::write(file, "gband.set { prefix = 'ctrl+b' }").unwrap();
@@ -320,8 +368,19 @@ mod tests {
             .1;
         assert_eq!(fs::read_to_string(&sidebar).unwrap(), bundled);
         assert_eq!(
+            fs::read_to_string(type_definitions(&dir)).unwrap(),
+            bundled::TYPE_DEFINITIONS
+        );
+        assert_eq!(
             entries(&dir.join("defaults")),
-            ["colors", "init.lua", "keystyle", "lua", "server.lua"]
+            [
+                "colors",
+                "init.lua",
+                "keystyle",
+                "lua",
+                "meta",
+                "server.lua"
+            ]
         );
         assert_eq!(
             entries(&dir.join("defaults").join("keystyle")),
@@ -350,6 +409,33 @@ mod tests {
             fs::read_to_string(dir.join("user").join("notes.txt")).unwrap(),
             "notes"
         );
+    }
+
+    #[test]
+    fn existing_editor_settings_are_kept() {
+        let scratch = Scratch::new("luarc-kept");
+        let dir = scratch.dir();
+        fs::create_dir_all(&dir).unwrap();
+        let settings = dir.join(".luarc.json");
+        fs::write(&settings, r#"{"diagnostics.globals": ["vim"]}"#).unwrap();
+        prepare(&dir).unwrap();
+        assert_eq!(
+            fs::read_to_string(&settings).unwrap(),
+            r#"{"diagnostics.globals": ["vim"]}"#
+        );
+        assert_eq!(entries(&dir), [".luarc.json", "defaults", "user"]);
+    }
+
+    #[test]
+    fn removed_editor_settings_are_written_again() {
+        let scratch = Scratch::new("luarc-removed");
+        let dir = scratch.dir();
+        prepare(&dir).unwrap();
+        let settings = dir.join(".luarc.json");
+        fs::remove_file(&settings).unwrap();
+        prepare(&dir).unwrap();
+        assert_eq!(fs::read_to_string(&settings).unwrap(), EDITOR_SETTINGS);
+        assert_eq!(entries(&dir), [".luarc.json", "defaults", "user"]);
     }
 
     #[test]
