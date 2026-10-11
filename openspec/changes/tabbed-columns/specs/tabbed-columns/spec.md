@@ -120,34 +120,34 @@ Let `r` be `h − 2` and `n` the number of tabs. The indicator SHALL hold one se
 - When `r` is less than `2n − 1` and at least `n`, the segments SHALL have no row between them, and SHALL share the `r` rows by the same rule.
 - When `r` is less than `n`, the first `r` tabs SHALL each take one row, and the other tabs SHALL have no segment.
 
-The shown tab's segment SHALL be drawn with `┃`, in the style of `TabIndicatorActive` when the shown tab is this client's focused window and of `TabIndicator` otherwise. Every other segment SHALL be drawn with `│` in the style of `TabIndicator`. A blank row between segments SHALL be drawn in the tile's border style. The highlights capability defines both groups.
+The shown tab's segment SHALL be drawn with `█`, in the style of `TabIndicatorActive` when the shown tab is this client's focused window and of `TabIndicator` otherwise. Every other segment SHALL be drawn with `░` in the style of `TabIndicator`. A blank row between segments SHALL be drawn in the tile's border style. The highlights capability defines both groups.
 
 A floating window or the error banner that covers an indicator cell SHALL stay over it, as it stays over the border. While an animation runs, `h` SHALL be the tile's drawn height. A lifted tile, as the mouse capability defines it, SHALL be drawn with no indicator.
 
 #### Scenario: Three tabs
 - **WHEN** the screen area and the client's terminal are both 80×24, the client has no bar, the viewed band holds one tabbed column of width 1/2 with P1, P2 and P3, and the client focuses P2
-- **THEN** column 0 shows `╭` on row 0, `│` on rows 1 to 7, a blank cell on row 8, `┃` on rows 9 to 15, a blank cell on row 16, `│` on rows 17 to 22 and `╰` on row 23
+- **THEN** column 0 shows `╭` on row 0, `░` on rows 1 to 7, a blank cell on row 8, `█` on rows 9 to 15, a blank cell on row 16, `░` on rows 17 to 22 and `╰` on row 23
 - **AND** rows 9 to 15 of column 0 are drawn in `TabIndicatorActive`'s resolved style and rows 1 to 7 and 17 to 22 in `TabIndicator`'s
 
 #### Scenario: One tab
 - **WHEN** the screen area and the client's terminal are both 80×24, the client has no bar, and the viewed band holds one tabbed column of width 1/2 with P1 focused
-- **THEN** column 0 shows `┃` on rows 1 to 22
+- **THEN** column 0 shows `█` on rows 1 to 22
 
 #### Scenario: No room for gaps
 - **WHEN** a tabbed column with P1, P2 and P3 has a fixed tab height of 6 rows, and the client focuses P1
-- **THEN** the tile's column 0 shows `┃` on rows 1 and 2, and `│` on rows 3 and 4
+- **THEN** the tile's column 0 shows `█` on rows 1 and 2, and `░` on rows 3 and 4
 
 #### Scenario: Fewer rows than tabs
 - **WHEN** a tabbed column with P1, P2 and P3 has a fixed tab height of 3 rows, and the client focuses P3
-- **THEN** the tile's column 0 shows `│` on row 1, P1's segment, and no segment of P2 or P3
+- **THEN** the tile's column 0 shows `░` on row 1, P1's segment, and no segment of P2 or P3
 
 #### Scenario: Unfocused tabbed column
 - **WHEN** the viewed band holds tabbed column A with P1 and P2 and column B with P3, and the client focused P2 and then P3
-- **THEN** A's tile shows P2's segment with `┃` in `TabIndicator`'s resolved style
+- **THEN** A's tile shows P2's segment with `█` in `TabIndicator`'s resolved style
 
 #### Scenario: Left side not drawn
 - **WHEN** `user/init.lua` sets `tile_border_sides` to `{ "top", "bottom" }`, the screen area and the client's terminal are both 80×24, the client has no bar, and the viewed band holds one tabbed column of width 1/2 with P1 focused
-- **THEN** column 0 shows `┃` on rows 1 to 22, and `tput cols` in P1 prints `38`
+- **THEN** column 0 shows `█` on rows 1 to 22, and `tput cols` in P1 prints `38`
 
 #### Scenario: Stacked column has no indicator
 - **WHEN** a column that is not tabbed holds P1 and P2 with all four border sides drawn

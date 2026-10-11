@@ -56,6 +56,8 @@ Alternative: store an active tab index per column in the shared layout, as niri 
 
 `geometry::tab_segments(rows: u16, tabs: usize) -> Vec<Option<Range<u16>>>` returns each tab's rows within `1..rows - 1` of a tile `rows` high, by the rule of "Tab indicator". Both the renderer and the hit test call it with the drawn height, so a click always lands on the segment that is drawn, animations included.
 
+The shown tab's segment is `█` and every other segment `░`. The shape tells the shown tab apart in every column, focused or not, so the styles only have to mark focus. Alternative: `┃` and `│`, closer to niri's thin bar. Rejected: in a dim, unfocused column a `│` segment reads as an ordinary border, so the column does not look tabbed.
+
 `draw_tile` gains an optional indicator in its `Edge`: the segments, the shown tab's index and the two resolved styles. It draws after the border and before the grid, over column 0 rows 1 to `h − 2`, honouring the tile's clip as the border does. A lifted tile and the drop outline pass no indicator.
 
 ### Segment cells become regions above their tile
