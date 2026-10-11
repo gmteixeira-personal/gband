@@ -40,10 +40,13 @@ None.
 
 ### Expected Files
 - .luarc.json
+- crates/harness/tests/api_docs.rs
 - crates/lua/src/bundled.rs
 - crates/lua/src/directory.rs
 - crates/lua/src/runtime/meta/gband.lua
-- crates/lua/tests/type_definitions.rs
+- crates/lua/tests/api_docs.rs
 - crates/lua/tests/common/docs.rs
+- crates/lua/tests/tutorial.rs
+- crates/lua/tests/type_definitions.rs
 - docs/plugins.md
 - openspec/changes/lua-type-definitions/
