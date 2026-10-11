@@ -1,4 +1,5 @@
 #[path = "../../lua/tests/common/docs.rs"]
+#[allow(dead_code)]
 mod docs;
 
 use std::path::Path;

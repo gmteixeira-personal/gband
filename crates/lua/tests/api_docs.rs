@@ -2,7 +2,7 @@ mod common;
 
 use std::path::Path;
 
-use common::docs::{Docs, WALK};
+use common::docs::{Docs, gband_root, walk};
 use common::*;
 use gband_lua::Config;
 
@@ -22,14 +22,7 @@ fn plugins_docs() -> Docs {
 
 fn paths(config: &Config, with_exports: bool) -> Vec<String> {
     let lua = config.runtime.lua();
-    let roots = lua.create_table().unwrap();
-    let root = |name: String, value: mlua::Value| {
-        let entry = lua.create_table().unwrap();
-        entry.push(name).unwrap();
-        entry.push(value).unwrap();
-        roots.push(entry).unwrap();
-    };
-    root("gband".to_owned(), lua.globals().get("gband").unwrap());
+    let mut roots = vec![gband_root(lua)];
     if with_exports {
         let loaded: mlua::Table = lua
             .globals()
@@ -39,13 +32,13 @@ fn paths(config: &Config, with_exports: bool) -> Vec<String> {
             .unwrap();
         for module in PRELUDE_MODULES {
             let name = format!("gband.{module}");
-            root(
+            roots.push((
                 format!("require(\"{name}\")"),
                 loaded.get(name.as_str()).unwrap(),
-            );
+            ));
         }
     }
-    lua.load(WALK).call(roots).unwrap()
+    walk(lua, roots)
 }
 
 fn assert_documented(paths: &[String]) {

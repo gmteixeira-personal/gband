@@ -25,6 +25,21 @@ table.sort(paths)
 return paths
 "#;
 
+pub fn walk(lua: &mlua::Lua, roots: Vec<(String, mlua::Value)>) -> Vec<String> {
+    let table = lua.create_table().unwrap();
+    for (name, value) in roots {
+        let entry = lua.create_table().unwrap();
+        entry.push(name).unwrap();
+        entry.push(value).unwrap();
+        table.push(entry).unwrap();
+    }
+    lua.load(WALK).call(table).unwrap()
+}
+
+pub fn gband_root(lua: &mlua::Lua) -> (String, mlua::Value) {
+    ("gband".to_owned(), lua.globals().get("gband").unwrap())
+}
+
 struct Section {
     heading: String,
     body: String,

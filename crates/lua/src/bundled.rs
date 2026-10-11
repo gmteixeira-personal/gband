@@ -89,6 +89,8 @@ const COLORS: [(&str, &str); 16] = [
     ),
 ];
 
+pub(crate) const TYPE_DEFINITIONS: &str = include_str!("runtime/meta/gband.lua");
+
 const ALIASES: [&str; 1] = ["catppuccin"];
 
 pub(crate) fn themes() -> impl Iterator<Item = &'static str> {
@@ -157,4 +159,15 @@ pub(crate) fn install_searcher(lua: &Lua, position: i64) -> mlua::Result<()> {
     let insert: Function = lua.globals().get::<Table>("table")?.get("insert")?;
     let searcher = lua.create_function(|lua, name: String| search(lua, &name))?;
     insert.call::<()>((searchers, position, searcher))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn type_definitions_compile() {
+        assert!(TYPE_DEFINITIONS.starts_with("---@meta\n"));
+        Lua::new().load(TYPE_DEFINITIONS).into_function().unwrap();
+    }
 }

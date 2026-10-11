@@ -25,6 +25,8 @@ const UNCOVERED: &str = "defaults/lua/gband/theme/catppuccin.lua";
 
 const COVERED_COLORSCHEME: &str = "defaults/colors/gruvbox.lua";
 
+const DEFINITIONS: &str = "defaults/meta/";
+
 const CLOSERS: [&str; 5] = ["end", "}", ")", "else", "until"];
 
 struct Tutorial {
@@ -387,7 +389,9 @@ fn quotes(docs: &Path, bundled: &BTreeMap<String, String>) -> (Vec<Quote>, Vec<S
 }
 
 fn covered(path: &str) -> bool {
-    path != UNCOVERED && (!path.starts_with("defaults/colors/") || path == COVERED_COLORSCHEME)
+    path != UNCOVERED
+        && !path.starts_with(DEFINITIONS)
+        && (!path.starts_with("defaults/colors/") || path == COVERED_COLORSCHEME)
 }
 
 fn statement<'a>(lines: &[&'a str], index: usize) -> &'a str {
