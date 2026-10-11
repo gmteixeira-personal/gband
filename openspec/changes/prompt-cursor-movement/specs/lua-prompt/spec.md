@@ -5,7 +5,9 @@ Opening the prompt SHALL open a floating plugin window, as the plugin-windows ca
 
 The prompt SHALL keep a cursor position in its line: a count of characters before the cursor, from 0 to the line's length. The prompt SHALL open with the cursor after the last character of its starting line.
 
-The floating plugin window SHALL hold one line: `:` followed by the typed text, in the group `PluginWindow`, with the cursor cell in the group `PromptCursor`. The cursor cell SHALL be the character after the cursor, or one space appended after the text when the cursor is after the last character. When that line is wider than the content area, the fewest leading characters SHALL be left out that make the text up to and including the cursor cell fit in the content area, and the characters after the cursor cell that still do not fit SHALL be left out, so the cursor cell stays shown. The line SHALL be fitted again each time the content area's width changes.
+The floating plugin window SHALL hold one line: `:` followed by the typed text, in the group `PluginWindow`, with the cursor cell in the group `PromptCursor`. The cursor cell SHALL be the character after the cursor, or one space appended after the text when the cursor is after the last character.
+
+The prompt SHALL keep a scroll position: the number of leading characters of the line, `:` included, that are left out of the drawing. It SHALL be 0 when the prompt opens. After each change to the line, to the cursor or to the content area's width, the scroll position SHALL become the one before the change, lowered to at most the number of typed characters before the cursor and to at most the fewest left out that let the rest of the line and one more cell fit in the content area, and then raised to at least the fewest left out that let the text up to and including the cursor cell fit. The characters after the cursor cell that do not fit SHALL be left out. The cursor cell therefore stays shown, and a line that fits is drawn whole.
 
 The plugin SHALL give the group `PromptCursor` the default `{ reverse = true }`, as the highlights capability defines defaults.
 
@@ -30,6 +32,18 @@ The plugin SHALL give the group `PromptCursor` the default `{ reverse = true }`,
 - **WHEN** the prompt's content area is 10 columns wide, the user types `abcdefghijkl`, then presses Left 12 times
 - **THEN** the content row reads `:abcdefghi`, and the cell holding `a` is the cursor cell
 
+#### Scenario: Long line keeps its place
+- **WHEN** the prompt's content area is 10 columns wide, the user types `abcdefghijkl`, then presses Left 3 times
+- **THEN** the content row reads `defghijkl`, and the cell holding `j` is the cursor cell
+
+#### Scenario: Long line scrolls at its left edge
+- **WHEN** the prompt's content area is 10 columns wide, the user types `abcdefghijkl`, then presses Left 9 times
+- **THEN** the content row reads `cdefghijkl`, and the cell holding `d` is the cursor cell
+
+#### Scenario: End of a scrolled line
+- **WHEN** the prompt's content area is 10 columns wide, the user types `abcdefghijkl`, presses Home, then End
+- **THEN** the content row reads `defghijkl` followed by the cursor cell
+
 #### Scenario: Theme sets the cursor
 - **WHEN** `user/init.lua` calls `gband.hl.set("PromptCursor", { bg = "#ff0000" })` and the prompt is drawn on a truecolor terminal
 - **THEN** the cursor cell has background `#ff0000`
@@ -43,12 +57,58 @@ While the prompt is focused, it SHALL edit its line as follows:
 | a paste | insert the pasted text at the cursor, with each `\r\n` pair and every other control character turned into one space, and move the cursor after it |
 | Left | move the cursor one character back; at the start of the line, do nothing |
 | Right | move the cursor one character forward; after the last character, do nothing |
+| Home | move the cursor before the first character |
+| End | move the cursor after the last character |
 | Backspace | remove the character before the cursor; on an empty line, close the prompt and run nothing; with the cursor at the start of a line that holds text, do nothing |
 | Ctrl+U | clear the line and put the cursor at its start |
 | Escape | close the prompt and run nothing |
 | Enter | run the line, as "Running the line" defines, wherever the cursor is |
 
 A character SHALL be one Unicode scalar value. Every other key SHALL take the plugin-windows capability's default, or be discarded, and SHALL leave the line and the cursor unchanged. Nothing typed into the prompt SHALL reach the focused window.
+
+The prompt SHALL take mouse events through `on_mouse`, as the plugin-windows capability defines, whether or not it is focused. A left press on its content row SHALL move the cursor as follows, after the press has focused the prompt:
+
+- on a cell drawn with a character of the typed text, either cell of a double-width one included: before that character
+- on the cell drawn with `:`: before the first character
+- on any other cell of the content row: after the last character
+
+Every other mouse event, a press with another button, a release, a drag and a wheel step included, SHALL leave the line and the cursor unchanged.
+
+#### Scenario: Click a character
+- **WHEN** the prompt shows `:abc` with the cursor after `c`, and the user left-clicks the cell holding `b`, then types `x`
+- **THEN** the prompt shows `:axbc`
+
+#### Scenario: Click the colon
+- **WHEN** the prompt shows `:abc` with the cursor after `c`, and the user left-clicks the cell holding `:`, then types `x`
+- **THEN** the prompt shows `:xabc`
+
+#### Scenario: Click past the text
+- **WHEN** the prompt shows `:abc` with the cursor before `a`, and the user left-clicks the fifth cell after `c`, then types `x`
+- **THEN** the prompt shows `:abcx`
+
+#### Scenario: Click a wide character
+- **WHEN** the prompt shows `:a界b` with the cursor after `b`, and the user left-clicks the second cell of `界`, then types `x`
+- **THEN** the prompt shows `:ax界b`
+
+#### Scenario: Click a scrolled line
+- **WHEN** the prompt's content area is 10 columns wide, the user types `abcdefghijkl`, then left-clicks the cell holding `f`
+- **THEN** the content row reads `defghijkl`, and the cell holding `f` is the cursor cell
+
+#### Scenario: Click an unfocused prompt
+- **WHEN** the prompt shows `:ab`, the user presses Ctrl+Space then `l`, which focuses another column, then left-clicks the cell holding `b` and types `x`
+- **THEN** the prompt has focus and shows `:axb`
+
+#### Scenario: Other buttons
+- **WHEN** the prompt shows `:abc` with the cursor after `c`, and the user right-clicks the cell holding `a`, then types `x`
+- **THEN** the prompt shows `:abcx`
+
+#### Scenario: Home
+- **WHEN** the prompt shows `:abc` with the cursor after `c`, and the user presses Home, then types `x`
+- **THEN** the prompt shows `:xabc`
+
+#### Scenario: End
+- **WHEN** the prompt shows `:abc` with the cursor after `c`, and the user presses Home, then End, then types `x`
+- **THEN** the prompt shows `:abcx`
 
 #### Scenario: Letters that scroll elsewhere
 - **WHEN** the prompt is open and the user types `jkq`
