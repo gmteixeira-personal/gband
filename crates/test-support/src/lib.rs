@@ -647,4 +647,14 @@ impl Transport for RelayTransport {
     async fn replace_server(&self) -> Result<()> {
         bail!("{self} cannot replace the server")
     }
+
+    fn remote(&self) -> bool {
+        false
+    }
+
+    async fn diagnose(&self) -> Option<anyhow::Error> {
+        None
+    }
+
+    async fn finish(&self) {}
 }

@@ -219,6 +219,11 @@ fn help_lists_subcommands() {
             .unwrap();
         assert!(attach.contains("when no command is given"), "{attach}");
         assert!(stdout.contains("-s, --session <NAME>"), "{flag}: {stdout}");
+        assert!(
+            stdout.contains("-r, --remote <DESTINATION>"),
+            "{flag}: {stdout}"
+        );
+        assert!(!stdout.contains("relay"), "{flag}: {stdout}");
         listings.push(commands);
     }
     assert_eq!(listings[0], listings[1]);
@@ -267,6 +272,53 @@ fn session_option_on_a_subcommand_without_sessions_is_rejected() {
         let stderr = String::from_utf8(output.stderr).unwrap();
         assert!(stderr.contains("'-s'"), "{stderr}");
         assert!(stderr.contains(subcommand), "{stderr}");
+    }
+    assert!(!state.join("gband").exists());
+    assert!(!runtime_home(&state).exists());
+}
+
+#[test]
+fn remote_option_on_a_local_subcommand_is_rejected_without_a_log() {
+    let state = state_home("remote_not_applicable");
+    let cases: [(&[&str], &str); 6] = [
+        (&["server", "-r", "u@h"], "server"),
+        (&["-r", "u@h", "relay"], "relay"),
+        (&["test", "-r", "u@h"], "test"),
+        (&["-r", "u@h", "completions", "bash"], "completions"),
+        (
+            &["install-completions", "bash", "--remote", "u@h"],
+            "install-completions",
+        ),
+        (&["--remote=u@h", "server"], "server"),
+    ];
+    for (args, subcommand) in cases {
+        let output = gband(&state, None, args);
+        assert_eq!(output.status.code(), Some(2), "{args:?}");
+        let stderr = String::from_utf8(output.stderr).unwrap();
+        let expected = format!("'-r' does not apply to '{subcommand}'");
+        assert!(stderr.contains(&expected), "{args:?}: {stderr}");
+    }
+    assert!(!state.join("gband").exists());
+    assert!(!runtime_home(&state).exists());
+}
+
+#[test]
+fn invalid_remote_invocations_are_rejected_without_a_log() {
+    let state = state_home("remote_invalid");
+    let cases: [(&[&str], &str); 4] = [
+        (&["-r", ""], "empty"),
+        (&["--remote-gband", "/opt/gband", "attach"], "Usage"),
+        (&["list-sessions", "--remote-gband=/opt/gband"], "Usage"),
+        (
+            &["-r", "u@h", "--remote-gband", "", "list-sessions"],
+            "--remote-gband",
+        ),
+    ];
+    for (args, expected) in cases {
+        let output = gband(&state, None, args);
+        assert_eq!(output.status.code(), Some(2), "{args:?}");
+        let stderr = String::from_utf8(output.stderr).unwrap();
+        assert!(stderr.contains(expected), "{args:?}: {stderr}");
     }
     assert!(!state.join("gband").exists());
     assert!(!runtime_home(&state).exists());

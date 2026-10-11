@@ -107,6 +107,7 @@ pub async fn run_with_events(
     let mut registry = Registry::new(
         config.program,
         socket.clone(),
+        config.cwd.clone(),
         requests_tx.clone(),
         Shared {
             events,

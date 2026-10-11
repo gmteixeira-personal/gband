@@ -1,24 +1,28 @@
 mod control;
+mod remote;
 
+use std::ffi::OsString;
 use std::io::{IsTerminal, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::Arc;
 
 use anyhow::{Context, Result, bail};
+use clap::builder::NonEmptyStringValueParser;
 use clap::error::ErrorKind;
-use clap::{Args, CommandFactory, Parser, Subcommand};
+use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand};
 use gband::channel;
 use gband::completions::{self, Shell};
 use gband::executable;
 use gband::logging::{self, Role};
 use gband::paths::{self, ServerName};
-use gband_client::{ClientConfig, Configuration, Outcome, UnixTransport};
+use gband_client::{ClientConfig, Configuration, Outcome, SshTransport, Transport, UnixTransport};
 use gband_core::geometry::Size;
 use gband_lua::{Config, ConfigError, LoadOptions, Locations, Side};
 use gband_protocol::test;
 use gband_protocol::{Operation, SessionName, Target, Value};
 use gband_server::{INITIAL_AREA, SUN_PATH_MAX, Scripting, ServerConfig, TestChannel};
+use remote::{Destination, Host};
 use tokio::sync::watch;
 
 #[derive(Parser)]
@@ -38,6 +42,22 @@ struct Cli {
         help = "Select the session named NAME [default: default]"
     )]
     session: Option<SessionName>,
+    #[arg(
+        short = 'r',
+        long = "remote",
+        value_name = "DESTINATION",
+        global = true,
+        help = "Address a server on DESTINATION through ssh"
+    )]
+    remote: Option<Destination>,
+    #[arg(
+        long = "remote-gband",
+        value_name = "COMMAND",
+        global = true,
+        value_parser = NonEmptyStringValueParser::new(),
+        help = "Run COMMAND as gband on the remote host [default: gband]"
+    )]
+    remote_gband: Option<String>,
     #[command(subcommand)]
     command: Option<Command>,
 }
@@ -79,11 +99,20 @@ impl Selection {
         Ok(socket)
     }
 
-    fn kill_command(&self) -> String {
+    fn kill_command(&self, remote: Option<&Destination>) -> String {
+        let remote = remote.map_or_else(String::new, |destination| format!("-r {destination} "));
         match (&self.server, &self.socket) {
-            (Some(name), _) => format!("gband -S {} kill-server", name.as_str()),
-            (None, Some(socket)) => format!("gband -p {} kill-server", socket.display()),
-            (None, None) => "gband kill-server".to_owned(),
+            (Some(name), _) => format!("gband {remote}-S {} kill-server", name.as_str()),
+            (None, Some(socket)) => format!("gband {remote}-p {} kill-server", socket.display()),
+            (None, None) => format!("gband {remote}kill-server"),
+        }
+    }
+
+    fn words(&self) -> Vec<OsString> {
+        match (&self.server, &self.socket) {
+            (Some(name), _) => vec!["-S".into(), name.as_str().into()],
+            (None, Some(socket)) => vec!["-p".into(), socket.into()],
+            (None, None) => Vec::new(),
         }
     }
 }
@@ -130,6 +159,11 @@ enum Command {
     },
     #[command(about = "Run Lua test files against real gband clients and servers")]
     Test(TestArgs),
+    #[command(hide = true)]
+    Relay {
+        #[arg(long, value_name = "COLSxROWS", value_parser = parse_area)]
+        size: Option<Size>,
+    },
 }
 
 #[derive(Args)]
@@ -243,7 +277,8 @@ impl Command {
             | Command::Reload(_)
             | Command::Errors(_)
             | Command::Eval(_)
-            | Command::Cmd(_) => Some(Role::Client),
+            | Command::Cmd(_)
+            | Command::Relay { .. } => Some(Role::Client),
             Command::Completions { .. } | Command::InstallCompletions { .. } | Command::Test(_) => {
                 None
             }
@@ -263,7 +298,8 @@ impl Command {
             | Command::Cmd(_)
             | Command::Completions { .. }
             | Command::InstallCompletions { .. }
-            | Command::Test(_) => None,
+            | Command::Test(_)
+            | Command::Relay { .. } => None,
         }
     }
 
@@ -280,8 +316,31 @@ impl Command {
             | Command::Reload(_)
             | Command::Errors(_)
             | Command::Eval(_)
+            | Command::Cmd(_)
+            | Command::Relay { .. } => None,
+        }
+    }
+
+    fn refuses_remote(&self) -> Option<&'static str> {
+        match self {
+            Command::Server { .. } => Some("server"),
+            Command::Relay { .. } => Some("relay"),
+            Command::Test(_) => Some("test"),
+            Command::Completions { .. } => Some("completions"),
+            Command::InstallCompletions { .. } => Some("install-completions"),
+            Command::Attach
+            | Command::ListSessions
+            | Command::KillSession
+            | Command::KillServer
+            | Command::Reload(_)
+            | Command::Errors(_)
+            | Command::Eval(_)
             | Command::Cmd(_) => None,
         }
+    }
+
+    fn reads_stdin(&self) -> bool {
+        matches!(self, Command::Eval(args) if args.source == "-")
     }
 
     fn follows_the_window(&self) -> bool {
@@ -293,8 +352,28 @@ impl Command {
 }
 
 fn main() -> ExitCode {
-    let cli = Cli::parse();
+    let arguments: Vec<OsString> = std::env::args_os().collect();
+    let matches = Cli::command().get_matches_from(&arguments);
+    let cli = Cli::from_arg_matches(&matches).unwrap_or_else(|error| error.exit());
     let command = cli.command.unwrap_or(Command::Attach);
+    if cli.remote_gband.is_some() && cli.remote.is_none() {
+        Cli::command()
+            .error(
+                ErrorKind::MissingRequiredArgument,
+                "the argument '--remote-gband <COMMAND>' requires '--remote <DESTINATION>'",
+            )
+            .exit();
+    }
+    if cli.remote.is_some()
+        && let Some(subcommand) = command.refuses_remote()
+    {
+        Cli::command()
+            .error(
+                ErrorKind::ArgumentConflict,
+                format!("the option '-r' does not apply to '{subcommand}'"),
+            )
+            .exit();
+    }
     if cli.selection.server.is_some() && cli.selection.socket.is_some() {
         Cli::command()
             .error(
@@ -341,11 +420,6 @@ fn main() -> ExitCode {
             ExitCode::FAILURE
         });
     };
-    let session = cli
-        .session
-        .or_else(|| command.follows_the_window().then(window_session).flatten())
-        .unwrap_or_default();
-
     let _guard = match logging::init(role) {
         Ok(guard) => guard,
         Err(error) => {
@@ -360,41 +434,77 @@ fn main() -> ExitCode {
         "{} started",
         role.as_str()
     );
+    if let Some(destination) = cli.remote {
+        let _span = tracing::error_span!("gband", remote = %destination).entered();
+        let host = Host {
+            destination,
+            gband: cli.remote_gband,
+        };
+        return finish(match command {
+            Command::Attach => attach_remote(host, cli.session.unwrap_or_default(), &cli.selection),
+            command => remote::forwarded(&arguments, &Cli::command())
+                .and_then(|forwarded| host.run(&forwarded, command.reads_stdin())),
+        });
+    }
+    let session = cli
+        .session
+        .or_else(|| command.follows_the_window().then(window_session).flatten())
+        .unwrap_or_default();
     let runtime_dir = paths::runtime_dir();
-    let socket = cli.selection.resolve(&runtime_dir);
-    let _span = socket
-        .as_ref()
-        .ok()
-        .map(|socket| tracing::error_span!("gband", socket = %socket.display()).entered());
-    let result = socket.and_then(|socket| match command {
-        Command::Server { size } => server(socket, session, size, &runtime_dir),
-        Command::Attach => attach(socket, session, &cli.selection),
-        Command::ListSessions => list_sessions(socket, &cli.selection),
-        Command::KillSession => kill_session(socket, session, &cli.selection),
-        Command::KillServer => kill_server(&socket),
-        Command::Reload(output) => {
-            let remote = Remote::new(socket, session, &cli.selection);
-            remote.run(Target::All, Operation::Reload, |entries| {
-                control::reload(entries, output.json)
-            })
-        }
-        Command::Errors(output) => {
-            let remote = Remote::new(socket, session, &cli.selection);
-            remote.run(Target::All, Operation::Errors, |entries| {
-                control::errors(entries, output.json)
-            })
-        }
-        Command::Eval(args) => eval(Remote::new(socket, session, &cli.selection), args),
-        Command::Cmd(args) => cmd(Remote::new(socket, session, &cli.selection), args),
-        Command::Completions { .. } | Command::InstallCompletions { .. } | Command::Test(_) => {
-            unreachable!("standalone subcommands return before logging starts")
-        }
-    });
+    let socket = match cli.selection.resolve(&runtime_dir) {
+        Ok(socket) => socket,
+        Err(error) => return finish(Err(error)),
+    };
+    let _span = tracing::error_span!("gband", socket = %socket.display()).entered();
+    finish(local(
+        command,
+        session,
+        socket,
+        &cli.selection,
+        &runtime_dir,
+    ))
+}
+
+fn finish(result: Result<ExitCode>) -> ExitCode {
     result.unwrap_or_else(|error| {
         tracing::error!("{error:#}");
         eprintln!("gband: {error:#}");
         ExitCode::FAILURE
     })
+}
+
+fn local(
+    command: Command,
+    session: SessionName,
+    socket: PathBuf,
+    selection: &Selection,
+    runtime_dir: &Path,
+) -> Result<ExitCode> {
+    match command {
+        Command::Server { size } => server(socket, session, size, runtime_dir),
+        Command::Attach => attach(socket, session, selection),
+        Command::ListSessions => list_sessions(socket, selection),
+        Command::KillSession => kill_session(socket, session, selection),
+        Command::KillServer => kill_server(&socket),
+        Command::Reload(output) => {
+            let remote = Remote::new(socket, session, selection);
+            remote.run(Target::All, Operation::Reload, |entries| {
+                control::reload(entries, output.json)
+            })
+        }
+        Command::Errors(output) => {
+            let remote = Remote::new(socket, session, selection);
+            remote.run(Target::All, Operation::Errors, |entries| {
+                control::errors(entries, output.json)
+            })
+        }
+        Command::Eval(args) => eval(Remote::new(socket, session, selection), args),
+        Command::Cmd(args) => cmd(Remote::new(socket, session, selection), args),
+        Command::Relay { size } => relay(socket, session, size),
+        Command::Completions { .. } | Command::InstallCompletions { .. } | Command::Test(_) => {
+            unreachable!("standalone subcommands return before logging starts")
+        }
+    }
 }
 
 fn standalone(command: Command) -> Result<ExitCode> {
@@ -580,7 +690,7 @@ fn client(
         session,
         identity: executable::identity().context("cannot identify the gband executable")?,
         replace_mismatched: attaching && cfg!(debug_assertions),
-        kill_command: selection.kill_command(),
+        kill_command: selection.kill_command(None),
     };
     Ok((config, transport))
 }
@@ -593,13 +703,41 @@ fn attach(socket: PathBuf, session: SessionName, selection: &Selection) -> Resul
             socket.display()
         );
     }
+    require_terminal()?;
+    let (config, transport) = client(socket, session, selection, true)?;
+    run_client(config, transport)
+}
+
+fn attach_remote(host: Host, session: SessionName, selection: &Selection) -> Result<ExitCode> {
+    require_terminal()?;
+    let config = ClientConfig {
+        session: session.clone(),
+        identity: executable::identity().context("cannot identify the gband executable")?,
+        replace_mismatched: false,
+        kill_command: selection.kill_command(Some(&host.destination)),
+    };
+    let words = selection.words();
+    let gband = host.gband().to_owned();
+    let destination = host.destination.to_string();
+    let transport = SshTransport::new(
+        destination.into(),
+        gband,
+        Box::new(move |size| host.relay_command(&words, &session, size)),
+    );
+    run_client(config, transport)
+}
+
+fn require_terminal() -> Result<()> {
     if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
         bail!("gband attach needs a terminal on standard input and standard output");
     }
+    Ok(())
+}
+
+fn run_client(config: ClientConfig, transport: impl Transport) -> Result<ExitCode> {
     let joined = channel::requested()
         .map(|path| channel::join(&path, test::Role::Client))
         .transpose()?;
-    let (config, transport) = client(socket, session, selection, true)?;
     let kill_command = config.kill_command.clone();
     let loaded = configuration(Side::Client);
     log_errors(&loaded);
@@ -634,6 +772,18 @@ fn attach(socket: PathBuf, session: SessionName, selection: &Selection) -> Resul
         );
     }
     Ok(status)
+}
+
+fn relay(socket: PathBuf, session: SessionName, size: Option<Size>) -> Result<ExitCode> {
+    let transport = UnixTransport {
+        socket,
+        executable_path: std::env::current_exe().context("cannot locate the gband executable")?,
+        session,
+        start_server: true,
+        log_dir: logging::log_directory()?,
+    };
+    gband_client::run_relay(transport, size.unwrap_or(INITIAL_AREA))?;
+    Ok(ExitCode::SUCCESS)
 }
 
 fn list_sessions(socket: PathBuf, selection: &Selection) -> Result<ExitCode> {

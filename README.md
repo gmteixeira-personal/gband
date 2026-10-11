@@ -156,6 +156,20 @@ Navigation mode changed two habits.
 Enter no longer opens a window: `n` does.
 After Ctrl+Space and a layout key, what you type no longer reaches the window until Escape or Enter returns to interactive mode.
 
+### Remote hosts
+
+`gband -r user@host` attaches to the session named `default` on `host`, and starts a server there when none runs.
+The client stays local: your configuration, key bindings, plugins and terminal apply, and only the windows run on `host`.
+`-s` and `-S` select the session and the server on `host`, so `gband -r user@host -S feature -s work` attaches to the session `work` of the server named `feature` there.
+`list-sessions`, `kill-session`, `kill-server`, `reload`, `errors`, `eval` and `cmd` with `-r` run on `host` as well.
+
+gband reaches `host` with your `ssh`, so your ssh configuration, keys and agent apply, and ssh asks for a password or a host key on the terminal before gband takes it.
+`host` needs a gband speaking the same protocol version.
+The remote login shell finds it on its `PATH`; `--remote-gband ~/.cargo/bin/gband` names another one, and `~` expands on `host`.
+
+A login shell on `host` that prints anything, such as an `echo` in `.bashrc`, breaks the stream gband reads, and the attach fails with a frame error.
+Keep start-up files silent for non-interactive shells.
+
 ### Tabbed columns
 
 Ctrl+Space then `w` turns the focused window's column into a tabbed column, as in niri, and turns it back into a stack.
