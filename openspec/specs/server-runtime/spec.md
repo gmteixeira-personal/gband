@@ -104,7 +104,7 @@ When no client that the event targets is attached, the server SHALL queue the ev
 ### Requirement: Shared window state
 Every window SHALL have a state: a map from non-empty string keys to plain data values, empty when the window opens. `gband.window_state(session, window)` SHALL return a table through which that state is read and written, or nil when the session holds no such window. Reading a key SHALL return a copy of its value. Assigning a plain data value to a key SHALL set it, and assigning nil SHALL remove it. Iterating the table with `pairs` SHALL visit every key. A key that is not a non-empty string, a value that is not plain data, or an assignment that brings the state's encoded size over 64 KiB SHALL be an error at the line of the assignment, and SHALL leave the state unchanged. Assigning a value equal to the current one SHALL change nothing.
 
-The server SHALL publish every change of a window's state to the clients of its session, in the order the changes were made, as the plugin-bridge capability defines. A window's state SHALL be removed when the window leaves the layout. Window states SHALL be kept across a reload of the server configuration. State keys SHALL NOT be namespaced, so that plugins can read each other's keys.
+The server SHALL publish every change of a window's state to the clients of its session, in the order the changes were made, as the plugin-bridge capability defines. A window's state SHALL be removed when the window leaves the layout. Window states SHALL be kept across a reload of the server configuration. State keys SHALL NOT be namespaced, so that plugins can read each other's keys. The key `agent_state` SHALL be set only by the server's agent detection, as the agent-state capability defines. Reading it SHALL work as for any key, and assigning it from Lua SHALL be an error at the line of the assignment naming `agent_state`, and SHALL leave the state unchanged.
 
 #### Scenario: Set and publish
 - **WHEN** a `WindowOutput` handler runs `gband.window_state(ev.session, ev.window).agent = "waiting"`
@@ -121,6 +121,14 @@ The server SHALL publish every change of a window's state to the clients of its 
 #### Scenario: Kept across reload
 - **WHEN** a window's state holds `agent` `"waiting"` and the user saves `user/server.lua`
 - **THEN** after the reload the window's state still holds `agent` `"waiting"`
+
+#### Scenario: Agent state is read-only
+- **WHEN** line 7 of a plugin's `server.lua` handler assigns `"x"` to `gband.window_state(ev.session, ev.window).agent_state`
+- **THEN** a plugin error at that line names `agent_state`, and the window's state is unchanged
+
+#### Scenario: Agent state is readable
+- **WHEN** window 2 runs Claude Code and its state is `idle`, and a server handler reads `gband.window_state(session, 2).agent_state.state`
+- **THEN** it reads `idle`
 
 ### Requirement: Server commands
 `gband.cmd.register`, `gband.cmd.run` and `gband.cmd.list` SHALL behave in the server as the lua-commands capability defines. A server command's function SHALL be called with two arguments: the arguments table, and a context holding `session`, the calling client's session name or nil, `client`, the calling client's number or nil, and `focus`, a function. `ctx.focus(window)` SHALL tell the calling client, and no other, to focus that window of its session, and SHALL do nothing when the command has no calling client. The function's first return value SHALL be the command's result and SHALL be plain data. A result that is not plain data SHALL make the call fail as if the function raised an error.

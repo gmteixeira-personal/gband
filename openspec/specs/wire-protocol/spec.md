@@ -23,7 +23,7 @@ Every message in either direction SHALL be sent as one frame. A frame is a 4-byt
 - **AND** it keeps serving its other clients
 
 ### Requirement: Handshake
-The first frame a client sends SHALL be a hello. The hello's payload SHALL begin with the client's protocol version, encoded the same way in every protocol version, followed by the client's terminal size. The first frame the server sends SHALL answer it. The server SHALL decode the leading version on its own, and compare it with its own version before it decodes anything that follows it. When the versions differ, the answer SHALL reject the client and carry the server's protocol version, whatever bytes follow the version, and the server SHALL then close the connection. When the versions are equal and the rest of the hello decodes, the answer SHALL accept the client and carry the server's protocol version. The leading version and the answer SHALL keep the same encoding in every later protocol version, so that two versions can always detect each other. The fields after the leading version MAY change in a later protocol version. The current protocol version SHALL be 13.
+The first frame a client sends SHALL be a hello. The hello's payload SHALL begin with the client's protocol version, encoded the same way in every protocol version, followed by the client's terminal size. The first frame the server sends SHALL answer it. The server SHALL decode the leading version on its own, and compare it with its own version before it decodes anything that follows it. When the versions differ, the answer SHALL reject the client and carry the server's protocol version, whatever bytes follow the version, and the server SHALL then close the connection. When the versions are equal and the rest of the hello decodes, the answer SHALL accept the client and carry the server's protocol version. The leading version and the answer SHALL keep the same encoding in every later protocol version, so that two versions can always detect each other. The fields after the leading version MAY change in a later protocol version. The current protocol version SHALL be 14.
 
 #### Scenario: Matching versions
 - **WHEN** a version 2 client sends its hello to a version 2 server
@@ -87,6 +87,10 @@ The first frame a client sends SHALL be a hello. The hello's payload SHALL begin
 - **WHEN** a client speaking protocol version 12 sends its hello to a server speaking version 13
 - **THEN** the server rejects it with version 13 and closes the connection
 
+#### Scenario: Version 13 client meets a version 14 server
+- **WHEN** a client speaking protocol version 13 sends its hello to a server speaking version 14
+- **THEN** the server rejects it with version 14 and closes the connection
+
 ### Requirement: Client messages
 After an attach request, a client SHALL send only these messages:
 
@@ -96,6 +100,7 @@ After an attach request, a client SHALL send only these messages:
 | paste | a window identifier and the pasted text |
 | resize | the client terminal's columns and rows |
 | shown | the identifiers of every window the client shows, as the layout-view capability defines; it replaces the set the client reported before |
+| focus | the identifier of the window the client focuses, or nothing when it focuses none, as the client-attach capability's "Report the focused window" defines; it replaces the window the client reported before |
 | action | one session action, as the session-server capability defines it, with the window or band it names |
 | content | a window identifier, and terminal output for the drawn window's screen, as the session-server capability defines |
 | command | a call number chosen by the client, a server command's full name, and its arguments as a plain data value |
@@ -105,7 +110,7 @@ After an attach request, a client SHALL send only these messages:
 | reload | nothing; it asks the server for a forced reload, as the configuration capability's "Forced reload" defines |
 | control answer | a call number from a control message, and the answer to its operation, as "Control operations" in "Requests" defines |
 
-Window and band identifiers SHALL name windows and bands of the client's session. The server SHALL ignore a window identifier in a shown message that names no window of the client's session. The open window action SHALL name a band, optionally the window whose column the new column follows, optionally the new column's width, whether the window floats, whether the client asks to focus the new window, and what the window holds: either a program, which is optionally named as a command line or as an argument list, or plugin content with a request number. Every other action SHALL name a window. Consume or expel and move column SHALL also name their direction, left or right. Move window SHALL also name its direction, down or up. Toggle floating SHALL also name optionally the tiled window to tile after, and SHALL name either no layer, the floating layer or the tiled layer, as the session-server capability's "Session actions" defines. Set position SHALL also name a column and a row. Set width SHALL also name a width. Set height SHALL also name either a number of rows or a weight. Grow and shrink of a width and of a height SHALL also name a step. Move to place SHALL also name a reference window and a place: a new column left of the reference window's column, a new column right of it, above the reference window, or below it. A rename SHALL name a window that runs a program. A width, a weight and a step SHALL each be a fraction in lowest terms. A client SHALL NOT reuse a call number while its call is unanswered. A client SHALL answer each control message with exactly one control answer that carries its call number. A client that detaches SHALL send detach, then close the connection.
+Window and band identifiers SHALL name windows and bands of the client's session. The server SHALL ignore a window identifier in a shown message or a focus message that names no window of the client's session. The open window action SHALL name a band, optionally the window whose column the new column follows, optionally the new column's width, whether the window floats, whether the client asks to focus the new window, and what the window holds: either a program, which is optionally named as a command line or as an argument list, or plugin content with a request number. Every other action SHALL name a window. Consume or expel and move column SHALL also name their direction, left or right. Move window SHALL also name its direction, down or up. Toggle floating SHALL also name optionally the tiled window to tile after, and SHALL name either no layer, the floating layer or the tiled layer, as the session-server capability's "Session actions" defines. Set position SHALL also name a column and a row. Set width SHALL also name a width. Set height SHALL also name either a number of rows or a weight. Grow and shrink of a width and of a height SHALL also name a step. Move to place SHALL also name a reference window and a place: a new column left of the reference window's column, a new column right of it, above the reference window, or below it. A rename SHALL name a window that runs a program. A width, a weight and a step SHALL each be a fraction in lowest terms. A client SHALL NOT reuse a call number while its call is unanswered. A client SHALL answer each control message with exactly one control answer that carries its call number. A client that detaches SHALL send detach, then close the connection.
 
 #### Scenario: Detach message
 - **WHEN** a client sends detach
@@ -119,6 +124,10 @@ Window and band identifiers SHALL name windows and bands of the client's session
 #### Scenario: Shown round trip
 - **WHEN** a client sends shown naming windows 1 and 4
 - **THEN** the server decodes a shown message naming windows 1 and 4
+
+#### Scenario: Focus round trip
+- **WHEN** a client sends focus naming window 4, and focus naming no window
+- **THEN** the server decodes focus naming window 4, and focus naming no window
 
 #### Scenario: Grow height round trip
 - **WHEN** a client sends grow height naming window 2 and the step 1/10

@@ -194,6 +194,8 @@ With the modal key style, the bindings SHALL be: Ctrl+Space as the prefix, no bi
 | `k` | `prefix k` | focus the window above | view | |
 | `u` | `prefix u` | view the band below | view | |
 | `i` | `prefix i` | view the band above | view | |
+| `a` | `prefix a` | enter agents mode, as the jump-modes capability defines | — | `agents mode` |
+| `b` | `prefix b` | enter bands mode, as the jump-modes capability defines | — | `bands mode` |
 | `c` | `prefix c` | center the focused column, or the focused floating window | view | |
 | `n` | `prefix n` | open a window right of the focused window's column, then return to interactive mode when the `I on new` setting is on, as the settings capability defines | session | `open a window` |
 | `q` | `prefix q` | close the focused floating plugin window when one is focused, otherwise the focused window | session | |
@@ -234,6 +236,8 @@ With the modal key style, the bindings SHALL be: Ctrl+Space as the prefix, no bi
 | any other key | — | discard the key; navigation mode stays active | — | |
 
 With the direct key style, the bindings SHALL be: Ctrl+Space as the prefix, no binding in `root`, no mode, and in `prefix` every row of the table above except Escape and Enter, in the same order. `n` SHALL be bound to open window, `m` to toggle multi mode and Ctrl+Space to send the prefix key, each to the action itself, with that action's description. Every other row SHALL be bound as with the modal key style. Each key after the prefix key SHALL end the key sequence, as in any table that is not a mode, so `root` is active again after it. Any other key, Escape and Enter included, SHALL be discarded together with the prefix key.
+
+With the modal and the direct key styles, the client SHALL also hold the `agents` and `bands` modes, as the jump-modes capability's "Jump mode tables" defines. `a` and `b` in `prefix` SHALL enter them, so `agents` or `bands` is active after the key, and navigation mode is not.
 
 With the floating key style, the bindings SHALL be: Ctrl+Space as the prefix, no key binding in `root`, no mode, and in `prefix` the bindings that the floating-key-style capability's "Floating bindings" gives, in its order. The floating preset's handler of `KeyTableChanged` SHALL make `root` active again as soon as the prefix key makes `prefix` active, and SHALL open the window list, as that capability's "Leader" defines. The keys that follow SHALL therefore reach the window list, and a key bound in `prefix` SHALL run from the window list as its "Window list" defines.
 
@@ -505,6 +509,14 @@ Where a scenario of this requirement names no key style, the modal key style is 
 #### Scenario: Reload from the window list
 - **WHEN** the floating key style is saved, no `user/init.lua` exists, a plugin's `client.lua` is rewritten from drawing `old` to drawing `new`, and the user presses Ctrl+Space then `!`
 - **THEN** the window list is closed and the client draws `new`
+
+#### Scenario: Agents mode from navigation mode
+- **WHEN** the modal key style is in use and the user presses Ctrl+Space then `a`
+- **THEN** `agents` is the active table and row 0 of the sidebar shows `A`
+
+#### Scenario: Bands mode with the direct style
+- **WHEN** the direct key style is in use and the user presses Ctrl+Space then `b`
+- **THEN** `bands` is the active table, so a following `2` views the second band
 
 ### Requirement: Report shown windows
 The client SHALL send the server a shown message naming its shown windows, as the layout-view capability defines them, once it has received the first layout after attaching. It SHALL send a new shown message whenever its shown windows change, whether a layout, a focus message, a view action or a change of its terminal's size changed them. It SHALL NOT send a shown message that names the same windows as the last one it sent.
@@ -809,3 +821,22 @@ The terminal's cursor SHALL sit where the focused window's cursor is. It SHALL b
 - **THEN** standard error says that `gband attach` needs a terminal
 - **AND** the process exits with status 1
 - **AND** ssh is not run
+
+### Requirement: Report the focused window
+The client SHALL send the server a focus message naming the window it focuses, or naming no window when it focuses none, once it has received the first layout after attaching. It SHALL send a new focus message whenever its focused window changes, whether a layout, a focus message from the server, a view action or a peek changed it. It SHALL NOT send a focus message that names the same window as the last one it sent. The server SHALL keep the window each client last reported, and SHALL forget it when the client detaches.
+
+#### Scenario: Focus after attach
+- **WHEN** a client attaches to a session whose first band holds windows 1 and 2, and it focuses window 1
+- **THEN** its first focus message names window 1
+
+#### Scenario: Focus follows a move
+- **WHEN** that client then focuses the column of window 2
+- **THEN** it sends a focus message naming window 2
+
+#### Scenario: No repeated report
+- **WHEN** a layout arrives that leaves the client's focused window unchanged
+- **THEN** it sends no focus message
+
+#### Scenario: Empty band
+- **WHEN** the client views the empty last band
+- **THEN** it sends a focus message naming no window
