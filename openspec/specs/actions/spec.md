@@ -122,6 +122,7 @@ Every built-in action SHALL have one Lua name, under which `gband.action` holds 
 | `toggle_window_floating` | float or tile the window | session |
 | `cycle_column_width` | cycle the width of the window's column | session |
 | `toggle_full_width` | toggle full width of the window's column | session |
+| `toggle_column_tabbed` | toggle tabbed display of the window's column | session |
 | `grow_column_width` | grow the width of the window's column | session |
 | `shrink_column_width` | shrink the width of the window's column | session |
 | `grow_window_height` | grow the height of the window | session |
@@ -135,7 +136,7 @@ Every built-in action SHALL have one Lua name, under which `gband.action` holds 
 | `drag_resize_window` | resize the window with the mouse | client |
 | `drag_band` | slide the band or switch bands with the mouse | client |
 
-A width action named after a window's column SHALL act on the box of a floating window, as the floating-windows capability defines. `minimize_window` SHALL minimize the focused window in this client's view, as the floating-windows capability defines, and SHALL leave the view unchanged when the focused window is tiled or no window is focused. `toggle_multi` SHALL turn this client's multi mode on or off, as the multi-mode capability defines, and while multi mode is on `send_prefix` SHALL send the prefix key to every window of the viewed band instead of the focused window alone.
+A width action named after a window's column SHALL act on the box of a floating window, as the floating-windows capability defines. `toggle_column_tabbed` SHALL turn tabbed display of the window's column on or off, as the tabbed-columns capability defines, and SHALL change nothing for a floating window. `minimize_window` SHALL minimize the focused window in this client's view, as the floating-windows capability defines, and SHALL leave the view unchanged when the focused window is tiled or no window is focused. `toggle_multi` SHALL turn this client's multi mode on or off, as the multi-mode capability defines, and while multi mode is on `send_prefix` SHALL send the prefix key to every window of the viewed band instead of the focused window alone.
 
 Actions that the configuration capability's `gband.action.register` adds SHALL sit beside the built-in actions in `gband.action` and in `gband.action.list()`, and SHALL NOT take a built-in action's name.
 
@@ -174,3 +175,11 @@ Actions that the configuration capability's `gband.action.register` adds SHALL s
 #### Scenario: Multi mode by name
 - **WHEN** a binding names `gband.action.toggle_multi` and its keys are pressed, with two windows in the viewed band, and the user then types `echo hi` and Enter
 - **THEN** the client sends the server no action, and both windows print `hi`
+
+#### Scenario: Tabbed display by name
+- **WHEN** a binding names `gband.action.toggle_column_tabbed` and its keys are pressed with a tiled window focused
+- **THEN** the client sends the server toggle tabbed display naming that window, and its column is tabbed
+
+#### Scenario: Tabbed display description
+- **WHEN** `gband.action.list()` is read
+- **THEN** the entry named `toggle_column_tabbed` has the description `toggle tabbed display of the window's column`

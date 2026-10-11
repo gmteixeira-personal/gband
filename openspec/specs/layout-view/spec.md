@@ -322,7 +322,7 @@ After the action, every later change of focus, of the layout or of the client's 
 - **AND** the terminal shows the last 20 cells of the third column, then the first column, then the first 20 cells of the second column
 
 ### Requirement: Shown windows
-A view's shown windows SHALL be the windows of its viewed band whose tile, as the layout capability's tile geometry gives it for the screen area, or whose box, as the floating-windows capability places it, has at least one cell inside the client's terminal. A floating window this client has minimized SHALL NOT be shown, wherever its box is, unless this client peeks it. A tile's cells SHALL be placed at its strip position less the viewed band's camera position, from the terminal's top row. While the band's strip loops, as the Camera requirement defines, a tile's cells SHALL be placed at its drawn copy's position instead, and a tile with no drawn copy SHALL NOT be shown. Wherever the client-attach and animations capabilities draw a tile at its strip position less a camera, they SHALL use its drawn copy while the strip loops. A box's cells SHALL be placed at its column and row, from the terminal's top-left cell, whatever the camera. A tile that a box covers SHALL still be shown. A view of an empty band SHALL show no window.
+A view's shown windows SHALL be the windows of its viewed band whose tile, as the layout capability's tile geometry gives it for the screen area, or whose box, as the floating-windows capability places it, has at least one cell inside the client's terminal. A floating window this client has minimized SHALL NOT be shown, wherever its box is, unless this client peeks it. A tile's cells SHALL be placed at its strip position less the viewed band's camera position, from the terminal's top row. While the band's strip loops, as the Camera requirement defines, a tile's cells SHALL be placed at its drawn copy's position instead, and a tile with no drawn copy SHALL NOT be shown. Wherever the client-attach and animations capabilities draw a tile at its strip position less a camera, they SHALL use its drawn copy while the strip loops. A box's cells SHALL be placed at its column and row, from the terminal's top-left cell, whatever the camera. A tile that a box covers SHALL still be shown. A tab of a tabbed column that is not this client's shown tab, as the tabbed-columns capability defines it, SHALL NOT be shown, wherever its tile is. A view of an empty band SHALL show no window.
 
 #### Scenario: Column beyond the right edge
 - **WHEN** the screen area and the client's terminal are both 80×24, the viewed band holds three columns of width 1/2, and the camera is at strip position 0
@@ -365,6 +365,11 @@ A view's shown windows SHALL be the windows of its viewed band whose tile, as th
 - **WHEN** the screen area and the client's terminal are both 80×24, the viewed band holds one column of width 1/2 with P1 and floating window P4, and the client has minimized P4 and peeks it
 - **THEN** the shown windows are P1 and P4
 - **AND** when the client then focuses P1, the only shown window is P1
+
+#### Scenario: Hidden tab not shown
+- **WHEN** the screen area and the client's terminal are both 80×24, the viewed band holds one tabbed column of width 1/2 with P1 and P2, and the client focuses P2
+- **THEN** the only shown window is P2
+- **AND** when the client then focuses the window above, the only shown window is P1
 
 ### Requirement: Focus a named window
 Focusing a named window SHALL make that window's band the viewed band, focus that window, and make its layer active, as a focus message from the server does. When this client has minimized the window, focusing it SHALL restore it, as the floating-windows capability defines, and put it on top of this client's stacking order. The camera SHALL follow the new focus as it follows any change of focus. Focusing a window not in the layout SHALL leave the view unchanged.

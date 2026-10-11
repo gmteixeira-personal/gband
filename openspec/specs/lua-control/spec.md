@@ -11,7 +11,7 @@ Defines how Lua code reads the client's layout and view, and how it performs eve
 
 - `cols` and `rows`: the size of the screen area in the latest layout.
 - `bands`: one table per band, in order. Each band table holds `id`, the band's number, `columns`, and `floating`.
-- `columns`: one table per column, left to right. Each column table holds `width`, the column's width as a number, `full_width`, a boolean, and `windows`.
+- `columns`: one table per column, left to right. Each column table holds `width`, the column's width as a number, `full_width`, a boolean, `tabbed`, a boolean, as the tabbed-columns capability defines it, `tab_rows`, the column's tab height in rows, only when the tab height is fixed, and `windows`.
 - `windows`: one table per window, top to bottom. Each window table holds `id`, the window's number, and either `rows`, the fixed height in rows, or `weight`, the weight of an automatic height as a number. It holds `plugin_window`, the plugin window's number, when the window is a drawn window of a plugin window this client opened. A window that runs a program also holds `name`, its shown name as the window-names capability defines it, and `manual_name`, its manual name, when it has one. It holds `last_focus`, the window's last focus as the layout-view capability's "Focus order" defines it, an integer, when this client has focused the window, and no `last_focus` otherwise.
 - `floating`: one table per floating window, in the band's floating list order. Each holds `id`, `width`, the box's width as a number, `full_width`, a boolean, `rows`, the box record's height, `col` and `row`, the box's top-left cell as placed in the screen area, and `plugin_window`, `name`, `manual_name` and `last_focus` as a window table holds them. It holds `minimized`, `true`, when this client has minimized the window, as the floating-windows capability defines, and no `minimized` otherwise.
 
@@ -22,7 +22,7 @@ Changing the returned table SHALL NOT change the layout. Calling `gband.layout()
 #### Scenario: Two columns
 - **WHEN** the screen area is 80×24, the first band holds a column of width 1/2 with window 1, and a full-width column of width 1/3 with window 2 at a fixed height of 10 rows above window 3 at weight 1, the client attached with window 1 focused and has focused no other window, and a binding function calls `gband.layout()`
 - **THEN** the result's `cols` is 80 and `rows` is 24
-- **AND** its first band's columns are `{ width = 0.5, full_width = false, windows = { { id = 1, weight = 1, last_focus = 1 } } }` and a column with `width` 1/3 and `full_width` `true` whose windows are `{ id = 2, rows = 10 }` and `{ id = 3, weight = 1 }`
+- **AND** its first band's columns are `{ width = 0.5, full_width = false, tabbed = false, windows = { { id = 1, weight = 1, last_focus = 1 } } }` and a column with `width` 1/3, `full_width` `true` and `tabbed` `false` whose windows are `{ id = 2, rows = 10 }` and `{ id = 3, weight = 1 }`
 - **AND** its last band has no columns and no floating windows
 
 #### Scenario: While loading
@@ -63,6 +63,11 @@ Changing the returned table SHALL NOT change the layout. Calling `gband.layout()
 #### Scenario: Peek keeps the last focus
 - **WHEN** band 1 holds floating windows 3 and 4, the client focused 3 and then 4, and a binding function calls `gband.window.focus(3, { peek = true })` and a later binding function calls `gband.layout()`
 - **THEN** window 4's floating table holds a higher `last_focus` than window 3's
+
+#### Scenario: Tabbed column
+- **WHEN** band 1 holds a tabbed column with a fixed tab height of 16 rows holding windows 1 and 2, and a binding function calls `gband.layout()`
+- **THEN** its first band's first column holds `tabbed = true` and `tab_rows = 16`
+- **AND** after the tab height is reset, that column holds `tabbed = true` and no `tab_rows`
 
 ### Requirement: Read the view
 `gband.view()` SHALL return a new table holding:
@@ -109,7 +114,7 @@ Calling it while the configuration loads SHALL be an error at the line of the ca
 - **AND** after the function returns, the second column is focused
 
 ### Requirement: Action targets
-A built-in session action value SHALL accept one optional table, its target. A target SHALL take effect only when the action value is called. For `close_window`, `consume_or_expel_left`, `consume_or_expel_right`, `move_column_left`, `move_column_right`, `move_window_down`, `move_window_up`, `cycle_column_width`, `toggle_full_width`, `grow_column_width`, `shrink_column_width`, `grow_window_height`, `shrink_window_height` and `reset_window_height`, the target SHALL hold `window`. The action SHALL then name that window instead of the focused window. For `open_window`, the target SHALL hold `band`, `after`, `floating`, or any of them together:
+A built-in session action value SHALL accept one optional table, its target. A target SHALL take effect only when the action value is called. For `close_window`, `consume_or_expel_left`, `consume_or_expel_right`, `move_column_left`, `move_column_right`, `move_window_down`, `move_window_up`, `cycle_column_width`, `toggle_full_width`, `toggle_column_tabbed`, `grow_column_width`, `shrink_column_width`, `grow_window_height`, `shrink_window_height` and `reset_window_height`, the target SHALL hold `window`. The action SHALL then name that window instead of the focused window. For `open_window`, the target SHALL hold `band`, `after`, `floating`, or any of them together:
 - With both `band` and `after`, the new column follows `after`'s column in `band`.
 - With only `band`, the new column is that band's first column.
 - With only `after`, the band is the band that holds `after`.
@@ -252,6 +257,10 @@ Calling an action value with no target SHALL resolve it against the view, as the
 #### Scenario: Target on another drag action
 - **WHEN** a binding function calls `gband.action.drag_window({ edges = { "left" } })`
 - **THEN** the call raises an error naming `drag_window`, and nothing is dispatched
+
+#### Scenario: Tabbed display of a named window
+- **WHEN** window 3 is focused, window 1 is tiled in another column, and a binding function calls `gband.action.toggle_column_tabbed({ window = 1 })`
+- **THEN** the client sends toggle tabbed display naming window 1, and window 3's column is not tabbed
 
 ### Requirement: Focus and view by number
 `gband.window.focus(window, opts)` SHALL dispatch a view action that focuses the named window, as the layout-view capability's "Focus a named window" defines. `opts` SHALL be optional. When given, it SHALL be a table that holds at most one field, `peek`, a boolean. With `peek = true`, the view action SHALL peek the named window instead, as the layout-view capability's "Peek a window" defines. Without `peek`, or with `peek = false`, it SHALL focus the window. `gband.band.view(band)` SHALL dispatch a view action that views the named band, as the layout-view capability defines. Each of these SHALL be an error at the line of the call, and a call that raises one SHALL dispatch nothing:

@@ -191,7 +191,7 @@ After the handshake, a server SHALL send only these messages:
 | message | content |
 |---|---|
 | info | the server's process id and the identity of the executable it runs from |
-| layout | the screen area's columns and rows, and the layout: its bands in order with their identifiers, each band's columns in order with their widths and full-width flags, and each column's windows in order with their identifiers and heights, each either automatic with its weight or fixed with its rows, and each band's floating windows in order with their identifiers and box records |
+| layout | the screen area's columns and rows, and the layout: its bands in order with their identifiers, each band's columns in order with their widths, full-width flags, tabbed flags and tab heights, as the tabbed-columns capability defines them, and each column's windows in order with their identifiers and heights, each either automatic with its weight or fixed with its rows, and each band's floating windows in order with their identifiers and box records |
 | snapshot | a window identifier, the window's columns and rows, and terminal output that, fed into an empty terminal grid of that size, reproduces that window's screen on the server |
 | update | a window identifier, and terminal output that, fed into the grid the client built for that window from every earlier snapshot and update of it, reproduces that window's current screen on the server |
 | focus | a window identifier: the window the client asked to open, or the window a server command focused for it, which the client focuses |

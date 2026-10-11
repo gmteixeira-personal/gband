@@ -204,6 +204,7 @@ For a screen area of a given width and height, the layout SHALL give every windo
 - A column's tiles SHALL be stacked from the area's top row, in the column's window order, with no gap between them.
 - A window with a fixed height SHALL get that many rows. When its column holds other windows, it SHALL get no more than the area's height less 3 rows for each other window. When it is alone in its column, it SHALL get no more than the area's height, and the rows below its tile SHALL be covered by no tile.
 - The windows with an automatic height SHALL share the rows the fixed window leaves, in proportion to their weights. Each gets those rows multiplied by its weight and divided by the sum of the automatic weights, rounded down, and the first automatic windows, one for each row left over, get one row more. While the shared rows allow every automatic window 3 rows, a share below 3 rows SHALL be raised: the topmost automatic window whose share is below 3 rows takes 3 rows, and the other automatic windows share the rest by the same rule.
+- In a tabbed column, as the tabbed-columns capability defines it, every window's tile SHALL start at the area's top row and SHALL be the column's tab height high: the area's height when the tab height is automatic, and its fixed rows, at most the area's height, otherwise. The rows below the tiles SHALL be covered by no tile. The windows' own heights SHALL not affect the tiles, and the two rules above SHALL not apply to the column.
 - Each tile SHALL have a one-cell border. A window's terminal size SHALL be its tile less 2 columns and 2 rows, and at least 1 column by 1 row.
 
 #### Scenario: Default column on an 80×24 area
@@ -255,6 +256,14 @@ For a screen area of a given width and height, the layout SHALL give every windo
 - **WHEN** a column has width 10000 and the area is 80×24
 - **THEN** its tile is 65535 columns wide
 
+#### Scenario: Tabbed column
+- **WHEN** a tabbed column of width 1/2 holds P1 with a fixed height of 16 rows above P2 with an automatic height, its tab height is automatic, and the area is 80×24
+- **THEN** the tiles of P1 and P2 are both 40×24 at row 0
+
+#### Scenario: Tabbed column with a fixed tab height
+- **WHEN** a tabbed column holds P1 and P2, its tab height is fixed at 20 rows, and the area is 80×24
+- **THEN** the tiles of P1 and P2 are both 20 rows high at row 0, and rows 20 to 23 of that column are covered by no tile
+
 ### Requirement: Window identity
 A window SHALL keep its identifier from the moment it opens until it closes. Consuming or expelling it, moving it or its column, floating or tiling it, changing its column's width or its box, and adding or removing other columns and bands SHALL NOT change its identifier.
 
@@ -275,6 +284,8 @@ Growing or shrinking a window's height SHALL give it a fixed height. When the wi
 Resetting a window's height SHALL give it an automatic height of weight 1. The other windows of its column SHALL keep their heights. When the window already had an automatic height of weight 1, nothing SHALL change.
 
 Growing and shrinking SHALL measure tile heights, and the step in rows, for the session's current screen area.
+
+While a window's column is tabbed, growing, shrinking or resetting the window's height SHALL change the column's tab height instead, as the tabbed-columns capability's "Tab height" defines, and the rules above SHALL not apply to it.
 
 #### Scenario: Each step adds the same rows
 - **WHEN** the area is 80×24, a column holds P1 above P2, both with automatic heights of weight 1, and P1's height is grown three times
@@ -319,6 +330,10 @@ Growing and shrinking SHALL measure tile heights, and the step in rows, for the 
 - **WHEN** the area is 80×24, a column holds P1 above P2, both with automatic heights of weight 1, and P1's height is grown with the step 1/4
 - **THEN** P1 has a fixed height of 18 rows and P2's tile is 6 rows high
 
+#### Scenario: Grow in a tabbed column
+- **WHEN** the area is 80×24, a tabbed column with a fixed tab height of 16 rows holds P1 above P2, both with automatic heights of weight 1, and P1's height is grown
+- **THEN** the column's tab height is 18 rows, and P1 and P2 still have automatic heights of weight 1
+
 ### Requirement: Set a window's height
 Setting a window's height SHALL name either a number of rows or a weight.
 
@@ -327,6 +342,8 @@ Setting a number of rows SHALL give the window a fixed height. When the window h
 Setting a weight SHALL give the window an automatic height of that weight, a number greater than 0 and at most 10000 held in lowest terms. The other windows of its column SHALL keep their heights. When the window already had an automatic height of that weight, nothing SHALL change.
 
 Setting a height SHALL measure tile heights for the session's current screen area.
+
+While a window's column is tabbed, setting the window's height SHALL change the column's tab height instead, as the tabbed-columns capability's "Tab height" defines, and the rules above SHALL not apply to it.
 
 #### Scenario: Fixed rows in a stack of two
 - **WHEN** the screen area is 80×24, a column holds P1 and P2 with automatic heights of weight 1, and P1's height is set to 8 rows
@@ -349,8 +366,12 @@ Setting a height SHALL measure tile heights for the session's current screen are
 - **WHEN** a column holds P1 with a fixed height of 14 rows and P2 with an automatic height of weight 1, and P1's weight is set to 2
 - **THEN** P1 has an automatic height of weight 2 and P2 keeps weight 1
 
+#### Scenario: Set rows in a tabbed column
+- **WHEN** the screen area is 80×24, a tabbed column holds P1 with a fixed height of 14 rows and P2 with an automatic height, and P2's height is set to 10 rows
+- **THEN** the column's tab height is 10 rows, P1 keeps its fixed height of 14 rows, and P2 keeps its automatic height
+
 ### Requirement: Move a column
-Moving a tiled window's column left or right SHALL swap that column with the adjacent column in that direction. Both columns SHALL keep their windows, widths, full-width flags and heights. When no column exists in that direction, nothing SHALL change. Moving a floating window left or right SHALL move its box, as the floating-windows capability defines.
+Moving a tiled window's column left or right SHALL swap that column with the adjacent column in that direction. Both columns SHALL keep their windows, widths, full-width flags, heights, tabbed flags and tab heights. When no column exists in that direction, nothing SHALL change. Moving a floating window left or right SHALL move its box, as the floating-windows capability defines.
 
 #### Scenario: Move a column right
 - **WHEN** a band holds columns A, B and C, and a window of A has its column moved right
@@ -359,6 +380,10 @@ Moving a tiled window's column left or right SHALL swap that column with the adj
 #### Scenario: Move at the edge
 - **WHEN** a window of the band's first column has its column moved left
 - **THEN** the layout is unchanged
+
+#### Scenario: Move a tabbed column
+- **WHEN** a band holds tabbed column A with a fixed tab height of 16 rows and column B, and a window of A has its column moved right
+- **THEN** the band holds B and A, in that order, and A is still tabbed with a tab height of 16 rows
 
 ### Requirement: Move a window within its column
 Moving a tiled window down or up SHALL swap it with the adjacent window in that direction in its column. Each window SHALL keep its own height, automatic with its weight or fixed with its rows, and the column SHALL keep its width. When no window exists in that direction, nothing SHALL change. Moving a floating window down or up SHALL move its box, as the floating-windows capability defines.

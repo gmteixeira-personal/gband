@@ -191,6 +191,7 @@ With the modal key style, the bindings SHALL be: Ctrl+Space as the prefix, no bi
 | `]` | `prefix ]` | consume or expel the focused window to the right | session | |
 | `r` | `prefix r` | cycle the width of the focused window's column | session | |
 | `f` | `prefix f` | toggle full width of the focused window's column | session | |
+| `w` | `prefix w` | toggle tabbed display of the focused window's column, as the tabbed-columns capability defines | session | |
 | `-` | `prefix -` | shrink the width of the focused window's column | session | |
 | `=` | `prefix =` | grow the width of the focused window's column | session | |
 | `_` | `prefix _` | shrink the height of the focused window | session | |
@@ -441,6 +442,16 @@ Where a scenario of this requirement names no key style, the modal key style is 
 - **WHEN** the direct key style is saved, no `user/init.lua` exists, the viewed band holds two shell windows, and the user presses Ctrl+Space then `m`, and types `echo hi` and Enter
 - **THEN** both windows print `hi`
 - **AND** `gband.keymap.list("prefix")` holds `m` bound to the action `toggle_multi`
+
+#### Scenario: Tabs from navigation mode
+- **WHEN** no `user/init.lua` exists, the client's 80×24 terminal sets the screen area, the client has no bar, a column of width 1/2 holds two windows with automatic heights with the top one focused, and the user presses Ctrl+Space then `w`
+- **THEN** the column is tabbed, the top window's tile is 40×24 and the bottom window is not drawn
+- **AND** navigation mode stays active, and after `w` again both tiles are 12 rows high
+
+#### Scenario: Tabs with the direct key style
+- **WHEN** the direct key style is saved, no `user/init.lua` exists, and the user presses Ctrl+Space then `w`
+- **THEN** the focused window's column is tabbed and `root` is active
+- **AND** `gband.keymap.list("prefix")` holds `w` bound to the action `toggle_column_tabbed`
 
 #### Scenario: Reset height keeps its key
 - **WHEN** no `user/init.lua` exists, the focused window has a fixed height, and the user presses Ctrl+Space then Shift+R
