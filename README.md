@@ -835,7 +835,16 @@ Never commit to `main` directly or branch from it.
 
 ## Acknowledgements
 
-The layout model comes from [niri](https://github.com/YaLTeR/niri), a scrollable-tiling Wayland compositor.
+gband borrows ideas from one compositor and four terminal multiplexers.
+
+- [niri](https://github.com/YaLTeR/niri), a scrollable-tiling Wayland compositor, supplied the layout model.
+  Its window rules, live configuration reload and `niri msg` event stream also served as references.
+- [herdr](https://github.com/herdrdev/herdr) runs on the same crates gband uses: ratatui, tui-term, vt100, crossterm and portable-pty.
+  Its agent detection, agent sidebar, session restore and live handoff were references for gband's agent support.
+- [Zellij](https://github.com/zellij-org/zellij) keeps its own terminal grid on top of the vte parser, as gband does with vt100.
+  Its session resurrection was a reference for keeping sessions across crashes.
+- [WezTerm](https://github.com/wezterm/wezterm) was the reference for a mux server, Lua configuration and SSH domains.
+- [tmux](https://github.com/tmux/tmux) was the reference for extended keys and key tables.
 
 ## License
 
