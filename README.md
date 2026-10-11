@@ -28,6 +28,7 @@ To install the development version instead, replace `--tag v0.1.1` with `--branc
 - **Multiple bands.** Each band holds its own row of windows, and the view slides up and down between bands.
 - **Circular bands.** Focus goes round from a band's last column to its first, and a long enough band is drawn as a loop.
 - **Tabbed columns.** A column can show its windows one at a time, as tabs, with an indicator on its left border; see [Tabbed columns](#tabbed-columns).
+- **Remote hosts.** `gband -r user@host` attaches to a session on another machine through your `ssh`, and your configuration, key bindings and plugins stay local; see [Remote hosts](#remote-hosts).
 - **Animated.** Scrolling, band switches, moving windows and resizes animate.
 - **Fully scriptable.** The configuration, key bindings and plugins are Lua, in the client and in the server; see [Scripting](#scripting).
 - **Written in Lua, as examples.** The key styles, the desktop, the key list, the sidebar, the settings window and the themes are Lua code, written that way so you can read how they use the API.
@@ -51,7 +52,7 @@ Each new pane shrinks the panes already on screen.
 
 gband follows niri's scrollable tiling model instead, with bands in place of niri's workspaces:
 
-- A band is a row of columns, and each column holds one or more windows stacked vertically.
+- A band is a row of columns, and each column holds one or more windows stacked vertically, or shown one at a time as tabs.
 - A new window adds a column to the band, and existing windows keep their size.
 - The view scrolls sideways to follow focus, so the focused window is always on screen.
 - Bands are circular.
@@ -78,6 +79,7 @@ The documentation uses these names:
 |---|---|
 | window | a terminal running a program; tmux and Zellij call it a pane |
 | column | one or more windows stacked vertically, side by side with the other columns of its band |
+| tabbed column | a column that shows one of its windows at a time over the whole column, as tabs |
 | band | a circular row of columns that scrolls sideways; niri calls it a workspace |
 | tiled window | a window in a column of its band |
 | floating window | a window in a box over its band, which stays where it is while the band scrolls |
@@ -92,6 +94,7 @@ The documentation uses these names:
 `gband` attaches to the session named `default`, and starts a server first when none runs.
 `gband -s work` attaches to the session named `work` instead, and creates it when it does not exist.
 `-S NAME` addresses a separate server named `NAME`.
+`gband -r user@host` attaches to the session named `default` on another machine through ssh; see [Remote hosts](#remote-hosts).
 
 The prefix key followed by `D` detaches, and the session keeps running on the server.
 Run `gband` again to attach to it.
