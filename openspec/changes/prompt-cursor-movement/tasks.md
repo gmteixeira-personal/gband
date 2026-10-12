@@ -1,0 +1,22 @@
+## 1. Cursor model and drawing
+
+- [ ] 1.1 In `crates/lua/src/runtime/gband/prompt.lua`, give each kind a `cursor` character count and a `first` scroll position. Set `cursor` to `utf8.len(line)` and `first` to 0 in `open`, and reset both to 0 in `on_close`. Rewrite `fitted` and `show` as design.md's "The scroll position is kept between keys" defines, drawing `PluginWindow`, `PromptCursor` and `PluginWindow` spans. Verify that every existing case in `crates/lua/tests/prompt.rs` still passes, and add cases there for "Cursor on a character" and "Wide character under the cursor"
+- [ ] 1.2 Make `on_input` insert at the cursor and advance it by the inserted length, and make Backspace remove the character before the cursor, close the prompt on an empty line, and do nothing at cursor 0 on a line with text. Make Ctrl+U set the cursor to 0. Verify with `crates/lua/tests/prompt.rs` cases for "Insert in the middle", "Paste in the middle", "Backspace in the middle", "Backspace at the start of a line with text" and the changed "Clear the line"
+- [ ] 1.3 Add `left`, `right`, `home` and `end` entries to the prompt window's `keys`. Left and Right move the cursor one character and stop at the line's ends. Home moves it to 0 and End to `utf8.len(line)`. Verify with `crates/lua/tests/prompt.rs` cases for "Left at the start", "Right at the end", "Right after Left", "Home", "End", "Run with the cursor in the middle", "Long line follows the cursor", "Long line keeps its place", "Long line scrolls at its left edge" and "End of a scrolled line"
+- [ ] 1.4 Give the prompt window an `on_mouse` that maps a left press on content row 0 to a cursor position, as design.md's "A click maps a content cell to a character" defines, and ignores every other event. Verify with `crates/lua/tests/prompt.rs` cases, driven through `Runtime::plugin_window_mouse` as `crates/lua/tests/plugin_windows.rs` drives it, for "Click a character", "Click the colon", "Click past the text", "Click a wide character", "Click a scrolled line" and "Other buttons"
+- [ ] 1.5 Verify the rename prompt in `crates/lua/tests/prompt.rs`: a case for "Edit the middle of the manual name", and a case that focuses the open rename prompt again with `prompt.rename` after Left and checks that the next typed character lands at the kept cursor
+
+## 2. Screen tests
+
+- [ ] 2.1 Following `.claude/skills/gband-test/SKILL.md`, look at a prompt with the cursor in the middle with `gband test - --show`, then add cases to `tests/lua/prompt_spec.lua` for the cursor cell on a character, insertion in the middle, a long line scrolling at its left edge on a 21×8 terminal, a click with `g.mouse` on a character of a scrolled line that leaves the text in place, and "Click an unfocused prompt". Write their references under `tests/lua/screenshots/prompt_spec/` with `--update`, read them, and confirm the existing `typed` and `long` references are unchanged; verify `cargo test --test lua_specs`
+- [ ] 2.2 Add a case to `tests/lua/window_names_spec.lua` that opens the rename prompt on a window named `logs`, presses Left twice, types `-x`, takes a screenshot, presses Enter and waits for `╭lo-xgs`. Write its reference under `tests/lua/screenshots/window_names_spec/` with `--update` and read it; verify `cargo test --test lua_specs`
+
+## 3. Documentation
+
+- [ ] 3.1 Update the Lua prompt section of `README.md`: Left, Right, Home, End and a left click move the cursor, typing and Backspace act at it, and a long line keeps its place and the cursor shown. Verify by reading it against the lua-prompt delta's "Editing the line" requirement
+- [ ] 3.2 Update `docs/plugins.md`: the sentence naming the keys the prompt takes through `keys` and the mouse through `on_mouse`, the description of the cursor cell and the scroll rule, and the editing table with the Left, Right, Home and End rows and the left press. Verify every row of the delta's "Editing the line" table and its mouse list appear there
+- [ ] 3.3 Quote the changed parts of `prompt.lua` again in `docs/internals/10-keylist-and-prompt.md`, in blocks tagged `lua defaults/lua/gband/prompt.lua`, and describe the cursor count, the scroll rule and the click mapping in its prose. Verify `cargo test -p gband-lua --test tutorial`
+
+## 4. Final checks
+
+- [ ] 4.1 Run `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` and `cargo test --workspace`, and verify all pass
