@@ -225,6 +225,8 @@ With the modal key style, the bindings SHALL be: Ctrl+Space as the prefix, no bi
 | `s` | `prefix s` | open the settings window, as the settings capability defines, which returns to interactive mode | client | `settings` |
 | `!` | `prefix !` | reload the configuration, as the configuration capability's "Forced reload" defines, which returns to interactive mode | client | |
 | `m` | `prefix m` | toggle multi mode, as the multi-mode capability defines, then return to interactive mode | client | `multi mode` |
+| `e` | `prefix e` | open the error list when `gband.action` holds `errors.open`, as the error-list capability defines, which returns to interactive mode; do nothing otherwise | client | `list the errors` |
+| `E` | `prefix E` | clear the errors when `gband.action` holds `errors.clear`, as the error-list capability defines; do nothing otherwise | client | `clear the errors` |
 | `D` | `prefix D` | detach | client | |
 | Escape | `prefix escape` | return to interactive mode | — | `interactive mode` |
 | Enter | `prefix enter` | return to interactive mode | — | `interactive mode` |
@@ -517,6 +519,24 @@ Where a scenario of this requirement names no key style, the modal key style is 
 #### Scenario: Bands mode with the direct style
 - **WHEN** the direct key style is in use and the user presses Ctrl+Space then `b`
 - **THEN** `bands` is the active table, so a following `2` views the second band
+
+#### Scenario: List the errors from navigation mode
+- **WHEN** the default configuration is in use with the modal key style, the client reports one error, and the user presses Ctrl+Space then `e`
+- **THEN** a focused floating plugin window titled `errors  c clear` lists the error
+- **AND** `root` is active, so the next key reaches the error list
+
+#### Scenario: Clear the errors from navigation mode
+- **WHEN** the default configuration is in use with the modal key style, the sidebar shows its error marker, and the user presses Ctrl+Space then `E`
+- **THEN** `gband.errors()` returns an empty list and the sidebar's error marker row is blank
+- **AND** navigation mode stays active
+
+#### Scenario: Error keys with the direct style
+- **WHEN** the default configuration is in use with the direct key style, the client reports one error, and the user presses Ctrl+Space then `E`, then Ctrl+Space then `e`
+- **THEN** the error list opens holding no text, so it shows `no errors`
+
+#### Scenario: Error keys without the error list plugin
+- **WHEN** `user/init.lua` calls only `gband.keystyle.use("modal")`, and the user presses Ctrl+Space, `e`, then `E`
+- **THEN** no plugin window opens, nothing reaches the focused window, and navigation mode stays active
 
 ### Requirement: Report shown windows
 The client SHALL send the server a shown message naming its shown windows, as the layout-view capability defines them, once it has received the first layout after attaching. It SHALL send a new shown message whenever its shown windows change, whether a layout, a focus message, a view action or a change of its terminal's size changed them. It SHALL NOT send a shown message that names the same windows as the last one it sent.
