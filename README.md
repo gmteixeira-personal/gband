@@ -640,10 +640,13 @@ gband.keymap.set("prefix", "?", gband.action["keylist.open"], { desc = "list the
 ### Lua prompt
 
 Ctrl+Space then `:` opens a one-line box titled `lua` on the bottom rows of the ribbon, in the manner of Neovim's command line, and returns to interactive mode so the box takes what you type.
-It shows `:`, the text typed so far and a reversed cell as the cursor; a line too long for the box shows its end.
-Every character goes into the line, `j`, `k` and `q` included, and a paste does too, with each line break turned into a space.
-Backspace deletes the last character, and on an empty line closes the prompt; Ctrl+U clears the line.
-Enter closes the prompt and runs the line, and Escape closes it and runs nothing.
+It shows `:` and the text typed so far, with the character at the cursor reversed, or a reversed cell after the text when the cursor is at its end.
+Left and Right move the cursor one character, Home moves it to the start of the line and End to its end.
+A left click on a character puts the cursor before it, a click on `:` puts it at the start, and a click past the text puts it at the end.
+Every character is inserted at the cursor, `j`, `k` and `q` included, and a paste is too, with each line break turned into a space.
+Backspace deletes the character before the cursor, and on an empty line closes the prompt; Delete deletes the character after the cursor; Ctrl+U clears the line.
+A line too long for the box keeps its place as you move, and scrolls only as far as it takes to keep the cursor shown, so a click leaves the text where it was.
+Enter closes the prompt and runs the whole line wherever the cursor is, and Escape closes it and runs nothing.
 
 The line runs as a binding function of `user/init.lua` would, so it can call `gband.action.*`, `gband.win.*`, `gband.keymap.enter` and the rest of the API a binding function can, such as `gband.action.focus_column_left()`.
 It runs with an instruction budget of its own: an endless loop stops only the line, and the prompt keeps working.

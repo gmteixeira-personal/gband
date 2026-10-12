@@ -5,10 +5,10 @@ use std::sync::Arc;
 use common::*;
 use gband_core::action::Action;
 use gband_core::geometry::Size;
-use gband_core::input::{Key, KeyCode};
+use gband_core::input::{Key, KeyCode, Modifiers, MouseButton};
 use gband_core::layout::{Layout, LayoutOptions, WindowId};
 use gband_core::view::ViewAction;
-use gband_lua::plugin_windows::{FloatingFrame, Frame, Run};
+use gband_lua::plugin_windows::{FloatingFrame, Frame, PluginMouse, PluginMouseKind, Run};
 use gband_lua::{Color, Config, Dispatch, Outcome, ViewState, WindowName};
 
 fn state(ribbon: Size) -> ViewState {
@@ -117,6 +117,30 @@ impl Prompt {
 
     fn paste(&self, text: &str) {
         clean(&self.config.runtime.plugin_window_paste(self.win(), text));
+    }
+
+    fn press_times(&self, name: &str, times: usize) {
+        for _ in 0..times {
+            clean(&self.press(name));
+        }
+    }
+
+    fn click(&self, button: MouseButton, col: u16) {
+        clean(&self.config.runtime.plugin_window_mouse(
+            self.win(),
+            &PluginMouse {
+                kind: PluginMouseKind::Press(button),
+                content: Some((col, 0)),
+                boxed: None,
+                modifiers: Modifiers::NONE,
+            },
+        ));
+    }
+
+    fn row(&self) -> (String, usize, String) {
+        let row = &self.frame().lines[0];
+        let (at, run) = cursor(row);
+        (text(row), at, run.text.clone())
     }
 
     fn run(&self, line: &str) -> Outcome {
@@ -305,9 +329,278 @@ fn clear_the_line() {
     let prompt = Prompt::new("prompt-clear");
     prompt.open();
     prompt.type_text("abc");
+    prompt.press_times("left", 2);
     clean(&prompt.press("ctrl+u"));
     assert_eq!(prompt.shown().trim_end(), ":");
     assert_eq!(prompt.open_windows().len(), 1);
+    prompt.type_text("x");
+    assert_eq!(prompt.shown().trim_end(), ":x");
+}
+
+#[test]
+fn cursor_on_a_character() {
+    let prompt = Prompt::new("prompt-cursor-char");
+    prompt.open();
+    prompt.type_text("abc");
+    prompt.press_times("left", 2);
+    let frame = prompt.frame();
+    let row = &frame.lines[0];
+    assert_eq!(text(row).trim_end(), ":abc");
+    let (at, run) = cursor(row);
+    assert_eq!((at, run.text.as_str()), (2, "b"));
+    assert!(run.style.reverse);
+    let reversed = row.iter().filter(|run| run.style.reverse).count();
+    assert_eq!(reversed, 1);
+}
+
+#[test]
+fn wide_character_under_the_cursor() {
+    let prompt = Prompt::new("prompt-cursor-wide");
+    prompt.open();
+    prompt.type_text("a界b");
+    prompt.press_times("left", 2);
+    let (shown, at, under) = prompt.row();
+    assert_eq!(shown.trim_end(), ":a界b");
+    assert_eq!((at, under.as_str()), (2, "界"));
+}
+
+#[test]
+fn insert_in_the_middle() {
+    let prompt = Prompt::new("prompt-insert-middle");
+    prompt.open();
+    prompt.type_text("ac");
+    clean(&prompt.press("left"));
+    prompt.type_text("b");
+    let (shown, at, under) = prompt.row();
+    assert_eq!(shown.trim_end(), ":abc");
+    assert_eq!((at, under.as_str()), (3, "c"));
+}
+
+#[test]
+fn paste_in_the_middle() {
+    let prompt = Prompt::new("prompt-paste-middle");
+    prompt.open();
+    prompt.type_text("ad");
+    clean(&prompt.press("left"));
+    prompt.paste("b\nc");
+    let (shown, at, under) = prompt.row();
+    assert_eq!(shown.trim_end(), ":ab cd");
+    assert_eq!((at, under.as_str()), (5, "d"));
+}
+
+#[test]
+fn backspace_in_the_middle() {
+    let prompt = Prompt::new("prompt-backspace-middle");
+    prompt.open();
+    prompt.type_text("abc");
+    clean(&prompt.press("left"));
+    clean(&prompt.press("backspace"));
+    let (shown, at, under) = prompt.row();
+    assert_eq!(shown.trim_end(), ":ac");
+    assert_eq!((at, under.as_str()), (2, "c"));
+}
+
+#[test]
+fn backspace_at_the_start_of_a_line_with_text() {
+    let prompt = Prompt::new("prompt-backspace-start");
+    prompt.open();
+    prompt.type_text("ab");
+    clean(&prompt.press("home"));
+    prompt.config.runtime.take_frames();
+    clean(&prompt.press("backspace"));
+    assert_eq!(prompt.open_windows().len(), 1);
+    prompt.type_text("x");
+    assert_eq!(prompt.shown().trim_end(), ":xab");
+}
+
+#[test]
+fn delete_in_the_middle() {
+    let prompt = Prompt::new("prompt-delete-middle");
+    prompt.open();
+    prompt.type_text("abc");
+    prompt.press_times("left", 2);
+    clean(&prompt.press("delete"));
+    let (shown, at, under) = prompt.row();
+    assert_eq!(shown.trim_end(), ":ac");
+    assert_eq!((at, under.as_str()), (2, "c"));
+}
+
+#[test]
+fn delete_at_the_end() {
+    let prompt = Prompt::new("prompt-delete-end");
+    prompt.open();
+    prompt.type_text("ab");
+    prompt.config.runtime.take_frames();
+    clean(&prompt.press("delete"));
+    assert_eq!(prompt.open_windows().len(), 1);
+    prompt.type_text("x");
+    assert_eq!(prompt.shown().trim_end(), ":abx");
+}
+
+#[test]
+fn delete_on_an_empty_line() {
+    let prompt = Prompt::new("prompt-delete-empty");
+    prompt.open();
+    let outcome = prompt.press("delete");
+    clean(&outcome);
+    assert!(outcome.dispatched.is_empty());
+    assert_eq!(prompt.open_windows().len(), 1);
+}
+
+#[test]
+fn left_at_the_start() {
+    let prompt = Prompt::new("prompt-left-start");
+    prompt.open();
+    prompt.type_text("ab");
+    prompt.press_times("left", 3);
+    prompt.type_text("x");
+    assert_eq!(prompt.shown().trim_end(), ":xab");
+}
+
+#[test]
+fn right_at_the_end() {
+    let prompt = Prompt::new("prompt-right-end");
+    prompt.open();
+    prompt.type_text("ab");
+    clean(&prompt.press("right"));
+    prompt.type_text("x");
+    assert_eq!(prompt.shown().trim_end(), ":abx");
+}
+
+#[test]
+fn right_after_left() {
+    let prompt = Prompt::new("prompt-right-after-left");
+    prompt.open();
+    prompt.type_text("abc");
+    prompt.press_times("left", 2);
+    clean(&prompt.press("right"));
+    prompt.type_text("x");
+    assert_eq!(prompt.shown().trim_end(), ":abxc");
+}
+
+#[test]
+fn home() {
+    let prompt = Prompt::new("prompt-home");
+    prompt.open();
+    prompt.type_text("abc");
+    clean(&prompt.press("home"));
+    prompt.type_text("x");
+    assert_eq!(prompt.shown().trim_end(), ":xabc");
+}
+
+#[test]
+fn end() {
+    let prompt = Prompt::new("prompt-end");
+    prompt.open();
+    prompt.type_text("abc");
+    clean(&prompt.press("home"));
+    clean(&prompt.press("end"));
+    prompt.type_text("x");
+    assert_eq!(prompt.shown().trim_end(), ":abcx");
+}
+
+fn long_prompt(name: &str) -> Prompt {
+    let prompt = Prompt::sized(name, "", Size::new(12, 24));
+    prompt.open();
+    prompt.type_text("abcdefghijkl");
+    prompt
+}
+
+#[test]
+fn long_line_follows_the_cursor() {
+    let prompt = long_prompt("prompt-long-follows");
+    prompt.press_times("left", 12);
+    let (shown, at, under) = prompt.row();
+    assert_eq!(shown, ":abcdefghi");
+    assert_eq!((at, under.as_str()), (1, "a"));
+}
+
+#[test]
+fn long_line_keeps_its_place() {
+    let prompt = long_prompt("prompt-long-keeps");
+    prompt.press_times("left", 3);
+    let (shown, at, under) = prompt.row();
+    assert_eq!(shown.trim_end(), "defghijkl");
+    assert_eq!((at, under.as_str()), (6, "j"));
+}
+
+#[test]
+fn long_line_scrolls_at_its_left_edge() {
+    let prompt = long_prompt("prompt-long-left-edge");
+    prompt.press_times("left", 9);
+    let (shown, at, under) = prompt.row();
+    assert_eq!(shown, "cdefghijkl");
+    assert_eq!((at, under.as_str()), (1, "d"));
+}
+
+#[test]
+fn end_of_a_scrolled_line() {
+    let prompt = long_prompt("prompt-long-end");
+    clean(&prompt.press("home"));
+    clean(&prompt.press("end"));
+    let (shown, at, under) = prompt.row();
+    assert_eq!(shown, "defghijkl ");
+    assert_eq!((at, under.as_str()), (9, " "));
+}
+
+#[test]
+fn click_a_character() {
+    let prompt = Prompt::new("prompt-click-char");
+    prompt.open();
+    prompt.type_text("abc");
+    prompt.click(MouseButton::Left, 2);
+    prompt.type_text("x");
+    assert_eq!(prompt.shown().trim_end(), ":axbc");
+}
+
+#[test]
+fn click_the_colon() {
+    let prompt = Prompt::new("prompt-click-colon");
+    prompt.open();
+    prompt.type_text("abc");
+    prompt.click(MouseButton::Left, 0);
+    prompt.type_text("x");
+    assert_eq!(prompt.shown().trim_end(), ":xabc");
+}
+
+#[test]
+fn click_past_the_text() {
+    let prompt = Prompt::new("prompt-click-past");
+    prompt.open();
+    prompt.type_text("abc");
+    clean(&prompt.press("home"));
+    prompt.click(MouseButton::Left, 8);
+    prompt.type_text("x");
+    assert_eq!(prompt.shown().trim_end(), ":abcx");
+}
+
+#[test]
+fn click_a_wide_character() {
+    let prompt = Prompt::new("prompt-click-wide");
+    prompt.open();
+    prompt.type_text("a界b");
+    prompt.click(MouseButton::Left, 3);
+    prompt.type_text("x");
+    assert_eq!(prompt.shown().trim_end(), ":ax界b");
+}
+
+#[test]
+fn click_a_scrolled_line() {
+    let prompt = long_prompt("prompt-click-scrolled");
+    prompt.click(MouseButton::Left, 2);
+    let (shown, at, under) = prompt.row();
+    assert_eq!(shown.trim_end(), "defghijkl");
+    assert_eq!((at, under.as_str()), (2, "f"));
+}
+
+#[test]
+fn other_buttons() {
+    let prompt = Prompt::new("prompt-click-right");
+    prompt.open();
+    prompt.type_text("abc");
+    prompt.click(MouseButton::Right, 1);
+    prompt.type_text("x");
+    assert_eq!(prompt.shown().trim_end(), ":abcx");
 }
 
 #[test]
@@ -357,6 +650,21 @@ fn theme_sets_the_cursor() {
 fn run_an_action() {
     let prompt = Prompt::new("prompt-action");
     let outcome = prompt.run("gband.action.focus_column_left()");
+    clean(&outcome);
+    assert_eq!(
+        outcome.dispatched,
+        [Dispatch::Action(Action::View(ViewAction::FocusLeft))]
+    );
+    assert!(prompt.open_windows().is_empty());
+}
+
+#[test]
+fn run_with_the_cursor_in_the_middle() {
+    let prompt = Prompt::new("prompt-run-middle");
+    prompt.open();
+    prompt.type_text("gband.action.focus_column_left()");
+    prompt.press_times("left", 5);
+    let outcome = prompt.press("enter");
     clean(&outcome);
     assert_eq!(
         outcome.dispatched,
@@ -506,6 +814,31 @@ fn rename_prompt_starts_with_the_manual_name() {
     let row = &prompt.frame().lines[0];
     assert_eq!(text(row).trim_end(), "logs");
     assert_eq!(cursor(row).0, 4);
+}
+
+#[test]
+fn edit_the_middle_of_the_manual_name() {
+    let prompt = Prompt::new("rename-middle");
+    prompt.named(Some("logs"));
+    prompt.rename();
+    prompt.press_times("left", 2);
+    prompt.type_text("-x");
+    let outcome = prompt.press("enter");
+    clean(&outcome);
+    assert_eq!(outcome.dispatched, [renamed(1, Some("lo-xgs"))]);
+}
+
+#[test]
+fn rename_again_while_open_keeps_the_cursor() {
+    let prompt = Prompt::new("rename-again-cursor");
+    prompt.rename();
+    prompt.type_text("ab");
+    clean(&prompt.press("left"));
+    clean(&run_job(&prompt.config, "gband.win.open({})"));
+    prompt.rename();
+    prompt.type_text("x");
+    let outcome = prompt.press("enter");
+    assert_eq!(outcome.dispatched, [renamed(1, Some("axb"))]);
 }
 
 #[test]

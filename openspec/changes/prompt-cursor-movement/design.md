@@ -16,7 +16,7 @@ The prompt opens with no `on_mouse`, so a left press takes the plugin window def
 - A click that lands the cursor on the character drawn under the pointer, with the text staying where it was drawn.
 
 **Non-Goals:**
-- Delete, Ctrl+A, Ctrl+E and word motion.
+- Ctrl+A, Ctrl+E and word motion.
 - Command history on Up and Down.
 - Selection by drag, and any action on the right or middle button.
 
@@ -33,6 +33,8 @@ A byte offset stored directly would need care on every move to land on a charact
 Insertion builds `before .. text .. after` and adds `utf8.len(text)` to `cursor`. Backspace removes the one character before the cursor and subtracts 1. Ctrl+U sets `line = ""` and `cursor = 0`. Home sets `cursor = 0`, and End sets `cursor = utf8.len(line)`. `open` sets `cursor = utf8.len(line)`, which puts the rename prompt's cursor after the manual name. `on_close` resets `cursor` to 0 with `line`.
 
 Backspace keeps its current check first: an empty line closes the prompt. A cursor of 0 on a line with text then returns without a change.
+
+Backspace and Delete share `cut`, which removes the character at a given count. Backspace lowers `cursor` by 1 and cuts there. Delete cuts at `cursor` and leaves `cursor` alone. With the cursor after the last character, Delete returns without a change. It never closes the prompt, because Delete on an empty line is more likely a stray key than a request to leave.
 
 ### The scroll position is kept between keys
 

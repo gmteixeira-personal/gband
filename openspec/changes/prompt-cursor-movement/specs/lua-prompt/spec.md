@@ -60,6 +60,7 @@ While the prompt is focused, it SHALL edit its line as follows:
 | Home | move the cursor before the first character |
 | End | move the cursor after the last character |
 | Backspace | remove the character before the cursor; on an empty line, close the prompt and run nothing; with the cursor at the start of a line that holds text, do nothing |
+| Delete | remove the character after the cursor; after the last character, do nothing and keep the prompt open |
 | Ctrl+U | clear the line and put the cursor at its start |
 | Escape | close the prompt and run nothing |
 | Enter | run the line, as "Running the line" defines, wherever the cursor is |
@@ -95,7 +96,7 @@ Every other mouse event, a press with another button, a release, a drag and a wh
 - **THEN** the content row reads `defghijkl`, and the cell holding `f` is the cursor cell
 
 #### Scenario: Click an unfocused prompt
-- **WHEN** the prompt shows `:ab`, the user presses Ctrl+Space then `l`, which focuses another column, then left-clicks the cell holding `b` and types `x`
+- **WHEN** the prompt shows `:ab`, the user presses Ctrl+Space, `l` and Ctrl+Space, which focus another column and leave navigation mode, then left-clicks the cell holding `b` and types `x`
 - **THEN** the prompt has focus and shows `:axb`
 
 #### Scenario: Other buttons
@@ -149,6 +150,18 @@ Every other mouse event, a press with another button, a release, a drag and a wh
 #### Scenario: Backspace on an empty line
 - **WHEN** the prompt shows `:` and the user presses Backspace
 - **THEN** the prompt closes and nothing runs
+
+#### Scenario: Delete in the middle
+- **WHEN** the prompt shows `:abc` with the cursor after `c`, and the user presses Left twice, then Delete
+- **THEN** the prompt shows `:ac` and the cell holding `c` is the cursor cell
+
+#### Scenario: Delete at the end
+- **WHEN** the prompt shows `:ab` with the cursor after `b`, and the user presses Delete
+- **THEN** the prompt stays open and shows `:ab`
+
+#### Scenario: Delete on an empty line
+- **WHEN** the prompt shows `:` and the user presses Delete
+- **THEN** the prompt stays open and shows `:`
 
 #### Scenario: Clear the line
 - **WHEN** the prompt shows `:abc` with the cursor before `b`, and the user presses Ctrl+U, then types `x`

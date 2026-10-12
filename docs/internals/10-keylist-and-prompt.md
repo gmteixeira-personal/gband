@@ -412,39 +412,114 @@ The prompt is the plugin `prompt`, but a line that loops forever or fails is rep
 ```lua defaults/lua/gband/prompt.lua
 for _, kind in pairs(kinds) do
   kind.line = ""
+  kind.cursor = 0
+  kind.first = 0
   kind.width = 1
 end
 ```
 
-Each kind keeps its line, and the width it last fitted the line to.
+Each kind keeps its line, its cursor, its scroll position and the width it last fitted the line to.
+`cursor` counts the characters before the cursor, from 0 to `utf8.len(line)`, so a move never has to find a character boundary; `utf8.offset` turns it into a byte at the moment of an edit.
+`first` counts the leading characters of the marker and the line that the last drawing left out.
 
 ### The line
 
 ```lua defaults/lua/gband/prompt.lua
-local function fitted(kind)
-  local shown = kind.marker .. kind.line
-  local used = gband.ui.width(shown)
-  local start = 1
-  while used + 1 > kind.width and start <= #shown do
-    local next_start = utf8.offset(shown, 2, start)
-    used = used - gband.ui.width(shown:sub(start, next_start - 1))
-    start = next_start
+local function characters(text)
+  local list = {}
+  for character in text:gmatch(utf8.charpattern) do
+    list[#list + 1] = character
   end
-  return shown:sub(start)
+  return list
 end
+```
+
+Fitting and clicking walk the shown text one character at a time, so `characters` splits it into a list.
+
+```lua defaults/lua/gband/prompt.lua
+local function fewest_dropped(shown, last, used, width)
+  for i = 1, last do
+    used = used + gband.ui.width(shown[i])
+  end
+  local dropped = 0
+  while used > width and dropped < last do
+    dropped = dropped + 1
+    used = used - gband.ui.width(shown[dropped])
+  end
+  return dropped
+end
+```
+
+`fewest_dropped` answers one question: how many leading characters of `shown[1..last]` must go so the rest, plus `used` more cells, fits `width`.
+
+```lua defaults/lua/gband/prompt.lua
+local function fitted(kind)
+  local shown = characters(kind.marker .. kind.line)
+  local at = utf8.len(kind.marker) + kind.cursor + 1
+  local cell = shown[at] or " "
+  local low = fewest_dropped(shown, at - 1, gband.ui.width(cell), kind.width)
+  local fill = fewest_dropped(shown, #shown, 1, kind.width)
+  kind.first = math.max(low, math.min(kind.first, kind.cursor, fill))
 ```
 
 The prompt is one row high.
-When the marker, the text and the cursor do not fit, `fitted` drops characters from the start until they do, so the end of the line, where you type, stays in view.
-`utf8.offset(shown, 2, start)` is the byte where the character after the one at `start` begins.
+`at` is the index of the cursor cell: the character after the cursor, or a space past the end.
+`low` is the fewest characters to drop so the text through the cursor cell fits, and `fill` the fewest so the whole line and one more cell fit.
+
+The scroll position starts from the one the last drawing used, so a long line does not jump as the cursor moves inside it.
+Lowering it to `cursor` keeps one character left of the cursor cell as the Lua prompt scrolls left, and shows the `:` again once the cursor reaches the start.
+Lowering it to `fill` brings dropped characters back when Backspace or a wider box leaves free cells at the end.
+Raising it to `low` comes last, so the cursor cell stays shown even in a box too narrow for anything else.
+Typing at the end makes `low` equal `fill`, so the end of the line, where you type, stays in view.
 
 ```lua defaults/lua/gband/prompt.lua
-local function show(kind)
-  gband.win.set_lines(kind.win, { { fitted(kind), { text = " ", hl = "PromptCursor" } } })
+  local before = table.concat(shown, "", kind.first + 1, at - 1)
+  local used = gband.ui.width(before) + gband.ui.width(cell)
+  local after = {}
+  for i = at + 1, #shown do
+    used = used + gband.ui.width(shown[i])
+    if used > kind.width then
+      break
+    end
+    after[#after + 1] = shown[i]
+  end
+  return before, cell, table.concat(after)
 end
 ```
 
-The line is two spans: the text, and one space in `PromptCursor` as the cursor.
+`fitted` returns three pieces: the text before the cursor cell, the cell, and as much of the text after it as fits.
+
+```lua defaults/lua/gband/prompt.lua
+local function show(kind)
+  local before, cell, after = fitted(kind)
+  gband.win.set_lines(kind.win, { { before, { text = cell, hl = "PromptCursor" }, after } })
+end
+```
+
+The line is three spans, and the middle one is in `PromptCursor`.
+A double-width character under the cursor is one span, so both of its cells are reversed.
+
+```lua defaults/lua/gband/prompt.lua
+local function clicked(kind, col)
+  local shown = characters(kind.marker .. kind.line)
+  local edge = 0
+  for i = kind.first + 1, #shown do
+    edge = edge + gband.ui.width(shown[i])
+    if edge > kind.width then
+      break
+    end
+    if col < edge then
+      return math.max(0, i - 1 - utf8.len(kind.marker))
+    end
+  end
+  return utf8.len(kind.line)
+end
+```
+
+`clicked` maps a content column to a cursor.
+It walks the drawn characters from `first`, the scroll position of the drawing the user saw, and stops at the one whose cells hold the column, so either cell of a double-width character maps to it.
+The marker maps to 0, and a column past the drawn text maps to the end of the line.
+The cursor it returns lies inside the drawn run, so the next `fitted` keeps `first` and the text stays where it was clicked.
 
 ```lua defaults/lua/gband/prompt.lua
 local function flatten(text)
@@ -453,6 +528,36 @@ end
 ```
 
 A paste may hold line breaks and other control characters; each becomes a space, so the paste stays on one line.
+
+```lua defaults/lua/gband/prompt.lua
+local function insert(kind, text)
+  local at = utf8.offset(kind.line, kind.cursor + 1)
+  kind.line = kind.line:sub(1, at - 1) .. text .. kind.line:sub(at)
+  kind.cursor = kind.cursor + utf8.len(text)
+end
+```
+
+`insert` splits the line at the cursor's byte and moves the cursor past the inserted text.
+
+```lua defaults/lua/gband/prompt.lua
+local function cut(kind, at)
+  local from = utf8.offset(kind.line, at + 1)
+  local to = utf8.offset(kind.line, at + 2)
+  kind.line = kind.line:sub(1, from - 1) .. kind.line:sub(to)
+end
+```
+
+`cut` removes the character after the first `at` characters, between the bytes `from` and `to`.
+Backspace and Delete both use it.
+
+```lua defaults/lua/gband/prompt.lua
+local function move(kind, cursor)
+  kind.cursor = math.max(0, math.min(cursor, utf8.len(kind.line)))
+  show(kind)
+end
+```
+
+`move` clamps the cursor to the line, so Left at the start and Right at the end do nothing.
 
 ### Opening
 
@@ -469,10 +574,14 @@ local function open(kind, line, target)
     end
   end
   kind.line = line
+  kind.cursor = utf8.len(line)
+  kind.first = 0
   kind.target = target
 ```
 
 Only one prompt is open at a time: opening one closes the other, dropping its line.
+A prompt opens with its cursor after the last character, so the rename prompt edits the manual name from its end.
+A prompt that is already open only takes focus, so it keeps its line and its cursor.
 
 ```lua defaults/lua/gband/prompt.lua
   local view = gband.view()
@@ -498,24 +607,59 @@ The prompt is as wide as the view and sits on its last three rows, where `row` p
           gband.win.close(win)
           return
         end
-        kind.line = kind.line:sub(1, utf8.offset(kind.line, -1) - 1)
+        if kind.cursor == 0 then
+          return
+        end
+        kind.cursor = kind.cursor - 1
+        cut(kind, kind.cursor)
         show(kind)
+      end,
+      delete = function()
+        if kind.cursor < utf8.len(kind.line) then
+          cut(kind, kind.cursor)
+          show(kind)
+        end
       end,
       ["ctrl+u"] = function()
         kind.line = ""
+        kind.cursor = 0
         show(kind)
+      end,
+```
+
+Enter reads the text and the target, closes the prompt, and only then submits, wherever the cursor is.
+A line that fails therefore leaves no prompt behind, and a floating plugin window that the line opens keeps focus.
+Backspace on an empty line closes the prompt; with the cursor at the start of a line that holds text, it does nothing.
+Otherwise it moves the cursor back one character and cuts the character there, the one that was before the cursor.
+Delete cuts the character after the cursor and leaves the cursor where it is; after the last character it does nothing, and it never closes the prompt.
+
+```lua defaults/lua/gband/prompt.lua
+      left = function()
+        move(kind, kind.cursor - 1)
+      end,
+      right = function()
+        move(kind, kind.cursor + 1)
+      end,
+      home = function()
+        move(kind, 0)
+      end,
+      ["end"] = function()
+        move(kind, utf8.len(kind.line))
       end,
     },
 ```
 
-Enter reads the text and the target, closes the prompt, and only then submits.
-A line that fails therefore leaves no prompt behind, and a floating plugin window that the line opens keeps focus.
-Backspace on an empty line closes the prompt.
+The plugin window's defaults scroll on Home and End and discard Left and Right, as [05](05-plugin-windows.md) shows; a `keys` entry is tried first, so these four take the keys before a default can.
 
 ```lua defaults/lua/gband/prompt.lua
     on_input = function(_, text)
-      kind.line = kind.line .. flatten(text)
+      insert(kind, flatten(text))
       show(kind)
+    end,
+    on_mouse = function(_, event)
+      if event.kind == "press" and event.button == "left" and event.content_row == 0 then
+        move(kind, clicked(kind, event.content_col))
+      end
     end,
     on_resize = function(_, cols)
       kind.width = math.max(1, cols)
@@ -525,6 +669,8 @@ Backspace on an empty line closes the prompt.
       if kind.win == win then
         kind.win = nil
         kind.line = ""
+        kind.cursor = 0
+        kind.first = 0
         kind.target = nil
       end
     end,
@@ -532,8 +678,10 @@ Backspace on an empty line closes the prompt.
 ```
 
 Typed characters and pastes both arrive through `on_input`, since the prompt binds no character keys: every key with text that `keys` does not bind goes there, `j`, `k` and `q` included.
+`on_mouse` takes only a left press on the content row; a press focuses the plugin window before `on_mouse` runs, so a click on an unfocused prompt focuses it too.
+Setting `on_mouse` drops the wheel default, which scrolled nothing in a one-line window.
 `on_resize` fits the line to a new width.
-`on_close` forgets the line, whatever closed the window.
+`on_close` forgets the line, the cursor and the scroll position, whatever closed the window.
 
 ```lua defaults/lua/gband/prompt.lua
   kind.width = math.max(1, gband.win.info(kind.win).cols)
