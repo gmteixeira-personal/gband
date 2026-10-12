@@ -65,27 +65,90 @@ local kinds = {
 
 for _, kind in pairs(kinds) do
   kind.line = ""
+  kind.cursor = 0
+  kind.first = 0
   kind.width = 1
 end
 
-local function fitted(kind)
-  local shown = kind.marker .. kind.line
-  local used = gband.ui.width(shown)
-  local start = 1
-  while used + 1 > kind.width and start <= #shown do
-    local next_start = utf8.offset(shown, 2, start)
-    used = used - gband.ui.width(shown:sub(start, next_start - 1))
-    start = next_start
+local function characters(text)
+  local list = {}
+  for character in text:gmatch(utf8.charpattern) do
+    list[#list + 1] = character
   end
-  return shown:sub(start)
+  return list
+end
+
+local function fewest_dropped(shown, last, used, width)
+  for i = 1, last do
+    used = used + gband.ui.width(shown[i])
+  end
+  local dropped = 0
+  while used > width and dropped < last do
+    dropped = dropped + 1
+    used = used - gband.ui.width(shown[dropped])
+  end
+  return dropped
+end
+
+local function fitted(kind)
+  local shown = characters(kind.marker .. kind.line)
+  local at = utf8.len(kind.marker) + kind.cursor + 1
+  local cell = shown[at] or " "
+  local low = fewest_dropped(shown, at - 1, gband.ui.width(cell), kind.width)
+  local fill = fewest_dropped(shown, #shown, 1, kind.width)
+  kind.first = math.max(low, math.min(kind.first, kind.cursor, fill))
+  local before = table.concat(shown, "", kind.first + 1, at - 1)
+  local used = gband.ui.width(before) + gband.ui.width(cell)
+  local after = {}
+  for i = at + 1, #shown do
+    used = used + gband.ui.width(shown[i])
+    if used > kind.width then
+      break
+    end
+    after[#after + 1] = shown[i]
+  end
+  return before, cell, table.concat(after)
 end
 
 local function show(kind)
-  gband.win.set_lines(kind.win, { { fitted(kind), { text = " ", hl = "PromptCursor" } } })
+  local before, cell, after = fitted(kind)
+  gband.win.set_lines(kind.win, { { before, { text = cell, hl = "PromptCursor" }, after } })
+end
+
+local function clicked(kind, col)
+  local shown = characters(kind.marker .. kind.line)
+  local edge = 0
+  for i = kind.first + 1, #shown do
+    edge = edge + gband.ui.width(shown[i])
+    if edge > kind.width then
+      break
+    end
+    if col < edge then
+      return math.max(0, i - 1 - utf8.len(kind.marker))
+    end
+  end
+  return utf8.len(kind.line)
 end
 
 local function flatten(text)
   return (text:gsub("\r\n", " "):gsub("[%z\1-\31\127]", " "):gsub("\194[\128-\159]", " "))
+end
+
+local function insert(kind, text)
+  local at = utf8.offset(kind.line, kind.cursor + 1)
+  kind.line = kind.line:sub(1, at - 1) .. text .. kind.line:sub(at)
+  kind.cursor = kind.cursor + utf8.len(text)
+end
+
+local function cut(kind, at)
+  local from = utf8.offset(kind.line, at + 1)
+  local to = utf8.offset(kind.line, at + 2)
+  kind.line = kind.line:sub(1, from - 1) .. kind.line:sub(to)
+end
+
+local function move(kind, cursor)
+  kind.cursor = math.max(0, math.min(cursor, utf8.len(kind.line)))
+  show(kind)
 end
 
 local function open(kind, line, target)
@@ -100,6 +163,8 @@ local function open(kind, line, target)
     end
   end
   kind.line = line
+  kind.cursor = utf8.len(line)
+  kind.first = 0
   kind.target = target
   local view = gband.view()
   kind.win = gband.win.open({
@@ -119,17 +184,45 @@ local function open(kind, line, target)
           gband.win.close(win)
           return
         end
-        kind.line = kind.line:sub(1, utf8.offset(kind.line, -1) - 1)
+        if kind.cursor == 0 then
+          return
+        end
+        kind.cursor = kind.cursor - 1
+        cut(kind, kind.cursor)
         show(kind)
+      end,
+      delete = function()
+        if kind.cursor < utf8.len(kind.line) then
+          cut(kind, kind.cursor)
+          show(kind)
+        end
       end,
       ["ctrl+u"] = function()
         kind.line = ""
+        kind.cursor = 0
         show(kind)
+      end,
+      left = function()
+        move(kind, kind.cursor - 1)
+      end,
+      right = function()
+        move(kind, kind.cursor + 1)
+      end,
+      home = function()
+        move(kind, 0)
+      end,
+      ["end"] = function()
+        move(kind, utf8.len(kind.line))
       end,
     },
     on_input = function(_, text)
-      kind.line = kind.line .. flatten(text)
+      insert(kind, flatten(text))
       show(kind)
+    end,
+    on_mouse = function(_, event)
+      if event.kind == "press" and event.button == "left" and event.content_row == 0 then
+        move(kind, clicked(kind, event.content_col))
+      end
     end,
     on_resize = function(_, cols)
       kind.width = math.max(1, cols)
@@ -139,6 +232,8 @@ local function open(kind, line, target)
       if kind.win == win then
         kind.win = nil
         kind.line = ""
+        kind.cursor = 0
+        kind.first = 0
         kind.target = nil
       end
     end,

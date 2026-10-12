@@ -1049,19 +1049,41 @@ gband.keymap.set("prefix", "N", gband.action["prompt.rename"], { desc = "rename 
 
 `prompt.open` enters `root` and opens a focused floating plugin window with a border, titled `lua`, 3 rows high and as wide as the ribbon, on the ribbon's last three rows from its first column, sized from `gband.view()` as it opens.
 Dispatching it while the prompt is open focuses that prompt, keeps its line and opens no second one.
-The window is a plain user of `gband.win`: it takes typed characters and pastes through `on_input`, and Enter, Backspace and Ctrl+U through `keys`.
+The window is a plain user of `gband.win`: it takes typed characters and pastes through `on_input`, Enter, Backspace, Delete, Ctrl+U, Left, Right, Home and End through `keys`, and the mouse through `on_mouse`.
 
-Its one line is `:`, the typed text, then one space in `PromptCursor` as the cursor.
-When that is wider than the content area, the fewest leading characters are left out that let the rest and the cursor fit, so the end of the line stays shown; the line is fitted again when the content area's width changes.
+The prompt keeps a cursor, the count of characters before it, from 0 to the line's length, and opens with it after the last character.
+Its one line is `:` and the typed text, with the cursor cell in `PromptCursor`: the character after the cursor, or one space appended after the text when the cursor is at the end.
+A double-width character under the cursor is drawn whole in `PromptCursor`.
+
+The prompt also keeps a scroll position, the count of leading characters, `:` included, left out of the drawing, 0 when it opens.
+After each change to the line, the cursor or the content area's width, the scroll position is the one before, lowered to at most the count of typed characters before the cursor and to at most the fewest left out that let the rest of the line and one more cell fit, then raised to at least the fewest left out that let the text through the cursor cell fit.
+Characters after the cursor cell that do not fit are left out.
+So the cursor cell stays shown, a line that fits is drawn whole, and a long line keeps its place between keys and clicks.
 
 | input | effect |
 |---|---|
-| a typed character | append it, `j`, `k`, `q` and space included |
-| a paste | append it, with each `\r\n` and every other control character turned into one space |
-| Backspace | remove the last character; on an empty line, close the prompt and run nothing |
-| Ctrl+U | clear the line |
+| a typed character | insert it at the cursor, `j`, `k`, `q` and space included, and move the cursor after it |
+| a paste | insert it at the cursor, with each `\r\n` and every other control character turned into one space, and move the cursor after it |
+| Left | move the cursor one character back; at the start of the line, do nothing |
+| Right | move the cursor one character forward; after the last character, do nothing |
+| Home | move the cursor before the first character |
+| End | move the cursor after the last character |
+| Backspace | remove the character before the cursor; on an empty line, close the prompt and run nothing; with the cursor at the start of a line that holds text, do nothing |
+| Delete | remove the character after the cursor; after the last character, do nothing and keep the prompt open |
+| Ctrl+U | clear the line and put the cursor at its start |
 | Escape | close the prompt and run nothing |
-| Enter | close the prompt, then run the line |
+| Enter | close the prompt, then run the line, wherever the cursor is |
+
+A character is one Unicode scalar value.
+`on_mouse` takes the prompt's mouse events whether or not it is focused, and a press focuses it first.
+A left press on the content row moves the cursor:
+
+- on a cell drawn with a typed character, either cell of a double-width one included: before that character
+- on the cell drawn with `:`: before the first character
+- on any other cell of the content row: after the last character
+
+The press is mapped against the scroll position of the last drawing, so the clicked character stays where it was drawn.
+Every other mouse event, a press with another button, a release, a drag and a wheel step included, leaves the line and the cursor unchanged.
 
 Enter closes the prompt before the line runs, so a line that fails leaves no prompt behind, and a floating plugin window the line opens takes focus.
 An empty line runs nothing.
@@ -1071,9 +1093,9 @@ A syntax error, a runtime error and a stop by the instruction limit are each rep
 Return values are dropped.
 
 `prompt.rename` does nothing unless `gband.view()` names a focused window that runs a program.
-Then it enters `root` and opens the rename prompt for that window: a floating plugin window placed and sized as the Lua prompt, titled `rename`, whose line starts as the window's manual name and shows no `:`.
-It edits its line as the Lua prompt does, but Enter closes it and calls `gband.window.rename` on the window it was opened for, unless that window has left the layout.
-Dispatching `prompt.rename` while the rename prompt is open focuses it and keeps its line and its window.
+Then it enters `root` and opens the rename prompt for that window: a floating plugin window placed and sized as the Lua prompt, titled `rename`, whose line starts as the window's manual name, with the cursor after it, and shows no `:`.
+It draws its cursor cell, scrolls and edits its line as the Lua prompt does, but Enter closes it and calls `gband.window.rename` on the window it was opened for, unless that window has left the layout.
+Dispatching `prompt.rename` while the rename prompt is open focuses it and keeps its line, its cursor and its window.
 At most one of the two prompts is open: opening either closes the other first, dropping its line.
 
 The prompt gives `PromptCursor` the default `{ reverse = true }` when its module is first required.
