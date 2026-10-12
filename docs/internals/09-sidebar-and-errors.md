@@ -363,15 +363,28 @@ end
 `agent_at` turns a row into an agent entry with the same `agent_rows` that drawing uses.
 
 ```lua defaults/lua/gband/sidebar.lua
+local MARKER_ACTIONS = { left = "errors.open", right = "errors.clear" }
+
 local function clicked(ev)
-  if ev.button ~= "left" or ev.target ~= "outside" then
+  local marker_action = MARKER_ACTIONS[ev.button]
+  if not marker_action or ev.target ~= "outside" then
     return
   end
   local info = gband.bar.info(BAR)
   if not info.shown or ev.col ~= info.col then
     return
   end
-  if ev.row == 0 and floating_style() and (info.height > 1 or core.state().error == nil) then
+  if ev.row == info.height - 1 and core.state().error ~= nil then
+    local run = gband.action[marker_action]
+    if run then
+      run()
+    end
+    return
+  end
+  if ev.button ~= "left" then
+    return
+  end
+  if ev.row == 0 and floating_style() then
     local list = gband.action["desktop.list"]
     if list then
       list()
@@ -393,7 +406,10 @@ end
 
 A press that lands on no window has the target `outside`.
 When it is in the sidebar's column, on a band's row, the sidebar views that band, and on an agent's row it focuses the agent's window, which views its band.
-On row 0 with the floating style, while row 0 shows `∷` and not the error marker of a one-row bar, it dispatches `desktop.list` to open the window list, and only when that action exists, so a sidebar without the desktop plugin costs nothing.
+The error marker's row comes first: the last row, which is row 0 of a one-row bar, while an error is reported.
+There a left press dispatches `errors.open` and a right press `errors.clear`, each only when that action exists, so a sidebar without the error list plugin costs nothing.
+Every other cell takes the left button alone.
+On row 0 with the floating style it dispatches `desktop.list` to open the window list, again only when that action exists.
 
 ```lua defaults/lua/gband/sidebar.lua
 local function scrolled(ev)

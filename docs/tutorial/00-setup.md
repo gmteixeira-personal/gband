@@ -49,12 +49,7 @@ Its first row shows the mode, `I` for interactive and `N` for navigation, or `�
 A `─` on its middle row splits it in two: the bands above, and below it the windows that run a coding agent, such as Claude Code, colored by what the agent does; `gband.agents.list()` returns the same list.
 [The sidebar](../plugins.md#the-sidebar-gbandsidebar) describes every row.
 
-The error list has no key yet.
-Bind Ctrl+Space then `e` to it; chapter 01 explains `gband.keymap.set`:
-
-```lua
-gband.keymap.set("prefix", "e", gband.action["errors.open"], { desc = "list the errors" })
-```
+The modal and direct styles bind Ctrl+Space then `e` to the error list and `E` to clearing it, once `gband.errors` is set up.
 
 On a terminal 40 columns wide and 8 rows high, gband now looks like this:
 
@@ -106,8 +101,8 @@ I╭─────────────────╮
 !╰─────────────────╯
 ```
 
-Ctrl+Space then `e` lists the errors with their files and line numbers: here `user/init.lua:7: attempt to call a nil value (field 'plugn')`.
-`q` closes the list, and `c` in it clears the errors.
+Ctrl+Space then `e`, or a left click on `!`, lists the errors with their files and line numbers: here `user/init.lua:5: attempt to call a nil value (field 'plugn')`.
+`q` closes the list, and `c` in it clears the errors, as Ctrl+Space then `E` or a right click on `!` does.
 
 Your Lua can read the list too: `gband.errors()` returns the messages, oldest first, and `gband.clear_errors()` empties it.
 Clear it from the prompt:
@@ -126,8 +121,6 @@ gband.keystyle.use()
 
 gband.plugin("gband.errors")
 gband.plugin("gband.sidebar")
-
-gband.keymap.set("prefix", "e", gband.action["errors.open"], { desc = "list the errors" })
 ```
 
 ## Another way to start

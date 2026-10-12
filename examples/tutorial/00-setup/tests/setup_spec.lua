@@ -41,7 +41,7 @@ t.case("a broken file keeps the last configuration", function(g)
   end)
   g.settle()
   t.eq(g.client("return #gband.errors()"), 1)
-  t.match(g.client("return gband.errors()[1]"), "user/init.lua:7: attempt to call a nil value %(field 'plugn'%)")
+  t.match(g.client("return gband.errors()[1]"), "user/init.lua:5: attempt to call a nil value %(field 'plugn'%)")
   t.match(g.screen().row(7), "^!")
   g.expect_screenshot("the error marker")
 

@@ -170,3 +170,96 @@ t.case("multi mode with the floating style", function(g)
   t.eq(g.client("return gband.view().multi"), true)
   t.eq(g.screen().cell(0, 0).char, "∷")
 end)
+
+local BROKEN_SERVER = "error('first', 0)"
+
+local function with_error(g)
+  g.start({ size = "40x8", server_config = BROKEN_SERVER })
+  prompts(g, 1)
+  t.eq(g.screen().cell(7, 0).char, "!")
+end
+
+local function click(g, button, col, row)
+  g.mouse("press", button, col, row)
+  g.mouse("release", button, col, row)
+  g.settle()
+end
+
+local function list_shown(g, hinted)
+  t.ok(g.client("return gband.view().plugin_window"), "the error list is focused")
+  local text = g.screen().text()
+  t.ok(text:find("errors", 1, true), "the list is titled errors")
+  t.eq(text:find("c clear", 1, true) ~= nil, hinted)
+end
+
+t.case("left click on the error marker opens the error list", function(g)
+  with_error(g)
+  click(g, "left", 0, 7)
+  list_shown(g, true)
+  t.ok(g.screen().text():find("server: first", 1, true), "the list shows the error")
+  t.eq(g.client("return gband.keymap.current_table()"), "root")
+  g.expect_screenshot("error list from the marker")
+end)
+
+t.case("left click on the error marker in navigation mode", function(g)
+  with_error(g)
+  g.keys("ctrl+space")
+  g.settle()
+  click(g, "left", 0, 7)
+  list_shown(g, true)
+  t.eq(g.client("return gband.keymap.current_table()"), "root")
+end)
+
+t.case("right click on the error marker clears the errors", function(g)
+  with_error(g)
+  g.keys("ctrl+space")
+  g.settle()
+  click(g, "right", 0, 7)
+  t.eq(g.client("return gband.errors()"), {})
+  t.eq(g.screen().cell(7, 0).char, " ")
+  t.eq(g.client("return gband.view().plugin_window"), nil)
+  t.eq(g.client("return gband.keymap.current_table()"), "prefix")
+end)
+
+t.case("right click on the error marker with the error list open", function(g)
+  with_error(g)
+  g.client("gband.action['errors.open']()")
+  g.settle()
+  click(g, "right", 0, 7)
+  t.ok(g.screen().text():find("no errors", 1, true), "the list shows no errors")
+  list_shown(g, false)
+end)
+
+t.case("error marker without the error list plugin", function(g)
+  g.start({
+    size = "40x8",
+    server_config = BROKEN_SERVER,
+    config = [[
+gband.keystyle.use()
+gband.plugin("gband.sidebar")
+]],
+  })
+  prompts(g, 1)
+  t.eq(g.screen().cell(7, 0).char, "!")
+  click(g, "left", 0, 7)
+  click(g, "right", 0, 7)
+  t.eq(g.client("return gband.view().plugin_window"), nil)
+  t.eq(g.client("return gband.errors()"), { "server: first" })
+end)
+
+t.case("one-row sidebar with the floating style opens the error list", function(g)
+  g.start({ size = "40x1", server_config = BROKEN_SERVER, files = { ["user/keystyle.lua"] = 'return "floating"\n' } })
+  g.settle()
+  t.eq(g.client("return gband.bar.info('sidebar').height"), 1)
+  t.eq(g.screen().cell(0, 0).char, "!")
+  click(g, "left", 0, 0)
+  list_shown(g, true)
+end)
+
+t.case("left click on the blank error marker row", function(g)
+  g.start({ size = "40x8" })
+  prompts(g, 1)
+  t.eq(g.screen().cell(7, 0).char, " ")
+  click(g, "left", 0, 7)
+  t.eq(g.client("return gband.view().plugin_window"), nil)
+end)

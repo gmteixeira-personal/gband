@@ -40,6 +40,18 @@ set("prefix", "N", action["prompt.rename"], { desc = "rename the window" })
 set("prefix", "s", gband.settings.open, { desc = "settings" })
 set("prefix", "!", action.reload, { desc = "reload the configuration" })
 set("prefix", "m", action.toggle_multi, { desc = "toggle multi mode" })
+set("prefix", "e", function()
+  local open = action["errors.open"]
+  if open then
+    open()
+  end
+end, { desc = "list the errors" })
+set("prefix", "E", function()
+  local clear = action["errors.clear"]
+  if clear then
+    clear()
+  end
+end, { desc = "clear the errors" })
 set("prefix", "D", action.detach, { desc = "detach" })
 set("prefix", "left", action.focus_column_left, { desc = "focus the column to the left" })
 set("prefix", "right", action.focus_column_right, { desc = "focus the column to the right" })

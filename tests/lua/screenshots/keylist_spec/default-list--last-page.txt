@@ -4,11 +4,11 @@ size 80x24 cursor 17:68 hidden
  2|1│                                     │
  3|2│                                     │
  4| │         ┌navigation keys─────────────────────────────────────────┐
- 5| │         │:        run Lua                                        │
- 6| │         │N        rename the window                              │
- 7| │         │s        settings                                       │
- 8| │         │!        reload the configuration                       │
- 9| │         │m        multi mode                                     │
+ 5| │         │s        settings                                       │
+ 6| │         │!        reload the configuration                       │
+ 7| │         │m        multi mode                                     │
+ 8| │         │e        list the errors                                │
+ 9| │         │E        clear the errors                               │
 10| │         │D        detach                                         │
 11| │         │esc      interactive mode                               │
 12|─│         │enter    interactive mode                               │

@@ -540,10 +540,10 @@ fn every_default_binding_is_described() {
     for (config, count, open) in [
         (
             gband_lua::defaults(gband_lua::Side::Client),
-            53,
+            55,
             "open a window",
         ),
-        (direct, 51, "open a window"),
+        (direct, 53, "open a window"),
         (floating, 8, "open a floating window"),
     ] {
         assert_described(&config, count, open);
@@ -649,6 +649,8 @@ fn assert_described(config: &Config, count: usize, open: &str) {
            m = 'multi mode',
            a = 'agents mode',
            b = 'bands mode',
+           e = 'list the errors',
+           E = 'clear the errors',
          }}
          local wrong = {{}}
          for _, table in ipairs({{ 'prefix', 'root' }}) do
@@ -768,7 +770,9 @@ fn settings_bound_by_the_defaults() {
     assert_eq!(position("s"), position("N") + 1);
     assert_eq!(position("!"), position("s") + 1);
     assert_eq!(position("m"), position("!") + 1);
-    assert_eq!(position("D"), position("m") + 1);
+    assert_eq!(position("e"), position("m") + 1);
+    assert_eq!(position("E"), position("e") + 1);
+    assert_eq!(position("D"), position("E") + 1);
     let desc: String = eval(
         &config,
         "for _, entry in ipairs(gband.keymap.list('prefix')) do if entry.key == 's' then return entry.desc end end",

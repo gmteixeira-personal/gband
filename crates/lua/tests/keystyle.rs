@@ -199,6 +199,31 @@ fn tabbed_display_follows_full_width() {
 }
 
 #[test]
+fn error_keys_between_multi_mode_and_detach() {
+    for style in ["modal", "direct"] {
+        let scratch = Scratch::new(&format!("keystyle-errors-{style}"));
+        scratch.write(&format!("gband.keystyle.use('{style}')"));
+        let config = scratch.loaded();
+        let entries = prefix_entries(&config);
+        let at = |key: &str| entries.iter().position(|(bound, ..)| bound == key);
+        let e = at("e").expect(style);
+        assert_eq!(at("m"), Some(e - 1), "{style}");
+        assert_eq!(at("E"), Some(e + 1), "{style}");
+        assert_eq!(at("D"), Some(e + 2), "{style}");
+        assert_eq!(
+            entries[e],
+            ("e".to_owned(), None, Some("list the errors".to_owned())),
+            "{style}"
+        );
+        assert_eq!(
+            entries[e + 1],
+            ("E".to_owned(), None, Some("clear the errors".to_owned())),
+            "{style}"
+        );
+    }
+}
+
+#[test]
 fn every_preset_binding_is_described() {
     let functions = [
         ("n", "open a window"),
@@ -209,6 +234,8 @@ fn every_preset_binding_is_described() {
         ("m", "multi mode"),
         ("a", "agents mode"),
         ("b", "bands mode"),
+        ("e", "list the errors"),
+        ("E", "clear the errors"),
     ];
     for style in ["modal", "direct"] {
         let scratch = Scratch::new(&format!("keystyle-described-{style}"));

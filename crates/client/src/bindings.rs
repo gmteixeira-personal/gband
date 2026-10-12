@@ -445,7 +445,7 @@ mod tests {
             .map(|(key, _, _)| key)
             .collect();
         let order = "h l j k u i a b c n q [ ] r f w - = _ + R v V ctrl+h ctrl+l ctrl+j ctrl+k \
-            ctrl+left ctrl+right ctrl+down ctrl+up ? : N s ! m D escape enter left right down up prefix \
+            ctrl+left ctrl+right ctrl+down ctrl+up ? : N s ! m e E D escape enter left right down up prefix \
             leftmouse rightmouse middlemouse mod+leftmouse mod+rightmouse mod+middlemouse \
             mod+wheeldown mod+wheelup";
         assert_eq!(keys, order.split_whitespace().collect::<Vec<_>>());
@@ -580,7 +580,7 @@ mod tests {
                     matches!(
                         action.as_deref(),
                         Some("keylist.open" | "prompt.open" | "prompt.rename")
-                    ) || matches!(key.as_str(), "s" | "a" | "b"),
+                    ) || matches!(key.as_str(), "s" | "a" | "b" | "e" | "E"),
                     "{key}"
                 ),
             }
@@ -913,6 +913,8 @@ gband.keymap.mode('resize')",
             ("m", "multi mode"),
             ("a", "agents mode"),
             ("b", "bands mode"),
+            ("e", "list the errors"),
+            ("E", "clear the errors"),
         ];
         for table in [PREFIX, ROOT] {
             let entries = table_entries(&config, table);

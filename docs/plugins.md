@@ -984,6 +984,8 @@ A press of the left button on a band's label views that band, as `gband.band.vie
 The sidebar does this from its own `MousePressed` handler, since a press on a bar cell reaches handlers with the target `outside`.
 A press of the left button on an agent's label focuses that agent's window, as `gband.window.focus` does, viewing its band, whatever key table is active.
 A press of the left button on `∷` dispatches `desktop.list`, which opens the window list, when `gband.action` holds it.
+While `!` is drawn, a press of the left button on it dispatches `errors.open` and a press of the right button dispatches `errors.clear`, each when `gband.action` holds it, whatever key table is active.
+On a bar of 1 row, the row is the marker's while `!` is drawn, so a press there opens the error list and not the window list.
 Any other press on the sidebar does nothing.
 
 ## The key list: `gband.keylist`
@@ -1230,7 +1232,8 @@ The modal preset declares `prefix` a mode labelled `navigation` and binds Escape
 Its `n` opens a window and returns to interactive mode only when `gband.settings.interactive_on_new()` returned `true` when the preset loaded, and otherwise leaves navigation mode active.
 The direct preset declares no mode, so each key after the prefix key acts once; it binds `n` to `open_window` and the prefix key to `send_prefix` directly.
 Both call `gband.jump.setup()` right after their `i` binding, binding `a` to agents mode and `b` to bands mode, as "Jump modes" describes.
-Both bind Ctrl+Space then `s` to `gband.settings.open`, described `settings`, right after `:`, then `!` to `reload`, described `reload the configuration`, and then `m`, before `D`.
+Both bind Ctrl+Space then `s` to `gband.settings.open`, described `settings`, right after `:`, then `!` to `reload`, described `reload the configuration`, and then `m`, then `e` and `E`, before `D`.
+`e`, described `list the errors`, and `E`, described `clear the errors`, are functions that look up `errors.open` and `errors.clear` in `gband.action` when pressed, and do nothing when `gband.errors` is not set up; looking them up at load time would find nothing, since the default configuration sets up `gband.errors` after the preset.
 The direct preset binds `m` to `toggle_multi`; the modal preset binds it to a function described `multi mode` that dispatches `toggle_multi` and returns to interactive mode, so the sidebar shows `M` at once.
 The floating preset also sets up `gband.desktop`, declares no mode, and binds only `n` (a floating window), `?`, `:`, `N`, `s`, `!`, `D` and the prefix key in `prefix`, and `leftmouse` and `rightmouse` in `root`, as "The desktop" describes.
 gband writes copies of all three to `defaults/keystyle/` for you to read; loading never reads the copies.
