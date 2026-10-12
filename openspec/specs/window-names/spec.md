@@ -172,11 +172,11 @@ So at least one cell of the border SHALL stay between the title and the decorati
 ### Requirement: Rename prompt
 The `setup` of the bundled plugin `gband.prompt`, as the lua-prompt capability defines it, SHALL also register the action `prompt.rename` with the description `rename the window`.
 
-Dispatching `prompt.rename` while `gband.view()` names a focused window that runs a program SHALL open the rename prompt for that window and make `root` the active table, as `gband.keymap.enter("root")` does. With no such window, it SHALL do nothing. The rename prompt SHALL be a floating plugin window that belongs to the plugin `prompt`, takes focus, and has the border, height, width and place of the Lua prompt, as the lua-prompt capability's "Prompt plugin window" defines, with the title `rename`. It SHALL hold one line: the typed text in the group `PluginWindow`, with no leading `:`, then one space in the group `PromptCursor`, fitted to the content area as the Lua prompt's line is. Its line SHALL start as the window's manual name, or empty when it has none.
+Dispatching `prompt.rename` while `gband.view()` names a focused window that runs a program SHALL open the rename prompt for that window and make `root` the active table, as `gband.keymap.enter("root")` does. With no such window, it SHALL do nothing. The rename prompt SHALL be a floating plugin window that belongs to the plugin `prompt`, takes focus, and has the border, height, width and place of the Lua prompt, as the lua-prompt capability's "Prompt plugin window" defines, with the title `rename`. It SHALL hold one line: the typed text in the group `PluginWindow`, with no leading `:`, with the cursor cell in the group `PromptCursor`, placed and fitted to the content area as the Lua prompt's line is. Its line SHALL start as the window's manual name, or empty when it has none, with the cursor after the last character.
 
 The rename prompt SHALL edit its line as the lua-prompt capability's "Editing the line" defines, except that Enter SHALL close it and rename the window it was opened for, as `gband.window.rename` does with the line, and SHALL do nothing more when that window is no longer in the layout.
 
-At most one of the Lua prompt and the rename prompt SHALL be open. Opening either SHALL first close the other, dropping its line. Dispatching `prompt.rename` while the rename prompt is open SHALL focus it and keep its line and its window.
+At most one of the Lua prompt and the rename prompt SHALL be open. Opening either SHALL first close the other, dropping its line. Dispatching `prompt.rename` while the rename prompt is open SHALL focus it and keep its line, its cursor and its window.
 
 #### Scenario: Action registered
 - **WHEN** a configuration calls `gband.plugin("gband.prompt")` and reads `gband.action.list()`
@@ -189,6 +189,10 @@ At most one of the Lua prompt and the rename prompt SHALL be open. Opening eithe
 #### Scenario: Prompt starts with the manual name
 - **WHEN** the focused window's manual name is `logs` and the user presses Ctrl+Space then Shift+N
 - **THEN** the rename prompt's content row reads `logs` followed by the cursor cell
+
+#### Scenario: Edit the middle of the manual name
+- **WHEN** the focused window's manual name is `logs`, and the user presses Ctrl+Space, Shift+N, Left twice, types `-x`, then presses Enter
+- **THEN** the window's top border shows `lo-xgs`
 
 #### Scenario: Clear by renaming to nothing
 - **WHEN** the focused window's manual name is `logs`, no title is set, and the user presses Ctrl+Space, Shift+N, Ctrl+U, then Enter
