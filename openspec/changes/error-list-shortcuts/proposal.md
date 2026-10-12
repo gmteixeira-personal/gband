@@ -38,20 +38,19 @@ The sidebar's `!` marker says an error exists, but a press on it does nothing, a
 - none
 
 ### Expected Files
-- crates/lua/src/runtime/gband/sidebar.lua
-- crates/lua/src/runtime/gband/keystyle/modal.lua
-- crates/lua/src/runtime/gband/keystyle/direct.lua
-- crates/lua/tests/keystyle.rs
-- tests/lua/sidebar_spec.lua
-- tests/lua/keystyle_spec.lua
-- tests/lua/screenshots/sidebar_spec/
-- tests/lua/screenshots/keylist_spec/
-- tests/lua/screenshots/keystyle_spec/
 - README.md
-- docs/plugins.md
-- docs/tutorial/00-setup.md
+- crates/client/src/bindings.rs
+- crates/lua/src/runtime/gband/keystyle/direct.lua
+- crates/lua/src/runtime/gband/keystyle/modal.lua
+- crates/lua/src/runtime/gband/sidebar.lua
+- crates/lua/tests/config.rs
+- crates/lua/tests/keystyle.rs
+- crates/lua/tests/plugins.rs
 - docs/internals/08-key-styles.md
 - docs/internals/09-sidebar-and-errors.md
+- docs/plugins.md
+- docs/tutorial/00-setup.md
+- examples/tutorial/00-setup/tests/setup_spec.lua
 - examples/tutorial/00-setup/user/init.lua
 - examples/tutorial/01-keys/user/init.lua
 - examples/tutorial/02-actions/user/init.lua
@@ -64,4 +63,10 @@ The sidebar's `!` marker says an error exists, but a press on it does nothing, a
 - examples/tutorial/09-plugin/user/init.lua
 - examples/tutorial/10-server/user/init.lua
 - examples/tutorial/11-testing/user/init.lua
+- tests/lua/keystyle_spec.lua
+- tests/lua/prompt_spec.lua
+- tests/lua/screenshots/keylist_spec/default-list--last-page.txt
+- tests/lua/screenshots/prompt_spec/the-key-list-holds-the-prompt-between-the-key-list-and-detach--hint.txt
+- tests/lua/screenshots/sidebar_spec/left-click-on-the-error-marker-opens-the-error-list--error-list-from-the-marker.txt
+- tests/lua/sidebar_spec.lua
 - openspec/changes/error-list-shortcuts/
