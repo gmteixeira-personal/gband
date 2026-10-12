@@ -5,7 +5,13 @@ Defines the operating systems gband builds and runs on, and what each one must p
 ## ADDED Requirements
 
 ### Requirement: Supported operating systems
-gband SHALL build with `cargo install` and run on Linux and on macOS 13 or later, on x86-64 and arm64. Every subcommand, capability and option SHALL behave on macOS as its specification defines for Linux, except where a specification names a difference. `cargo test --workspace` SHALL pass on both operating systems. Building SHALL need no tool beyond the Rust toolchain and a C compiler: on macOS, the Xcode Command Line Tools provide one.
+gband SHALL build with `cargo install` and run on Linux and on macOS. Every subcommand, capability and option SHALL behave on macOS as its specification defines for Linux, except where a specification names a difference. `cargo test --workspace` SHALL pass on both operating systems. Building SHALL need no tool beyond the Rust toolchain and a C compiler: on macOS, the Xcode Command Line Tools provide one. Building for any other operating system SHALL fail with an error naming Linux and macOS as the supported ones.
+
+The README SHALL name the macOS version and the processor, Apple silicon or Intel, on which the test suite last passed. A macOS version or processor the README does not name is unverified.
+
+#### Scenario: Unsupported operating system
+- **WHEN** a user on FreeBSD runs `cargo build`
+- **THEN** the build fails with an error naming Linux and macOS
 
 #### Scenario: Install on macOS
 - **WHEN** a user on macOS with the Rust toolchain and the Xcode Command Line Tools runs the README's `cargo install` command

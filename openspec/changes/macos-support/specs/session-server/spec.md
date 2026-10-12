@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Socket location
-The server SHALL listen on a Unix stream socket at the socket path the command-line capability's server selection resolves. Without a selection option, that path is `default.sock` in the gband runtime directory. The runtime directory SHALL be `$XDG_RUNTIME_DIR/gband/` when `XDG_RUNTIME_DIR` is set to an absolute path, and `/tmp/gband-<uid>/` otherwise, where `<uid>` is the user's numeric user id. When the socket path lies in the runtime directory, the server SHALL create the runtime directory with mode `0700` when it is missing. When the socket path was given with `-p`, the server SHALL NOT create its parent directory, and a missing parent SHALL be refused with one line on standard error naming the directory, and exit status 1. The server SHALL create the socket file with mode `0600`. On Linux a socket path SHALL hold at most 107 bytes. On macOS it SHALL hold at most 103 bytes, and the path of its directory at most 80 bytes, because the server first binds the socket inside a private directory it creates in that directory. A longer path SHALL be refused before any lock or shell is made, with one line on standard error naming the path and the limit it breaks, and exit status 1. The socket file SHALL have mode `0600` from the moment it appears at the socket path, so no other user can connect to it at any time, whatever the user's file mode creation mask and whatever the permissions of the socket's directory. Creating the socket SHALL NOT change the server process's file mode creation mask, even for a moment, so a file, directory or program another thread of the server creates meanwhile gets the mask the server started with. The server and `gband attach` SHALL resolve the same path from the same environment and options.
+The server SHALL listen on a Unix stream socket at the socket path the command-line capability's server selection resolves. Without a selection option, that path is `default.sock` in the gband runtime directory. The runtime directory SHALL be `$XDG_RUNTIME_DIR/gband/` when `XDG_RUNTIME_DIR` is set to an absolute path, and `/tmp/gband-<uid>/` otherwise, where `<uid>` is the user's numeric user id. When the socket path lies in the runtime directory, the server SHALL create the runtime directory with mode `0700` when it is missing. When the socket path was given with `-p`, the server SHALL NOT create its parent directory, and a missing parent SHALL be refused with one line on standard error naming the directory, and exit status 1. The server SHALL create the socket file with mode `0600`. A socket path that breaks a limit of the command-line capability's "Server selection" SHALL be refused as that requirement defines, before any lock or shell is made. The socket file SHALL have mode `0600` from the moment it appears at the socket path, so no other user can connect to it at any time, whatever the user's file mode creation mask and whatever the permissions of the socket's directory. Creating the socket SHALL NOT change the server process's file mode creation mask, even for a moment, so a file, directory or program another thread of the server creates meanwhile gets the mask the server started with. The server and `gband attach` SHALL resolve the same path from the same environment and options.
 
 #### Scenario: Runtime directory from the environment
 - **WHEN** the user runs `gband server` with `XDG_RUNTIME_DIR=/run/user/1000`
@@ -35,12 +35,12 @@ The server SHALL listen on a Unix stream socket at the socket path the command-l
 
 #### Scenario: Socket path over the macOS limit
 - **WHEN** gband runs on macOS and the user runs `gband server -p` with a socket path of 104 bytes
-- **THEN** standard error is one line naming the path and `103 bytes`
+- **THEN** standard error is one line naming the path and the 103-byte limit
 - **AND** the process exits with status 1
 
 #### Scenario: Socket directory over the macOS limit
 - **WHEN** gband runs on macOS and the user runs `gband server -p` with a socket path of 90 bytes whose directory path holds 81 bytes
-- **THEN** standard error is one line naming the path and `80 bytes`
+- **THEN** standard error is one line naming the path and the 80-byte directory limit
 - **AND** the process exits with status 1
 
 #### Scenario: Missing parent of an explicit socket
