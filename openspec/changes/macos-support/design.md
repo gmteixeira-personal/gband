@@ -27,7 +27,7 @@ The macOS socket address holds 104 bytes of path, so 103 usable, against 108 and
 ## Goals / Non-Goals
 
 **Goals:**
-- Production code outside `gband-os` carries no `cfg(target_os)`. A test may carry `#[cfg(target_os = "linux")]` only for a check macOS cannot make.
+- Production code outside `gband-os` carries no `cfg(target_os)`. A test carries one only for behaviour that exists on one platform, as "Linux guards" lists.
 - Linux behaviour stays what it is now, and each Linux body moves into `gband-os` unchanged.
 - `.claude/flow-gate` passes on macOS, on arm64 Linux and on x86-64 Linux.
 
@@ -67,7 +67,9 @@ The `" (deleted)"` suffix strip stays in `crates/client/src/transport.rs`, becau
 
 - Each Linux body in `crates/os/src/linux.rs` is the code removed from its call site, copied unchanged apart from the function signature. The task that moves a body compares the removed hunk with the new function in `git diff --no-ext-diff` before ticking.
 - No assertion of an existing test changes. `tests/subcommands.rs` `socket_path_over_the_limit_is_refused` reads `gband_os::SOCKET_PATH_MAX` and still expects 107 on Linux.
-- A test that cannot run on macOS gets `#[cfg(target_os = "linux")]` and stays. Only the umask test in `crates/server/src/lib.rs` needs this.
+- A test of behaviour both platforms share has no `cfg` and runs on both, so it checks the Linux body and the macOS body: the `gband-os` tests of peer uid, arguments, command name, environment, children, zombies and `bind_private`, and every existing test.
+- A test of macOS-only behaviour runs only on macOS, through `#[cfg(target_os = "macos")]` or by living in `crates/os/src/macos.rs`: the 103-byte and 80-byte limits, the log directory scenarios on macOS, and the executable path after a rebuild.
+- A test of Linux-only behaviour runs only on Linux, through `#[cfg(target_os = "linux")]`: the umask test in `crates/server/src/lib.rs`, and the `ProjectDirs` comparison in `src/logging.rs`. Neither is deleted.
 - `.claude/flow-gate` runs in an arm64 Linux container after every task group, and in an amd64 Linux container before `/ready`. The amd64 run matters because `c_char` is unsigned on arm64 Linux and signed on x86-64, so code that compiles on one can fail on the other.
 - The integrator runs `.claude/flow-gate` on this x86-64 Linux machine against `origin/change/macos-support` before `/integrate`, because `/integrate` runs no gate.
 
