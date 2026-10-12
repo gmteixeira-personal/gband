@@ -46,7 +46,7 @@ The Lua prompt, opened by `prefix :`, and the rename prompt, opened by `prefix N
 - tests/lua/prompt_spec.lua
 - tests/lua/screenshots/prompt_spec/
 - tests/lua/window_names_spec.lua
-- tests/lua/screenshots/window_names_spec/
+- tests/lua/screenshots/window_names_spec/the-rename-prompt-edits-the-middle-of-the-manual-name--middle.txt
 - README.md
 - docs/plugins.md
 - docs/internals/10-keylist-and-prompt.md
