@@ -111,7 +111,7 @@ The prefix key, Ctrl+Space, gives the keys below their gband meaning, in one of 
 - **modal**: Ctrl+Space enters navigation mode, and the sidebar shows `N`.
   Each key below acts and navigation mode stays active, so `l` `l` `l` moves three columns and `=` `=` widens the column twice.
   A key with no binding does nothing.
-  Escape or Enter returns to interactive mode, and so do `?`, `:`, `N`, `s`, `!`, `m` and Ctrl+Space once they have acted.
+  Escape or Enter returns to interactive mode, and so do `?`, `:`, `N`, `s`, `!`, `m`, `e` and Ctrl+Space once they have acted.
   `n` returns to interactive mode only when the settings window's `I on new` is `on`, which it is not until you save it on.
 - **direct**: Ctrl+Space then one key acts once, and the keys that follow reach the window again, as in tmux.
   Ctrl+Space `l` `l` moves one column and types `l`.
@@ -154,6 +154,8 @@ The modal and direct styles bind the same keys after Ctrl+Space; the floating st
 | `s` | open the settings window |
 | `!` | reload the configuration of this client and of the server, reading the plugins' files again |
 | `m` | turn multi mode on or off, so what you type reaches every window of the band; see [Multi mode](#multi-mode) |
+| `e` | list the errors; see [Errors](#errors) |
+| `E` | clear the errors |
 | `D` | detach |
 | Escape, Enter | modal only: return to interactive mode |
 | Ctrl+Space | send Ctrl+Space to the window; modal returns to interactive mode |
@@ -763,13 +765,12 @@ The logs keep every error, and other clients keep theirs: a server error still s
 The bundled `gband.errors` plugin, set up by the default configuration, registers the action and command `errors.open`, which list them in a floating window; `q` or Escape closes it.
 It also registers the action and command `errors.clear`, which clear the errors.
 In the error list, floating or tiled, `c` clears them and the list shows `no errors`; a floating list holding errors is titled `errors  c clear`.
-No key is bound to either action by default:
+A left click on the sidebar's `!` opens the list, and a right click clears the errors.
+With the modal and direct styles, Ctrl+Space then `e` opens the list, and Ctrl+Space then `E` clears the errors.
+To open it in a tiled window from another key:
 
 ```lua
-gband.keymap.set("prefix", "e", gband.action["errors.open"], { desc = "list the errors" })
-gband.keymap.set("prefix", "C", gband.action["errors.clear"], { desc = "clear the errors" })
--- or in a tiled window
-gband.bind("prefix E", function() gband.cmd.run("errors.open", { kind = "tiled" }) end)
+gband.bind("prefix T", function() gband.cmd.run("errors.open", { kind = "tiled" }) end)
 ```
 
 `gband.plugin("gband.errors", { kind = "tiled" })` makes `errors.open` open a tiled window.

@@ -10,13 +10,13 @@ size 80x24 cursor 17:68 hidden
  8| │         │s        settings                                       │
  9| │         │!        reload the configuration                       │
 10| │         │m        multi mode                                     │
-11| │         │D        detach                                         │
-12|─│         │esc      interactive mode                               │
-13| │         │enter    interactive mode                               │
-14| │         │left     focus the column to the left                   │
-15| │         │right    focus the column to the right                  │
-16| │         │down     focus the window below                         │
-17| │         │up       focus the window above                         │
+11| │         │e        list the errors                                │
+12|─│         │E        clear the errors                               │
+13| │         │D        detach                                         │
+14| │         │esc      interactive mode                               │
+15| │         │enter    interactive mode                               │
+16| │         │left     focus the column to the left                   │
+17| │         │right    focus the column to the right                  │
 18| │         └────────────────────────────────────────────────────────┘
 19| │                                     │
 20| │                                     │

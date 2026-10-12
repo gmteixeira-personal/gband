@@ -5,8 +5,6 @@ if gband.settings.sidebar() ~= false then
   gband.plugin("gband.sidebar")
 end
 
-gband.keymap.set("prefix", "e", gband.action["errors.open"], { desc = "list the errors" })
-
 gband.keymap.set("root", "alt+h", gband.action.focus_column_left, { desc = "focus the column to the left" })
 gband.keymap.set("root", "alt+l", gband.action.focus_column_right, { desc = "focus the column to the right" })
 gband.bind("alt+n", gband.action.open_window)

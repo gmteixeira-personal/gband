@@ -194,6 +194,18 @@ set("prefix", "m", function()
   action.toggle_multi()
   interactive()
 end, { desc = "multi mode" })
+set("prefix", "e", function()
+  local open = action["errors.open"]
+  if open then
+    open()
+  end
+end, { desc = "list the errors" })
+set("prefix", "E", function()
+  local clear = action["errors.clear"]
+  if clear then
+    clear()
+  end
+end, { desc = "clear the errors" })
 set("prefix", "D", action.detach, { desc = "detach" })
 set("prefix", "escape", interactive, { desc = "interactive mode" })
 set("prefix", "enter", interactive, { desc = "interactive mode" })
@@ -204,6 +216,8 @@ set("prefix", "enter", interactive, { desc = "interactive mode" })
 A load that works starts a new keymap in `root`, and one that fails returns to `root` too, so `!` leaves navigation mode either way.
 `m` turns multi mode on or off and returns to interactive mode, where what you type then reaches every window of the band, so the sidebar shows `M` at once.
 Leaving navigation mode later by Escape or Enter keeps multi mode as it is.
+`e` opens the error list, which enters `root` itself, and `E` clears the errors and stays in navigation mode.
+Both look up their action when pressed: the default configuration sets up `gband.errors` after the preset, so `action["errors.open"]` is still nil while the preset loads, and a configuration without the plugin gets two keys that do nothing.
 Escape and Enter return to interactive mode.
 
 ```lua defaults/keystyle/modal.lua
@@ -321,6 +335,18 @@ set("prefix", "N", action["prompt.rename"], { desc = "rename the window" })
 set("prefix", "s", gband.settings.open, { desc = "settings" })
 set("prefix", "!", action.reload, { desc = "reload the configuration" })
 set("prefix", "m", action.toggle_multi, { desc = "toggle multi mode" })
+set("prefix", "e", function()
+  local open = action["errors.open"]
+  if open then
+    open()
+  end
+end, { desc = "list the errors" })
+set("prefix", "E", function()
+  local clear = action["errors.clear"]
+  if clear then
+    clear()
+  end
+end, { desc = "clear the errors" })
 set("prefix", "D", action.detach, { desc = "detach" })
 ```
 

@@ -1,0 +1,38 @@
+size 40x8 cursor 5:35 hidden
+0|I╭─────────────────╮
+1| │$                │
+2|1│    ┌errors  c clear────────────┐
+3|2│    │server: first              │
+4|─│    │                           │
+5| │    └───────────────────────────┘
+6| │                 │
+7|!╰─────────────────╯
+--
+0:0 fg=4 bg=0 bold
+0:1-19 fg=4 bold
+1:0 bg=0
+1:1 fg=4 bold
+1:19 fg=4 bold
+2:0 fg=15 bg=0 bold
+2:1 fg=4 bold
+2:6 fg=8 bg=0
+2:7-21 fg=4 bg=0 bold
+2:22-34 fg=8 bg=0
+3:0 fg=8 bg=0
+3:1 fg=4 bold
+3:6 fg=8 bg=0
+3:7-33 fg=7 bg=0
+3:34 fg=8 bg=0
+4:0 fg=8 bg=0
+4:1 fg=4 bold
+4:6 fg=8 bg=0
+4:7-33 fg=7 bg=0
+4:34 fg=8 bg=0
+5:0 bg=0
+5:1 fg=4 bold
+5:6-34 fg=8 bg=0
+6:0 bg=0
+6:1 fg=4 bold
+6:19 fg=4 bold
+7:0 fg=1 bg=0 bold
+7:1-19 fg=4 bold

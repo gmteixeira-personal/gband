@@ -217,15 +217,28 @@ local function agent_at(row, height)
   return agents.list()[row - first + 1]
 end
 
+local MARKER_ACTIONS = { left = "errors.open", right = "errors.clear" }
+
 local function clicked(ev)
-  if ev.button ~= "left" or ev.target ~= "outside" then
+  local marker_action = MARKER_ACTIONS[ev.button]
+  if not marker_action or ev.target ~= "outside" then
     return
   end
   local info = gband.bar.info(BAR)
   if not info.shown or ev.col ~= info.col then
     return
   end
-  if ev.row == 0 and floating_style() and (info.height > 1 or core.state().error == nil) then
+  if ev.row == info.height - 1 and core.state().error ~= nil then
+    local run = gband.action[marker_action]
+    if run then
+      run()
+    end
+    return
+  end
+  if ev.button ~= "left" then
+    return
+  end
+  if ev.row == 0 and floating_style() then
     local list = gband.action["desktop.list"]
     if list then
       list()

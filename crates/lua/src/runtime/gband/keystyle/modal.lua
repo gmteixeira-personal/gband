@@ -56,6 +56,18 @@ set("prefix", "m", function()
   action.toggle_multi()
   interactive()
 end, { desc = "multi mode" })
+set("prefix", "e", function()
+  local open = action["errors.open"]
+  if open then
+    open()
+  end
+end, { desc = "list the errors" })
+set("prefix", "E", function()
+  local clear = action["errors.clear"]
+  if clear then
+    clear()
+  end
+end, { desc = "clear the errors" })
 set("prefix", "D", action.detach, { desc = "detach" })
 set("prefix", "escape", interactive, { desc = "interactive mode" })
 set("prefix", "enter", interactive, { desc = "interactive mode" })
