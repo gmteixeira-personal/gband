@@ -14,6 +14,11 @@ const ALT_CTRL: Modifiers = Modifiers {
     alt: true,
     ctrl: true,
 };
+const CTRL_SHIFT: Modifiers = Modifiers {
+    shift: true,
+    alt: false,
+    ctrl: true,
+};
 
 fn every_modifiers() -> Vec<Modifiers> {
     (0..8)
@@ -127,10 +132,10 @@ fn alt_bracket_before_a_byte_that_starts_no_sequence() {
         (b"\x1b[a", vec![alt_bracket(), char('a')]),
         (b"\x1b[x", vec![alt_bracket(), char('x')]),
         (
-            b"\x1b[Pa",
+            b"\x1b[Ga",
             vec![
                 alt_bracket(),
-                key(KeyCode::Char('P'), Modifiers::SHIFT),
+                key(KeyCode::Char('G'), Modifiers::SHIFT),
                 char('a'),
             ],
         ),
@@ -404,11 +409,75 @@ fn control_code_is_no_key() {
 }
 
 #[test]
+fn kitty_private_use_codes() {
+    check(&[
+        (b"\x1b[57414u", vec![plain(KeyCode::Enter)]),
+        (
+            b"\x1b[57376;2u",
+            vec![key(KeyCode::F(13), Modifiers::SHIFT)],
+        ),
+        (b"\x1b[57398u", vec![plain(KeyCode::F(35))]),
+        (b"\x1b[57399u", vec![char('0')]),
+        (b"\x1b[57414;5u", vec![key(KeyCode::Enter, Modifiers::CTRL)]),
+        (b"\x1b[57417u", vec![plain(KeyCode::Left)]),
+        (b"\x1b[57441;2ua", vec![char('a')]),
+        (b"\x1b[63743ua", vec![char('a')]),
+    ]);
+}
+
+#[test]
+fn caps_lock_is_dropped() {
+    check(&[(b"\x1b[99;69u", vec![ctrl('c')])]);
+}
+
+#[test]
+fn kitty_ctrl_i_stays_apart_from_tab() {
+    let ctrl_i = decoded(&[b"\x1b[105;5u"]);
+    assert_eq!(ctrl_i, vec![ctrl('i')]);
+    assert_ne!(ctrl_i, vec![key(KeyCode::Tab, Modifiers::CTRL)]);
+}
+
+#[test]
+fn bare_letters_from_kitty() {
+    check(&[
+        (b"\x1b[P", vec![plain(KeyCode::F(1))]),
+        (b"\x1b[Q", vec![plain(KeyCode::F(2))]),
+        (b"\x1b[S", vec![plain(KeyCode::F(4))]),
+        (b"\x1b[Ea", vec![char('a')]),
+    ]);
+}
+
+#[test]
+fn kitty_escape_decodes_at_once() {
+    let (inputs, held) = pushed(&[b"\x1b[27u"]);
+    assert_eq!(inputs, vec![escape()]);
+    assert!(!held);
+}
+
+#[test]
 fn kitty_sub_parameters_are_no_key() {
     check(&[
-        (b"\x1b[13:13;5ua", vec![char('a')]),
         (b"\x1b[13;5:1ua", vec![char('a')]),
         (b"\x1b[27;5:3;13~a", vec![char('a')]),
+        (b"\x1b[97:65:1:1;6ua", vec![char('a')]),
+    ]);
+}
+
+#[test]
+fn kitty_alternate_keys() {
+    check(&[
+        (
+            b"\x1b[49:33;4u",
+            vec![key(KeyCode::Char('!'), Modifiers::ALT)],
+        ),
+        (b"\x1b!", vec![key(KeyCode::Char('!'), Modifiers::ALT)]),
+        (b"\x1b[97:65;6u", vec![key(KeyCode::Char('A'), CTRL_SHIFT)]),
+        (b"\x1b[97;4u", vec![key(KeyCode::Char('A'), ALT_SHIFT)]),
+        (b"\x1bA", vec![key(KeyCode::Char('A'), ALT_SHIFT)]),
+        (
+            b"\x1b[1089::99;5u",
+            vec![key(KeyCode::Char('\u{0441}'), Modifiers::CTRL)],
+        ),
     ]);
 }
 

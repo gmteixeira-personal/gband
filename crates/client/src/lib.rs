@@ -21,7 +21,10 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use crossterm::cursor::{Hide, Show};
-use crossterm::event::{DisableBracketedPaste, EnableBracketedPaste};
+use crossterm::event::{
+    DisableBracketedPaste, EnableBracketedPaste, KeyboardEnhancementFlags,
+    PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
+};
 use crossterm::style::Print;
 use crossterm::terminal::{BeginSynchronizedUpdate, EndSynchronizedUpdate};
 use crossterm::{execute, queue};
@@ -164,6 +167,7 @@ async fn session(
     let outcome = {
         let _restore = TerminalGuard::enter()?;
         let mut terminal = ratatui::init();
+        request_keyboard_protocols(&mut stdout()).context("cannot request keyboard protocols")?;
         attach(
             &mut terminal,
             &mut connection,
@@ -186,6 +190,23 @@ struct TerminalGuard;
 const MOUSE_ON: &str = "\x1b[?1000h\x1b[?1002h\x1b[?1003h\x1b[?1006h";
 const MOUSE_OFF: &str = "\x1b[?1006l\x1b[?1003l\x1b[?1002l\x1b[?1000l";
 
+pub fn request_keyboard_protocols<W: Write>(writer: &mut W) -> std::io::Result<()> {
+    queue!(
+        writer,
+        Print("\x1b[>4;1m"),
+        PushKeyboardEnhancementFlags(
+            KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
+                | KeyboardEnhancementFlags::REPORT_ALTERNATE_KEYS
+        )
+    )?;
+    writer.flush()
+}
+
+pub fn release_keyboard_protocols<W: Write>(writer: &mut W) -> std::io::Result<()> {
+    queue!(writer, PopKeyboardEnhancementFlags, Print("\x1b[>4m"))?;
+    writer.flush()
+}
+
 impl TerminalGuard {
     fn enter() -> Result<Self> {
         execute!(stdout(), EnableBracketedPaste).context("cannot enable bracketed paste")?;
@@ -199,6 +220,7 @@ impl Drop for TerminalGuard {
         let _ = execute!(stdout(), EndSynchronizedUpdate);
         let _ = execute!(stdout(), Print(MOUSE_OFF));
         let _ = execute!(stdout(), DisableBracketedPaste);
+        let _ = release_keyboard_protocols(&mut stdout());
         ratatui::restore();
         let _ = execute!(stdout(), Show);
     }

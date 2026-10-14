@@ -55,6 +55,11 @@ async fn unknown_mode_reports_unrecognised() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn kitty_keyboard_query_stays_unanswered() {
-    program_reads("kitty", r"\033[?u\033[c", "\x1b[?62;22c").await;
+async fn kitty_keyboard_query_reports_the_flags() {
+    program_reads("kitty", r"\033[>1u\033[?u", "\x1b[?1u").await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn unsupported_query_stays_unanswered() {
+    program_reads("osc11", r"\033]11;?\033\\\033[c", "\x1b[?62;22c").await;
 }

@@ -163,6 +163,69 @@ fn reattach_keeps_modify_other_keys() {
 }
 
 #[test]
+fn shift_enter_reaches_a_program_that_pushed_kitty_flags() {
+    let env = TestEnv::new("kitty-shift-enter");
+    let mut client = Attached::start(&env, 80, 24);
+    client.wait_for_prompt();
+    let shell = client.shell_pid(&env);
+    client.run("clear; printf '\\033[>1u'; cat -v");
+    client.wait_for_child(shell, "cat");
+    client.send(b"\x1b[13;2u");
+    thread::sleep(Duration::from_millis(200));
+    client.send(b"\r");
+    client.wait_for_line("^[[13;2u");
+}
+
+#[test]
+fn reattach_keeps_kitty_shift_enter() {
+    let env = TestEnv::new("reattach-kitty");
+    let mut first = Attached::start(&env, 80, 24);
+    first.wait_for_prompt();
+    let shell = first.shell_pid(&env);
+    first.run("clear; printf '\\033[>1u'; cat -v");
+    first.wait_for_child(shell, "cat");
+    first.kill();
+
+    let mut second = Attached::start(&env, 80, 24);
+    thread::sleep(Duration::from_millis(300));
+    second.send(b"\x1b[13;2u");
+    thread::sleep(Duration::from_millis(200));
+    second.send(b"\r");
+    second.wait_for_line("^[[13;2u");
+}
+
+#[test]
+fn requests_on_attach() {
+    let env = TestEnv::new("kitty-requests");
+    let client = Attached::start(&env, 80, 24);
+    client.wait_for_prompt();
+    client.wait_for("kitty flags 1 and modifyOtherKeys 1", |screen| {
+        let modes = screen.modes();
+        modes.keyboard_flags == 1 && modes.modify_other_keys == 1
+    });
+}
+
+#[test]
+fn legacy_terminal_keys_still_reach_gband() {
+    let env = TestEnv::new("legacy-terminal");
+    without_bars(&env);
+    let mut client = Attached::start(&env, 80, 24);
+    client.wait_for_prompt();
+    client.shell_pid(&env);
+    client.send(b"\x00c");
+    client.wait_for("one tile from column 20", |screen| {
+        let tiles = tiles(screen);
+        tiles.len() == 1 && tiles[0].left == 20
+    });
+    client.send(b"\x00");
+    thread::sleep(Duration::from_millis(100));
+    client.send(b"\x1b");
+    thread::sleep(Duration::from_millis(100));
+    client.run("clear; echo legacy-ok");
+    client.wait_for_line("legacy-ok");
+}
+
+#[test]
 fn ctrl_enter_is_enter_without_modify_other_keys() {
     let env = TestEnv::new("legacy-ctrl-enter");
     let mut client = Attached::start(&env, 80, 24);
