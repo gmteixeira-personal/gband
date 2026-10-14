@@ -20,10 +20,11 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
-use crossterm::cursor::Show;
+use crossterm::cursor::{Hide, Show};
 use crossterm::event::{DisableBracketedPaste, EnableBracketedPaste};
-use crossterm::execute;
 use crossterm::style::Print;
+use crossterm::terminal::{BeginSynchronizedUpdate, EndSynchronizedUpdate};
+use crossterm::{execute, queue};
 use gband_core::action::{Action, ClientAction, SessionCommand};
 use gband_core::geometry::{Size, WindowBox, placed};
 use gband_core::input::Key;
@@ -43,8 +44,9 @@ use gband_lua::{
 use gband_protocol::{
     Answer, ClientMessage, ExecutableId, Operation, Requirement, ServerMessage, SessionName, Value,
 };
+use ratatui::backend::CrosstermBackend;
 use ratatui::layout::Rect;
-use ratatui::{DefaultTerminal, Frame};
+use ratatui::{DefaultTerminal, Frame, Terminal};
 use tokio::signal::unix::{SignalKind, signal};
 use tokio::sync::mpsc;
 
@@ -194,6 +196,7 @@ impl TerminalGuard {
 
 impl Drop for TerminalGuard {
     fn drop(&mut self) {
+        let _ = execute!(stdout(), EndSynchronizedUpdate);
         let _ = execute!(stdout(), Print(MOUSE_OFF));
         let _ = execute!(stdout(), DisableBracketedPaste);
         ratatui::restore();
@@ -2276,6 +2279,17 @@ fn spawn_input() -> mpsc::UnboundedReceiver<Vec<u8>> {
 }
 
 fn draw(terminal: &mut DefaultTerminal, display: &mut Display, now: Instant) -> Result<()> {
-    terminal.draw(|frame| display.draw(frame, now))?;
+    synchronized(terminal, |frame| display.draw(frame, now))?;
     Ok(())
+}
+
+pub fn synchronized<W: Write>(
+    terminal: &mut Terminal<CrosstermBackend<W>>,
+    render: impl FnOnce(&mut Frame<'_>),
+) -> std::io::Result<()> {
+    let drawn = queue!(terminal.backend_mut(), BeginSynchronizedUpdate, Hide)
+        .and_then(|()| terminal.draw(render).map(drop));
+    let ended = queue!(terminal.backend_mut(), EndSynchronizedUpdate)
+        .and_then(|()| terminal.backend_mut().flush());
+    drawn.and(ended)
 }
