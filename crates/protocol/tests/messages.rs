@@ -32,8 +32,8 @@ fn session(name: &str) -> SessionName {
 }
 
 #[test]
-fn protocol_version_is_fifteen() {
-    assert_eq!(PROTOCOL_VERSION, 15);
+fn protocol_version_is_sixteen() {
+    assert_eq!(PROTOCOL_VERSION, 16);
 }
 
 #[test]
@@ -89,6 +89,12 @@ fn requests_round_trip() {
     round_trip(ClientMessage::Attach {
         session: session("work"),
         cwd: PathBuf::from("/tmp"),
+        graphics: false,
+    });
+    round_trip(ClientMessage::Attach {
+        session: session("work"),
+        cwd: PathBuf::from("/tmp"),
+        graphics: true,
     });
     round_trip(ClientMessage::ListSessions);
     round_trip(ClientMessage::KillSession {
@@ -286,6 +292,14 @@ fn clipboard_round_trips() {
     round_trip(ServerMessage::Clipboard {
         window: WindowId(2),
         text: "hi".to_owned(),
+    });
+}
+
+#[test]
+fn graphics_round_trips() {
+    round_trip(ServerMessage::Graphics {
+        window: WindowId(2),
+        data: b"\x1b_Ga=T;AAAA\x1b\\".to_vec(),
     });
 }
 
@@ -792,21 +806,21 @@ fn focus_round_trip() {
 }
 
 #[test]
-fn version_fourteen_client_meets_a_version_fifteen_server() {
+fn version_fifteen_client_meets_a_version_sixteen_server() {
     let hello = encode(&Hello {
-        version: 14,
+        version: 15,
         cols: 80,
         rows: 24,
     })
     .unwrap();
     let version = leading_version(&hello[4..]).unwrap();
-    assert_eq!(version, 14);
+    assert_eq!(version, 15);
     assert_ne!(version, PROTOCOL_VERSION);
     assert_eq!(
         encode(&HelloReply::Rejected {
             version: PROTOCOL_VERSION
         })
         .unwrap(),
-        [0, 0, 0, 2, 0x01, 0x0f]
+        [0, 0, 0, 2, 0x01, 0x10]
     );
 }

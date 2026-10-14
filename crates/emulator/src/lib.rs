@@ -1,10 +1,13 @@
 mod callbacks;
+mod graphics;
 
 use gband_core::geometry::Size;
 use gband_core::input::{Modes, MouseEncoding, MouseTracking};
 
 use crate::callbacks::Callbacks;
 pub use crate::callbacks::{Record, decode_base64};
+use crate::graphics::Scanner;
+pub use crate::graphics::{GRAPHICS_LIMIT, query_reply};
 
 pub trait Emulator: Send + 'static {
     type Checkpoint: Clone + Send + Sync + 'static;
@@ -55,6 +58,9 @@ fn segment_end(bytes: &[u8]) -> Option<usize> {
 pub struct Vt100 {
     parser: vt100::Parser<Callbacks>,
     escape_pending: bool,
+    scanner: Scanner,
+    graphics: Vec<Vec<u8>>,
+    graphics_replies: bool,
 }
 
 impl Vt100 {
@@ -85,25 +91,16 @@ impl Vt100 {
     pub fn take_title_changed(&mut self) -> bool {
         std::mem::take(&mut self.parser.callbacks_mut().title_changed)
     }
-}
 
-impl Emulator for Vt100 {
-    type Checkpoint = vt100::Screen;
-    type Screen = vt100::Screen;
-
-    fn new(size: Size) -> Self {
-        Self {
-            parser: vt100::Parser::new_with_callbacks(
-                size.rows,
-                size.cols,
-                0,
-                Callbacks::default(),
-            ),
-            escape_pending: false,
-        }
+    pub fn take_graphics(&mut self) -> Vec<Vec<u8>> {
+        std::mem::take(&mut self.graphics)
     }
 
-    fn process(&mut self, bytes: &[u8]) {
+    pub fn answer_graphics_queries(&mut self, answer: bool) {
+        self.graphics_replies = answer;
+    }
+
+    fn feed(&mut self, bytes: &[u8]) {
         let mut rest = bytes;
         while !rest.is_empty() {
             let split_reset = self.escape_pending && rest[0] == b'c';
@@ -125,6 +122,46 @@ impl Emulator for Vt100 {
             }
             if entered_alternate {
                 callbacks.clear_keyboard_flags(true);
+            }
+            rest = &rest[end..];
+        }
+    }
+}
+
+impl Emulator for Vt100 {
+    type Checkpoint = vt100::Screen;
+    type Screen = vt100::Screen;
+
+    fn new(size: Size) -> Self {
+        Self {
+            parser: vt100::Parser::new_with_callbacks(
+                size.rows,
+                size.cols,
+                0,
+                Callbacks::default(),
+            ),
+            escape_pending: false,
+            scanner: Scanner::default(),
+            graphics: Vec::new(),
+            graphics_replies: false,
+        }
+    }
+
+    fn process(&mut self, bytes: &[u8]) {
+        let mut rest = bytes;
+        while !rest.is_empty() {
+            let (end, sequence) = self.scanner.scan(rest);
+            self.feed(&rest[..end]);
+            if let Some(sequence) = sequence {
+                if self.graphics_replies
+                    && let Some(reply) = query_reply(&sequence)
+                {
+                    self.parser
+                        .callbacks_mut()
+                        .write_back
+                        .extend_from_slice(&reply);
+                }
+                self.graphics.push(sequence);
             }
             rest = &rest[end..];
         }

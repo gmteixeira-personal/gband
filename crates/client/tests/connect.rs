@@ -86,6 +86,7 @@ async fn mismatched_server_is_kept_when_replacing_is_off() {
         .send(&ClientMessage::Attach {
             session: SessionName::default(),
             cwd: runtime_dir.clone(),
+            graphics: false,
         })
         .await
         .unwrap();

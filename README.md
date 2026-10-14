@@ -354,6 +354,16 @@ gband.set { window_clipboard = false }
 
 A `WindowClipboard` handler still runs with the option off, so it can copy from chosen windows with `gband.clipboard`; see [Plugins](#plugins).
 
+Programs in windows that show images with the kitty graphics protocol, such as yazi, chafa or an image preview, show them in your terminal by default when it supports kitty graphics.
+gband asks your terminal at startup whether it does, and forwards a window's graphics only to clients whose terminal answered.
+Images are placed with Unicode placeholders, so the program must carry the image id as a 24-bit RGB foreground or a 256-colour index of 16 or above.
+gband keeps no image: a client that attaches after an image was sent shows it only once the program sends it again.
+Turn it off in `user/init.lua`:
+
+```lua
+gband.set { window_graphics = false }
+```
+
 ## Scripting
 
 gband embeds a Lua runtime in the client and in the server.
@@ -479,6 +489,7 @@ The client options, set in `user/init.lua`, and their defaults:
 | `mouse_mod` | the modifiers that `mod` stands for in a mouse name: `ctrl`, `alt` and `shift` joined by `+` | `"alt"` |
 | `notify_style` | how a plugin's desktop notification reaches your terminal: `"osc9"`, `"osc777"`, `"bell"` or `"none"` | `"osc9"` |
 | `window_clipboard` | `true` or `false`: whether a window program's clipboard write sets your terminal's clipboard | `true` |
+| `window_graphics` | `true` or `false`: whether a window program's kitty graphics are forwarded to your terminal | `true` |
 
 The server options, set in `user/server.lua`, and their defaults:
 

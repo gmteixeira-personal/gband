@@ -123,6 +123,11 @@ impl TestServer {
         TestClient::attach_to(&self.socket(), session(name), cwd, cols, rows).await
     }
 
+    pub async fn attach_without_graphics(&self, cols: u16, rows: u16) -> TestClient {
+        let (peer, info) = TestClient::accepted(&self.socket(), cols, rows).await;
+        TestClient::attach_with(peer, info, SessionName::default(), Path::new("/"), false).await
+    }
+
     pub async fn control(&self, name: &str, target: Target, operation: Operation) -> ServerMessage {
         let (mut peer, _) = TestClient::accepted(&self.socket(), 80, 24).await;
         peer.send(&ClientMessage::Control {
@@ -265,6 +270,7 @@ pub struct TestClient {
     pub states: HashMap<WindowId, BTreeMap<String, Value>>,
     pub names: HashMap<WindowId, (String, Option<String>)>,
     pub clipboards: Vec<(WindowId, String)>,
+    pub graphics: Vec<(WindowId, Vec<u8>)>,
 }
 
 impl TestClient {
@@ -304,14 +310,25 @@ impl TestClient {
     }
 
     pub async fn attach_over(
-        mut peer: Peer,
+        peer: Peer,
         info: ServerMessage,
         session: SessionName,
         cwd: &Path,
     ) -> Self {
+        Self::attach_with(peer, info, session, cwd, true).await
+    }
+
+    pub async fn attach_with(
+        mut peer: Peer,
+        info: ServerMessage,
+        session: SessionName,
+        cwd: &Path,
+        graphics: bool,
+    ) -> Self {
         peer.send(&ClientMessage::Attach {
             session,
             cwd: cwd.to_path_buf(),
+            graphics,
         })
         .await;
         let mut client = Self {
@@ -327,6 +344,7 @@ impl TestClient {
             states: HashMap::new(),
             names: HashMap::new(),
             clipboards: Vec::new(),
+            graphics: Vec::new(),
         };
         match client.receive().await {
             Some(ServerMessage::Layout { .. }) => {}
@@ -479,6 +497,9 @@ impl TestClient {
             }
             ServerMessage::Clipboard { window, text } => {
                 self.clipboards.push((*window, text.clone()));
+            }
+            ServerMessage::Graphics { window, data } => {
+                self.graphics.push((*window, data.clone()));
             }
             ServerMessage::WindowState { window, key, value } => {
                 let state = self.states.entry(*window).or_default();

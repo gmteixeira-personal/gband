@@ -156,17 +156,20 @@ async fn session(
     prepared: Prepared,
 ) -> Result<Report> {
     let mut connection = connect(config, transport, display.reported_size()).await?;
-    connection
-        .send(&ClientMessage::Attach {
-            session: config.session.clone(),
-            cwd,
-        })
-        .await?;
-    tracing::info!(pid = connection.pid, session = %config.session, "attached");
     let stale_server = connection.stale_server;
     let outcome = {
         let _restore = TerminalGuard::enter()?;
         let mut terminal = ratatui::init();
+        let mut input = Input::spawn();
+        let graphics = input.probe_graphics().await? && display.window_graphics;
+        connection
+            .send(&ClientMessage::Attach {
+                session: config.session.clone(),
+                cwd,
+                graphics,
+            })
+            .await?;
+        tracing::info!(pid = connection.pid, session = %config.session, graphics, "attached");
         request_keyboard_protocols(&mut stdout()).context("cannot request keyboard protocols")?;
         attach(
             &mut terminal,
@@ -174,6 +177,7 @@ async fn session(
             display,
             controls,
             prepared,
+            input,
             &config.session,
         )
         .await?
@@ -273,6 +277,7 @@ pub struct Display {
     titles_allowed: bool,
     window_titles: bool,
     window_clipboard: bool,
+    window_graphics: bool,
     ready: bool,
     tile_border: Border,
     floating_border: Border,
@@ -320,6 +325,7 @@ impl Display {
             titles_allowed: true,
             window_titles: true,
             window_clipboard: true,
+            window_graphics: true,
             ready: false,
             tile_border: Border::default(),
             floating_border: Border::default(),
@@ -728,6 +734,7 @@ impl Display {
         self.focused_floating_chars = options.focused_floating_border_chars.clone();
         self.window_titles = options.window_titles;
         self.window_clipboard = options.window_clipboard;
+        self.window_graphics = options.window_graphics;
         self.presentation.set_animations(options.animations);
         self.presentation
             .set_speed(options.animation_speed, Instant::now());
@@ -1040,6 +1047,7 @@ impl Display {
             | ServerMessage::Event { .. }
             | ServerMessage::WindowState { .. }
             | ServerMessage::Clipboard { .. }
+            | ServerMessage::Graphics { .. }
             | ServerMessage::Result { .. }
             | ServerMessage::Requirements(_)
             | ServerMessage::ServerError(_) => {
@@ -1508,6 +1516,7 @@ impl Controls {
         let mut calls = Vec::new();
         let mut reloaded = false;
         let mut copies = Vec::new();
+        let mut images = Vec::new();
         let messages: Vec<ServerMessage> = messages
             .into_iter()
             .filter_map(|message| match message {
@@ -1526,6 +1535,10 @@ impl Controls {
             for message in messages {
                 if let ServerMessage::Opened { request, window } = message {
                     controls.opened(display, request, window, steps);
+                    continue;
+                }
+                if let ServerMessage::Graphics { data, .. } = message {
+                    images.push(data);
                     continue;
                 }
                 if let ServerMessage::Clipboard { text, .. } = &message {
@@ -1555,6 +1568,9 @@ impl Controls {
                 steps: Vec::new(),
                 outcome,
             };
+        }
+        if display.window_graphics {
+            steps.extend(images.into_iter().map(Step::Write));
         }
         if display.window_clipboard {
             steps.extend(
@@ -2116,17 +2132,28 @@ async fn attach(
     mut display: Display,
     mut controls: Controls,
     prepared: Prepared,
+    input: Input,
     session: &SessionName,
 ) -> Result<Outcome> {
-    let mut chunks = spawn_input();
+    let Input {
+        mut chunks,
+        read: mut unread,
+        pending,
+    } = input;
     let mut decoder = Decoder::new();
-    let mut inputs = VecDeque::new();
-    let mut unread = 0;
-    let mut held = None;
+    let mut inputs: VecDeque<TerminalInput> = decoder.push(&pending).into_iter().collect();
+    let mut held = decoder
+        .holds()
+        .then(|| tokio::time::Instant::now() + ESCAPE_TIME);
     let mut window_changes =
         signal(SignalKind::window_change()).context("cannot watch for terminal resizes")?;
     let mut reloads = prepared.reloads;
     let mut channel = prepared.channel.map(Channel::new).transpose()?;
+    if let Some(channel) = &mut channel {
+        channel
+            .read(std::mem::take(&mut unread), decoder.holds())
+            .await?;
+    }
     controls.attach_when_ready(session.as_str());
     if let Some(outcome) = perform(connection, &mut controls, &mut display, prepared.placed).await?
     {
@@ -2277,6 +2304,84 @@ async fn deliver(
         TerminalInput::Focus(_) => return Ok(None),
     };
     perform(connection, controls, display, steps).await
+}
+
+pub const GRAPHICS_QUERY: &str = "\x1b_Gi=1,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\";
+const PRIMARY_ATTRIBUTES: &str = "\x1b[c";
+const PROBE_TIMEOUT: Duration = Duration::from_secs(1);
+
+fn find(bytes: &[u8], needle: &[u8]) -> Option<usize> {
+    bytes
+        .windows(needle.len())
+        .position(|window| window == needle)
+}
+
+fn graphics_reply_end(bytes: &[u8]) -> Option<usize> {
+    let start = find(bytes, b"\x1b_G")?;
+    find(&bytes[start..], b"\x1b\\").map(|end| start + end + 2)
+}
+
+fn attributes_reply(bytes: &[u8]) -> Option<(usize, usize)> {
+    let mut from = 0;
+    while let Some(found) = find(&bytes[from..], b"\x1b[?") {
+        let start = from + found;
+        let params = start + 3;
+        let length = bytes[params..]
+            .iter()
+            .take_while(|&&byte| byte.is_ascii_digit() || byte == b';')
+            .count();
+        if bytes.get(params + length) == Some(&b'c') {
+            return Some((start, params + length + 1));
+        }
+        from = params;
+    }
+    None
+}
+
+pub fn graphics_probe(replies: &[u8]) -> Option<(bool, usize)> {
+    let (start, end) = attributes_reply(replies)?;
+    let graphics = graphics_reply_end(&replies[..start]).is_some();
+    Some((graphics, end))
+}
+
+struct Input {
+    chunks: mpsc::UnboundedReceiver<Vec<u8>>,
+    read: u64,
+    pending: Vec<u8>,
+}
+
+impl Input {
+    fn spawn() -> Self {
+        Self {
+            chunks: spawn_input(),
+            read: 0,
+            pending: Vec::new(),
+        }
+    }
+
+    async fn probe_graphics(&mut self) -> Result<bool> {
+        let mut out = stdout();
+        write!(out, "{GRAPHICS_QUERY}{PRIMARY_ATTRIBUTES}")
+            .and_then(|()| out.flush())
+            .context("cannot query the terminal for kitty graphics")?;
+        let deadline = tokio::time::Instant::now() + PROBE_TIMEOUT;
+        let mut replies = Vec::new();
+        let (graphics, end) = loop {
+            if let Some(probed) = graphics_probe(&replies) {
+                break probed;
+            }
+            match tokio::time::timeout_at(deadline, self.chunks.recv()).await {
+                Ok(Some(chunk)) => replies.extend(chunk),
+                Ok(None) | Err(_) => {
+                    let end = graphics_reply_end(&replies);
+                    break (end.is_some(), end.unwrap_or(0));
+                }
+            }
+        };
+        self.read = replies.len() as u64;
+        self.pending = replies.split_off(end);
+        Ok(graphics)
+    }
 }
 
 fn spawn_input() -> mpsc::UnboundedReceiver<Vec<u8>> {

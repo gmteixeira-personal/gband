@@ -14,7 +14,7 @@ use tracing::Instrument;
 use crate::event::{Bus, Published, SessionEvent};
 use crate::hub::Hub;
 use crate::scripting::Taps;
-use crate::session::{self, Command, Session, SessionConfig, State};
+use crate::session::{self, Command, Graphics, Session, SessionConfig, State};
 
 pub struct SessionHandle {
     id: u64,
@@ -23,6 +23,7 @@ pub struct SessionHandle {
     pub state: watch::Receiver<Arc<State>>,
     pub changed: watch::Receiver<u64>,
     pub clipboards: Arc<AtomicU64>,
+    pub graphics: Arc<Graphics>,
     pub ended: watch::Receiver<bool>,
     pub clients: AtomicU32,
     pub events: Bus,
@@ -149,6 +150,7 @@ impl Registry {
             state: session.state(),
             changed: session.changed(),
             clipboards: session.clipboards(),
+            graphics: session.graphics(),
             ended,
             clients: AtomicU32::new(0),
             events: session.events(),
