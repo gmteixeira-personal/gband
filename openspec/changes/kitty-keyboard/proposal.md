@@ -17,6 +17,7 @@ Shift+Enter and Ctrl+Enter reach Claude Code as plain Enter when it runs in a gb
 ### Modified Capabilities
 - `input-encoding`: a new requirement "Keyboard protocols of the user's terminal" covers the attach and detach sequences, a new requirement "Kitty keyboard encoding" covers keys for windows with the disambiguate flag, "Keys from the terminal's bytes" reads the kitty forms, and "Encoding inputs" adds the window's kitty flags to the modes an encoding depends on.
 - `terminal-emulator`: a new requirement "Kitty keyboard flags" covers push, pop, set, query, the per-screen stacks, full reset and snapshots.
+- `session-server`: "Terminal query replies" answers the kitty keyboard query `\e[?u` with the flags of the screen in use, and its unanswered example becomes the background color query.
 
 ## Impact
 
