@@ -10,6 +10,8 @@ pub enum Record {
 
 const TITLE_STACK_DEPTH: usize = 10;
 
+pub const CLIPBOARD_LIMIT: usize = 1 << 20;
+
 #[derive(Default)]
 pub struct Callbacks {
     pub write_back: Vec<u8>,
@@ -17,6 +19,7 @@ pub struct Callbacks {
     pub title: Option<String>,
     pub title_changed: bool,
     pub modify_other_keys: u8,
+    pub clipboard: Option<String>,
     title_stack: Vec<Option<String>>,
 }
 
@@ -125,14 +128,18 @@ impl vt100::Callbacks for Callbacks {
     }
 
     fn copy_to_clipboard(&mut self, _: &mut Screen, ty: &[u8], data: &[u8]) {
-        if ty != b"c" {
+        if !ty.is_empty() && !ty.contains(&b'c') {
             return;
         }
-        if let Some(text) = decode_base64(data) {
-            self.record(Record::Clipboard(
-                String::from_utf8_lossy(&text).into_owned(),
-            ));
+        let Some(decoded) = decode_base64(data) else {
+            return;
+        };
+        if decoded.len() > CLIPBOARD_LIMIT {
+            return;
         }
+        let text = String::from_utf8_lossy(&decoded).into_owned();
+        self.record(Record::Clipboard(text.clone()));
+        self.clipboard = Some(text);
     }
 
     fn set_window_title(&mut self, _: &mut Screen, title: &[u8]) {
@@ -304,8 +311,39 @@ mod tests {
             recorded(b"\x1b]52;c;aGVsbG8gd29ybGQ=\x07"),
             [Record::Clipboard("hello world".to_owned())]
         );
+        assert_eq!(
+            recorded(b"\x1b]52;;aGk=\x1b\\"),
+            [Record::Clipboard("hi".to_owned())]
+        );
+        assert_eq!(
+            recorded(b"\x1b]52;pc;aGk=\x07"),
+            [Record::Clipboard("hi".to_owned())]
+        );
         assert_eq!(recorded(b"\x1b]52;p;aGk=\x07"), []);
         assert_eq!(recorded(b"\x1b]52;c;?\x07"), []);
+        assert_eq!(recorded(b"\x1b]52;c;a*b=\x07"), []);
+        let at_limit = gband_base64(&vec![b'x'; crate::callbacks::CLIPBOARD_LIMIT]);
+        assert_eq!(
+            recorded(format!("\x1b]52;c;{at_limit}\x07").as_bytes()).len(),
+            1
+        );
+        let over_limit = gband_base64(&vec![b'x'; crate::callbacks::CLIPBOARD_LIMIT + 1]);
+        assert_eq!(
+            recorded(format!("\x1b]52;c;{over_limit}\x07").as_bytes()),
+            []
+        );
+    }
+
+    #[test]
+    fn take_clipboard_returns_the_latest_write_without_records() {
+        let mut grid = Grid::new(Size::new(80, 24));
+        grid.process(b"\x1b]52;c;YQ==\x07\x1b]52;c;Yg==\x07");
+        assert_eq!(grid.take_clipboard().as_deref(), Some("b"));
+        assert_eq!(grid.take_clipboard(), None);
+        grid.process(b"\x1b]52;c;?\x07\x1b]52;p;aGk=\x07");
+        assert_eq!(grid.take_clipboard(), None);
+        assert!(grid.take_write_back().is_empty());
+        assert_eq!(grid.take_records(), []);
     }
 
     #[test]

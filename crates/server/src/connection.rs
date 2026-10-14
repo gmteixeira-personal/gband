@@ -99,6 +99,7 @@ struct Sent {
     state: Option<Arc<State>>,
     windows: HashMap<WindowId, (u64, Seen)>,
     names: HashMap<WindowId, u64>,
+    clipboard: u64,
 }
 
 pub async fn serve(
@@ -324,7 +325,10 @@ async fn attach(
 
     let mut changed = session.changed.clone();
     changed.borrow_and_update();
-    let mut sent = Sent::default();
+    let mut sent = Sent {
+        clipboard: session.clipboards.load(Ordering::Acquire),
+        ..Sent::default()
+    };
     sync(&mut link.writer, &session, &mut sent, &context.hub.settling).await?;
 
     let (deliveries_tx, mut deliveries) = mpsc::unbounded_channel();
@@ -615,6 +619,18 @@ async fn sync(
             manual: names.manual,
         };
         deliver(writer, &message, settling).await?;
+    }
+    let latest = state
+        .layout
+        .windows()
+        .filter_map(|window| Some((window, state.windows.get(&window)?)))
+        .max_by_key(|(_, entry)| entry.window.clipboard_stamp());
+    if let Some((window, entry)) = latest
+        && let Some((stamp, text)) = entry.window.clipboard()
+        && stamp > sent.clipboard
+    {
+        sent.clipboard = stamp;
+        deliver(writer, &ServerMessage::Clipboard { window, text }, settling).await?;
     }
     Ok(())
 }

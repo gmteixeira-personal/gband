@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::ffi::OsString;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
 use std::time::{Duration, Instant as StdInstant};
 
 use anyhow::{Result, bail};
@@ -121,6 +122,7 @@ pub struct Session {
     plugins: HashMap<WindowId, PluginWindow>,
     state: watch::Sender<Arc<State>>,
     changed: Arc<watch::Sender<u64>>,
+    clipboards: Arc<AtomicU64>,
     exits: mpsc::UnboundedSender<WindowExit>,
     last_status: Option<ExitStatus>,
     shown: HashMap<u64, HashSet<WindowId>>,
@@ -143,6 +145,7 @@ impl Session {
                 windows: HashMap::new(),
             })),
             changed: Arc::new(watch::Sender::new(0)),
+            clipboards: Arc::default(),
             exits,
             last_status: None,
             shown: HashMap::new(),
@@ -167,6 +170,10 @@ impl Session {
 
     pub fn changed(&self) -> watch::Receiver<u64> {
         self.changed.subscribe()
+    }
+
+    pub fn clipboards(&self) -> Arc<AtomicU64> {
+        Arc::clone(&self.clipboards)
     }
 
     pub fn events(&self) -> Bus {
@@ -461,7 +468,7 @@ impl Session {
     fn open_plugin(&mut self, client: u64, placement: Placement) -> Option<WindowId> {
         let id = self.place(&placement)?;
         let size = self.terminal_size(id).expect("an opened window has a tile");
-        let entry = Window::blank(size, &self.changed);
+        let entry = Window::blank(size, &self.changed, &self.clipboards);
         self.plugins.insert(
             id,
             PluginWindow {
@@ -500,7 +507,7 @@ impl Session {
             size,
             taps: &self.config.taps,
         };
-        match window::spawn(request, &self.changed, self.exits.clone()) {
+        match window::spawn(request, &self.changed, &self.clipboards, self.exits.clone()) {
             Ok(spawned) => {
                 self.windows.insert(
                     id,

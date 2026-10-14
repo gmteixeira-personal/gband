@@ -264,6 +264,7 @@ pub struct TestClient {
     pub bridge: Vec<ServerMessage>,
     pub states: HashMap<WindowId, BTreeMap<String, Value>>,
     pub names: HashMap<WindowId, (String, Option<String>)>,
+    pub clipboards: Vec<(WindowId, String)>,
 }
 
 impl TestClient {
@@ -325,6 +326,7 @@ impl TestClient {
             bridge: Vec::new(),
             states: HashMap::new(),
             names: HashMap::new(),
+            clipboards: Vec::new(),
         };
         match client.receive().await {
             Some(ServerMessage::Layout { .. }) => {}
@@ -345,6 +347,7 @@ impl TestClient {
             match client.receive().await {
                 Some(ServerMessage::Requirements(_)) => return client,
                 Some(ServerMessage::WindowName { .. }) if !states => {}
+                Some(ServerMessage::Clipboard { .. }) => {}
                 Some(ServerMessage::WindowState { .. }) => states = true,
                 other => panic!(
                     "expected window names, then window states, then requirements, got {other:?}"
@@ -473,6 +476,9 @@ impl TestClient {
                 assert!(self.grids.contains_key(window), "name before a snapshot");
                 self.names
                     .insert(*window, (automatic.clone(), manual.clone()));
+            }
+            ServerMessage::Clipboard { window, text } => {
+                self.clipboards.push((*window, text.clone()));
             }
             ServerMessage::WindowState { window, key, value } => {
                 let state = self.states.entry(*window).or_default();

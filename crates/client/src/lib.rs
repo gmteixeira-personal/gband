@@ -38,7 +38,7 @@ use gband_lua::{
     BandState, Bar, Binding, Border, BorderChars, ClientStyles, Config, ConfigError,
     DecorationInfo, DecorationSpan, Dispatch, Event, Options, Outcome as Ran, Palette,
     PluginManifest, PluginWindowRequest, Requirement as Needed, Runtime, Side, Slot, Version,
-    ViewState, WindowInput, WindowName, WindowNames, WindowStates,
+    ViewState, WindowInput, WindowName, WindowNames, WindowStates, clipboard_sequence,
 };
 use gband_protocol::{
     Answer, ClientMessage, ExecutableId, Operation, Requirement, ServerMessage, SessionName, Value,
@@ -247,6 +247,7 @@ pub struct Display {
     shown_names: Arc<WindowNames>,
     titles_allowed: bool,
     window_titles: bool,
+    window_clipboard: bool,
     ready: bool,
     tile_border: Border,
     floating_border: Border,
@@ -293,6 +294,7 @@ impl Display {
             shown_names: Arc::new(WindowNames::new()),
             titles_allowed: true,
             window_titles: true,
+            window_clipboard: true,
             ready: false,
             tile_border: Border::default(),
             floating_border: Border::default(),
@@ -700,6 +702,7 @@ impl Display {
         self.focused_tile_chars = options.focused_tile_border_chars.clone();
         self.focused_floating_chars = options.focused_floating_border_chars.clone();
         self.window_titles = options.window_titles;
+        self.window_clipboard = options.window_clipboard;
         self.presentation.set_animations(options.animations);
         self.presentation
             .set_speed(options.animation_speed, Instant::now());
@@ -1011,6 +1014,7 @@ impl Display {
             ServerMessage::Opened { .. }
             | ServerMessage::Event { .. }
             | ServerMessage::WindowState { .. }
+            | ServerMessage::Clipboard { .. }
             | ServerMessage::Result { .. }
             | ServerMessage::Requirements(_)
             | ServerMessage::ServerError(_) => {
@@ -1403,6 +1407,9 @@ impl Controls {
                 queued,
                 time,
             }),
+            ServerMessage::Clipboard { window, text } => {
+                self.pending.push(Event::WindowClipboard { window, text });
+            }
             ServerMessage::Result { call, result } => {
                 let outcome = self.runtime.answer(call, result);
                 self.apply(display, outcome, steps);
@@ -1475,6 +1482,7 @@ impl Controls {
         let mut outcome = None;
         let mut calls = Vec::new();
         let mut reloaded = false;
+        let mut copies = Vec::new();
         let messages: Vec<ServerMessage> = messages
             .into_iter()
             .filter_map(|message| match message {
@@ -1495,10 +1503,14 @@ impl Controls {
                     controls.opened(display, request, window, steps);
                     continue;
                 }
+                if let ServerMessage::Clipboard { text, .. } = &message {
+                    copies.push(text.clone());
+                }
                 if matches!(
                     message,
                     ServerMessage::WindowState { .. }
                         | ServerMessage::Event { .. }
+                        | ServerMessage::Clipboard { .. }
                         | ServerMessage::Result { .. }
                         | ServerMessage::Requirements(_)
                         | ServerMessage::ServerError(_)
@@ -1518,6 +1530,14 @@ impl Controls {
                 steps: Vec::new(),
                 outcome,
             };
+        }
+        if display.window_clipboard {
+            steps.extend(
+                copies
+                    .iter()
+                    .filter_map(|text| clipboard_sequence(text.as_bytes()))
+                    .map(Step::Write),
+            );
         }
         if reloaded {
             steps.extend(self.server_reloaded(display));

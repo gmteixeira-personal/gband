@@ -343,6 +343,17 @@ Most terminals, such as kitty, Alacritty, WezTerm, foot and those built on VTE, 
 Copying to the clipboard needs OSC 52 allowed in the terminal: kitty's `clipboard_control` must include `write-clipboard`, and tmux needs `set-clipboard on`.
 Without it, the copy buffer still pastes inside gband.
 
+Programs in windows, such as Claude Code or neovim, copy to your clipboard by default: gband forwards their OSC 52 clipboard writes to your terminal.
+gband never answers a program asking to read the clipboard.
+Any output written to a window can then replace your clipboard, such as `cat` of an untrusted file or a remote host reached through nested ssh.
+Turn it off in `user/init.lua`:
+
+```lua
+gband.set { window_clipboard = false }
+```
+
+A `WindowClipboard` handler still runs with the option off, so it can copy from chosen windows with `gband.clipboard`; see [Plugins](#plugins).
+
 ## Scripting
 
 gband embeds a Lua runtime in the client and in the server.
@@ -467,6 +478,7 @@ The client options, set in `user/init.lua`, and their defaults:
 | `height_step` | how much growing or shrinking changes a window's height, as a fraction of the screen, at most 1 | `1/10` |
 | `mouse_mod` | the modifiers that `mod` stands for in a mouse name: `ctrl`, `alt` and `shift` joined by `+` | `"alt"` |
 | `notify_style` | how a plugin's desktop notification reaches your terminal: `"osc9"`, `"osc777"`, `"bell"` or `"none"` | `"osc9"` |
+| `window_clipboard` | `true` or `false`: whether a window program's clipboard write sets your terminal's clipboard | `true` |
 
 The server options, set in `user/server.lua`, and their defaults:
 
