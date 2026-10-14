@@ -75,6 +75,7 @@ The client SHALL emit these events, and no other built-in events:
 | `ColorschemeChanged` | `name`, `previous`: colorscheme names | a colorscheme loads after the configuration has loaded, as the colorschemes capability defines |
 | `ServerEvent` | `name`, `data`, `queued`, `time` | the server sends an event, as the plugin-bridge capability defines |
 | `WindowStateChanged` | `window`, `key`, `value`, `previous` | the server changes a window's state, as the plugin-bridge capability defines |
+| `WindowClipboard` | `window`: the writing window's number, `text`: the text it wrote | the server forwards a clipboard write of a window program, as the window-clipboard capability defines |
 | `MousePressed` | `button`, and the mouse fields | the user presses a mouse button |
 | `MouseReleased` | `button`, and the mouse fields | the user releases a mouse button |
 | `MouseDragged` | `button`, and the mouse fields | the pointer moves to another cell while a button is held |
@@ -167,6 +168,10 @@ The first layout after attaching SHALL emit no `WindowOpened` and no `LayoutChan
 #### Scenario: Wheel event
 - **WHEN** a handler of `MouseScrolled` is registered and the user turns the wheel two steps up over empty ribbon
 - **THEN** the handler runs twice with `direction` `"up"`, `target` `"ribbon"`, and `box_col`, `box_row`, `box_width` and `box_height` nil
+
+#### Scenario: Clipboard write of a window
+- **WHEN** the program in window 3 writes `\x1b]52;c;aGk=\x07`
+- **THEN** `WindowClipboard` runs once with `window` 3 and `text` `"hi"`
 
 ### Requirement: Actions from handlers
 A handler MAY call action values, `gband.spawn` and `gband.keymap.enter` as a binding function does. The actions it dispatches SHALL run after it returns, in the order dispatched. Events that those actions cause SHALL be emitted in turn. An event emitted while ten events are already being delivered, each caused by the one before, SHALL NOT be delivered, and the process SHALL record a warning in its log.
