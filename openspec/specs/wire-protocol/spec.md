@@ -23,7 +23,7 @@ Every message in either direction SHALL be sent as one frame. A frame is a 4-byt
 - **AND** it keeps serving its other clients
 
 ### Requirement: Handshake
-The first frame a client sends SHALL be a hello. The hello's payload SHALL begin with the client's protocol version, encoded the same way in every protocol version, followed by the client's terminal size. The first frame the server sends SHALL answer it. The server SHALL decode the leading version on its own, and compare it with its own version before it decodes anything that follows it. When the versions differ, the answer SHALL reject the client and carry the server's protocol version, whatever bytes follow the version, and the server SHALL then close the connection. When the versions are equal and the rest of the hello decodes, the answer SHALL accept the client and carry the server's protocol version. The leading version and the answer SHALL keep the same encoding in every later protocol version, so that two versions can always detect each other. The fields after the leading version MAY change in a later protocol version. The current protocol version SHALL be 15.
+The first frame a client sends SHALL be a hello. The hello's payload SHALL begin with the client's protocol version, encoded the same way in every protocol version, followed by the client's terminal size. The first frame the server sends SHALL answer it. The server SHALL decode the leading version on its own, and compare it with its own version before it decodes anything that follows it. When the versions differ, the answer SHALL reject the client and carry the server's protocol version, whatever bytes follow the version, and the server SHALL then close the connection. When the versions are equal and the rest of the hello decodes, the answer SHALL accept the client and carry the server's protocol version. The leading version and the answer SHALL keep the same encoding in every later protocol version, so that two versions can always detect each other. The fields after the leading version MAY change in a later protocol version. The current protocol version SHALL be 16.
 
 #### Scenario: Matching versions
 - **WHEN** a version 2 client sends its hello to a version 2 server
@@ -94,6 +94,10 @@ The first frame a client sends SHALL be a hello. The hello's payload SHALL begin
 #### Scenario: Version 14 client meets a version 15 server
 - **WHEN** a client speaking protocol version 14 sends its hello to a server speaking version 15
 - **THEN** the server rejects it with version 15 and closes the connection
+
+#### Scenario: Version 15 client meets a version 16 server
+- **WHEN** a client speaking protocol version 15 sends its hello to a server speaking version 16
+- **THEN** the server rejects it with version 16 and closes the connection
 
 ### Requirement: Client messages
 After an attach request, a client SHALL send only these messages:
@@ -221,6 +225,7 @@ After the handshake, a server SHALL send only these messages:
 | window state | a window identifier, a key, and the key's new value as a plain data value, or nothing when the key was removed |
 | window name | a window identifier, the window's automatic name, and its manual name, or nothing when it has none |
 | clipboard | a window identifier, and the text that window's program wrote to the clipboard, as the window-clipboard capability defines |
+| graphics | a window identifier, and the bytes of one kitty graphics sequence that window's program wrote, as the window-graphics capability defines |
 | result | a call number from a command message, and either the command's result as a plain data value or an error message |
 | requirements | for each plugin the server requires in the client, its name and its requirement |
 | server error | the text of a configuration or plugin error of the server's Lua |
@@ -228,7 +233,7 @@ After the handshake, a server SHALL send only these messages:
 | control | a call number chosen by the server, and one control operation, as "Control operations" in "Requests" defines |
 | control results | the answers to a control request, as "Requests" defines |
 
-The server SHALL send info exactly once, as its first message after accepting the hello, before any answer to a request. An executable's identity SHALL be the device and inode of the file the process was started from, taken when the process starts, so that replacing the file on disk, as a rebuild does, gives a new identity. The layout, snapshot, update, focus, opened, exited, window state, window name and clipboard messages SHALL concern only the session the client attached to, and the result messages only the client's own calls. After the layout and the snapshots of an attach, the server SHALL send, in this order, a window name message for each window that runs a program, a window state message for each key of each window state of the session, one requirements message, the latest server error if any, and the queued events for the client; and only then any later message.
+The server SHALL send info exactly once, as its first message after accepting the hello, before any answer to a request. An executable's identity SHALL be the device and inode of the file the process was started from, taken when the process starts, so that replacing the file on disk, as a rebuild does, gives a new identity. The layout, snapshot, update, focus, opened, exited, window state, window name, clipboard and graphics messages SHALL concern only the session the client attached to, and the result messages only the client's own calls. After the layout and the snapshots of an attach, the server SHALL send, in this order, a window name message for each window that runs a program, a window state message for each key of each window state of the session, one requirements message, the latest server error if any, and the queued events for the client; and only then any later message.
 
 A client SHALL keep one grid per window. It SHALL build a window's grid by replacing it with a new empty grid of the snapshot's size on every snapshot of that window, then feeding the snapshot's output into it, and by feeding each update's output for that window into its current grid. It SHALL discard the grid of a window that the latest layout does not hold.
 
@@ -252,10 +257,6 @@ A client SHALL keep one grid per window. It SHALL build a window's grid by repla
 #### Scenario: Sessions round trip
 - **WHEN** a sessions message holding `default` with 1 window and 0 clients and `work` with 2 windows and 1 client is framed and decoded
 - **THEN** the decoded message equals the original
-
-#### Scenario: Session ends
-- **WHEN** the last window of a client's session leaves the layout
-- **THEN** that client receives exited as its last message
 
 #### Scenario: Heights in the layout
 - **WHEN** a column holds window 1 with a fixed height of 14 rows and window 2 with an automatic height of weight 10/7, and the server sends the layout
@@ -289,12 +290,20 @@ A client SHALL keep one grid per window. It SHALL build a window's grid by repla
 - **WHEN** a clipboard message naming window 2 and the text `hi` is framed and decoded
 - **THEN** the decoded message equals the original
 
+#### Scenario: Graphics round trip
+- **WHEN** a graphics message naming window 2 and the bytes `\x1b_Ga=T;AAAA\x1b\\` is framed and decoded
+- **THEN** the decoded message equals the original
+
+#### Scenario: Session ends
+- **WHEN** the last window of a client's session leaves the layout
+- **THEN** that client receives exited as its last message
+
 ### Requirement: Requests
 After the server's info, the first message a client sends SHALL be one request:
 
 | request | content | server's answer |
 |---|---|---|
-| attach | a session name, and the client's working directory | the layout, then a snapshot of each window, of the session it attaches the client to |
+| attach | a session name, the client's working directory, and whether its terminal supports kitty graphics | the layout, then a snapshot of each window, of the session it attaches the client to |
 | list sessions | nothing | one sessions message, then it closes the connection |
 | kill session | a session name | killed once the session has ended, or no such session, then it closes the connection |
 | control | a session name, a target, and one control operation | control results once every addressed process has answered or timed out, or no such session, then it closes the connection |
@@ -323,8 +332,8 @@ The server SHALL answer a control request with one control results message that 
 - **THEN** the server closes the connection
 
 #### Scenario: Request round trip
-- **WHEN** an attach request naming `work` with the working directory `/tmp` is framed and decoded
-- **THEN** the decoded request equals the original
+- **WHEN** an attach request naming `work`, the working directory `/tmp` and graphics support is framed and decoded
+- **THEN** the decoded request equals the original, graphics support included
 
 #### Scenario: Control request answered by every client
 - **WHEN** two clients are attached to `work` and a third connection sends a control request for `work` with the target every client and the operation errors

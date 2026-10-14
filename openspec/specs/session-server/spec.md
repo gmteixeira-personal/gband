@@ -422,7 +422,7 @@ When a window's program exits, the window SHALL leave its session's layout once 
 - **THEN** the drawn window leaves the layout, the client is told the session ended, and the server exits with status 0
 
 ### Requirement: Terminal query replies
-The server SHALL answer the terminal queries in the table below when the window's program writes them to its PTY. It SHALL write each reply to that PTY after the grid has processed every byte the program wrote before the query. It SHALL answer whether or not a client is attached, and SHALL NOT send replies to clients. Replies and client input SHALL reach the PTY as whole sequences, never interleaved within one another. Positions are 1-based, counted from the top-left cell of the server's own screen of the window. `<version>` is the package version of the running server.
+The server SHALL answer the terminal queries in the table below when the window's program writes them to its PTY. It SHALL write each reply to that PTY after the grid has processed every byte the program wrote before the query. It SHALL answer the queries in the table whether or not a client is attached, and SHALL NOT send replies to clients. Replies and client input SHALL reach the PTY as whole sequences, never interleaved within one another. Positions are 1-based, counted from the top-left cell of the server's own screen of the window. `<version>` is the package version of the running server.
 
 | query | written by the program | reply |
 |---|---|---|
@@ -436,7 +436,7 @@ The server SHALL answer the terminal queries in the table below when the window'
 
 In a DEC private mode report, `<state>` SHALL be `1` when the mode is set and `2` when it is reset, for the modes 1, 9, 25, 47, 1000, 1002, 1003, 1005, 1006, 1049 and 2004, read from the server's screen. For any other mode, `<state>` SHALL be `0`, meaning not recognised.
 
-A query the server answers SHALL NOT be recorded in the log as an unhandled sequence. Every other query SHALL stay unanswered.
+The server SHALL also answer a kitty graphics support query, a graphics sequence whose control holds `a=q`, only when an attached client supports kitty graphics, as the window-graphics capability's "Answering the support query" defines. A query the server answers SHALL NOT be recorded in the log as an unhandled sequence. Every other query SHALL stay unanswered.
 
 #### Scenario: fish starts without waiting
 - **WHEN** the window's program is fish 4, which waits for a Primary Device Attributes reply before drawing its prompt

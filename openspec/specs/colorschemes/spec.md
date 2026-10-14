@@ -145,7 +145,7 @@ When the client draws its terminal, after every other step of drawing, it SHALL 
 - the terminal's default background SHALL become `bg`;
 - palette index `n`, from 0 to 15, SHALL become the field of the `n`-th color name, `black` being index 0.
 
-Each mapping SHALL apply only when the palette sets that field. It SHALL cover every cell of the terminal: windows' program output, borders, the empty ribbon, bars, plugin windows and the banner. A mapped color SHALL be drawn as a hex color, as the highlights capability defines, so a client without 24-bit color draws the nearest palette index from 16 to 255. Palette indexes 16 to 255 and hex colors SHALL be drawn unchanged. The palette SHALL change nothing the server stores or sends, and nothing a program in a window reads.
+Each mapping SHALL apply only when the palette sets that field. It SHALL cover every cell of the terminal: windows' program output, borders, the empty ribbon, bars, plugin windows and the banner. The one exception SHALL be the foreground of a cell whose text begins with U+10EEEE, a kitty graphics placeholder, which SHALL be drawn unchanged, as the window-graphics capability's "Placement by Unicode placeholder" defines. A mapped color SHALL be drawn as a hex color, as the highlights capability defines, so a client without 24-bit color draws the nearest palette index from 16 to 255. Palette indexes 16 to 255 and hex colors SHALL be drawn unchanged. The palette SHALL change nothing the server stores or sends, and nothing a program in a window reads.
 
 #### Scenario: Program color mapped
 - **WHEN** the active colorscheme is `gruvbox`, the client supports 24-bit color, and a window runs `printf '\033[31mx\033[0m'`
@@ -178,3 +178,7 @@ Each mapping SHALL apply only when the palette sets that field. It SHALL cover e
 #### Scenario: Palette set by the init file
 - **WHEN** `user/init.lua` calls `gband.palette.set({ bg = "#101010" })` and a window prints text with the default colors
 - **THEN** the client draws the text on the background `#101010`, with the terminal's default foreground
+
+#### Scenario: Placeholder foreground unchanged
+- **WHEN** the active colorscheme is `gruvbox` and a window holds a cell whose text is U+10EEEE with a foreground of the 256-colour index 3
+- **THEN** the client draws that cell with palette index 3 as its foreground
