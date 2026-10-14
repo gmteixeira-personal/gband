@@ -46,5 +46,6 @@ Shift+Enter and Ctrl+Enter reach Claude Code as plain Enter when it runs in a gb
 - crates/emulator/tests/contract.rs
 - crates/client/src/lib.rs
 - crates/client/tests/keyboard.rs
+- crates/server/tests/queries.rs
 - tests/attach.rs
 - openspec/changes/kitty-keyboard/
