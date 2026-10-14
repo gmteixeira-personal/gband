@@ -54,11 +54,14 @@ A program inside a gband window cannot show an image in the terminal gband runs 
 - crates/server/src/window.rs
 - crates/server/src/session.rs
 - crates/server/src/connection.rs
+- crates/server/src/registry.rs
 - crates/server/tests/graphics.rs
-- crates/client/src/connect.rs
+- crates/server/tests/scripting.rs
+- crates/server/tests/sync.rs
 - crates/client/src/lib.rs
 - crates/client/src/render.rs
 - crates/client/tests/graphics.rs
+- crates/client/tests/connect.rs
 - crates/test-support/src/lib.rs
 - crates/lua/src/options.rs
 - crates/lua/src/defaults.lua
