@@ -41,6 +41,7 @@ pub struct Options {
     pub animation_speed: f64,
     pub notify_style: NotifyStyle,
     pub window_clipboard: bool,
+    pub window_graphics: bool,
     pub tile_border: Border,
     pub floating_border: Border,
     pub focused_tile_border_chars: BorderChars,
@@ -68,6 +69,7 @@ impl Default for Options {
             animation_speed: 1.0,
             notify_style: NotifyStyle::default(),
             window_clipboard: true,
+            window_graphics: true,
             tile_border: rounded(),
             floating_border: rounded(),
             focused_tile_border_chars: BorderChars::Named(CharSet::Rounded),
@@ -116,6 +118,9 @@ impl Options {
         if let Some(window_clipboard) = patch.window_clipboard {
             self.window_clipboard = window_clipboard;
         }
+        if let Some(window_graphics) = patch.window_graphics {
+            self.window_graphics = window_graphics;
+        }
         if let Some(sides) = patch.tile_border_sides {
             self.tile_border.sides = sides;
         }
@@ -160,6 +165,7 @@ impl Options {
             "animation_speed" => self.animation_speed = defaults.animation_speed,
             "notify_style" => self.notify_style = defaults.notify_style,
             "window_clipboard" => self.window_clipboard = defaults.window_clipboard,
+            "window_graphics" => self.window_graphics = defaults.window_graphics,
             "tile_border_sides" => self.tile_border.sides = defaults.tile_border.sides,
             "tile_border_chars" => self.tile_border.chars = defaults.tile_border.chars,
             "floating_border_sides" => self.floating_border.sides = defaults.floating_border.sides,
@@ -192,6 +198,7 @@ impl Options {
             "animation_speed" => self.animation_speed.into_lua(lua),
             "notify_style" => lua.to_value(&self.notify_style),
             "window_clipboard" => self.window_clipboard.into_lua(lua),
+            "window_graphics" => self.window_graphics.into_lua(lua),
             "tile_border_sides" => self.tile_border.sides.to_lua(lua),
             "tile_border_chars" => self.tile_border.chars.to_lua(lua),
             "floating_border_sides" => self.floating_border.sides.to_lua(lua),
@@ -206,7 +213,7 @@ impl Options {
     }
 }
 
-const CLIENT_NAMES: [&str; 17] = [
+const CLIENT_NAMES: [&str; 18] = [
     "prefix",
     "center_focused_column",
     "loop_bands",
@@ -215,6 +222,7 @@ const CLIENT_NAMES: [&str; 17] = [
     "animation_speed",
     "notify_style",
     "window_clipboard",
+    "window_graphics",
     "tile_border_sides",
     "tile_border_chars",
     "focused_tile_border_chars",
@@ -263,7 +271,7 @@ pub(crate) fn check_name(lua: &Lua, name: &str) -> Result<(), String> {
     Err(foreign(lua, name).unwrap_or_else(|| format!("unknown option `{name}`")))
 }
 
-const BUILTIN: [(&str, &str, &str); 19] = [
+const BUILTIN: [(&str, &str, &str); 20] = [
     ("prefix", "string", "the key that starts a key sequence"),
     (
         "default_column_width",
@@ -284,6 +292,11 @@ const BUILTIN: [(&str, &str, &str); 19] = [
         "window_clipboard",
         "boolean",
         "whether a window program's clipboard write sets your terminal's clipboard",
+    ),
+    (
+        "window_graphics",
+        "boolean",
+        "whether a window program's kitty graphics are forwarded to your terminal",
     ),
     (
         "center_focused_column",
@@ -784,6 +797,7 @@ pub struct OptionsPatch {
     animation_speed: Option<AnimationSpeed>,
     notify_style: Option<NotifyStyle>,
     window_clipboard: Option<bool>,
+    window_graphics: Option<bool>,
     tile_border_sides: Option<Sides>,
     tile_border_chars: Option<BorderChars>,
     floating_border_sides: Option<Sides>,

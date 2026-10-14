@@ -394,6 +394,7 @@ async fn attach_order_with_window_names() {
     peer.send(&ClientMessage::Attach {
         session: SessionName::default(),
         cwd: "/".into(),
+        graphics: false,
     })
     .await;
     let mut received = Vec::new();

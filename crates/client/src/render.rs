@@ -201,13 +201,16 @@ fn mapped(
     }
 }
 
+pub const PLACEHOLDER: char = '\u{10EEEE}';
+
 pub fn apply_palette(buffer: &mut Buffer, palette: &Palette, colors: ColorSupport) {
     if palette.is_empty() {
         return;
     }
     let drawn = |(r, g, b)| colors.color(gband_lua::Color::Rgb(r, g, b));
     for cell in &mut buffer.content {
-        if let Some(rgb) = mapped(cell.fg, palette.fg, palette) {
+        let placeholder = cell.symbol().starts_with(PLACEHOLDER);
+        if !placeholder && let Some(rgb) = mapped(cell.fg, palette.fg, palette) {
             cell.fg = drawn(rgb);
         }
         if let Some(rgb) = mapped(cell.bg, palette.bg, palette) {

@@ -10,7 +10,7 @@ use anyhow::{Context, Result};
 use gband_core::geometry::Size;
 use gband_core::input::{Key, Modes, MouseEvent, encode_key, encode_mouse, encode_paste};
 use gband_core::layout::WindowId;
-use gband_emulator::{Emulator, Grid};
+use gband_emulator::{Emulator, Grid, query_reply};
 use gband_protocol::SessionName;
 use gband_protocol::test::SOCKET_VARIABLE;
 use portable_pty::{
@@ -22,6 +22,7 @@ use tracing::Span;
 use crate::agent::{self, AgentChange, Tracker};
 use crate::process;
 use crate::scripting::Taps;
+use crate::session::Graphics;
 
 const DRAIN_TIMEOUT: Duration = Duration::from_millis(500);
 
@@ -39,6 +40,7 @@ pub struct Window {
     generation: AtomicU64,
     changed: Arc<watch::Sender<u64>>,
     clipboards: Arc<AtomicU64>,
+    graphics: Arc<Graphics>,
     write_back: mpsc::WeakUnboundedSender<Input>,
     agent_dirty: AtomicBool,
 }
@@ -151,6 +153,7 @@ impl Window {
         size: Size,
         changed: &Arc<watch::Sender<u64>>,
         clipboards: &Arc<AtomicU64>,
+        graphics: &Arc<Graphics>,
     ) -> WindowEntry {
         let (input, mut discarded) = mpsc::unbounded_channel();
         tokio::spawn(async move { while discarded.recv().await.is_some() {} });
@@ -167,6 +170,7 @@ impl Window {
             generation: AtomicU64::new(0),
             changed: Arc::clone(changed),
             clipboards: Arc::clone(clipboards),
+            graphics: Arc::clone(graphics),
             write_back: input.downgrade(),
             agent_dirty: AtomicBool::new(false),
         });
@@ -322,10 +326,22 @@ impl Window {
         self.notify();
     }
 
-    fn process(&self, bytes: &[u8]) {
+    fn process(&self, id: WindowId, bytes: &[u8]) {
         {
             let mut terminal = self.terminal.lock().unwrap();
+            terminal
+                .grid
+                .answer_graphics_queries(self.graphics.supported());
             terminal.grid.process(bytes);
+            let forwarded: Vec<Vec<u8>> = terminal
+                .grid
+                .take_graphics()
+                .into_iter()
+                .filter(|sequence| query_reply(sequence).is_none())
+                .collect();
+            if !forwarded.is_empty() {
+                self.graphics.forward(id, forwarded);
+            }
             if let Some(text) = terminal.grid.take_clipboard() {
                 let stamp = self.clipboards.fetch_add(1, Ordering::AcqRel) + 1;
                 terminal.clipboard = Some((stamp, text));
@@ -352,6 +368,7 @@ pub fn spawn(
     request: SpawnRequest<'_>,
     changed: &Arc<watch::Sender<u64>>,
     clipboards: &Arc<AtomicU64>,
+    graphics: &Arc<Graphics>,
     exits: mpsc::UnboundedSender<WindowExit>,
 ) -> Result<Spawned> {
     let SpawnRequest {
@@ -418,6 +435,7 @@ pub fn spawn(
         generation: AtomicU64::new(0),
         changed: Arc::clone(changed),
         clipboards: Arc::clone(clipboards),
+        graphics: Arc::clone(graphics),
         write_back: input.downgrade(),
         agent_dirty,
     });
@@ -469,7 +487,7 @@ fn read_output(mut reader: Box<dyn Read + Send>, window: &Window, tap: &Tap) {
             Ok(0) | Err(_) => break,
             Ok(n) => {
                 tap.taps.output(&tap.session, tap.window, &buffer[..n]);
-                window.process(&buffer[..n]);
+                window.process(tap.window, &buffer[..n]);
             }
         }
     }
@@ -523,7 +541,12 @@ mod tests {
     use super::*;
 
     fn blank(size: Size) -> WindowEntry {
-        Window::blank(size, &Arc::new(watch::Sender::new(0)), &Arc::default())
+        Window::blank(
+            size,
+            &Arc::new(watch::Sender::new(0)),
+            &Arc::default(),
+            &Arc::default(),
+        )
     }
 
     fn feed(grid: &mut Grid, contents: Contents) {

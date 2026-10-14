@@ -21,6 +21,8 @@ A program inside a gband window cannot show an image in the terminal gband runs 
 ### Modified Capabilities
 - `wire-protocol`: the handshake's current version becomes 16, the attach request gains a graphics flag, and the server messages gain `graphics`.
 - `terminal-emulator`: the emulator collects kitty graphics APC sequences from processed output and reports them in order, leaving the screen unchanged.
+- `session-server`: the terminal query replies gain the kitty graphics support query, answered only when an attached client supports kitty graphics.
+- `colorschemes`: the terminal palette leaves the foreground of a U+10EEEE placeholder cell unchanged.
 
 ## Impact
 

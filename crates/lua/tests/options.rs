@@ -224,6 +224,7 @@ fn list_holds_built_in_and_declared_options() {
             "tile_border_sides",
             "width_step",
             "window_clipboard",
+            "window_graphics",
             "window_titles",
         ]
     );
@@ -397,6 +398,46 @@ fn window_clipboard_of_the_wrong_type() {
         .write("gband.set { window_clipboard = false }\ngband.set { window_clipboard = \"no\" }");
     let error = scratch.load().err().expect("a wrong type fails the load");
     assert_error_at(&error, &path, 2, "window_clipboard");
+}
+
+#[test]
+fn window_graphics_by_default() {
+    let scratch = Scratch::new("window-graphics-default");
+    scratch.write("forwarding = gband.opt.window_graphics");
+    let config = scratch.loaded();
+    assert!(global::<bool>(&config, "forwarding"));
+    assert!(config.options.window_graphics);
+    let listed: Vec<String> = eval(
+        &config,
+        "for _, o in ipairs(gband.opt.list()) do if o.name == 'window_graphics' then return { o.type, tostring(o.default), o.desc } end end",
+    );
+    assert_eq!(
+        listed,
+        [
+            "boolean",
+            "true",
+            "whether a window program's kitty graphics are forwarded to your terminal"
+        ]
+    );
+}
+
+#[test]
+fn window_graphics_off() {
+    let scratch = Scratch::new("window-graphics-off");
+    scratch.write("gband.set { window_graphics = false }\nforwarding = gband.opt.window_graphics");
+    let config = scratch.loaded();
+    assert!(config.errors.is_empty(), "{:?}", config.errors);
+    assert!(!global::<bool>(&config, "forwarding"));
+    assert!(!config.options.window_graphics);
+}
+
+#[test]
+fn window_graphics_of_the_wrong_type() {
+    let scratch = Scratch::new("window-graphics-wrong-type");
+    let path = scratch
+        .write("gband.set { window_graphics = false }\ngband.set { window_graphics = \"no\" }");
+    let error = scratch.load().err().expect("a wrong type fails the load");
+    assert_error_at(&error, &path, 2, "window_graphics");
 }
 
 #[test]

@@ -76,6 +76,7 @@ impl Drop for Attachment {
             client: self.client,
             windows: Vec::new(),
         });
+        self.handle.graphics.detach(self.client);
         self.handle.clients.fetch_sub(1, Ordering::AcqRel);
         self.handle.events.send(SessionEvent::ClientDetached {
             client: self.client,
@@ -155,9 +156,13 @@ async fn handle(
         return Ok(());
     };
     match request {
-        ClientMessage::Attach { session, cwd } => {
+        ClientMessage::Attach {
+            session,
+            cwd,
+            graphics,
+        } => {
             let size = Size::new(hello.cols, hello.rows);
-            attach(link, context, client, session, cwd, size).await
+            attach(link, context, client, session, cwd, size, graphics).await
         }
         ClientMessage::ListSessions => {
             let sessions = ask(context, |reply| Request::List { reply }).await?;
@@ -300,6 +305,7 @@ async fn attach(
     name: SessionName,
     cwd: PathBuf,
     size: Size,
+    graphics: bool,
 ) -> Result<()> {
     let area = if size.cols > 0 && size.rows > 0 {
         size
@@ -332,6 +338,9 @@ async fn attach(
     sync(&mut link.writer, &session, &mut sent, &context.hub.settling).await?;
 
     let (deliveries_tx, mut deliveries) = mpsc::unbounded_channel();
+    if graphics {
+        session.graphics.attach(client, deliveries_tx.clone());
+    }
     let attached = context.hub.attach(client, &session.name, deliveries_tx);
     let (barriers_tx, mut barriers) = mpsc::unbounded_channel();
     context.hub.settling.register(client, barriers_tx);

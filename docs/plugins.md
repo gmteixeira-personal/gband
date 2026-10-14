@@ -353,7 +353,7 @@ Each built-in option belongs to one side, and each process knows only its own si
 
 | side | options |
 |---|---|
-| client | `prefix`, `center_focused_column`, `loop_bands`, `window_titles`, `animations`, `animation_speed`, `notify_style`, `window_clipboard`, `tile_border_sides`, `tile_border_chars`, `focused_tile_border_chars`, `floating_border_sides`, `floating_border_chars`, `focused_floating_border_chars`, `width_step`, `height_step`, `mouse_mod` |
+| client | `prefix`, `center_focused_column`, `loop_bands`, `window_titles`, `animations`, `animation_speed`, `notify_style`, `window_clipboard`, `window_graphics`, `tile_border_sides`, `tile_border_chars`, `focused_tile_border_chars`, `floating_border_sides`, `floating_border_chars`, `focused_floating_border_chars`, `width_step`, `height_step`, `mouse_mod` |
 | server | `default_column_width`, `width_presets` |
 
 ```lua
@@ -375,6 +375,10 @@ A reload that turns `animations` off draws every moving part at its target on th
 `window_clipboard`, `true` by default, is whether a window program's clipboard write sets your terminal's clipboard: the client copies each write the server forwards, as "Clipboard writes of windows" describes.
 With it on, any output written to a window can replace your clipboard, such as `cat` of an untrusted file or a remote host reached through nested ssh.
 `gband.set { window_clipboard = false }` stops the copy, and `WindowClipboard` handlers still run.
+
+`window_graphics`, `true` by default, is whether a window program's kitty graphics are forwarded to your terminal, as "Kitty graphics of windows" describes.
+The client reports graphics support at attach only when this option is `true` and its terminal answered the graphics query, so with it `false` the server forwards that client no graphics and answers no query for it.
+It takes effect when the client attaches: `gband.set { window_graphics = false }` in `user/init.lua` turns it off.
 
 An invalid value is reported at the line of the assignment, does not fail the load, and resets the option to its default.
 Setting an option of the other side is reported naming the side that owns it, and reading one returns nil.
@@ -500,6 +504,19 @@ gband.on("WindowClipboard", function(event)
   end
 end)
 ```
+
+### Kitty graphics of windows
+
+A program in a window shows an image with kitty graphics sequences, `ESC _ G <control> ; <payload> ESC \`, as yazi, chafa and `kitten icat` do.
+The window's screen is unchanged by them.
+At startup the client writes a kitty graphics query and `ESC [ c` to its terminal, and takes the terminal to support kitty graphics when the graphics reply arrives before the device attributes reply, waiting at most 1 second.
+The server forwards each graphics sequence, in the order the program wrote them, to every client of the window's session that reported support, and the client writes it to its terminal unchanged.
+A sequence written before a client attached never reaches it, and the server keeps none, so a client attaching later shows an image only once the program sends it again.
+The server answers a support query (`a=q`) with `ESC _ G i=<id> ; OK ESC \` only when an attached client's terminal supports kitty graphics, and writes nothing otherwise, so the program falls back to text.
+
+Images are placed with Unicode placeholders: cells of U+10EEEE whose foreground colour holds the image id.
+They reach each client in the window's screen, and a colorscheme palette leaves their foreground unchanged.
+Carry the id as a 24-bit RGB foreground or a 256-colour index of 16 or above; a direct placement at the cursor is not translated to the window's position.
 
 ## Key bindings: `gband.keymap`
 

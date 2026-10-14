@@ -1,8 +1,8 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::ffi::OsString;
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant as StdInstant};
 
 use anyhow::{Result, bail};
@@ -10,7 +10,7 @@ use gband_core::geometry::{Size, boxes, tiles};
 use gband_core::layout::{
     BandId, Layout, LayoutOptions, Program, Proportion, SessionAction, WindowContent, WindowId,
 };
-use gband_protocol::{SessionName, Value};
+use gband_protocol::{ServerMessage, SessionName, Value};
 use portable_pty::{ChildKiller, ExitStatus};
 use rustix::process::{Pid, Signal};
 use tokio::sync::{mpsc, oneshot, watch};
@@ -114,6 +114,37 @@ struct PluginWindow {
     entry: WindowEntry,
 }
 
+#[derive(Default)]
+pub struct Graphics {
+    clients: Mutex<BTreeMap<u64, mpsc::UnboundedSender<ServerMessage>>>,
+}
+
+impl Graphics {
+    pub fn attach(&self, client: u64, sender: mpsc::UnboundedSender<ServerMessage>) {
+        self.clients.lock().unwrap().insert(client, sender);
+    }
+
+    pub fn detach(&self, client: u64) {
+        self.clients.lock().unwrap().remove(&client);
+    }
+
+    pub fn supported(&self) -> bool {
+        !self.clients.lock().unwrap().is_empty()
+    }
+
+    pub fn forward(&self, window: WindowId, sequences: Vec<Vec<u8>>) {
+        let clients = self.clients.lock().unwrap();
+        for data in sequences {
+            for sender in clients.values() {
+                let _ = sender.send(ServerMessage::Graphics {
+                    window,
+                    data: data.clone(),
+                });
+            }
+        }
+    }
+}
+
 pub struct Session {
     config: SessionConfig,
     layout: Layout,
@@ -123,6 +154,7 @@ pub struct Session {
     state: watch::Sender<Arc<State>>,
     changed: Arc<watch::Sender<u64>>,
     clipboards: Arc<AtomicU64>,
+    graphics: Arc<Graphics>,
     exits: mpsc::UnboundedSender<WindowExit>,
     last_status: Option<ExitStatus>,
     shown: HashMap<u64, HashSet<WindowId>>,
@@ -146,6 +178,7 @@ impl Session {
             })),
             changed: Arc::new(watch::Sender::new(0)),
             clipboards: Arc::default(),
+            graphics: Arc::default(),
             exits,
             last_status: None,
             shown: HashMap::new(),
@@ -174,6 +207,10 @@ impl Session {
 
     pub fn clipboards(&self) -> Arc<AtomicU64> {
         Arc::clone(&self.clipboards)
+    }
+
+    pub fn graphics(&self) -> Arc<Graphics> {
+        Arc::clone(&self.graphics)
     }
 
     pub fn events(&self) -> Bus {
@@ -468,7 +505,7 @@ impl Session {
     fn open_plugin(&mut self, client: u64, placement: Placement) -> Option<WindowId> {
         let id = self.place(&placement)?;
         let size = self.terminal_size(id).expect("an opened window has a tile");
-        let entry = Window::blank(size, &self.changed, &self.clipboards);
+        let entry = Window::blank(size, &self.changed, &self.clipboards, &self.graphics);
         self.plugins.insert(
             id,
             PluginWindow {
@@ -507,7 +544,13 @@ impl Session {
             size,
             taps: &self.config.taps,
         };
-        match window::spawn(request, &self.changed, &self.clipboards, self.exits.clone()) {
+        match window::spawn(
+            request,
+            &self.changed,
+            &self.clipboards,
+            &self.graphics,
+            self.exits.clone(),
+        ) {
             Ok(spawned) => {
                 self.windows.insert(
                     id,
