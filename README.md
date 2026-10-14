@@ -14,14 +14,14 @@ gband is written in Rust.
 Install a stable Rust toolchain, version 1.89 or newer, and a C compiler such as `gcc` or `clang`.
 The C compiler builds the Lua runtime that gband bundles, so no system Lua is needed.
 
-Install release 0.3.3 with Cargo:
+Install release 0.4.0 with Cargo:
 
 ```sh
-cargo install --locked --git https://github.com/gmteixeira-personal/gband --tag v0.3.3
+cargo install --locked --git https://github.com/gmteixeira-personal/gband --tag v0.4.0
 ```
 
 Cargo puts the `gband` binary in `~/.cargo/bin/`, which must be on your `PATH`.
-To install the development version instead, replace `--tag v0.3.3` with `--branch dev`.
+To install the development version instead, replace `--tag v0.4.0` with `--branch dev`.
 
 ## Features
 
@@ -30,6 +30,8 @@ To install the development version instead, replace `--tag v0.3.3` with `--branc
 - **Tabbed columns.** A column can show its windows one at a time, as tabs, with an indicator on its left border; see [Tabbed columns](#tabbed-columns).
 - **Agents.** gband finds Claude Code in your windows and colors its label in the sidebar by what it does: working, waiting for an answer, or done; see [Agents](#agents).
 - **Remote hosts.** `gband -r user@host` attaches to a session on another machine through your `ssh`, and your configuration, key bindings and plugins stay local; see [Remote hosts](#remote-hosts).
+- **Images.** A window that uses the kitty graphics protocol shows its images, forwarded to every attached terminal that supports graphics.
+- **Modifier keys.** gband speaks the kitty keyboard protocol, so combinations like Shift+Enter and Ctrl+Enter reach programs such as Claude Code.
 - **Animated.** Scrolling, band switches, moving windows and resizes animate.
 - **Fully scriptable.** The configuration, key bindings and plugins are Lua, in the client and in the server; see [Scripting](#scripting).
 - **Written in Lua, as examples.** The key styles, the desktop, the key list, the sidebar, the settings window and the themes are Lua code, written that way so you can read how they use the API.
