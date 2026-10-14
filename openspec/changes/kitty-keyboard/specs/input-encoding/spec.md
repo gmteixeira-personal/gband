@@ -86,6 +86,99 @@ gband SHALL encode a key from its key code and its Shift, Alt and Ctrl modifiers
 - **WHEN** gband encodes the same key with the same modes twice
 - **THEN** both encodings produce the same bytes
 
+### Requirement: Control characters
+A character key with Ctrl SHALL encode as the C0 control code below, except in a window whose kitty keyboard flags include the disambiguate bit, where "Kitty keyboard encoding" defines its bytes. Ctrl with an ASCII letter SHALL ignore the letter's case and Shift. Ctrl with any other character SHALL encode as that character alone.
+
+| character with Ctrl | byte |
+|---|---|
+| `a` to `z` | `\x01` to `\x1a` |
+| space, `@`, `2` | `\x00` |
+| `[`, `3` | `\x1b` |
+| `\`, `4` | `\x1c` |
+| `]`, `5` | `\x1d` |
+| `^`, `6` | `\x1e` |
+| `_`, `/`, `7` | `\x1f` |
+| `?`, `8` | `\x7f` |
+
+#### Scenario: Ctrl with a letter
+- **WHEN** the user presses Ctrl+`a`
+- **THEN** gband writes `\x01`
+
+#### Scenario: Ctrl+H stays distinct from Backspace
+- **WHEN** the user presses Ctrl+`h`
+- **THEN** gband writes `\x08`
+
+#### Scenario: Ctrl with a space
+- **WHEN** the user presses Ctrl+space
+- **THEN** gband writes `\x00`
+
+#### Scenario: Ctrl with a digit that has a control code
+- **WHEN** the user presses Ctrl+`4`
+- **THEN** gband writes `\x1c`
+
+#### Scenario: Ctrl with a character that has no control code
+- **WHEN** the user presses Ctrl+`1`
+- **THEN** gband writes `1`
+
+#### Scenario: Ctrl+I is the same byte as Tab
+- **WHEN** the user presses Ctrl+`i`
+- **THEN** gband writes `\x09`, the same byte as Tab
+
+### Requirement: Editing keys
+Enter SHALL encode as `\r`, Tab as `\t`, Shift+Tab as `\x1b[Z`, Backspace as `\x7f`, Ctrl+Backspace as `\x08`, and Escape as `\x1b`. While the window's modifyOtherKeys level is 0, Shift and Ctrl on Enter, Tab and Escape SHALL add no bytes, and Shift on Backspace SHALL add no bytes.
+
+While the window's modifyOtherKeys level is 1 or 2, Enter or Backspace with Shift or Ctrl, and Tab with Ctrl, SHALL encode as `\x1b[27;`, the modifier parameter, `;`, the key's code and `~`. The code SHALL be 13 for Enter, 9 for Tab and 127 for Backspace. Tab with Shift and without Ctrl, and every editing key without Shift or Ctrl, SHALL encode as at level 0. Escape SHALL encode as at level 0 whatever its modifiers.
+
+In a window whose kitty keyboard flags include the disambiguate bit, "Kitty keyboard encoding" SHALL define the bytes of these keys in place of this requirement, whatever the window's modifyOtherKeys level is.
+
+#### Scenario: Enter
+- **WHEN** the user presses Enter
+- **THEN** gband writes `\r`
+
+#### Scenario: Shift+Enter matches Enter
+- **WHEN** the user presses Shift+Enter in a window whose modifyOtherKeys level is 0
+- **THEN** gband writes `\r`
+
+#### Scenario: Ctrl+Enter without modifyOtherKeys
+- **WHEN** the user presses Ctrl+Enter in a window whose modifyOtherKeys level is 0
+- **THEN** gband writes `\r`
+
+#### Scenario: Ctrl+Enter with modifyOtherKeys
+- **WHEN** the user presses Ctrl+Enter in a window whose modifyOtherKeys level is 1
+- **THEN** gband writes `\x1b[27;5;13~`
+
+#### Scenario: Shift+Enter with modifyOtherKeys
+- **WHEN** the user presses Shift+Enter in a window whose modifyOtherKeys level is 2
+- **THEN** gband writes `\x1b[27;2;13~`
+
+#### Scenario: Plain Enter with modifyOtherKeys
+- **WHEN** the user presses Enter in a window whose modifyOtherKeys level is 1
+- **THEN** gband writes `\r`
+
+#### Scenario: Ctrl+Tab with modifyOtherKeys
+- **WHEN** the user presses Ctrl+Tab in a window whose modifyOtherKeys level is 1
+- **THEN** gband writes `\x1b[27;5;9~`
+
+#### Scenario: Shift+Tab with modifyOtherKeys
+- **WHEN** the user presses Shift+Tab in a window whose modifyOtherKeys level is 1
+- **THEN** gband writes `\x1b[Z`
+
+#### Scenario: Ctrl+Backspace with modifyOtherKeys
+- **WHEN** the user presses Ctrl+Backspace in a window whose modifyOtherKeys level is 1
+- **THEN** gband writes `\x1b[27;5;127~`
+
+#### Scenario: Shift+Tab
+- **WHEN** the user presses Shift+Tab
+- **THEN** gband writes `\x1b[Z`
+
+#### Scenario: Backspace
+- **WHEN** the user presses Backspace
+- **THEN** gband writes `\x7f`
+
+#### Scenario: Ctrl+Backspace
+- **WHEN** the user presses Ctrl+Backspace in a window whose modifyOtherKeys level is 0
+- **THEN** gband writes `\x08`
+
 ### Requirement: Alt as an ESC prefix
 Alt on a character key or an editing key SHALL prefix that key's encoding without Alt with `\x1b`, except where a key encodes in the modifyOtherKeys form or in the kitty form that "Kitty keyboard encoding" defines, which carry Alt in their modifier parameter instead.
 

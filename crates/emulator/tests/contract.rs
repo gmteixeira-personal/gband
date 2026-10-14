@@ -140,6 +140,19 @@ fn plain_output_asks_nothing<E: Emulator>() {
     assert!(emulator.take_write_back().is_empty());
 }
 
+fn keyboard_flags_left_out_of_a_snapshot<E: Emulator>()
+where
+    E::Screen: Screen,
+{
+    let mut emulator = E::new(SIZE);
+    emulator.process(b"\x1b[>1u");
+    assert_eq!(emulator.modes().keyboard_flags, 1);
+    let copy = reproduced(&emulator);
+    assert_eq!(copy.modes().keyboard_flags, 0);
+    assert_eq!(cells(&emulator), cells(&copy));
+    assert_eq!(emulator.cursor(), copy.cursor());
+}
+
 fn mouse_modes<E: Emulator>()
 where
     E::Screen: Screen,
@@ -266,6 +279,24 @@ fn grid_keeps_cells_when_shrunk() {
 #[test]
 fn grid_writes_nothing_back_for_plain_output() {
     plain_output_asks_nothing::<Grid>();
+}
+
+#[test]
+fn grid_leaves_keyboard_flags_out_of_a_snapshot() {
+    keyboard_flags_left_out_of_a_snapshot::<Grid>();
+}
+
+#[test]
+fn grid_answers_the_keyboard_flags_query() {
+    let mut grid = Grid::new(SIZE);
+    grid.process(b"\x1b[?u");
+    assert_eq!(grid.take_write_back(), b"\x1b[?0u");
+    grid.process(b"\x1b[>1u\x1b[?u");
+    assert_eq!(grid.take_write_back(), b"\x1b[?1u");
+    grid.process(b"\x1b[>31u\x1b[?u");
+    assert_eq!(grid.take_write_back(), b"\x1b[?1u");
+    grid.process(b"\x1b[u");
+    assert!(grid.take_write_back().is_empty());
 }
 
 fn titled(output: &[u8]) -> Grid {

@@ -176,6 +176,7 @@ pub struct Modes {
     pub mouse_tracking: MouseTracking,
     pub mouse_encoding: MouseEncoding,
     pub modify_other_keys: u8,
+    pub keyboard_flags: u8,
 }
 
 impl Modes {
@@ -185,6 +186,7 @@ impl Modes {
         mouse_tracking: MouseTracking::None,
         mouse_encoding: MouseEncoding::Default,
         modify_other_keys: 0,
+        keyboard_flags: 0,
     };
 }
 
@@ -194,6 +196,11 @@ const PASTE_END: &[u8] = b"\x1b[201~";
 
 pub fn encode_key(key: Key, modes: Modes) -> Vec<u8> {
     let modifiers = key.modifiers;
+    if modes.keyboard_flags & 1 != 0
+        && let Some(bytes) = kitty_key(key)
+    {
+        return bytes;
+    }
     if let Some(code) = modified_other_key(key, modes) {
         return format!("\x1b[27;{};{code}~", modifiers.parameter()).into_bytes();
     }
@@ -339,6 +346,41 @@ fn control_code(c: char) -> Option<u8> {
         '_' | '/' | '7' => Some(0x1f),
         '?' | '8' => Some(0x7f),
         _ => None,
+    }
+}
+
+fn kitty_key(key: Key) -> Option<Vec<u8>> {
+    let m = key.modifiers;
+    let csi = |code: u32| {
+        if m.is_empty() {
+            format!("\x1b[{code}u").into_bytes()
+        } else {
+            format!("\x1b[{code};{}u", m.parameter()).into_bytes()
+        }
+    };
+    match key.code {
+        KeyCode::Char(c) if m.ctrl || m.alt => {
+            Some(format!("\x1b[{};{}u", kitty_code(c), m.parameter()).into_bytes())
+        }
+        KeyCode::Char(c) => Some(c.to_string().into_bytes()),
+        KeyCode::Enter if m.is_empty() => Some(b"\r".to_vec()),
+        KeyCode::Enter => Some(csi(13)),
+        KeyCode::Backspace if m.is_empty() => Some(vec![0x7f]),
+        KeyCode::Backspace => Some(csi(127)),
+        KeyCode::Tab if m.ctrl || m.alt => Some(csi(9)),
+        KeyCode::Tab => Some(b"\t".to_vec()),
+        KeyCode::BackTab => Some(b"\x1b[Z".to_vec()),
+        KeyCode::Escape => Some(csi(27)),
+        KeyCode::F(n @ 13..=35) => Some(csi(57376 + u32::from(n - 13))),
+        _ => None,
+    }
+}
+
+fn kitty_code(c: char) -> u32 {
+    let mut lower = c.to_lowercase();
+    match (lower.next(), lower.next()) {
+        (Some(single), None) if c.is_uppercase() => single as u32,
+        _ => c as u32,
     }
 }
 

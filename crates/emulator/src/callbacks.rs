@@ -10,6 +10,10 @@ pub enum Record {
 
 const TITLE_STACK_DEPTH: usize = 10;
 
+const KEYBOARD_STACK_DEPTH: usize = 16;
+
+const SUPPORTED_KEYBOARD_FLAGS: u16 = 1;
+
 pub const CLIPBOARD_LIMIT: usize = 1 << 20;
 
 #[derive(Default)]
@@ -21,6 +25,50 @@ pub struct Callbacks {
     pub modify_other_keys: u8,
     pub clipboard: Option<String>,
     title_stack: Vec<Option<String>>,
+    main_keyboard: KeyboardFlags,
+    alternate_keyboard: KeyboardFlags,
+}
+
+#[derive(Default)]
+struct KeyboardFlags {
+    base: u8,
+    stack: Vec<u8>,
+}
+
+impl KeyboardFlags {
+    fn current(&self) -> u8 {
+        self.stack.last().copied().unwrap_or(self.base)
+    }
+
+    fn push(&mut self, flags: u16) {
+        if self.stack.len() == KEYBOARD_STACK_DEPTH {
+            self.stack.remove(0);
+        }
+        self.stack.push(supported(flags));
+    }
+
+    fn pop(&mut self, count: u16) {
+        let count = usize::from(count.max(1));
+        self.stack.truncate(self.stack.len().saturating_sub(count));
+        if self.stack.is_empty() {
+            self.base = 0;
+        }
+    }
+
+    fn set(&mut self, flags: u16, mode: u16) {
+        let target = self.stack.last_mut().unwrap_or(&mut self.base);
+        let flags = supported(flags);
+        *target = match mode {
+            1 => flags,
+            2 => *target | flags,
+            3 => *target & !flags,
+            _ => return,
+        };
+    }
+}
+
+fn supported(flags: u16) -> u8 {
+    (flags & SUPPORTED_KEYBOARD_FLAGS) as u8
 }
 
 impl Callbacks {
@@ -47,6 +95,41 @@ impl Callbacks {
     fn pop_title(&mut self) {
         if let Some(title) = self.title_stack.pop() {
             self.set_title(title);
+        }
+    }
+
+    pub fn keyboard_flags(&self, alternate: bool) -> u8 {
+        if alternate {
+            self.alternate_keyboard.current()
+        } else {
+            self.main_keyboard.current()
+        }
+    }
+
+    pub fn clear_keyboard_flags(&mut self, alternate: bool) {
+        *self.keyboard(alternate) = KeyboardFlags::default();
+    }
+
+    fn keyboard(&mut self, alternate: bool) -> &mut KeyboardFlags {
+        if alternate {
+            &mut self.alternate_keyboard
+        } else {
+            &mut self.main_keyboard
+        }
+    }
+
+    fn keyboard_sequence(&mut self, alternate: bool, marker: u8, params: &[&[u16]]) {
+        let value = |index: usize| params.get(index).and_then(|param| param.first()).copied();
+        match marker {
+            b'>' => self.keyboard(alternate).push(value(0).unwrap_or(0)),
+            b'<' => self.keyboard(alternate).pop(value(0).unwrap_or(1)),
+            b'=' => self
+                .keyboard(alternate)
+                .set(value(0).unwrap_or(0), value(1).unwrap_or(1)),
+            _ => {
+                let reply = format!("\x1b[?{}u", self.keyboard_flags(alternate));
+                self.write_back.extend_from_slice(reply.as_bytes());
+            }
         }
     }
 
@@ -165,6 +248,10 @@ impl vt100::Callbacks for Callbacks {
     ) {
         if let Some(reply) = query_reply(screen, i1, i2, params, c) {
             self.write_back.extend_from_slice(reply.as_bytes());
+            return;
+        }
+        if let (Some(marker @ (b'>' | b'<' | b'=' | b'?')), None, 'u') = (i1, i2, c) {
+            self.keyboard_sequence(screen.alternate_screen(), marker, params);
             return;
         }
         if (i1, i2, c) == (Some(b'>'), None, 'm') {
@@ -542,9 +629,158 @@ mod tests {
         assert_eq!(copy.modes().modify_other_keys, 0);
     }
 
+    fn keyboard_flags(chunks: &[&[u8]]) -> u8 {
+        let mut grid = Grid::new(Size::new(80, 24));
+        for chunk in chunks {
+            grid.process(chunk);
+        }
+        grid.modes().keyboard_flags
+    }
+
+    #[test]
+    fn keyboard_flags_query_before_any_push() {
+        assert_eq!(keyboard_flags(&[]), 0);
+        assert_eq!(replies("\x1b[?u"), "\x1b[?0u");
+    }
+
+    #[test]
+    fn keyboard_flags_push_and_query() {
+        assert_eq!(keyboard_flags(&[b"\x1b[>1u"]), 1);
+        assert_eq!(replies("\x1b[>1u\x1b[?u"), "\x1b[?1u");
+        assert_eq!(keyboard_flags(&[b"\x1b[>1u\x1b[>u"]), 0);
+    }
+
+    #[test]
+    fn keyboard_flags_clear_unsupported_bits() {
+        assert_eq!(keyboard_flags(&[b"\x1b[>31u"]), 1);
+        assert_eq!(replies("\x1b[>31u\x1b[?u"), "\x1b[?1u");
+        assert_eq!(keyboard_flags(&[b"\x1b[>30u"]), 0);
+        assert_eq!(keyboard_flags(&[b"\x1b[=31u"]), 1);
+    }
+
+    #[test]
+    fn keyboard_flags_pop_restores_the_value_below() {
+        assert_eq!(keyboard_flags(&[b"\x1b[>1u\x1b[>0u\x1b[<u"]), 1);
+        assert_eq!(keyboard_flags(&[b"\x1b[>1u\x1b[>0u\x1b[<0u"]), 1);
+        assert_eq!(keyboard_flags(&[b"\x1b[>1u\x1b[>0u\x1b[>0u\x1b[<2u"]), 1);
+    }
+
+    #[test]
+    fn keyboard_flags_popping_everything_resets() {
+        assert_eq!(keyboard_flags(&[b"\x1b[=1u\x1b[>1u\x1b[<5u"]), 0);
+        assert_eq!(keyboard_flags(&[b"\x1b[=1u\x1b[<u"]), 0);
+    }
+
+    #[test]
+    fn keyboard_flags_set_and_clear_bits() {
+        assert_eq!(keyboard_flags(&[b"\x1b[=1;2u"]), 1);
+        assert_eq!(keyboard_flags(&[b"\x1b[=1;2u\x1b[=1;3u"]), 0);
+        assert_eq!(keyboard_flags(&[b"\x1b[=1u\x1b[=0;2u"]), 1);
+        assert_eq!(keyboard_flags(&[b"\x1b[=1u\x1b[=0;1u"]), 0);
+        assert_eq!(keyboard_flags(&[b"\x1b[=1u\x1b[=0;4u"]), 1);
+        assert_eq!(keyboard_flags(&[b"\x1b[>0u\x1b[=1u"]), 1);
+        assert_eq!(keyboard_flags(&[b"\x1b[>0u\x1b[=1u\x1b[<u"]), 0);
+    }
+
+    #[test]
+    fn keyboard_flags_full_stack_drops_the_oldest_value() {
+        let mut output = b"\x1b[>1u".to_vec();
+        output.extend(b"\x1b[>0u".repeat(16));
+        output.extend(b"\x1b[<u".repeat(15));
+        assert_eq!(keyboard_flags(&[&output]), 0);
+        let mut kept = b"\x1b[>1u".to_vec();
+        kept.extend(b"\x1b[>0u".repeat(15));
+        kept.extend(b"\x1b[<u".repeat(15));
+        assert_eq!(keyboard_flags(&[&kept]), 1);
+    }
+
+    #[test]
+    fn restore_cursor_leaves_keyboard_flags() {
+        assert_eq!(keyboard_flags(&[b"\x1b[>1u\x1b[u"]), 1);
+        assert_eq!(replies("\x1b[>1u\x1b[u"), "");
+    }
+
+    #[test]
+    fn keyboard_flags_are_answered_only_for_the_query() {
+        assert_eq!(replies("\x1b[>1u\x1b[<u\x1b[=1;2u\x1b[u"), "");
+    }
+
+    #[test]
+    fn keyboard_flags_leave_cells_attributes_and_cursor() {
+        let mut plain = Grid::new(Size::new(80, 24));
+        plain.process(b"\x1b[1mx");
+        let mut grid = Grid::new(Size::new(80, 24));
+        grid.process(b"\x1b[1m\x1b[>1u\x1b[=1;2u\x1b[>0u\x1b[<ux");
+        assert_eq!(grid.modes().keyboard_flags, 1);
+        assert!(grid.screen().cell(0, 0).unwrap().bold());
+        assert_eq!(grid.contents(), plain.contents());
+        assert_eq!(grid.cursor(), plain.cursor());
+        assert_eq!(grid.snapshot(), plain.snapshot());
+    }
+
+    #[test]
+    fn screens_keep_their_own_keyboard_flags() {
+        for chunks in [
+            &[&b"\x1b[>1u\x1b[?1049h"[..]][..],
+            &[b"\x1b[>1u", b"\x1b[?1049h"],
+            &[b"\x1b[>1u\x1b[?10", b"49h"],
+        ] {
+            assert_eq!(keyboard_flags(chunks), 0);
+            let back: Vec<&[u8]> = chunks
+                .iter()
+                .copied()
+                .chain([&b"\x1b[?1049l"[..]])
+                .collect();
+            assert_eq!(keyboard_flags(&back), 1);
+        }
+        assert_eq!(keyboard_flags(&[b"\x1b[>1u\x1b[?1049h\x1b[?1049l"]), 1);
+        assert_eq!(replies("\x1b[>1u\x1b[?1049h\x1b[?u"), "\x1b[?0u");
+        assert_eq!(keyboard_flags(&[b"\x1b[?1049h\x1b[>1u"]), 1);
+        assert_eq!(keyboard_flags(&[b"\x1b[?1049h", b"\x1b[>1u"]), 1);
+        assert_eq!(keyboard_flags(&[b"\x1b[?1049h\x1b[>1u\x1b[?1049l"]), 0);
+    }
+
+    #[test]
+    fn a_new_alternate_screen_starts_clear() {
+        assert_eq!(
+            keyboard_flags(&[b"\x1b[?1049h\x1b[>1u\x1b[?1049l\x1b[?1049h"]),
+            0
+        );
+        assert_eq!(
+            keyboard_flags(&[b"\x1b[?1049h\x1b[>1u\x1b[?1049l", b"\x1b[?1049h"]),
+            0
+        );
+        assert_eq!(
+            keyboard_flags(&[b"\x1b[?1049h", b"\x1b[>1u", b"\x1b[?1049l", b"\x1b[?1049h"]),
+            0
+        );
+        assert_eq!(
+            keyboard_flags(&[b"\x1b[?1049h\x1b[>1u\x1b[?1049l\x1b[?10", b"49h"]),
+            0
+        );
+        assert_eq!(keyboard_flags(&[b"\x1b[?47h\x1b[>1u\x1b[?47l\x1b[?47h"]), 0);
+    }
+
+    #[test]
+    fn entering_the_alternate_screen_again_keeps_its_flags() {
+        assert_eq!(keyboard_flags(&[b"\x1b[?1049h\x1b[>1u\x1b[?1049h"]), 1);
+    }
+
+    #[test]
+    fn full_reset_clears_keyboard_flags() {
+        assert_eq!(keyboard_flags(&[b"\x1b[>1u\x1bc"]), 0);
+        assert_eq!(keyboard_flags(&[b"\x1b[>1u", b"\x1bc"]), 0);
+        assert_eq!(keyboard_flags(&[b"\x1b[>1u\x1b", b"c"]), 0);
+        assert_eq!(keyboard_flags(&[b"\x1b[?1049h\x1b[>1u\x1bc\x1b[?1049h"]), 0);
+        assert_eq!(
+            keyboard_flags(&[b"\x1b[?1049h\x1b[>1u\x1b[?1049l\x1b[>1u\x1bc\x1b[?1049l"]),
+            0
+        );
+        assert_eq!(keyboard_flags(&[b"\x1b[>1u\x1bc\x1b[>1u"]), 1);
+    }
+
     #[test]
     fn unsupported_queries_stay_unanswered() {
-        assert_eq!(replies("\x1b[?u"), "");
         assert_eq!(replies("\x1b]11;?\x07"), "");
         assert_eq!(replies("\x1b[999z"), "");
     }

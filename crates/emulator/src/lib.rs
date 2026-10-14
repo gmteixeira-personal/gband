@@ -29,6 +29,29 @@ pub trait Emulator: Send + 'static {
 
 pub type Grid = Vt100;
 
+const FULL_RESET: &[u8] = b"\x1bc";
+
+const SEGMENT_ENDS: [&[u8]; 7] = [
+    FULL_RESET,
+    b"\x1b[?47h",
+    b"\x1b[?1047h",
+    b"\x1b[?1049h",
+    b"\x1b[?47l",
+    b"\x1b[?1047l",
+    b"\x1b[?1049l",
+];
+
+fn segment_end(bytes: &[u8]) -> Option<usize> {
+    (0..bytes.len())
+        .filter(|&at| bytes[at] == 0x1b)
+        .find_map(|at| {
+            SEGMENT_ENDS
+                .iter()
+                .find(|end| bytes[at..].starts_with(end))
+                .map(|end| at + end.len())
+        })
+}
+
 pub struct Vt100 {
     parser: vt100::Parser<Callbacks>,
     escape_pending: bool,
@@ -83,18 +106,25 @@ impl Emulator for Vt100 {
     fn process(&mut self, bytes: &[u8]) {
         let mut rest = bytes;
         while !rest.is_empty() {
-            let reset = if self.escape_pending && rest[0] == b'c' {
-                Some(1)
+            let split_reset = self.escape_pending && rest[0] == b'c';
+            let end = if split_reset {
+                1
             } else {
-                rest.windows(2)
-                    .position(|pair| pair == b"\x1bc")
-                    .map(|at| at + 2)
+                segment_end(rest).unwrap_or(rest.len())
             };
-            let end = reset.unwrap_or(rest.len());
+            let reset = split_reset || rest[..end].ends_with(FULL_RESET);
+            let was_alternate = self.parser.screen().alternate_screen();
             self.parser.process(&rest[..end]);
             self.escape_pending = rest[end - 1] == 0x1b;
-            if reset.is_some() {
-                self.parser.callbacks_mut().modify_other_keys = 0;
+            let entered_alternate = !was_alternate && self.parser.screen().alternate_screen();
+            let callbacks = self.parser.callbacks_mut();
+            if reset {
+                callbacks.modify_other_keys = 0;
+                callbacks.clear_keyboard_flags(false);
+                callbacks.clear_keyboard_flags(true);
+            }
+            if entered_alternate {
+                callbacks.clear_keyboard_flags(true);
             }
             rest = &rest[end..];
         }
@@ -127,6 +157,10 @@ impl Emulator for Vt100 {
                 vt100::MouseProtocolEncoding::Sgr => MouseEncoding::Sgr,
             },
             modify_other_keys: self.parser.callbacks().modify_other_keys,
+            keyboard_flags: self
+                .parser
+                .callbacks()
+                .keyboard_flags(screen.alternate_screen()),
         }
     }
 

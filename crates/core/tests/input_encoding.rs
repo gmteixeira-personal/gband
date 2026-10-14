@@ -17,6 +17,15 @@ const OTHER_KEYS: Modes = Modes {
     modify_other_keys: 1,
     ..Modes::DEFAULT
 };
+const KITTY: Modes = Modes {
+    keyboard_flags: 1,
+    ..Modes::DEFAULT
+};
+const KITTY_AND_OTHER: Modes = Modes {
+    keyboard_flags: 1,
+    modify_other_keys: 1,
+    ..Modes::DEFAULT
+};
 const EVERY_OTHER_KEY: Modes = Modes {
     modify_other_keys: 2,
     ..Modes::DEFAULT
@@ -263,6 +272,48 @@ fn tilde_and_function_keys() {
         (KeyCode::F(5), Modifiers::ALT, NORMAL, b"\x1b[15;3~"),
         (KeyCode::F(13), Modifiers::NONE, NORMAL, b""),
         (KeyCode::F(0), Modifiers::NONE, NORMAL, b""),
+    ]);
+}
+
+#[test]
+fn kitty_keyboard_encoding() {
+    check(&[
+        (KeyCode::Enter, Modifiers::SHIFT, KITTY, b"\x1b[13;2u"),
+        (KeyCode::Enter, Modifiers::CTRL, KITTY, b"\x1b[13;5u"),
+        (KeyCode::Enter, Modifiers::NONE, KITTY, b"\r"),
+        (KeyCode::Enter, Modifiers::ALT, KITTY, b"\x1b[13;3u"),
+        (KeyCode::Enter, SHIFT_ALT_CTRL, KITTY, b"\x1b[13;8u"),
+        (KeyCode::Char('c'), Modifiers::CTRL, KITTY, b"\x1b[99;5u"),
+        (KeyCode::Char('A'), ALT_SHIFT, KITTY, b"\x1b[97;4u"),
+        (KeyCode::Char('!'), Modifiers::ALT, KITTY, b"\x1b[33;3u"),
+        (KeyCode::Char('x'), Modifiers::ALT, KITTY, b"\x1b[120;3u"),
+        (KeyCode::Char('A'), Modifiers::SHIFT, KITTY, b"A"),
+        (KeyCode::Char('a'), Modifiers::NONE, KITTY, b"a"),
+        (KeyCode::Escape, Modifiers::NONE, KITTY, b"\x1b[27u"),
+        (KeyCode::Escape, Modifiers::CTRL, KITTY, b"\x1b[27;5u"),
+        (KeyCode::BackTab, Modifiers::SHIFT, KITTY, b"\x1b[Z"),
+        (KeyCode::Tab, Modifiers::CTRL, KITTY, b"\x1b[9;5u"),
+        (KeyCode::Tab, Modifiers::NONE, KITTY, b"\t"),
+        (KeyCode::Tab, Modifiers::SHIFT, KITTY, b"\t"),
+        (KeyCode::Backspace, Modifiers::NONE, KITTY, b"\x7f"),
+        (KeyCode::Backspace, Modifiers::CTRL, KITTY, b"\x1b[127;5u"),
+        (KeyCode::Backspace, Modifiers::SHIFT, KITTY, b"\x1b[127;2u"),
+        (KeyCode::F(13), Modifiers::NONE, KITTY, b"\x1b[57376u"),
+        (KeyCode::F(13), Modifiers::SHIFT, KITTY, b"\x1b[57376;2u"),
+        (KeyCode::F(35), Modifiers::NONE, KITTY, b"\x1b[57398u"),
+        (KeyCode::Left, Modifiers::CTRL, KITTY, b"\x1b[1;5D"),
+        (KeyCode::Up, Modifiers::NONE, KITTY, b"\x1b[A"),
+        (KeyCode::Insert, Modifiers::NONE, KITTY, b"\x1b[2~"),
+        (KeyCode::Delete, Modifiers::CTRL, KITTY, b"\x1b[3;5~"),
+        (KeyCode::F(1), Modifiers::NONE, KITTY, b"\x1bOP"),
+        (KeyCode::F(12), Modifiers::NONE, KITTY, b"\x1b[24~"),
+        (
+            KeyCode::Enter,
+            Modifiers::CTRL,
+            KITTY_AND_OTHER,
+            b"\x1b[13;5u",
+        ),
+        (KeyCode::Enter, Modifiers::SHIFT, NORMAL, b"\r"),
     ]);
 }
 

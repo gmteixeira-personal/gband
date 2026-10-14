@@ -220,7 +220,19 @@ fn csi(bytes: &[u8], last: bool) -> Step {
 fn starts_sequence(byte: u8) -> bool {
     matches!(
         byte,
-        b'0'..=b'9' | b'?' | b'<' | b'[' | b'M' | b'A'..=b'D' | b'F' | b'H' | b'I' | b'O' | b'Z'
+        b'0'..=b'9'
+            | b'?'
+            | b'<'
+            | b'['
+            | b'M'
+            | b'A'..=b'F'
+            | b'H'
+            | b'I'
+            | b'O'
+            | b'P'
+            | b'Q'
+            | b'S'
+            | b'Z'
     )
 }
 
@@ -249,16 +261,18 @@ fn paste(bytes: &[u8], start: usize) -> Step {
 }
 
 fn sequence(params: &[u8], end: u8) -> Option<TerminalInput> {
+    if end == b'u' {
+        return kitty_u(params);
+    }
     let numbers = numbers(params)?;
     match (end, numbers.as_slice()) {
         (b'Z', []) => Some(key(KeyCode::BackTab, Modifiers::NONE)),
         (b'I', []) => Some(TerminalInput::Focus(true)),
         (b'O', []) => Some(TerminalInput::Focus(false)),
-        (letter, []) => cursor_key(letter).map(|code| key(code, Modifiers::NONE)),
-        (b'~', [27, parameter, code]) | (b'u', [code, parameter]) => {
-            coded_key(*code, modifiers(*parameter))
-        }
-        (b'u', [code]) => coded_key(*code, Modifiers::NONE),
+        (letter, []) => cursor_key(letter)
+            .or_else(|| keypad_key(letter))
+            .map(|code| key(code, Modifiers::NONE)),
+        (b'~', [27, parameter, code]) => coded_from_alternates(*code, None, modifiers(*parameter)),
         (b'~', [number]) => tilde_key(*number).map(|code| key(code, Modifiers::NONE)),
         (b'~', [number, parameter]) => {
             tilde_key(*number).map(|code| key(code, modifiers(*parameter)))
@@ -268,6 +282,64 @@ fn sequence(params: &[u8], end: u8) -> Option<TerminalInput> {
             .map(|code| key(code, modifiers(*parameter))),
         _ => None,
     }
+}
+
+fn keypad_key(letter: u8) -> Option<KeyCode> {
+    Some(match letter {
+        b'P' => KeyCode::F(1),
+        b'Q' => KeyCode::F(2),
+        b'S' => KeyCode::F(4),
+        _ => return None,
+    })
+}
+
+fn kitty_u(params: &[u8]) -> Option<TerminalInput> {
+    let mut fields = params.split(|&byte| byte == b';');
+    let mut subs = fields.next()?.split(|&byte| byte == b':');
+    let code = parse_u32(subs.next()?)?;
+    let shifted = match subs.next() {
+        None | Some(b"") => None,
+        Some(sub) => Some(parse_u32(sub)?),
+    };
+    subs.next();
+    if subs.next().is_some() {
+        return None;
+    }
+    let modifiers = match fields.next() {
+        None => Modifiers::NONE,
+        Some(field) => modifiers(parse_u32(field)?),
+    };
+    if fields.next().is_some() {
+        return None;
+    }
+    coded_from_alternates(code, shifted, modifiers)
+}
+
+fn parse_u32(field: &[u8]) -> Option<u32> {
+    std::str::from_utf8(field).ok()?.parse().ok()
+}
+
+fn coded_from_alternates(
+    code: u32,
+    shifted: Option<u32>,
+    modifiers: Modifiers,
+) -> Option<TerminalInput> {
+    if modifiers.shift {
+        if let Some(shifted) = shifted {
+            let c = char::from_u32(shifted).filter(|c| !c.is_control())?;
+            return Some(key(
+                KeyCode::Char(c),
+                Modifiers {
+                    shift: c.is_uppercase(),
+                    ..modifiers
+                },
+            ));
+        }
+        if let Some(lower) = char::from_u32(code).filter(char::is_ascii_lowercase) {
+            return Some(key(KeyCode::Char(lower.to_ascii_uppercase()), modifiers));
+        }
+    }
+    coded_key(code, modifiers)
 }
 
 fn numbers(params: &[u8]) -> Option<Vec<u32>> {
@@ -296,6 +368,27 @@ fn coded_key(code: u32, modifiers: Modifiers) -> Option<TerminalInput> {
         9 => KeyCode::Tab,
         127 => KeyCode::Backspace,
         27 => KeyCode::Escape,
+        57376..=57398 => KeyCode::F((code - 57376 + 13) as u8),
+        57399..=57408 => KeyCode::Char(char::from(b'0' + (code - 57399) as u8)),
+        57409 => KeyCode::Char('.'),
+        57410 => KeyCode::Char('/'),
+        57411 => KeyCode::Char('*'),
+        57412 => KeyCode::Char('-'),
+        57413 => KeyCode::Char('+'),
+        57414 => KeyCode::Enter,
+        57415 => KeyCode::Char('='),
+        57416 => KeyCode::Char(','),
+        57417 => KeyCode::Left,
+        57418 => KeyCode::Right,
+        57419 => KeyCode::Up,
+        57420 => KeyCode::Down,
+        57421 => KeyCode::PageUp,
+        57422 => KeyCode::PageDown,
+        57423 => KeyCode::Home,
+        57424 => KeyCode::End,
+        57425 => KeyCode::Insert,
+        57426 => KeyCode::Delete,
+        57344..=63743 => return None,
         _ => KeyCode::Char(char::from_u32(code).filter(|c| !c.is_control())?),
     };
     Some(key(code, modifiers))
