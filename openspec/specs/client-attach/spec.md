@@ -150,7 +150,7 @@ A release build, and a debug build that does not replace, SHALL attach to the se
 - **AND** standard error holds no different-build note
 
 ### Requirement: Leaving the client
-Whenever the client exits after taking the terminal, it SHALL first leave the alternate screen, disable raw mode and bracketed paste, and show the cursor. It SHALL then print one line to standard output, followed by the note for a server from a different build when one applies, and exit as follows:
+Whenever the client exits after taking the terminal, it SHALL first end any synchronized update with `\e[?2026l`, then leave the alternate screen, disable raw mode and bracketed paste, and show the cursor. It SHALL then print one line to standard output, followed by the note for a server from a different build when one applies, and exit as follows:
 
 | cause | line printed | exit status |
 |---|---|---|
@@ -170,6 +170,10 @@ Whenever the client exits after taking the terminal, it SHALL first leave the al
 #### Scenario: Server killed
 - **WHEN** the server is killed with SIGKILL while a client is attached
 - **THEN** the client restores the terminal, prints `[lost server]` and exits with status 1
+
+#### Scenario: Exit ends a synchronized update
+- **WHEN** the client exits while a frame's `\e[?2026h` has no matching `\e[?2026l`
+- **THEN** the client writes `\e[?2026l` before it leaves the alternate screen
 
 ### Requirement: Key bindings
 The client SHALL take its key tables, its modes and its prefix key from the configuration, as the configuration capability defines them. The client SHALL keep one active key table, which SHALL be `root` outside a key sequence and outside a mode. While `root` is active, a key bound in `root` SHALL run its binding, and the prefix key SHALL make `prefix` the active table. The client SHALL send neither to the server. Any other key while `root` is active SHALL go to the focused plugin window when there is one, as the plugin-windows capability defines, and SHALL otherwise be sent to the focused window, or, while multi mode is on, to every window of the viewed band, as the multi-mode capability defines.
@@ -860,3 +864,28 @@ The client SHALL send the server a focus message naming the window it focuses, o
 #### Scenario: Empty band
 - **WHEN** the client views the empty last band
 - **THEN** it sends a focus message naming no window
+
+### Requirement: Whole frames
+Every time the client draws the terminal, it SHALL write the frame as one synchronized update: `\e[?2026h` first, `\e[?2026l` last, and every byte of the frame between them. The first bytes after `\e[?2026h` SHALL hide the cursor with `\e[?25l`, before any cell is written or the cursor is moved. The cursor SHALL then stay hidden until the frame's last cell is written, and SHALL be shown, when the ribbon presentation shows it, only from the frame's final cursor position.
+
+When writing a frame fails after `\e[?2026h` was written, the client SHALL still try to write `\e[?2026l` before it reports the failure.
+
+A terminal that does not support mode 2026 ignores both markers and still receives the frame and the cursor hidden while cells are written.
+
+#### Scenario: Frame between the markers
+- **WHEN** the client draws a frame in which a window's output changed three cells and the focused window's cursor is shown
+- **THEN** the bytes written for that frame start with `\e[?2026h\e[?25l` and end with `\e[?2026l`
+- **AND** no `\e[?2026l` appears before the frame's last byte
+
+#### Scenario: Cursor hidden while cells are written
+- **WHEN** the client draws a frame that changes cells on rows 2 and 10 and places the cursor on row 5
+- **THEN** no `\e[?25h` appears among the frame's bytes before the last changed cell's bytes
+- **AND** the terminal's cursor ends shown on row 5
+
+#### Scenario: Cursor stays hidden
+- **WHEN** the client draws a frame while a floating plugin window is focused
+- **THEN** the frame's bytes hold `\e[?25l` and no `\e[?25h`
+
+#### Scenario: Failed frame still ends
+- **WHEN** writing a frame fails after the begin marker and some cells were written
+- **THEN** the client writes `\e[?2026l` before it returns the error
