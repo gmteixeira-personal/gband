@@ -44,8 +44,11 @@ A program inside a gband window cannot set the clipboard of the terminal gband r
 - crates/protocol/tests/messages.rs
 - crates/server/src/window.rs
 - crates/server/src/connection.rs
+- crates/server/src/registry.rs
 - crates/server/src/session.rs
 - crates/server/tests/clipboard.rs
+- crates/server/tests/sync.rs
+- crates/test-support/src/lib.rs
 - crates/lua/src/options.rs
 - crates/lua/src/defaults.lua
 - crates/lua/src/events.rs

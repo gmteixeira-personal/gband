@@ -38,6 +38,7 @@ pub struct Window {
     terminal: Mutex<Terminal>,
     generation: AtomicU64,
     changed: Arc<watch::Sender<u64>>,
+    clipboards: Arc<AtomicU64>,
     write_back: mpsc::WeakUnboundedSender<Input>,
     agent_dirty: AtomicBool,
 }
@@ -49,6 +50,7 @@ struct Terminal {
     tracker: Option<Tracker>,
     agent_published: bool,
     agent_changed: bool,
+    clipboard: Option<(u64, String)>,
 }
 
 struct Names {
@@ -145,7 +147,11 @@ pub struct SpawnRequest<'a> {
 }
 
 impl Window {
-    pub fn blank(size: Size, changed: &Arc<watch::Sender<u64>>) -> WindowEntry {
+    pub fn blank(
+        size: Size,
+        changed: &Arc<watch::Sender<u64>>,
+        clipboards: &Arc<AtomicU64>,
+    ) -> WindowEntry {
         let (input, mut discarded) = mpsc::unbounded_channel();
         tokio::spawn(async move { while discarded.recv().await.is_some() {} });
         let window = Arc::new(Window {
@@ -156,9 +162,11 @@ impl Window {
                 tracker: None,
                 agent_published: false,
                 agent_changed: false,
+                clipboard: None,
             }),
             generation: AtomicU64::new(0),
             changed: Arc::clone(changed),
+            clipboards: Arc::clone(clipboards),
             write_back: input.downgrade(),
             agent_dirty: AtomicBool::new(false),
         });
@@ -190,6 +198,15 @@ impl Window {
             checkpoint: grid.checkpoint(),
         };
         (self.generation.load(Ordering::Acquire), seen, contents)
+    }
+
+    pub fn clipboard_stamp(&self) -> u64 {
+        let terminal = self.terminal.lock().unwrap();
+        terminal.clipboard.as_ref().map_or(0, |(stamp, _)| *stamp)
+    }
+
+    pub fn clipboard(&self) -> Option<(u64, String)> {
+        self.terminal.lock().unwrap().clipboard.clone()
     }
 
     pub fn generation(&self) -> u64 {
@@ -309,6 +326,10 @@ impl Window {
         {
             let mut terminal = self.terminal.lock().unwrap();
             terminal.grid.process(bytes);
+            if let Some(text) = terminal.grid.take_clipboard() {
+                let stamp = self.clipboards.fetch_add(1, Ordering::AcqRel) + 1;
+                terminal.clipboard = Some((stamp, text));
+            }
             terminal.update_name(false);
             self.mark_agent(&mut terminal);
             self.generation.fetch_add(1, Ordering::AcqRel);
@@ -330,6 +351,7 @@ impl Window {
 pub fn spawn(
     request: SpawnRequest<'_>,
     changed: &Arc<watch::Sender<u64>>,
+    clipboards: &Arc<AtomicU64>,
     exits: mpsc::UnboundedSender<WindowExit>,
 ) -> Result<Spawned> {
     let SpawnRequest {
@@ -387,6 +409,7 @@ pub fn spawn(
         tracker: None,
         agent_published: false,
         agent_changed: false,
+        clipboard: None,
     };
     terminal.update_name(true);
     let agent_dirty = AtomicBool::new(std::mem::take(&mut terminal.agent_changed));
@@ -394,6 +417,7 @@ pub fn spawn(
         terminal: Mutex::new(terminal),
         generation: AtomicU64::new(0),
         changed: Arc::clone(changed),
+        clipboards: Arc::clone(clipboards),
         write_back: input.downgrade(),
         agent_dirty,
     });
@@ -499,7 +523,7 @@ mod tests {
     use super::*;
 
     fn blank(size: Size) -> WindowEntry {
-        Window::blank(size, &Arc::new(watch::Sender::new(0)))
+        Window::blank(size, &Arc::new(watch::Sender::new(0)), &Arc::default())
     }
 
     fn feed(grid: &mut Grid, contents: Contents) {

@@ -353,7 +353,7 @@ Each built-in option belongs to one side, and each process knows only its own si
 
 | side | options |
 |---|---|
-| client | `prefix`, `center_focused_column`, `loop_bands`, `window_titles`, `animations`, `animation_speed`, `notify_style`, `tile_border_sides`, `tile_border_chars`, `focused_tile_border_chars`, `floating_border_sides`, `floating_border_chars`, `focused_floating_border_chars`, `width_step`, `height_step`, `mouse_mod` |
+| client | `prefix`, `center_focused_column`, `loop_bands`, `window_titles`, `animations`, `animation_speed`, `notify_style`, `window_clipboard`, `tile_border_sides`, `tile_border_chars`, `focused_tile_border_chars`, `floating_border_sides`, `floating_border_chars`, `focused_floating_border_chars`, `width_step`, `height_step`, `mouse_mod` |
 | server | `default_column_width`, `width_presets` |
 
 ```lua
@@ -371,6 +371,10 @@ The client reads `GBAND_WINDOW_TITLES` when it starts: `off` draws no names what
 `animation_speed`, `1` by default, scales how fast every animation runs: `2` is twice as fast and `0.5` half as fast, from `0.1` to `10`.
 The client reads `GBAND_ANIMATIONS` when it starts: `off` turns animations off whatever `animations` holds, unset or `on` leaves the option in charge, and any other value is logged as a warning and read as unset.
 A reload that turns `animations` off draws every moving part at its target on the next frame, and a reload that changes `animation_speed` carries every moving part on from where it is drawn, at the new speed.
+
+`window_clipboard`, `true` by default, is whether a window program's clipboard write sets your terminal's clipboard: the client copies each write the server forwards, as "Clipboard writes of windows" describes.
+With it on, any output written to a window can replace your clipboard, such as `cat` of an untrusted file or a remote host reached through nested ssh.
+`gband.set { window_clipboard = false }` stops the copy, and `WindowClipboard` handlers still run.
 
 An invalid value is reported at the line of the assignment, does not fail the load, and resets the option to its default.
 Setting an option of the other side is reported naming the side that owns it, and reading one returns nil.
@@ -435,6 +439,7 @@ The built-in events of the client:
 | `ColorschemeChanged` | `name`, `previous` | a colorscheme loads after loading |
 | `ServerEvent` | `name`, `data`, `queued`, `time` | the server emits an event to this client |
 | `WindowStateChanged` | `window`, `key`, `value`, `previous` | the server changes a window's state |
+| `WindowClipboard` | `window`: the writing window's number, `text`: the text it wrote | the server forwards a clipboard write of a window program |
 | `MousePressed` | `button`, and the mouse fields | a mouse button is pressed |
 | `MouseReleased` | `button`, and the mouse fields | a mouse button is released |
 | `MouseDragged` | `button`, and the mouse fields | the pointer moves to another cell with a button held |
@@ -471,6 +476,29 @@ local group = gband.augroup("follow")
 gband.on("WindowOpened", function(event)
   print("opened window", event.window, "in band", event.band)
 end, { group = group })
+```
+
+### Clipboard writes of windows
+
+A program in a window sets the clipboard with `ESC ] 52 ; c ; <base64> BEL`, or `ESC \` in place of `BEL`, as Claude Code and neovim do.
+The server accepts a write whose selection is empty or holds `c`, and whose data decodes to at most 1 MiB; the text is that data read as UTF-8, with each invalid sequence replaced by U+FFFD.
+It ignores every other OSC 52 sequence, and never answers a query (`?`), so a program cannot read any clipboard through gband.
+
+The server sends each write to every client attached to the window's session, once.
+When a program writes several times before a client is sent one, that client receives only the latest.
+A write made before a client attached never reaches it.
+
+On each write the client first emits `WindowClipboard` with `window` and `text`.
+Then, when `window_clipboard` is `true`, it writes `ESC ] 52 ; c ; <base64 of text> BEL` to its terminal, the sequence `gband.clipboard(text)` writes.
+With the option `false`, it writes nothing, and a handler can copy from chosen windows:
+
+```lua
+gband.set { window_clipboard = false }
+gband.on("WindowClipboard", function(event)
+  if event.window == 2 then
+    gband.clipboard(event.text)
+  end
+end)
 ```
 
 ## Key bindings: `gband.keymap`

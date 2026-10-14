@@ -223,6 +223,7 @@ fn list_holds_built_in_and_declared_options() {
             "tile_border_chars",
             "tile_border_sides",
             "width_step",
+            "window_clipboard",
             "window_titles",
         ]
     );
@@ -356,6 +357,46 @@ fn looping_bands_turned_off() {
     assert!(config.errors.is_empty(), "{:?}", config.errors);
     assert!(!global::<bool>(&config, "looping"));
     assert!(!config.options.loop_bands);
+}
+
+#[test]
+fn window_clipboard_by_default() {
+    let scratch = Scratch::new("window-clipboard-default");
+    scratch.write("copying = gband.opt.window_clipboard");
+    let config = scratch.loaded();
+    assert!(global::<bool>(&config, "copying"));
+    assert!(config.options.window_clipboard);
+    let listed: Vec<String> = eval(
+        &config,
+        "for _, o in ipairs(gband.opt.list()) do if o.name == 'window_clipboard' then return { o.type, tostring(o.default), o.desc } end end",
+    );
+    assert_eq!(
+        listed,
+        [
+            "boolean",
+            "true",
+            "whether a window program's clipboard write sets your terminal's clipboard"
+        ]
+    );
+}
+
+#[test]
+fn window_clipboard_off() {
+    let scratch = Scratch::new("window-clipboard-off");
+    scratch.write("gband.set { window_clipboard = false }\ncopying = gband.opt.window_clipboard");
+    let config = scratch.loaded();
+    assert!(config.errors.is_empty(), "{:?}", config.errors);
+    assert!(!global::<bool>(&config, "copying"));
+    assert!(!config.options.window_clipboard);
+}
+
+#[test]
+fn window_clipboard_of_the_wrong_type() {
+    let scratch = Scratch::new("window-clipboard-wrong-type");
+    let path = scratch
+        .write("gband.set { window_clipboard = false }\ngband.set { window_clipboard = \"no\" }");
+    let error = scratch.load().err().expect("a wrong type fails the load");
+    assert_error_at(&error, &path, 2, "window_clipboard");
 }
 
 #[test]

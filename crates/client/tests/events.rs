@@ -1015,3 +1015,74 @@ fn hover_over_a_plugin_window_emits_no_mouse_event() {
     assert_eq!(moved.as_deref(), Some("move"));
     assert!(client.log().is_empty(), "{:?}", client.log());
 }
+
+fn clipboard(window: WindowId, text: &str) -> ServerMessage {
+    ServerMessage::Clipboard {
+        window,
+        text: text.to_owned(),
+    }
+}
+
+fn writes(steps: Vec<Step>) -> Vec<Vec<u8>> {
+    steps
+        .into_iter()
+        .filter_map(|step| match step {
+            Step::Write(bytes) => Some(bytes),
+            _ => None,
+        })
+        .collect()
+}
+
+const RECORD_CLIPBOARD: &str =
+    "gband.on('WindowClipboard', function(e) log[#log + 1] = e.window .. ' ' .. e.text end)";
+
+#[test]
+fn clipboard_write_of_a_window() {
+    let (_scratch, mut client) = recording("clipboard-event", RECORD_CLIPBOARD);
+    let (layout, windows) = layout_of(3);
+    client.receive([shown(&layout)]);
+    client.clear();
+    client.receive([clipboard(windows[2], "hi")]);
+    assert_eq!(client.log(), ["3 hi"]);
+}
+
+#[test]
+fn clipboard_write_is_copied_by_default() {
+    let (_scratch, mut client) = recording("clipboard-default", "");
+    let (layout, windows) = layout_of(1);
+    client.receive([shown(&layout)]);
+    let steps = client.receive([clipboard(windows[0], "hi")]);
+    assert_eq!(writes(steps), [b"\x1b]52;c;aGk=\x07".to_vec()]);
+}
+
+#[test]
+fn clipboard_write_is_not_copied_with_the_option_off() {
+    let (_scratch, mut client) = recording(
+        "clipboard-off",
+        &format!("gband.set {{ window_clipboard = false }}\n{RECORD_CLIPBOARD}"),
+    );
+    let (layout, windows) = layout_of(1);
+    client.receive([shown(&layout)]);
+    client.clear();
+    let steps = client.receive([clipboard(windows[0], "hi")]);
+    assert_eq!(writes(steps), Vec::<Vec<u8>>::new());
+    assert_eq!(client.log(), ["1 hi"]);
+}
+
+#[test]
+fn clipboard_copied_from_one_window_only() {
+    let scratch = Scratch::new("clipboard-one-window");
+    let config = scratch
+        .load(
+            "gband.set { window_clipboard = false }
+gband.on('WindowClipboard', function(e)
+  if e.window == 2 then gband.clipboard(e.text) end
+end)",
+        )
+        .unwrap();
+    let mut client = Client::new(config);
+    let (layout, windows) = layout_of(2);
+    client.receive([shown(&layout)]);
+    let steps = client.receive([clipboard(windows[0], "one"), clipboard(windows[1], "two")]);
+    assert_eq!(writes(steps), [b"\x1b]52;c;dHdv\x07".to_vec()]);
+}

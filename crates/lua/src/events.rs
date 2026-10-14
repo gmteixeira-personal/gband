@@ -158,6 +158,10 @@ pub enum Event {
         value: Option<Data>,
         previous: Option<Data>,
     },
+    WindowClipboard {
+        window: WindowId,
+        text: String,
+    },
     MousePressed {
         button: MouseButton,
         pointer: Pointer,
@@ -179,7 +183,7 @@ pub enum Event {
 const USER: &str = "User";
 const SERVER_EVENT: &str = "ServerEvent";
 
-pub(crate) const NAMES: [&str; 17] = [
+pub(crate) const NAMES: [&str; 18] = [
     "Attached",
     "FocusChanged",
     "BandChanged",
@@ -193,6 +197,7 @@ pub(crate) const NAMES: [&str; 17] = [
     "ColorschemeChanged",
     "ServerEvent",
     "WindowStateChanged",
+    "WindowClipboard",
     "MousePressed",
     "MouseReleased",
     "MouseDragged",
@@ -223,6 +228,7 @@ impl Event {
             Event::ColorschemeChanged { .. } => "ColorschemeChanged",
             Event::ServerEvent { .. } => SERVER_EVENT,
             Event::WindowStateChanged { .. } => "WindowStateChanged",
+            Event::WindowClipboard { .. } => "WindowClipboard",
             Event::MousePressed { .. } => "MousePressed",
             Event::MouseReleased { .. } => "MouseReleased",
             Event::MouseDragged { .. } => "MouseDragged",
@@ -292,6 +298,10 @@ impl Event {
                 payload.set("key", key.as_str())?;
                 payload.set("value", data(value)?)?;
                 payload.set("previous", data(previous)?)?;
+            }
+            Event::WindowClipboard { window, text } => {
+                payload.set("window", window.0)?;
+                payload.set("text", text.as_str())?;
             }
             Event::MousePressed { button, pointer }
             | Event::MouseReleased { button, pointer }

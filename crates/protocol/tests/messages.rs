@@ -32,8 +32,8 @@ fn session(name: &str) -> SessionName {
 }
 
 #[test]
-fn protocol_version_is_fourteen() {
-    assert_eq!(PROTOCOL_VERSION, 14);
+fn protocol_version_is_fifteen() {
+    assert_eq!(PROTOCOL_VERSION, 15);
 }
 
 #[test]
@@ -278,6 +278,14 @@ fn window_name_round_trips() {
         window: WindowId(4),
         automatic: "bash".to_owned(),
         manual: None,
+    });
+}
+
+#[test]
+fn clipboard_round_trips() {
+    round_trip(ServerMessage::Clipboard {
+        window: WindowId(2),
+        text: "hi".to_owned(),
     });
 }
 
@@ -784,21 +792,21 @@ fn focus_round_trip() {
 }
 
 #[test]
-fn version_thirteen_client_meets_a_version_fourteen_server() {
+fn version_fourteen_client_meets_a_version_fifteen_server() {
     let hello = encode(&Hello {
-        version: 13,
+        version: 14,
         cols: 80,
         rows: 24,
     })
     .unwrap();
     let version = leading_version(&hello[4..]).unwrap();
-    assert_eq!(version, 13);
+    assert_eq!(version, 14);
     assert_ne!(version, PROTOCOL_VERSION);
     assert_eq!(
         encode(&HelloReply::Rejected {
             version: PROTOCOL_VERSION
         })
         .unwrap(),
-        [0, 0, 0, 2, 0x01, 0x0e]
+        [0, 0, 0, 2, 0x01, 0x0f]
     );
 }

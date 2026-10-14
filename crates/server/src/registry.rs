@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
 use anyhow::Result;
 use gband_core::geometry::Size;
@@ -22,6 +22,7 @@ pub struct SessionHandle {
     pub commands: mpsc::UnboundedSender<Command>,
     pub state: watch::Receiver<Arc<State>>,
     pub changed: watch::Receiver<u64>,
+    pub clipboards: Arc<AtomicU64>,
     pub ended: watch::Receiver<bool>,
     pub clients: AtomicU32,
     pub events: Bus,
@@ -147,6 +148,7 @@ impl Registry {
             commands: commands_tx,
             state: session.state(),
             changed: session.changed(),
+            clipboards: session.clipboards(),
             ended,
             clients: AtomicU32::new(0),
             events: session.events(),

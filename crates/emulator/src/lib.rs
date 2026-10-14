@@ -55,6 +55,10 @@ impl Vt100 {
         self.parser.callbacks().title.as_deref()
     }
 
+    pub fn take_clipboard(&mut self) -> Option<String> {
+        self.parser.callbacks_mut().clipboard.take()
+    }
+
     pub fn take_title_changed(&mut self) -> bool {
         std::mem::take(&mut self.parser.callbacks_mut().title_changed)
     }
