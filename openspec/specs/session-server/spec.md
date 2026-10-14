@@ -432,6 +432,7 @@ The server SHALL answer the terminal queries in the table below when the window'
 | XTVERSION | `\e[>q` or `\e[>0q` | `\eP>\|gband <version>\e\` |
 | DEC private mode report | `\e[?<mode>$p` | `\e[?<mode>;<state>$y` |
 | ANSI mode report | `\e[<mode>$p` | `\e[<mode>;0$y` |
+| kitty keyboard flags | `\e[?u` | `\e[?<flags>u`, the kitty keyboard flags of the screen in use, as the terminal-emulator capability's "Kitty keyboard flags" defines |
 
 In a DEC private mode report, `<state>` SHALL be `1` when the mode is set and `2` when it is reset, for the modes 1, 9, 25, 47, 1000, 1002, 1003, 1005, 1006, 1049 and 2004, read from the server's screen. For any other mode, `<state>` SHALL be `0`, meaning not recognised.
 
@@ -470,8 +471,12 @@ A query the server answers SHALL NOT be recorded in the log as an unhandled sequ
 - **WHEN** the window's program writes `\e[?7727$p`
 - **THEN** the program reads `\e[?7727;0$y` from its terminal
 
+#### Scenario: Kitty keyboard query
+- **WHEN** the window's program writes `\e[>1u` and then `\e[?u`
+- **THEN** the program reads `\e[?1u` from its terminal
+
 #### Scenario: Unsupported query stays unanswered
-- **WHEN** the window's program writes the kitty keyboard query `\e[?u` followed by `\e[c`
+- **WHEN** the window's program writes the background color query `\e]11;?\e\` followed by `\e[c`
 - **THEN** the only bytes the program reads from its terminal are `\e[?62;22c`
 
 ### Requirement: Named sessions
