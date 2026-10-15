@@ -14,6 +14,7 @@ gband 0.3.2 fails to compile on macOS, so a Mac user can neither run gband local
 - The test harness and the root tests read process state, children, sessions and environments through the same per-platform functions, so `cargo test --workspace` runs on macOS.
 - Linux keeps its behaviour and its code: each Linux body moves unchanged behind `#[cfg(target_os = "linux")]`, a build for any other operating system stops with `compile_error!`, and the Linux gate runs after every task group that changes code.
 - The README names macOS as supported, names the Xcode Command Line Tools as the C compiler, and says that macOS binds Ctrl+Space to switching the input source, which hides gband's prefix key until the shortcut is turned off.
+- The terminal-protocol and clipboard features added since this change was written, up to protocol 18 (kitty keyboard, kitty graphics, sixel forwarding, synchronized frames, window clipboard and clipboard image paste), build on macOS with no new per-platform call: the client reads its pixel cell size through `crossterm`'s `window_size`, clipboard image paste reads the clipboard with `pbpaste` as the clipboard-image-paste capability defines, and the server writes images under `std::env::temp_dir()`, the short `/var/folders` path the scratch-path rule already shortens.
 
 ## Capabilities
 
@@ -44,7 +45,7 @@ gband 0.3.2 fails to compile on macOS, so a Mac user can neither run gband local
 - gmteixeira
 
 ### Depends On
-- none
+- forward-clipboard-images
 
 ### Expected Files
 - Cargo.toml

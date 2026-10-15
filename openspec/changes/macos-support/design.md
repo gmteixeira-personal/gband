@@ -1,14 +1,14 @@
 ## Context
 
-See proposal.md for the motivation. Every Linux-only call in the tree at `eab6e3c`:
+See proposal.md for the motivation. Every Linux-only call in the tree at `145defa`:
 
 | site | call | role |
 |---|---|---|
 | `crates/client/src/transport.rs:128` | `socket_peercred` | client checks the user serving the socket |
 | `src/channel.rs:18` | `socket_peercred` | test channel checks its listener |
-| `crates/server/src/lib.rs:219` | `OFlags::PATH` | holds the private bind directory |
-| `crates/server/src/lib.rs:222` | `/proc/self/fd/<fd>/s` | binds through the held directory |
-| `crates/server/src/lib.rs:258` | `/proc/self/status` | test reads the umask |
+| `crates/server/src/lib.rs:224` | `OFlags::PATH` | holds the private bind directory |
+| `crates/server/src/lib.rs:227` | `/proc/self/fd/<fd>/s` | binds through the held directory |
+| `crates/server/src/lib.rs:263` | `/proc/self/status` | test reads the umask |
 | `crates/server/src/process.rs:19,30,36,61` | `/proc/<pid>/cmdline`, `comm` | foreground command, agent arguments, tests |
 | `crates/client/src/transport.rs:145` | `/proc/<pid>/exe` | debug build compares the server's executable path |
 | `src/executable.rs:8` | `/proc/self/exe` | executable identity, already falls back to `current_exe` |
@@ -20,9 +20,11 @@ See proposal.md for the motivation. Every Linux-only call in the tree at `eab6e3
 
 The first three fail to compile on macOS. The rest compile and fail at run time. `rustix` 1.1.5 gates `socket_peercred` on `linux_kernel` and `OFlags::PATH` on Linux, FreeBSD, Fuchsia, Redox and Emscripten. `libc` 0.2.190, already in `Cargo.lock`, exposes `getpeereid`, `proc_pidpath`, `proc_pidinfo` with `PROC_PIDTBSDINFO`, `proc_listchildpids`, `proc_listallpids`, `proc_name` and `KERN_PROCARGS2` for Apple targets.
 
-The macOS socket address holds 104 bytes of path, so 103 usable, against 108 and 107 on Linux. macOS has no `bindat`, and binding through a held directory needs `/proc/self/fd`. Two places check the length today, `src/main.rs:93` for every subcommand and `crates/server/src/lib.rs:78` in the server, both against `SUN_PATH_MAX = 107`.
+The macOS socket address holds 104 bytes of path, so 103 usable, against 108 and 107 on Linux. macOS has no `bindat`, and binding through a held directory needs `/proc/self/fd`. Two places check the length today, `src/main.rs:93` for every subcommand and `crates/server/src/lib.rs:82` in the server, both against `SUN_PATH_MAX = 107`.
 
 `src/executable.rs` needs no change: on macOS `/proc/self/exe` fails and the existing `current_exe` fallback returns the same file, at the same moment, at start.
+
+The features that landed between the first audit of this change and `145defa` (kitty keyboard, kitty graphics, sixel forwarding, synchronized frames, window clipboard and clipboard image paste) add no Linux-only call. The client reads its pixel cell size through `crossterm`'s `window_size`, which uses `TIOCGWINSZ` on both platforms. Clipboard image paste reads the clipboard with `pbpaste` on macOS, as the clipboard-image-paste capability defines, and the server writes the image under `std::env::temp_dir()`, which on macOS is the short `/var/folders` path the scratch-path rule already shortens for tests. The forward-clipboard-images change moved the `crates/server/src/lib.rs` call sites five lines down and left the `src/main.rs` check at line 93, so this snapshot pins `145defa` after it archived.
 
 ## Goals / Non-Goals
 
