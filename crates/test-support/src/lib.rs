@@ -54,6 +54,7 @@ pub fn config(runtime_dir: &Path, program: &[&str]) -> ServerConfig {
         area: INITIAL_AREA,
         executable: IDENTITY,
         options: tokio::sync::watch::channel(LayoutOptions::default()).1,
+        clipboard_image_dir: None,
         scripting: None,
         channel: None,
     }
@@ -478,6 +479,15 @@ impl TestClient {
         })
         .await;
         self.key_to(window, Key::plain(KeyCode::Enter)).await;
+    }
+
+    pub async fn paste_image(&mut self, window: WindowId, mime: &str, data: &[u8]) {
+        self.send(&ClientMessage::PasteImage {
+            window,
+            mime: mime.to_string(),
+            data: data.to_vec(),
+        })
+        .await;
     }
 
     pub async fn open_after(&mut self, after: WindowId) -> WindowId {

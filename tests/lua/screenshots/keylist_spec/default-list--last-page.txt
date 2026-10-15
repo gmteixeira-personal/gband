@@ -4,11 +4,11 @@ size 80x24 cursor 17:68 hidden
  2|1│                                     │
  3|2│                                     │
  4| │         ┌navigation keys─────────────────────────────────────────┐
- 5| │         │s        settings                                       │
- 6| │         │!        reload the configuration                       │
- 7| │         │m        multi mode                                     │
- 8| │         │e        list the errors                                │
- 9| │         │E        clear the errors                               │
+ 5| │         │!        reload the configuration                       │
+ 6| │         │m        multi mode                                     │
+ 7| │         │e        list the errors                                │
+ 8| │         │E        clear the errors                               │
+ 9| │         │p        paste an image from the clipboard              │
 10| │         │D        detach                                         │
 11| │         │esc      interactive mode                               │
 12|─│         │enter    interactive mode                               │

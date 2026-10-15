@@ -50,9 +50,10 @@ Claude Code and similar programs read a pasted image from the OS clipboard with 
 - crates/protocol/tests/messages.rs
 - crates/client/src/lib.rs
 - crates/client/src/clipboard.rs
+- crates/client/src/bindings.rs
 - crates/client/tests/clipboard.rs
+- crates/server/src/lib.rs
 - crates/server/src/window.rs
-- crates/server/src/session.rs
 - crates/server/src/connection.rs
 - crates/server/tests/clipboard_images.rs
 - crates/server/tests/sync.rs
@@ -64,5 +65,12 @@ Claude Code and similar programs read a pasted image from the OS clipboard with 
 - crates/lua/src/runtime/meta/gband.lua
 - crates/lua/tests/options.rs
 - crates/lua/tests/config.rs
+- crates/lua/tests/keystyle.rs
+- crates/lua/tests/plugins.rs
+- src/main.rs
 - docs/plugins.md
+- docs/internals/08-key-styles.md
+- tests/lua/prompt_spec.lua
+- tests/lua/screenshots/keylist_spec/default-list--last-page.txt
+- tests/lua/screenshots/prompt_spec/the-key-list-holds-the-prompt-between-the-key-list-and-detach--hint.txt
 - openspec/changes/forward-clipboard-images/

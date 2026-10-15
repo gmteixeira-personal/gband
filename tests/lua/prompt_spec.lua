@@ -149,7 +149,8 @@ t.case("the key list holds the prompt between the key list and detach", function
   t.match(g.screen().row(list + 5), "│m%s+multi mode")
   t.match(g.screen().row(list + 6), "│e%s+list the errors")
   t.match(g.screen().row(list + 7), "│E%s+clear the errors")
-  t.match(g.screen().row(list + 8), "│D%s+detach")
+  t.match(g.screen().row(list + 8), "│p%s+paste an image from the clipboard")
+  t.match(g.screen().row(list + 9), "│D%s+detach")
   local order = g.client([[
     local keys = {}
     for _, entry in ipairs(gband.keymap.list("prefix")) do
@@ -157,6 +158,6 @@ t.case("the key list holds the prompt between the key list and detach", function
     end
     return table.concat(keys, " ")
   ]])
-  t.match(order, "%? : N s ! m e E D ")
+  t.match(order, "%? : N s ! m e E p D ")
   g.expect_screenshot("hint")
 end)

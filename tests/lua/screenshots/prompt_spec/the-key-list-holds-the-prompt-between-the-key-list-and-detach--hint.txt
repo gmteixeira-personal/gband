@@ -12,11 +12,11 @@ size 80x24 cursor 17:68 hidden
 10| │         │m        multi mode                                     │
 11| │         │e        list the errors                                │
 12|─│         │E        clear the errors                               │
-13| │         │D        detach                                         │
-14| │         │esc      interactive mode                               │
-15| │         │enter    interactive mode                               │
-16| │         │left     focus the column to the left                   │
-17| │         │right    focus the column to the right                  │
+13| │         │p        paste an image from the clipboard              │
+14| │         │D        detach                                         │
+15| │         │esc      interactive mode                               │
+16| │         │enter    interactive mode                               │
+17| │         │left     focus the column to the left                   │
 18| │         └────────────────────────────────────────────────────────┘
 19| │                                     │
 20| │                                     │

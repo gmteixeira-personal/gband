@@ -52,6 +52,7 @@ set("prefix", "E", function()
     clear()
   end
 end, { desc = "clear the errors" })
+set("prefix", "p", action.paste_image, { desc = "paste an image from the clipboard" })
 set("prefix", "D", action.detach, { desc = "detach" })
 set("prefix", "left", action.focus_column_left, { desc = "focus the column to the left" })
 set("prefix", "right", action.focus_column_right, { desc = "focus the column to the right" })

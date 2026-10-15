@@ -1,6 +1,7 @@
 pub mod animation;
 pub mod bindings;
 mod channel;
+pub mod clipboard;
 pub mod color;
 mod connect;
 pub mod mouse;
@@ -2135,6 +2136,9 @@ pub fn dispatch(display: &mut Display, action: Action) -> Vec<Step> {
             display.multi = !display.multi;
             None
         }
+        Action::Client(ClientAction::PasteImage) => {
+            return paste_image_from(display, clipboard::read);
+        }
         Action::Client(ClientAction::SendPrefix) => {
             return display
                 .prefix
@@ -2149,6 +2153,26 @@ pub fn dispatch(display: &mut Display, action: Action) -> Vec<Step> {
         ) => None,
     };
     vec![message.map_or(Step::Nothing, Step::Send)]
+}
+
+pub fn paste_image_from(
+    display: &mut Display,
+    read: impl FnOnce() -> Result<clipboard::Image, clipboard::ClipboardError>,
+) -> Vec<Step> {
+    let Some(window) = display.focused() else {
+        return vec![Step::Nothing];
+    };
+    match read() {
+        Ok(image) => vec![Step::Send(ClientMessage::PasteImage {
+            window,
+            mime: image.mime,
+            data: image.data,
+        })],
+        Err(error) => {
+            display.report_error(error.message());
+            vec![Step::Nothing]
+        }
+    }
 }
 
 pub(crate) async fn perform(

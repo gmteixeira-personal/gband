@@ -23,7 +23,7 @@ const fn builtin(name: &'static str, action: Action, desc: &'static str) -> Buil
     BuiltinAction { name, action, desc }
 }
 
-pub const ACTIONS: [BuiltinAction; 33] = [
+pub const ACTIONS: [BuiltinAction; 34] = [
     builtin(
         "focus_column_left",
         Action::View(ViewAction::FocusLeft),
@@ -181,6 +181,11 @@ pub const ACTIONS: [BuiltinAction; 33] = [
         "toggle_multi",
         Action::Client(ClientAction::ToggleMulti),
         "toggle multi mode",
+    ),
+    builtin(
+        "paste_image",
+        Action::Client(ClientAction::PasteImage),
+        "paste an image from the clipboard",
     ),
     builtin(
         "drag_window",

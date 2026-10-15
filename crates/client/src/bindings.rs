@@ -445,7 +445,7 @@ mod tests {
             .map(|(key, _, _)| key)
             .collect();
         let order = "h l j k u i a b c n q [ ] r f w - = _ + R v V ctrl+h ctrl+l ctrl+j ctrl+k \
-            ctrl+left ctrl+right ctrl+down ctrl+up ? : N s ! m e E D escape enter left right down up prefix \
+            ctrl+left ctrl+right ctrl+down ctrl+up ? : N s ! m e E p D escape enter left right down up prefix \
             leftmouse rightmouse middlemouse mod+leftmouse mod+rightmouse mod+middlemouse \
             mod+wheeldown mod+wheelup";
         assert_eq!(keys, order.split_whitespace().collect::<Vec<_>>());

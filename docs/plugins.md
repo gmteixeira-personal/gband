@@ -308,6 +308,7 @@ The built-in actions, with the description `gband.action.list()` gives each:
 | `send_prefix` | client | send the prefix key to the focused window |
 | `reload` | client | reload the configuration |
 | `toggle_multi` | client | toggle multi mode |
+| `paste_image` | client | paste an image from the clipboard |
 | `drag_window` | client | move the window with the mouse |
 | `drag_resize_window` | client | resize the window with the mouse |
 | `drag_band` | client | slide the band or switch bands with the mouse |
@@ -318,6 +319,8 @@ The three `drag_` actions act only when a mouse press runs them, as "Mouse names
 `toggle_multi` turns this client's multi mode on or off and takes no target.
 While multi mode is on, every key and paste that would reach the focused window reaches each window of the viewed band instead, in layout order, minimized windows included, and `send_prefix` sends the prefix key to each of them; a focused plugin window still takes the keys, the mouse still reaches one window, and `gband.window.send_keys`, `send_text` and `paste` still reach only the window they name.
 Multi mode is off when the client attaches, a reload turns it off, and it is this client's alone.
+
+`paste_image` reads an image from the clipboard of the host the client runs on and forwards it to the focused window, as "Clipboard image paste" describes; the default configuration binds it to `prefix` then `p`.
 
 `gband.action.register(name, fn, { desc = "..." })` registers an action and returns its action value.
 Dispatching it runs `fn` with no arguments, at once, before the caller continues.
@@ -354,7 +357,7 @@ Each built-in option belongs to one side, and each process knows only its own si
 | side | options |
 |---|---|
 | client | `prefix`, `center_focused_column`, `loop_bands`, `window_titles`, `animations`, `animation_speed`, `notify_style`, `window_clipboard`, `window_graphics`, `window_sixel`, `tile_border_sides`, `tile_border_chars`, `focused_tile_border_chars`, `floating_border_sides`, `floating_border_chars`, `focused_floating_border_chars`, `width_step`, `height_step`, `mouse_mod` |
-| server | `default_column_width`, `width_presets` |
+| server | `default_column_width`, `width_presets`, `clipboard_image_dir` |
 
 ```lua
 -- user/server.lua
@@ -383,6 +386,9 @@ It takes effect when the client attaches: `gband.set { window_graphics = false }
 `window_sixel`, `true` by default, is whether a window program's sixel images are forwarded to your terminal, as "Sixel images of windows" describes.
 The client reports sixel support at attach only when this option is `true` and its terminal's device attributes reply holds `4`, so with it `false` the server forwards that client no sixel image and takes no cell size from it.
 It takes effect when the client attaches: `gband.set { window_sixel = false }` in `user/init.lua` turns it off.
+
+`clipboard_image_dir`, unset by default, is the directory under which the server writes a forwarded clipboard image before pasting its path, as "Clipboard image paste" describes; unset means the operating system's temporary directory.
+It is a server option, so in `gband -r <host>` the remote host's `user/server.lua` provides it.
 
 An invalid value is reported at the line of the assignment, does not fail the load, and resets the option to its default.
 Setting an option of the other side is reported naming the side that owns it, and reading one returns nil.
@@ -535,6 +541,21 @@ The server adds attribute `4` to a window program's device attributes reply, `ES
 Each client measures its terminal's cell size in pixels at startup, from the terminal's window size or else its reply to `ESC [ 16 t`, and reports it at attach and on every resize.
 The session takes the cell size of the most recently attached sixel client, and of the next most recent when that one detaches.
 While the session has a cell size, the server sets each window's terminal size in pixels from it and answers `ESC [ 16 t` with the cell size and `ESC [ 14 t` with the window's size in pixels; without one, both pixel sizes are 0 and both queries stay unanswered.
+
+### Clipboard image paste
+
+A program such as Claude Code reads a pasted image from the OS clipboard with `wl-paste`, `xclip` or `pbpaste`, not from the terminal byte stream.
+The `paste_image` action makes that work in a gband window: the client reads an image from the clipboard of the host it runs on and forwards the bytes and the MIME type to the server.
+The client reads with `wl-paste` on Wayland, `xclip` on X11 and `pbpaste` on macOS, preferring `image/png` and else the first image type the clipboard offers.
+A missing reader, or a clipboard holding no image, adds one error to the client's error list and forwards nothing.
+The server writes the bytes to a new file in a `gband-images` subdirectory of `clipboard_image_dir`, or of the operating system's temporary directory when that option is unset, prunes files there older than 1 hour, and pastes the file's absolute path into the focused window as a bracketed paste, so the program reads a file.
+The file is written on the host the server runs on, so `gband -r <host>` writes it on the remote host, where the program reads it; this is why `gband -r <host>` forwards the image and a manual `ssh` into a host does not.
+The default configuration binds `paste_image` to `prefix` then `p` in the modal and direct key styles.
+
+```lua
+-- user/server.lua
+gband.opt.clipboard_image_dir = "/tmp/shots"
+```
 
 ## Key bindings: `gband.keymap`
 

@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::session::{SessionName, SessionSummary};
 use crate::value::Value;
 
-pub const PROTOCOL_VERSION: u32 = 17;
+pub const PROTOCOL_VERSION: u32 = 18;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Hello {
@@ -43,6 +43,11 @@ pub enum ClientMessage {
     Paste {
         window: WindowId,
         text: String,
+    },
+    PasteImage {
+        window: WindowId,
+        mime: String,
+        data: Vec<u8>,
     },
     Resize {
         cols: u16,

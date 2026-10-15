@@ -43,6 +43,9 @@ use crate::registry::{Registry, Shared};
 use crate::scripting::Taps;
 pub use crate::scripting::{Loader, NOTICE_BUDGET, OUTPUT_BUDGET, Reloader, Scripting};
 pub use crate::session::INITIAL_AREA;
+pub use crate::window::{
+    CLIPBOARD_IMAGE_MAX_AGE, CLIPBOARD_IMAGE_SUBDIR, prune_clipboard_images, write_clipboard_image,
+};
 
 pub const SUN_PATH_MAX: usize = 107;
 const PRIVATE_DIRECTORY_PREFIX: &str = ".gband-bind-";
@@ -58,6 +61,7 @@ pub struct ServerConfig {
     pub area: Size,
     pub executable: ExecutableId,
     pub options: watch::Receiver<LayoutOptions>,
+    pub clipboard_image_dir: Option<PathBuf>,
     pub scripting: Option<Scripting>,
     pub channel: Option<TestChannel>,
 }
@@ -129,6 +133,7 @@ pub async fn run_with_events(
         },
         hub,
         taps,
+        clipboard_image_dir: config.clipboard_image_dir,
     });
     let mut clients = JoinSet::new();
     while !registry.is_empty() {

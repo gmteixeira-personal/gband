@@ -365,6 +365,9 @@ function gband.action.reload() end
 ---(client) toggle multi mode
 function gband.action.toggle_multi() end
 
+---(client) paste an image from the clipboard
+function gband.action.paste_image() end
+
 ---(client) move the window with the mouse
 function gband.action.drag_window() end
 

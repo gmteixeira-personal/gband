@@ -32,8 +32,8 @@ fn session(name: &str) -> SessionName {
 }
 
 #[test]
-fn protocol_version_is_seventeen() {
-    assert_eq!(PROTOCOL_VERSION, 17);
+fn protocol_version_is_eighteen() {
+    assert_eq!(PROTOCOL_VERSION, 18);
 }
 
 #[test]
@@ -234,6 +234,11 @@ fn client_messages_round_trip() {
     round_trip(ClientMessage::Paste {
         window: WindowId(2),
         text: "line one\nline two".into(),
+    });
+    round_trip(ClientMessage::PasteImage {
+        window: WindowId(2),
+        mime: "image/png".into(),
+        data: b"\x89PNG\r\n".to_vec(),
     });
     round_trip(ClientMessage::Resize {
         cols: 300,
@@ -826,21 +831,21 @@ fn focus_round_trip() {
 }
 
 #[test]
-fn version_sixteen_client_meets_a_version_seventeen_server() {
+fn version_seventeen_client_meets_a_version_eighteen_server() {
     let hello = encode(&Hello {
-        version: 16,
+        version: 17,
         cols: 80,
         rows: 24,
     })
     .unwrap();
     let version = leading_version(&hello[4..]).unwrap();
-    assert_eq!(version, 16);
+    assert_eq!(version, 17);
     assert_ne!(version, PROTOCOL_VERSION);
     assert_eq!(
         encode(&HelloReply::Rejected {
             version: PROTOCOL_VERSION
         })
         .unwrap(),
-        [0, 0, 0, 2, 0x01, 0x11]
+        [0, 0, 0, 2, 0x01, 0x12]
     );
 }

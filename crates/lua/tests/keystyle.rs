@@ -209,7 +209,8 @@ fn error_keys_between_multi_mode_and_detach() {
         let e = at("e").expect(style);
         assert_eq!(at("m"), Some(e - 1), "{style}");
         assert_eq!(at("E"), Some(e + 1), "{style}");
-        assert_eq!(at("D"), Some(e + 2), "{style}");
+        assert_eq!(at("p"), Some(e + 2), "{style}");
+        assert_eq!(at("D"), Some(e + 3), "{style}");
         assert_eq!(
             entries[e],
             ("e".to_owned(), None, Some("list the errors".to_owned())),
@@ -218,6 +219,15 @@ fn error_keys_between_multi_mode_and_detach() {
         assert_eq!(
             entries[e + 1],
             ("E".to_owned(), None, Some("clear the errors".to_owned())),
+            "{style}"
+        );
+        assert_eq!(
+            entries[e + 2],
+            (
+                "p".to_owned(),
+                Some("paste_image".to_owned()),
+                Some("paste an image from the clipboard".to_owned())
+            ),
             "{style}"
         );
     }

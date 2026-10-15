@@ -23,7 +23,7 @@ use crate::hub::{Call, Hub};
 use crate::registry::{Request, SessionHandle};
 use crate::scripting::{self, Taps};
 use crate::session::{Command, INITIAL_AREA, Reply, State};
-use crate::window::{Contents, Input, Seen};
+use crate::window::{Contents, Input, Seen, clipboard_image_base, write_clipboard_image};
 
 pub const ANSWER_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -32,6 +32,7 @@ pub struct Context {
     pub info: ServerMessage,
     pub hub: Arc<Hub>,
     pub taps: Arc<Taps>,
+    pub clipboard_image_dir: Option<PathBuf>,
 }
 
 struct Registration<'a> {
@@ -453,6 +454,26 @@ fn dispatch(
                 forward(session, window, Input::Paste(text), || {
                     context.taps.notice(&session.name, window, client);
                 });
+            }
+            ClientMessage::PasteImage { window, mime, data } => {
+                let base = clipboard_image_base(context.clipboard_image_dir.as_deref());
+                match write_clipboard_image(&base, &mime, &data) {
+                    Ok(path) => {
+                        context.hub.typed(client);
+                        session.command(Command::Seen { window });
+                        forward(
+                            session,
+                            window,
+                            Input::Paste(path.to_string_lossy().into_owned()),
+                            || {
+                                context.taps.notice(&session.name, window, client);
+                            },
+                        );
+                    }
+                    Err(error) => {
+                        tracing::warn!(window = %window, "cannot write a clipboard image: {error:#}");
+                    }
+                }
             }
             ClientMessage::Mouse { window, event } => {
                 context.hub.typed(client);
