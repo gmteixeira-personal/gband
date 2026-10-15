@@ -47,6 +47,15 @@ Alternative: intercept and rewrite the program's Primary Device Attributes query
 ### Draw a forwarded sixel at its position between frames
 The client turns `ServerMessage::Sixel { col, row, data, window }` into a positioned write when `window_sixel` is true: save cursor (`\e7`), move to the window's on-screen origin plus `(row, col)`, write the bytes, restore cursor (`\e8`). It runs after the frame's cells are flushed and only when the anchor cell is within the window's drawn area; otherwise it writes nothing, so a sixel never lands at the wrong place. ratatui's diff leaves the pixels alone until the underlying cells change; the program re-emits on redraw, which recovers the image after a scroll or resize.
 
+### Tell the program the cell size in pixels
+A sixel image is sized in screen pixels, so a program needs the cell size to fit an image to a number of cells. Programs read it from the PTY's `TIOCGWINSZ` pixel fields or from the `\e[16t` reply; yazi reads one of the two. Before this change the server set both pixel fields to 0 (`crates/server/src/window.rs` `pty_size`) and left `\e[16t` unanswered.
+
+The client measures its cell size from its own `TIOCGWINSZ` when the pixel fields are nonzero. Over SSH, and from some terminals, they are 0, so the startup probe also writes `\e[16t` before `\e[c`; the Primary Device Attributes reply still bounds the wait, so no round trip is added. The attach request and every resize message carry the cell size or nothing. A resize rereads `TIOCGWINSZ` and keeps the startup value when it gives 0.
+
+The session's cell size is the most recently attached sixel client's. Sixel images go only to sixel clients, so their cell size is the one the image is drawn at. On detach it falls back to the next most recently attached sixel client. The server sets each PTY's pixel fields to columns times width by rows times height whenever it sets the PTY size, and on a cell size change it applies the new pixels to the windows the settled resize step covers. The kernel sends SIGWINCH on a pixel change, so the program re-queries. The emulator holds the cell size like `sixel_supported` and answers `\e[16t` and `\e[14t` from it.
+
+Alternative: the smallest cell size of all sixel clients. Rejected by the operator in favour of the latest client, which matches how the screen area follows the latest client.
+
 ### Protocol version 17 and the `window_sixel` option
 A new `ServerMessage` variant and a new attach field change the encoding, so `PROTOCOL_VERSION` goes to 17, and `crates/protocol/tests/messages.rs` gains the sixel message round trip, the attach sixel round trip, and the version 16 rejection. `crates/lua/src/options.rs` gains `window_sixel: bool`, default `true`, set in `defaults.lua` after `window_graphics`. It is a client option like `window_graphics` and feeds the attach sixel flag.
 
@@ -57,6 +66,9 @@ A new `ServerMessage` variant and a new attach field change the encoding, so `PR
 - [Two clients on different terminals, one kitty-only and one sixel-only, attach at once] → The program emits one protocol, so only the matching client sees the image. gband does not transcode. The README names it.
 - [Windows Terminal 1.22 is Preview, and one report says its Primary Device Attributes reply can be malformed] → `attributes_reply` already scans leniently for `ESC [ ? ... c`; parameter parsing tolerates a missing or extra field.
 - [A client of protocol 16 cannot attach to a server of protocol 17] → The handshake rejects it with the version, as every earlier bump.
+
+- [A terminal reports 0 pixels through `TIOCGWINSZ` and its font is zoomed after attach] → Resize messages keep the startup `\e[16t` value, so the cell size is stale until the client attaches again.
+- [Only kitty clients are attached] → The session has no cell size, so a program sizing kitty placeholder images still sees 0 pixels, as before this change.
 
 ## Migration Plan
 

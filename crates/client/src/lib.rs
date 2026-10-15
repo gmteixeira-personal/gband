@@ -29,7 +29,7 @@ use crossterm::style::Print;
 use crossterm::terminal::{BeginSynchronizedUpdate, EndSynchronizedUpdate};
 use crossterm::{execute, queue};
 use gband_core::action::{Action, ClientAction, SessionCommand};
-use gband_core::geometry::{Size, WindowBox, placed};
+use gband_core::geometry::{CellSize, Size, WindowBox, placed};
 use gband_core::input::Key;
 use gband_core::layout::{
     BandId, FloatingWindow, Layout, LayoutOptions, Program, Proportion, SessionAction, WindowId,
@@ -161,15 +161,21 @@ async fn session(
         let _restore = TerminalGuard::enter()?;
         let mut terminal = ratatui::init();
         let mut input = Input::spawn();
-        let graphics = input.probe_graphics().await? && display.window_graphics;
+        let probe = input.probe_terminal().await?;
+        let graphics = probe.graphics && display.window_graphics;
+        let sixel = probe.sixel && display.window_sixel;
+        let cell = measured_cell().or(probe.cell);
+        input.cell = cell;
         connection
             .send(&ClientMessage::Attach {
                 session: config.session.clone(),
                 cwd,
                 graphics,
+                sixel,
+                cell,
             })
             .await?;
-        tracing::info!(pid = connection.pid, session = %config.session, graphics, "attached");
+        tracing::info!(pid = connection.pid, session = %config.session, graphics, sixel, ?cell, "attached");
         request_keyboard_protocols(&mut stdout()).context("cannot request keyboard protocols")?;
         attach(
             &mut terminal,
@@ -278,6 +284,9 @@ pub struct Display {
     window_titles: bool,
     window_clipboard: bool,
     window_graphics: bool,
+    window_sixel: bool,
+    sixel: Vec<(WindowId, u16, u16, Vec<u8>)>,
+    cell: Option<CellSize>,
     ready: bool,
     tile_border: Border,
     floating_border: Border,
@@ -326,6 +335,9 @@ impl Display {
             window_titles: true,
             window_clipboard: true,
             window_graphics: true,
+            window_sixel: true,
+            sixel: Vec::new(),
+            cell: None,
             ready: false,
             tile_border: Border::default(),
             floating_border: Border::default(),
@@ -735,6 +747,7 @@ impl Display {
         self.window_titles = options.window_titles;
         self.window_clipboard = options.window_clipboard;
         self.window_graphics = options.window_graphics;
+        self.window_sixel = options.window_sixel;
         self.presentation.set_animations(options.animations);
         self.presentation
             .set_speed(options.animation_speed, Instant::now());
@@ -778,6 +791,41 @@ impl Display {
 
     pub fn reported_size(&self) -> Size {
         self.ribbon_size()
+    }
+
+    pub fn set_cell_size(&mut self, cell: Option<CellSize>) {
+        self.cell = cell;
+    }
+
+    pub fn take_sixel_writes(&mut self) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        for (window, row, col, data) in std::mem::take(&mut self.sixel) {
+            let Some(region) = self.regions.iter().rev().find(|region| {
+                region.window == Some(window)
+                    && matches!(
+                        region.kind,
+                        RegionKind::Tile { .. } | RegionKind::Lifted | RegionKind::Floating
+                    )
+            }) else {
+                continue;
+            };
+            let (x, y) = region.content_origin();
+            let (cols, rows) = region.content_size();
+            if col == 0 || row == 0 || col > cols || row > rows {
+                continue;
+            }
+            let (x, y) = (x + i64::from(col) - 1, y + i64::from(row) - 1);
+            let (Ok(x), Ok(y)) = (u16::try_from(x), u16::try_from(y)) else {
+                continue;
+            };
+            if !region.contains(x, y) {
+                continue;
+            }
+            bytes.extend_from_slice(format!("\x1b7\x1b[{};{}H", y + 1, x + 1).as_bytes());
+            bytes.extend_from_slice(&data);
+            bytes.extend_from_slice(b"\x1b8");
+        }
+        bytes
     }
 
     fn report(&mut self) -> Option<Size> {
@@ -1048,6 +1096,7 @@ impl Display {
             | ServerMessage::WindowState { .. }
             | ServerMessage::Clipboard { .. }
             | ServerMessage::Graphics { .. }
+            | ServerMessage::Sixel { .. }
             | ServerMessage::Result { .. }
             | ServerMessage::Requirements(_)
             | ServerMessage::ServerError(_) => {
@@ -1541,6 +1590,18 @@ impl Controls {
                     images.push(data);
                     continue;
                 }
+                if let ServerMessage::Sixel {
+                    window,
+                    col,
+                    row,
+                    data,
+                } = message
+                {
+                    if display.window_sixel {
+                        display.sixel.push((window, row, col, data));
+                    }
+                    continue;
+                }
                 if let ServerMessage::Clipboard { text, .. } = &message {
                     copies.push(text.clone());
                 }
@@ -1652,7 +1713,7 @@ impl Controls {
     pub fn resize(&mut self, display: &mut Display, terminal: Size) -> Vec<Step> {
         self.react(display, Vec::new(), |_, display, steps| {
             if let Some(size) = display.set_size(terminal) {
-                steps.push(resize_step(size));
+                steps.push(resize_step(display, size));
             }
         })
     }
@@ -1878,7 +1939,7 @@ impl Controls {
             {
                 size = again;
             }
-            steps.push(resize_step(size));
+            steps.push(resize_step(display, size));
         }
         display.set_error_item(self.runtime.error_marker_shown());
         display.take_look(&self.runtime);
@@ -1990,10 +2051,11 @@ impl Controls {
     }
 }
 
-fn resize_step(size: Size) -> Step {
+fn resize_step(display: &Display, size: Size) -> Step {
     Step::Send(ClientMessage::Resize {
         cols: size.cols,
         rows: size.rows,
+        cell: display.cell,
     })
 }
 
@@ -2139,7 +2201,9 @@ async fn attach(
         mut chunks,
         read: mut unread,
         pending,
+        cell: startup_cell,
     } = input;
+    display.set_cell_size(startup_cell);
     let mut decoder = Decoder::new();
     let mut inputs: VecDeque<TerminalInput> = decoder.push(&pending).into_iter().collect();
     let mut held = decoder
@@ -2280,6 +2344,7 @@ async fn attach(
                 let (cols, rows) = crossterm::terminal::size()
                     .context("cannot read the terminal size")?;
                 terminal.autoresize()?;
+                display.set_cell_size(measured_cell().or(startup_cell));
                 let steps = controls.resize(&mut display, Size::new(cols, rows));
                 if let Some(outcome) = perform(connection, &mut controls, &mut display, steps).await? {
                     return Ok(outcome);
@@ -2307,6 +2372,7 @@ async fn deliver(
 }
 
 pub const GRAPHICS_QUERY: &str = "\x1b_Gi=1,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\";
+const CELL_SIZE_QUERY: &str = "\x1b[16t";
 const PRIMARY_ATTRIBUTES: &str = "\x1b[c";
 const PROBE_TIMEOUT: Duration = Duration::from_secs(1);
 
@@ -2319,6 +2385,40 @@ fn find(bytes: &[u8], needle: &[u8]) -> Option<usize> {
 fn graphics_reply_end(bytes: &[u8]) -> Option<usize> {
     let start = find(bytes, b"\x1b_G")?;
     find(&bytes[start..], b"\x1b\\").map(|end| start + end + 2)
+}
+
+fn cell_size_reply(bytes: &[u8]) -> Option<CellSize> {
+    let mut from = 0;
+    while let Some(found) = find(&bytes[from..], b"\x1b[6;") {
+        let params = from + found + 4;
+        let length = bytes[params..]
+            .iter()
+            .take_while(|&&byte| byte.is_ascii_digit() || byte == b';')
+            .count();
+        from = params;
+        if bytes.get(params + length) != Some(&b't') {
+            continue;
+        }
+        let text = std::str::from_utf8(&bytes[params..params + length]).ok()?;
+        if let Some((height, width)) = text.split_once(';')
+            && let (Ok(height), Ok(width)) = (height.parse(), width.parse())
+            && height > 0
+            && width > 0
+        {
+            return Some(CellSize::new(width, height));
+        }
+    }
+    None
+}
+
+pub fn cell_from_window(cols: u16, rows: u16, width: u16, height: u16) -> Option<CellSize> {
+    (cols > 0 && rows > 0 && width / cols > 0 && height / rows > 0)
+        .then(|| CellSize::new(width / cols, height / rows))
+}
+
+fn measured_cell() -> Option<CellSize> {
+    let size = crossterm::terminal::window_size().ok()?;
+    cell_from_window(size.columns, size.rows, size.width, size.height)
 }
 
 fn attributes_reply(bytes: &[u8]) -> Option<(usize, usize)> {
@@ -2338,16 +2438,32 @@ fn attributes_reply(bytes: &[u8]) -> Option<(usize, usize)> {
     None
 }
 
-pub fn graphics_probe(replies: &[u8]) -> Option<(bool, usize)> {
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Probe {
+    pub graphics: bool,
+    pub sixel: bool,
+    pub cell: Option<CellSize>,
+    pub end: usize,
+}
+
+pub fn graphics_probe(replies: &[u8]) -> Option<Probe> {
     let (start, end) = attributes_reply(replies)?;
-    let graphics = graphics_reply_end(&replies[..start]).is_some();
-    Some((graphics, end))
+    let params = &replies[start + 3..end - 1];
+    Some(Probe {
+        graphics: graphics_reply_end(&replies[..start]).is_some(),
+        sixel: params
+            .split(|&byte| byte == b';')
+            .any(|param| param == b"4"),
+        cell: cell_size_reply(&replies[..start]),
+        end,
+    })
 }
 
 struct Input {
     chunks: mpsc::UnboundedReceiver<Vec<u8>>,
     read: u64,
     pending: Vec<u8>,
+    cell: Option<CellSize>,
 }
 
 impl Input {
@@ -2356,17 +2472,18 @@ impl Input {
             chunks: spawn_input(),
             read: 0,
             pending: Vec::new(),
+            cell: None,
         }
     }
 
-    async fn probe_graphics(&mut self) -> Result<bool> {
+    async fn probe_terminal(&mut self) -> Result<Probe> {
         let mut out = stdout();
-        write!(out, "{GRAPHICS_QUERY}{PRIMARY_ATTRIBUTES}")
+        write!(out, "{GRAPHICS_QUERY}{CELL_SIZE_QUERY}{PRIMARY_ATTRIBUTES}")
             .and_then(|()| out.flush())
-            .context("cannot query the terminal for kitty graphics")?;
+            .context("cannot query the terminal for graphics support")?;
         let deadline = tokio::time::Instant::now() + PROBE_TIMEOUT;
         let mut replies = Vec::new();
-        let (graphics, end) = loop {
+        let probe = loop {
             if let Some(probed) = graphics_probe(&replies) {
                 break probed;
             }
@@ -2374,13 +2491,17 @@ impl Input {
                 Ok(Some(chunk)) => replies.extend(chunk),
                 Ok(None) | Err(_) => {
                     let end = graphics_reply_end(&replies);
-                    break (end.is_some(), end.unwrap_or(0));
+                    break Probe {
+                        graphics: end.is_some(),
+                        end: end.unwrap_or(0),
+                        ..Probe::default()
+                    };
                 }
             }
         };
         self.read = replies.len() as u64;
-        self.pending = replies.split_off(end);
-        Ok(graphics)
+        self.pending = replies.split_off(probe.end);
+        Ok(probe)
     }
 }
 
@@ -2407,6 +2528,13 @@ fn spawn_input() -> mpsc::UnboundedReceiver<Vec<u8>> {
 
 fn draw(terminal: &mut DefaultTerminal, display: &mut Display, now: Instant) -> Result<()> {
     synchronized(terminal, |frame| display.draw(frame, now))?;
+    let sixel = display.take_sixel_writes();
+    if !sixel.is_empty() {
+        let out = terminal.backend_mut();
+        if let Err(error) = out.write_all(&sixel).and_then(|()| out.flush()) {
+            tracing::warn!("cannot write a sixel image to the terminal: {error}");
+        }
+    }
     Ok(())
 }
 

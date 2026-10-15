@@ -81,6 +81,117 @@ The first frame a client sends SHALL be a hello. The hello's payload SHALL begin
 - **WHEN** a client speaking protocol version 16 sends its hello to a server speaking version 17
 - **THEN** the server rejects it with version 17 and closes the connection
 
+### Requirement: Client messages
+After an attach request, a client SHALL send only these messages:
+
+| message | content |
+|---|---|
+| key | a window identifier, and a key code with its Shift, Alt and Ctrl modifiers as the input-encoding capability defines them |
+| paste | a window identifier and the pasted text |
+| resize | the client terminal's columns and rows, and its cell width and height in pixels, or nothing when they are unknown, as the window-sixel capability's "Cell size in pixels" defines |
+| shown | the identifiers of every window the client shows, as the layout-view capability defines; it replaces the set the client reported before |
+| focus | the identifier of the window the client focuses, or nothing when it focuses none, as the client-attach capability's "Report the focused window" defines; it replaces the window the client reported before |
+| action | one session action, as the session-server capability defines it, with the window or band it names |
+| content | a window identifier, and terminal output for the drawn window's screen, as the session-server capability defines |
+| command | a call number chosen by the client, a server command's full name, and its arguments as a plain data value |
+| mouse | a window identifier, a mouse event kind, press, release, motion or wheel, its button or wheel direction, its content cell, and its Shift, Alt and Ctrl modifiers, as the input-encoding capability defines them |
+| rename | a window identifier, and the window's new manual name, or nothing to clear it |
+| detach | nothing |
+| reload | nothing; it asks the server for a forced reload, as the configuration capability's "Forced reload" defines |
+| control answer | a call number from a control message, and the answer to its operation, as "Control operations" in "Requests" defines |
+
+Window and band identifiers SHALL name windows and bands of the client's session. The server SHALL ignore a window identifier in a shown message or a focus message that names no window of the client's session. The open window action SHALL name a band, optionally the window whose column the new column follows, optionally the new column's width, whether the window floats, whether the client asks to focus the new window, and what the window holds: either a program, which is optionally named as a command line or as an argument list, or plugin content with a request number. Every other action SHALL name a window. Consume or expel and move column SHALL also name their direction, left or right. Move window SHALL also name its direction, down or up. Toggle floating SHALL also name optionally the tiled window to tile after, and SHALL name either no layer, the floating layer or the tiled layer, as the session-server capability's "Session actions" defines. Set position SHALL also name a column and a row. Set width SHALL also name a width. Set height SHALL also name either a number of rows or a weight. Grow and shrink of a width and of a height SHALL also name a step. Move to place SHALL also name a reference window and a place: a new column left of the reference window's column, a new column right of it, above the reference window, or below it. A rename SHALL name a window that runs a program. A width, a weight and a step SHALL each be a fraction in lowest terms. A client SHALL NOT reuse a call number while its call is unanswered. A client SHALL answer each control message with exactly one control answer that carries its call number. A client that detaches SHALL send detach, then close the connection.
+
+#### Scenario: Detach message
+- **WHEN** a client sends detach
+- **THEN** the server stops sending to it and closes the connection
+- **AND** every window's program keeps running
+
+#### Scenario: Resize round trip
+- **WHEN** a client sends resize with 120 columns, 40 rows and the cell size 9 by 19 pixels, and resize with 80 columns, 24 rows and an unknown cell size
+- **THEN** the server decodes the same columns, rows and cell sizes
+
+#### Scenario: Action round trip
+- **WHEN** a client sends consume or expel naming window 3 and the direction left
+- **THEN** the server decodes the same action, window and direction
+
+#### Scenario: Shown round trip
+- **WHEN** a client sends shown naming windows 1 and 4
+- **THEN** the server decodes a shown message naming windows 1 and 4
+
+#### Scenario: Focus round trip
+- **WHEN** a client sends focus naming window 4, and focus naming no window
+- **THEN** the server decodes focus naming window 4, and focus naming no window
+
+#### Scenario: Grow height round trip
+- **WHEN** a client sends grow height naming window 2 and the step 1/10
+- **THEN** the server decodes the same action, window and step
+
+#### Scenario: Open window with a program round trip
+- **WHEN** a client sends open window naming band 1, window 2 and the argument list `htop`, `-d`, `10`
+- **THEN** the server decodes the same band, window and argument list
+
+#### Scenario: Open window without a program round trip
+- **WHEN** a client sends open window naming band 1 and no window or program
+- **THEN** the server decodes open window naming band 1 with no window and no program
+
+#### Scenario: Open drawn window round trip
+- **WHEN** a client sends open window naming band 1, window 2, the width 1/4, no focus, and plugin content with request number 7
+- **THEN** the server decodes the same band, window, width, focus flag, content kind and request number
+
+#### Scenario: Set height round trip
+- **WHEN** a client sends set height naming window 2 and the weight 3/2
+- **THEN** the server decodes set height naming window 2 and the weight 3/2
+
+#### Scenario: Content round trip
+- **WHEN** a client sends content naming window 4 and the output `\x1b[1;1Hhello`
+- **THEN** the server decodes content naming window 4 and the same bytes
+
+#### Scenario: Command round trip
+- **WHEN** a client sends command number 7 naming `agents.next_waiting` with the arguments `{ state = "agent" }`
+- **THEN** the server decodes the same number, name and arguments
+
+#### Scenario: Toggle floating round trip
+- **WHEN** a client sends toggle floating naming window 3 and window 1 as the window to tile after
+- **THEN** the server decodes toggle floating naming window 3 and window 1
+
+#### Scenario: Toggle floating with a layer round trip
+- **WHEN** a client sends toggle floating naming window 3, no window to tile after and the floating layer, and toggle floating naming window 4, window 1 as the window to tile after and the tiled layer
+- **THEN** the server decodes the same windows and layers
+- **AND** toggle floating naming window 3 and no layer decodes with no layer
+
+#### Scenario: Move round trip
+- **WHEN** a client sends move column naming window 2 and the direction right, and move window naming window 2 and the direction up
+- **THEN** the server decodes the same actions, window and directions
+
+#### Scenario: Set position round trip
+- **WHEN** a client sends set position naming window 4, column 12 and row 3
+- **THEN** the server decodes set position naming window 4, column 12 and row 3
+
+#### Scenario: Open floating window round trip
+- **WHEN** a client sends open window naming band 1, no window, the width 1/3, floating, and no program
+- **THEN** the server decodes the same band, width and floating flag
+
+#### Scenario: Mouse round trip
+- **WHEN** a client sends mouse naming window 2, a press of the left button at content column 4 and row 2, with Ctrl
+- **THEN** the server decodes the same window, kind, button, cell and modifiers
+
+#### Scenario: Rename round trip
+- **WHEN** a client sends rename naming window 2 and `logs`, and rename naming window 3 and nothing
+- **THEN** the server decodes rename naming window 2 and `logs`, and rename naming window 3 and nothing
+
+#### Scenario: Move to place round trip
+- **WHEN** a client sends move to place naming window 3, the reference window 5 and the place right of its column
+- **THEN** the server decodes the same windows and place
+
+#### Scenario: Reload message answered
+- **WHEN** an attached client sends a reload message
+- **THEN** the server loads its configuration again and then sends that client a reloaded message
+
+#### Scenario: Control message answered
+- **WHEN** the server sends an attached client a control message with call number 4 and the operation errors
+- **THEN** the client sends one control answer with call number 4
+
 ### Requirement: Server messages
 After the handshake, a server SHALL send only these messages:
 
@@ -183,7 +294,7 @@ After the server's info, the first message a client sends SHALL be one request:
 
 | request | content | server's answer |
 |---|---|---|
-| attach | a session name, the client's working directory, whether its terminal supports kitty graphics, and whether its terminal supports sixel | the layout, then a snapshot of each window, of the session it attaches the client to |
+| attach | a session name, the client's working directory, whether its terminal supports kitty graphics, whether its terminal supports sixel, and its terminal's cell width and height in pixels, or nothing when they are unknown | the layout, then a snapshot of each window, of the session it attaches the client to |
 | list sessions | nothing | one sessions message, then it closes the connection |
 | kill session | a session name | killed once the session has ended, or no such session, then it closes the connection |
 | control | a session name, a target, and one control operation | control results once every addressed process has answered or timed out, or no such session, then it closes the connection |
@@ -212,8 +323,8 @@ The server SHALL answer a control request with one control results message that 
 - **THEN** the server closes the connection
 
 #### Scenario: Request round trip
-- **WHEN** an attach request naming `work`, the working directory `/tmp`, graphics support and sixel support is framed and decoded
-- **THEN** the decoded request equals the original, graphics support and sixel support included
+- **WHEN** an attach request naming `work`, the working directory `/tmp`, graphics support, sixel support and the cell size 10 by 20 pixels is framed and decoded
+- **THEN** the decoded request equals the original, graphics support, sixel support and cell size included
 
 #### Scenario: Control request answered by every client
 - **WHEN** two clients are attached to `work` and a third connection sends a control request for `work` with the target every client and the operation errors

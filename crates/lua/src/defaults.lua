@@ -7,6 +7,7 @@ gband.opt.animation_speed = 1
 gband.opt.notify_style = "osc9"
 gband.opt.window_clipboard = true
 gband.opt.window_graphics = true
+gband.opt.window_sixel = true
 gband.opt.tile_border_sides = { "top", "right", "bottom", "left" }
 gband.opt.tile_border_chars = "rounded"
 gband.opt.focused_tile_border_chars = "rounded"

@@ -138,7 +138,7 @@ fn resizes(steps: &[Step]) -> Vec<Size> {
     steps
         .iter()
         .filter_map(|step| match step {
-            Step::Send(ClientMessage::Resize { cols, rows }) => Some(Size::new(*cols, *rows)),
+            Step::Send(ClientMessage::Resize { cols, rows, .. }) => Some(Size::new(*cols, *rows)),
             _ => None,
         })
         .collect()
@@ -290,7 +290,11 @@ fn terminal_resize_places_the_bars_again() {
         .resize(&mut client.display, Size::new(100, 30));
     assert_eq!(
         steps.first(),
-        Some(&Step::Send(ClientMessage::Resize { cols: 80, rows: 30 }))
+        Some(&Step::Send(ClientMessage::Resize {
+            cols: 80,
+            rows: 30,
+            cell: None
+        }))
     );
     assert_eq!(resizes(&steps).len(), 1);
     assert_eq!(client.display.ribbon_area(), Rect::new(0, 0, 80, 30));

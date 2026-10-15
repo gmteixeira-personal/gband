@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use anyhow::{Context as _, Result, anyhow, bail};
-use gband_core::geometry::Size;
+use gband_core::geometry::{CellSize, Size};
 use gband_core::layout::{SessionAction, WindowId};
 use gband_protocol::{
     Answer, ClientMessage, Entry, Hello, HelloReply, MessageReader, MessageWriter, Operation,
@@ -76,7 +76,9 @@ impl Drop for Attachment {
             client: self.client,
             windows: Vec::new(),
         });
-        self.handle.graphics.detach(self.client);
+        if self.handle.graphics.detach(self.client) {
+            self.handle.command(Command::CellSize);
+        }
         self.handle.clients.fetch_sub(1, Ordering::AcqRel);
         self.handle.events.send(SessionEvent::ClientDetached {
             client: self.client,
@@ -160,9 +162,16 @@ async fn handle(
             session,
             cwd,
             graphics,
+            sixel,
+            cell,
         } => {
             let size = Size::new(hello.cols, hello.rows);
-            attach(link, context, client, session, cwd, size, graphics).await
+            let offer = Offer {
+                graphics,
+                sixel,
+                cell,
+            };
+            attach(link, context, client, session, cwd, size, offer).await
         }
         ClientMessage::ListSessions => {
             let sessions = ask(context, |reply| Request::List { reply }).await?;
@@ -298,6 +307,12 @@ async fn ask<T>(
     answer.await.context("the server is shutting down")
 }
 
+struct Offer {
+    graphics: bool,
+    sixel: bool,
+    cell: Option<CellSize>,
+}
+
 async fn attach(
     mut link: Link<impl AsyncRead + Unpin, impl AsyncWrite + Unpin>,
     context: &Context,
@@ -305,7 +320,7 @@ async fn attach(
     name: SessionName,
     cwd: PathBuf,
     size: Size,
-    graphics: bool,
+    offer: Offer,
 ) -> Result<()> {
     let area = if size.cols > 0 && size.rows > 0 {
         size
@@ -338,8 +353,15 @@ async fn attach(
     sync(&mut link.writer, &session, &mut sent, &context.hub.settling).await?;
 
     let (deliveries_tx, mut deliveries) = mpsc::unbounded_channel();
-    if graphics {
+    if offer.graphics {
         session.graphics.attach(client, deliveries_tx.clone());
+    }
+    if offer.sixel
+        && session
+            .graphics
+            .attach_sixel(client, deliveries_tx.clone(), offer.cell)
+    {
+        session.command(Command::CellSize);
     }
     let attached = context.hub.attach(client, &session.name, deliveries_tx);
     let (barriers_tx, mut barriers) = mpsc::unbounded_channel();
@@ -453,10 +475,15 @@ fn dispatch(
                     });
                 }
             }
-            ClientMessage::Resize { cols, rows } => session.command(Command::Area {
-                size: Size::new(cols, rows),
-                applied: None,
-            }),
+            ClientMessage::Resize { cols, rows, cell } => {
+                if session.graphics.resize_sixel(client, cell) {
+                    session.command(Command::CellSize);
+                }
+                session.command(Command::Area {
+                    size: Size::new(cols, rows),
+                    applied: None,
+                });
+            }
             ClientMessage::Action(action) => {
                 let reply =
                     matches!(action, SessionAction::OpenWindow { .. }).then(|| reply_tx.clone());

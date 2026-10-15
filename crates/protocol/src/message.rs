@@ -1,3 +1,4 @@
+use gband_core::geometry::CellSize;
 use gband_core::input::{Key, MouseEvent};
 use gband_core::layout::{Layout, SessionAction, WindowId};
 use std::path::PathBuf;
@@ -7,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::session::{SessionName, SessionSummary};
 use crate::value::Value;
 
-pub const PROTOCOL_VERSION: u32 = 16;
+pub const PROTOCOL_VERSION: u32 = 17;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Hello {
@@ -28,6 +29,8 @@ pub enum ClientMessage {
         session: SessionName,
         cwd: PathBuf,
         graphics: bool,
+        sixel: bool,
+        cell: Option<CellSize>,
     },
     ListSessions,
     KillSession {
@@ -44,6 +47,7 @@ pub enum ClientMessage {
     Resize {
         cols: u16,
         rows: u16,
+        cell: Option<CellSize>,
     },
     Action(SessionAction),
     Detach,
@@ -130,6 +134,12 @@ pub enum ServerMessage {
     },
     Graphics {
         window: WindowId,
+        data: Vec<u8>,
+    },
+    Sixel {
+        window: WindowId,
+        col: u16,
+        row: u16,
         data: Vec<u8>,
     },
     Result {

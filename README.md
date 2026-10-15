@@ -366,6 +366,16 @@ Turn it off in `user/init.lua`:
 gband.set { window_graphics = false }
 ```
 
+Programs that show sixel images, such as yazi in Windows Terminal, show them in your terminal by default when it supports sixel.
+gband offers sixel to a window program only while an attached client's terminal supports it, and forwards each image only to those clients, drawn where the program put it.
+The program is told the cell size in pixels of the most recently attached sixel client, through the window's terminal size and the `\e[16t` query, so it sizes images to the cells.
+gband keeps no image: a client that attaches after an image was drawn, or a window that scrolls, shows it only once the program draws it again.
+Turn it off in `user/init.lua`:
+
+```lua
+gband.set { window_sixel = false }
+```
+
 ## Scripting
 
 gband embeds a Lua runtime in the client and in the server.
@@ -492,6 +502,7 @@ The client options, set in `user/init.lua`, and their defaults:
 | `notify_style` | how a plugin's desktop notification reaches your terminal: `"osc9"`, `"osc777"`, `"bell"` or `"none"` | `"osc9"` |
 | `window_clipboard` | `true` or `false`: whether a window program's clipboard write sets your terminal's clipboard | `true` |
 | `window_graphics` | `true` or `false`: whether a window program's kitty graphics are forwarded to your terminal | `true` |
+| `window_sixel` | `true` or `false`: whether a window program's sixel images are forwarded to your terminal | `true` |
 
 The server options, set in `user/server.lua`, and their defaults:
 

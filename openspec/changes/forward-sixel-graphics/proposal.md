@@ -9,6 +9,7 @@ gband forwards only the kitty graphics protocol (`openspec/changes/archive/2026-
 - The server includes attribute `4` in a window program's Primary Device Attributes reply (`\e[?62;4;22c`) only when an attached client's terminal supports sixel, mirroring how the kitty `a=q` query is answered. Without a supporting client the reply stays `\e[?62;22c`, so the program falls back to text or another protocol.
 - The client detects sixel support at startup by reading attribute `4` from the Primary Device Attributes reply it already requests for the kitty graphics probe, so no second query is sent. The attach request gains a sixel flag beside the graphics flag. A new client option `window_sixel`, `true` by default, ANDs with the probe.
 - The client draws a forwarded sixel at the recorded position: it saves the cursor, moves to the window's on-screen origin plus the recorded row and column, writes the sequence's bytes, and restores the cursor, between frames and after the frame's cells are drawn. It writes nothing when the target cell lies outside the window's visible area. A program re-emits the image on redraw after a scroll or resize, as it does on a bare terminal.
+- The client measures its terminal's cell size in pixels, from `TIOCGWINSZ` or else the reply to `\e[16t` written in the startup probe, and reports it at attach and on resize. The session uses the most recently attached sixel client's cell size: the server sets each window PTY's pixel fields from it and answers a program's `\e[16t` and `\e[14t`, so yazi sizes images to the cells. Without a sixel client both pixel fields stay 0 and both queries stay unanswered.
 - A new server message, `sixel`, carries one forwarded sequence with its window and position.
 - The protocol version goes from 16 to 17. **BREAKING** for mixed client and server versions, as every protocol bump is.
 - The README and the plugin guide document the option, the detection and the live-clients-only behaviour.
@@ -30,6 +31,7 @@ gband forwards only the kitty graphics protocol (`openspec/changes/archive/2026-
 - `crates/protocol/src/message.rs`, `crates/protocol/tests/messages.rs`: `ServerMessage::Sixel`, the attach sixel flag, version 17, and round trips.
 - `crates/server/src/window.rs`, `crates/server/src/session.rs`, `crates/server/src/connection.rs`, `crates/server/src/registry.rs`: take the grid's sixel sequences, set the emulator's sixel-support flag from the attached clients, and broadcast forwarded sequences in order.
 - `crates/server/tests/sixel.rs` (new), `crates/server/tests/scripting.rs`, `crates/server/tests/sync.rs`, `crates/server/tests/queries.rs`: the forwarding, the attach sixel field, the version 16 rejection, and the Primary Device Attributes reply with a sixel client.
+- `crates/emulator/src/callbacks.rs`, `crates/server/src/window.rs`, `crates/server/src/session.rs`: the cell size replies, the PTY pixel fields and the session's cell size from the latest sixel client.
 - `crates/client/src/lib.rs`: the probe parses attribute `4`, the attach flag, and writing a forwarded sixel at its position between frames.
 - `crates/client/tests/sixel.rs` (new), `crates/client/tests/connect.rs`: the positioned write, the option off, and the attach field.
 - `crates/test-support/src/lib.rs`: the attach sixel flag and handling `ServerMessage::Sixel`.
@@ -45,6 +47,7 @@ gband forwards only the kitty graphics protocol (`openspec/changes/archive/2026-
 - none
 
 ### Expected Files
+- crates/core/src/geometry.rs
 - crates/emulator/src/graphics.rs
 - crates/emulator/src/lib.rs
 - crates/emulator/src/callbacks.rs
@@ -54,14 +57,19 @@ gband forwards only the kitty graphics protocol (`openspec/changes/archive/2026-
 - crates/server/src/window.rs
 - crates/server/src/session.rs
 - crates/server/src/connection.rs
-- crates/server/src/registry.rs
 - crates/server/tests/sixel.rs
 - crates/server/tests/scripting.rs
 - crates/server/tests/sync.rs
-- crates/server/tests/queries.rs
+- crates/server/tests/resize.rs
+- crates/server/tests/sessions.rs
+- crates/server/tests/windows.rs
 - crates/client/src/lib.rs
+- crates/client/src/render.rs
 - crates/client/tests/sixel.rs
 - crates/client/tests/connect.rs
+- crates/client/tests/graphics.rs
+- crates/client/tests/sidebar.rs
+- crates/client/tests/bars.rs
 - crates/test-support/src/lib.rs
 - crates/lua/src/options.rs
 - crates/lua/src/defaults.lua

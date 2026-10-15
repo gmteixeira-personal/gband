@@ -1,7 +1,7 @@
 use std::fmt::Debug;
 use std::path::PathBuf;
 
-use gband_core::geometry::Size;
+use gband_core::geometry::{CellSize, Size};
 use gband_core::input::{
     Key, KeyCode, Modifiers, MouseButton, MouseEvent, MouseKind, WheelDirection,
 };
@@ -32,8 +32,8 @@ fn session(name: &str) -> SessionName {
 }
 
 #[test]
-fn protocol_version_is_sixteen() {
-    assert_eq!(PROTOCOL_VERSION, 16);
+fn protocol_version_is_seventeen() {
+    assert_eq!(PROTOCOL_VERSION, 17);
 }
 
 #[test]
@@ -90,11 +90,15 @@ fn requests_round_trip() {
         session: session("work"),
         cwd: PathBuf::from("/tmp"),
         graphics: false,
+        sixel: false,
+        cell: None,
     });
     round_trip(ClientMessage::Attach {
         session: session("work"),
         cwd: PathBuf::from("/tmp"),
         graphics: true,
+        sixel: true,
+        cell: Some(CellSize::new(10, 20)),
     });
     round_trip(ClientMessage::ListSessions);
     round_trip(ClientMessage::KillSession {
@@ -234,6 +238,12 @@ fn client_messages_round_trip() {
     round_trip(ClientMessage::Resize {
         cols: 300,
         rows: 90,
+        cell: None,
+    });
+    round_trip(ClientMessage::Resize {
+        cols: 120,
+        rows: 40,
+        cell: Some(CellSize::new(9, 19)),
     });
     round_trip(ClientMessage::Detach);
     round_trip(ClientMessage::Shown(vec![WindowId(1), WindowId(4)]));
@@ -300,6 +310,16 @@ fn graphics_round_trips() {
     round_trip(ServerMessage::Graphics {
         window: WindowId(2),
         data: b"\x1b_Ga=T;AAAA\x1b\\".to_vec(),
+    });
+}
+
+#[test]
+fn sixel_round_trips() {
+    round_trip(ServerMessage::Sixel {
+        window: WindowId(2),
+        col: 5,
+        row: 3,
+        data: b"\x1bPq#0~~\x1b\\".to_vec(),
     });
 }
 
@@ -806,21 +826,21 @@ fn focus_round_trip() {
 }
 
 #[test]
-fn version_fifteen_client_meets_a_version_sixteen_server() {
+fn version_sixteen_client_meets_a_version_seventeen_server() {
     let hello = encode(&Hello {
-        version: 15,
+        version: 16,
         cols: 80,
         rows: 24,
     })
     .unwrap();
     let version = leading_version(&hello[4..]).unwrap();
-    assert_eq!(version, 15);
+    assert_eq!(version, 16);
     assert_ne!(version, PROTOCOL_VERSION);
     assert_eq!(
         encode(&HelloReply::Rejected {
             version: PROTOCOL_VERSION
         })
         .unwrap(),
-        [0, 0, 0, 2, 0x01, 0x10]
+        [0, 0, 0, 2, 0x01, 0x11]
     );
 }

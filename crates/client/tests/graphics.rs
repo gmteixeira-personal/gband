@@ -1,7 +1,7 @@
 use gband_client::animation::Animations;
 use gband_client::color::ColorSupport;
 use gband_client::render::apply_palette;
-use gband_client::{Controls, Display, Step, graphics_probe};
+use gband_client::{Controls, Display, Probe, Step, graphics_probe};
 use gband_core::geometry::Size;
 use gband_core::layout::{Layout, LayoutOptions, WindowId};
 use gband_emulator::{Emulator, Grid};
@@ -123,13 +123,23 @@ fn placeholder_cell_is_one_column_wide() {
 fn terminal_answering_the_graphics_query_supports_graphics() {
     assert_eq!(
         graphics_probe(b"\x1b_Gi=1;OK\x1b\\\x1b[?62;22c"),
-        Some((true, 20))
+        Some(Probe {
+            graphics: true,
+            end: 20,
+            ..Probe::default()
+        })
     );
 }
 
 #[test]
 fn terminal_answering_only_device_attributes_lacks_graphics() {
-    assert_eq!(graphics_probe(b"\x1b[?62;22c"), Some((false, 9)));
+    assert_eq!(
+        graphics_probe(b"\x1b[?62;22c"),
+        Some(Probe {
+            end: 9,
+            ..Probe::default()
+        })
+    );
 }
 
 #[test]

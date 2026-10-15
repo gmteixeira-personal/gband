@@ -151,7 +151,11 @@ async fn latest_client_sets_the_area() {
     stty_size(&mut second, window, "28 48").await;
 
     first
-        .send(&ClientMessage::Resize { cols: 90, rows: 25 })
+        .send(&ClientMessage::Resize {
+            cols: 90,
+            rows: 25,
+            cell: None,
+        })
         .await;
     first
         .wait_for(|screen| screen.size() == Size::new(43, 23))

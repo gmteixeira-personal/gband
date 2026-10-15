@@ -11,11 +11,15 @@ The server SHALL answer the terminal queries in the table below when the window'
 | XTVERSION | `\e[>q` or `\e[>0q` | `\eP>\|gband <version>\e\` |
 | DEC private mode report | `\e[?<mode>$p` | `\e[?<mode>;<state>$y` |
 | ANSI mode report | `\e[<mode>$p` | `\e[<mode>;0$y` |
+| cell size | `\e[16t` | `\e[6;<height>;<width>t`, the session's cell size in pixels, only while it is known |
+| text area size | `\e[14t` | `\e[4;<height>;<width>t`, the window's PTY pixel size, only while the session's cell size is known |
 | kitty keyboard flags | `\e[?u` | `\e[?<flags>u`, the kitty keyboard flags of the screen in use, as the terminal-emulator capability's "Kitty keyboard flags" defines |
 
 In a DEC private mode report, `<state>` SHALL be `1` when the mode is set and `2` when it is reset, for the modes 1, 9, 25, 47, 1000, 1002, 1003, 1005, 1006, 1049 and 2004, read from the server's screen. For any other mode, `<state>` SHALL be `0`, meaning not recognised.
 
 The server SHALL add attribute `4` to the Primary Device Attributes reply, making it `\e[?62;4;22c`, only when at least one client attached to the session reported its terminal supports sixel, as the window-sixel capability's "Offering sixel to the program" defines; otherwise the reply SHALL be `\e[?62;22c`.
+
+The server SHALL answer the cell size and text area size queries only while the session's cell size is known, as the window-sixel capability's "Cell size in pixels" defines; otherwise both SHALL stay unanswered.
 
 The server SHALL also answer a kitty graphics support query, a graphics sequence whose control holds `a=q`, only when an attached client supports kitty graphics, as the window-graphics capability's "Answering the support query" defines. A query the server answers SHALL NOT be recorded in the log as an unhandled sequence. Every other query SHALL stay unanswered.
 
@@ -31,6 +35,10 @@ The server SHALL also answer a kitty graphics support query, a graphics sequence
 #### Scenario: Device attributes with a sixel client
 - **WHEN** a client whose terminal supports sixel is attached and the window's program writes `\e[c`
 - **THEN** the program reads `\e[?62;4;22c` from its terminal
+
+#### Scenario: Cell size with a sixel client
+- **WHEN** a client whose terminal supports sixel attached reporting the cell size 10 by 20 pixels, window 1's PTY is 80 columns by 24 rows, and the window's program writes `\e[16t` and then `\e[14t`
+- **THEN** the program reads `\e[6;20;10t` and then `\e[4;480;800t` from its terminal
 
 #### Scenario: Cursor position
 - **WHEN** the window's program moves the cursor to row 5, column 10 with `\e[5;10H` and writes `\e[6n`

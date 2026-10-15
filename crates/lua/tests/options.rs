@@ -225,6 +225,7 @@ fn list_holds_built_in_and_declared_options() {
             "width_step",
             "window_clipboard",
             "window_graphics",
+            "window_sixel",
             "window_titles",
         ]
     );
@@ -438,6 +439,46 @@ fn window_graphics_of_the_wrong_type() {
         .write("gband.set { window_graphics = false }\ngband.set { window_graphics = \"no\" }");
     let error = scratch.load().err().expect("a wrong type fails the load");
     assert_error_at(&error, &path, 2, "window_graphics");
+}
+
+#[test]
+fn window_sixel_by_default() {
+    let scratch = Scratch::new("window-sixel-default");
+    scratch.write("forwarding = gband.opt.window_sixel");
+    let config = scratch.loaded();
+    assert!(global::<bool>(&config, "forwarding"));
+    assert!(config.options.window_sixel);
+    let listed: Vec<String> = eval(
+        &config,
+        "for _, o in ipairs(gband.opt.list()) do if o.name == 'window_sixel' then return { o.type, tostring(o.default), o.desc } end end",
+    );
+    assert_eq!(
+        listed,
+        [
+            "boolean",
+            "true",
+            "whether a window program's sixel images are forwarded to your terminal"
+        ]
+    );
+}
+
+#[test]
+fn window_sixel_off() {
+    let scratch = Scratch::new("window-sixel-off");
+    scratch.write("gband.set { window_sixel = false }\nforwarding = gband.opt.window_sixel");
+    let config = scratch.loaded();
+    assert!(config.errors.is_empty(), "{:?}", config.errors);
+    assert!(!global::<bool>(&config, "forwarding"));
+    assert!(!config.options.window_sixel);
+}
+
+#[test]
+fn window_sixel_of_the_wrong_type() {
+    let scratch = Scratch::new("window-sixel-wrong-type");
+    let path =
+        scratch.write("gband.set { window_sixel = false }\ngband.set { window_sixel = \"no\" }");
+    let error = scratch.load().err().expect("a wrong type fails the load");
+    assert_error_at(&error, &path, 2, "window_sixel");
 }
 
 #[test]

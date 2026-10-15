@@ -3,9 +3,16 @@ const CAN: u8 = 0x18;
 const SUB: u8 = 0x1a;
 
 const INTRODUCER: &[u8] = b"\x1b_G";
+const DCS: &[u8] = b"\x1bP";
 const TERMINATOR: &[u8] = b"\x1b\\";
 
 pub const GRAPHICS_LIMIT: usize = 16 << 20;
+
+#[derive(Clone, Copy)]
+enum Kind {
+    Graphics,
+    Sixel,
+}
 
 #[derive(Clone, Copy, Default)]
 enum State {
@@ -13,23 +20,22 @@ enum State {
     Ground,
     Escape,
     Introducer,
-    Graphics,
-    GraphicsEscape,
+    DcsParams,
+    Payload(Kind),
+    PayloadEscape(Kind),
     Skip,
+}
+
+pub enum Found {
+    Graphics(Vec<u8>),
+    SixelStart,
+    Sixel(Vec<u8>),
 }
 
 #[derive(Default)]
 pub struct Scanner {
     state: State,
     pending: Vec<u8>,
-}
-
-fn after_escape(byte: u8) -> State {
-    match byte {
-        b'_' => State::Introducer,
-        ESC => State::Escape,
-        _ => State::Ground,
-    }
 }
 
 fn string_end(bytes: &[u8]) -> usize {
@@ -40,7 +46,27 @@ fn string_end(bytes: &[u8]) -> usize {
 }
 
 impl Scanner {
-    pub fn scan(&mut self, bytes: &[u8]) -> (usize, Option<Vec<u8>>) {
+    fn after_escape(&mut self, byte: u8) -> State {
+        match byte {
+            b'_' => State::Introducer,
+            b'P' => {
+                self.pending.extend_from_slice(DCS);
+                State::DcsParams
+            }
+            ESC => State::Escape,
+            _ => State::Ground,
+        }
+    }
+
+    fn overflowed(&mut self) -> bool {
+        let over = self.pending.len() > GRAPHICS_LIMIT;
+        if over {
+            self.pending = Vec::new();
+        }
+        over
+    }
+
+    pub fn scan(&mut self, bytes: &[u8]) -> (usize, Option<Found>) {
         let total = bytes.len();
         let mut bytes = bytes;
         while let Some((&byte, rest)) = bytes.split_first() {
@@ -52,20 +78,47 @@ impl Scanner {
                     bytes = &bytes[skip..];
                     State::Ground
                 }
-                State::Escape => after_escape(byte),
+                State::Escape => self.after_escape(byte),
                 State::Introducer => match byte {
                     b'G' => {
                         self.pending.extend_from_slice(INTRODUCER);
-                        State::Graphics
+                        State::Payload(Kind::Graphics)
                     }
                     ESC => State::Escape,
                     CAN | SUB => State::Ground,
                     _ => State::Skip,
                 },
-                State::Graphics => match byte {
+                State::DcsParams => match byte {
+                    b'q' => {
+                        self.pending.push(byte);
+                        self.state = State::Payload(Kind::Sixel);
+                        return (total - bytes.len(), Some(Found::SixelStart));
+                    }
+                    b'0'..=b'9' | b';' => {
+                        self.pending.push(byte);
+                        if self.overflowed() {
+                            State::Skip
+                        } else {
+                            State::DcsParams
+                        }
+                    }
+                    ESC => {
+                        self.pending.clear();
+                        State::Escape
+                    }
+                    CAN | SUB => {
+                        self.pending.clear();
+                        State::Ground
+                    }
+                    _ => {
+                        self.pending.clear();
+                        State::Skip
+                    }
+                },
+                State::Payload(kind) => match byte {
                     ESC => {
                         self.pending.push(ESC);
-                        State::GraphicsEscape
+                        State::PayloadEscape(kind)
                     }
                     CAN | SUB => {
                         self.pending.clear();
@@ -76,22 +129,26 @@ impl Scanner {
                         self.pending.push(byte);
                         self.pending.extend_from_slice(&bytes[..run]);
                         bytes = &bytes[run..];
-                        if self.pending.len() > GRAPHICS_LIMIT {
-                            self.pending = Vec::new();
+                        if self.overflowed() {
                             State::Skip
                         } else {
-                            State::Graphics
+                            State::Payload(kind)
                         }
                     }
                 },
-                State::GraphicsEscape if byte == b'\\' => {
+                State::PayloadEscape(kind) if byte == b'\\' => {
                     self.pending.push(byte);
                     self.state = State::Ground;
-                    return (total - bytes.len(), Some(std::mem::take(&mut self.pending)));
+                    let sequence = std::mem::take(&mut self.pending);
+                    let found = match kind {
+                        Kind::Graphics => Found::Graphics(sequence),
+                        Kind::Sixel => Found::Sixel(sequence),
+                    };
+                    return (total - bytes.len(), Some(found));
                 }
-                State::GraphicsEscape => {
+                State::PayloadEscape(_) => {
                     self.pending.clear();
-                    after_escape(byte)
+                    self.after_escape(byte)
                 }
                 State::Skip => match byte {
                     ESC => State::Escape,
