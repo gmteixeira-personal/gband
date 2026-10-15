@@ -18,6 +18,8 @@ require("gband.bar")
 require("gband.win")
 require("gband.settings")
 require("gband.keystyle")
+require("gband.agents")
+require("gband.jump")
 require("gband.colorscheme").start()
 require("mine.clock")
 ```
