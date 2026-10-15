@@ -14,14 +14,14 @@ gband is written in Rust.
 Install a stable Rust toolchain, version 1.89 or newer, and a C compiler such as `gcc` or `clang`.
 The C compiler builds the Lua runtime that gband bundles, so no system Lua is needed.
 
-Install release 0.5.0 with Cargo:
+Install release 0.6.0 with Cargo:
 
 ```sh
-cargo install --locked --git https://github.com/gmteixeira-personal/gband --tag v0.5.0
+cargo install --locked --git https://github.com/gmteixeira-personal/gband --tag v0.6.0
 ```
 
 Cargo puts the `gband` binary in `~/.cargo/bin/`, which must be on your `PATH`.
-To install the development version instead, replace `--tag v0.5.0` with `--branch dev`.
+To install the development version instead, replace `--tag v0.6.0` with `--branch dev`.
 
 ## Features
 
@@ -31,6 +31,7 @@ To install the development version instead, replace `--tag v0.5.0` with `--branc
 - **Agents.** gband finds Claude Code in your windows and colors its label in the sidebar by what it does: working, waiting for an answer, or done; see [Agents](#agents).
 - **Remote hosts.** `gband -r user@host` attaches to a session on another machine through your `ssh`, and your configuration, key bindings and plugins stay local; see [Remote hosts](#remote-hosts).
 - **Images.** A window that uses the kitty graphics protocol or sixel shows its images, forwarded to every attached terminal that supports that protocol.
+- **Image paste.** Ctrl+Space then `p` pastes an image from your local clipboard into the focused window, over `gband -r` too; see [Mouse](#mouse).
 - **Modifier keys.** gband speaks the kitty keyboard protocol, so combinations like Shift+Enter and Ctrl+Enter reach programs such as Claude Code.
 - **Animated.** Scrolling, band switches, moving windows and resizes animate.
 - **Fully scriptable.** The configuration, key bindings and plugins are Lua, in the client and in the server; see [Scripting](#scripting).
@@ -158,6 +159,7 @@ The modal and direct styles bind the same keys after Ctrl+Space; the floating st
 | `m` | turn multi mode on or off, so what you type reaches every window of the band; see [Multi mode](#multi-mode) |
 | `e` | list the errors; see [Errors](#errors) |
 | `E` | clear the errors |
+| `p` | paste an image from your local clipboard into the focused window; see [Mouse](#mouse) |
 | `D` | detach |
 | Escape, Enter | modal only: return to interactive mode |
 | Ctrl+Space | send Ctrl+Space to the window; modal returns to interactive mode |
@@ -376,6 +378,14 @@ Turn it off in `user/init.lua`:
 gband.set { window_sixel = false }
 ```
 
+Ctrl+Space then `p` pastes an image from your local clipboard into the focused window.
+The client reads the clipboard with `wl-paste` on Wayland, `xclip` on X11 or `pbpaste` on macOS, preferring a PNG.
+It sends the bytes to the server, which writes them to a file in a `gband-images` directory under the OS temp directory, prunes files there older than one hour, and pastes the file's absolute path into the window as a bracketed paste.
+Programs such as Claude Code read the pasted path as a file.
+This works locally and over `gband -r`, because the client runs beside your clipboard and the server writes the file where the program runs.
+`gband.opt.clipboard_image_dir` in `user/server.lua` sets another base directory.
+When no clipboard reader is installed, the client lists an error rather than pasting nothing silently.
+
 ## Scripting
 
 gband embeds a Lua runtime in the client and in the server.
@@ -510,6 +520,7 @@ The server options, set in `user/server.lua`, and their defaults:
 |---|---|---|
 | `default_column_width` | the width of a new column, as a fraction of the screen | `1/2` |
 | `width_presets` | the widths that cycling the column width steps through | `{ 1/3, 1/2, 2/3 }` |
+| `clipboard_image_dir` | the directory under which the server writes a forwarded clipboard image before pasting its path | the OS temp directory |
 
 ```lua
 -- user/server.lua
@@ -586,6 +597,7 @@ The actions in `gband.action`:
 | `toggle_column_tabbed` | toggle tabbed display of the column |
 | `grow_column_width`, `shrink_column_width` | widen or narrow the column by `width_step`, a tenth of the screen by default |
 | `grow_window_height`, `shrink_window_height`, `reset_window_height` | change or reset the height of the focused window |
+| `paste_image` | read an image from the local clipboard and paste it into the focused window |
 | `detach` | detach the client |
 | `send_prefix` | send the prefix key to the focused window |
 | `drag_window` | when bound to a mouse button, move the window with the mouse |
