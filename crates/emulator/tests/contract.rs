@@ -119,6 +119,30 @@ where
     assert_same(&emulator, &copy);
 }
 
+fn hvp_positions_like_cup<E: Emulator>()
+where
+    E::Screen: Screen,
+{
+    let mut hvp = E::new(SIZE);
+    let mut cup = E::new(SIZE);
+    hvp.process(b"\x1b[2;5fX");
+    cup.process(b"\x1b[2;5HX");
+    assert_eq!(cell(&hvp, 1, 4).symbol(), "X");
+    assert_eq!(hvp.cursor(), Some((1, 5)));
+    assert_same(&hvp, &cup);
+
+    let mut emulator = E::new(SIZE);
+    emulator.process(b"\x1b[10;10f\x1b[fTOP");
+    assert!(emulator.contents().starts_with("TOP"));
+
+    let mut emulator = E::new(SIZE);
+    emulator.process(b"\x1b[1;1fa\x1b[3;1fb\x1b[2;1fc");
+    assert_eq!(
+        emulator.contents().lines().take(3).collect::<Vec<_>>(),
+        ["a", "c", "b"]
+    );
+}
+
 fn nothing_changed<E: Emulator>() {
     let mut emulator = E::new(SIZE);
     emulator.process(b"\x1b[1;32msome text\x1b[0m\r\n");
@@ -264,6 +288,11 @@ fn grid_reproduces_the_alternate_screen_and_modes() {
 #[test]
 fn grid_diff_reproduces_cursor_movement() {
     cursor_movement_after_a_checkpoint::<Grid>();
+}
+
+#[test]
+fn grid_positions_on_hvp_like_cup() {
+    hvp_positions_like_cup::<Grid>();
 }
 
 #[test]
