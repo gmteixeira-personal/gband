@@ -23,7 +23,7 @@ Every message in either direction SHALL be sent as one frame. A frame is a 4-byt
 - **AND** it keeps serving its other clients
 
 ### Requirement: Handshake
-The first frame a client sends SHALL be a hello. The hello's payload SHALL begin with the client's protocol version, encoded the same way in every protocol version, followed by the client's terminal size. The first frame the server sends SHALL answer it. The server SHALL decode the leading version on its own, and compare it with its own version before it decodes anything that follows it. When the versions differ, the answer SHALL reject the client and carry the server's protocol version, whatever bytes follow the version, and the server SHALL then close the connection. When the versions are equal and the rest of the hello decodes, the answer SHALL accept the client and carry the server's protocol version. The leading version and the answer SHALL keep the same encoding in every later protocol version, so that two versions can always detect each other. The fields after the leading version MAY change in a later protocol version. The current protocol version SHALL be 17.
+The first frame a client sends SHALL be a hello. The hello's payload SHALL begin with the client's protocol version, encoded the same way in every protocol version, followed by the client's terminal size. The first frame the server sends SHALL answer it. The server SHALL decode the leading version on its own, and compare it with its own version before it decodes anything that follows it. When the versions differ, the answer SHALL reject the client and carry the server's protocol version, whatever bytes follow the version, and the server SHALL then close the connection. When the versions are equal and the rest of the hello decodes, the answer SHALL accept the client and carry the server's protocol version. The leading version and the answer SHALL keep the same encoding in every later protocol version, so that two versions can always detect each other. The fields after the leading version MAY change in a later protocol version. The current protocol version SHALL be 18.
 
 #### Scenario: Matching versions
 - **WHEN** a version 2 client sends its hello to a version 2 server
@@ -103,6 +103,10 @@ The first frame a client sends SHALL be a hello. The hello's payload SHALL begin
 - **WHEN** a client speaking protocol version 16 sends its hello to a server speaking version 17
 - **THEN** the server rejects it with version 17 and closes the connection
 
+#### Scenario: Version 17 client meets a version 18 server
+- **WHEN** a client speaking protocol version 17 sends its hello to a server speaking version 18
+- **THEN** the server rejects it with version 18 and closes the connection
+
 ### Requirement: Client messages
 After an attach request, a client SHALL send only these messages:
 
@@ -110,6 +114,7 @@ After an attach request, a client SHALL send only these messages:
 |---|---|
 | key | a window identifier, and a key code with its Shift, Alt and Ctrl modifiers as the input-encoding capability defines them |
 | paste | a window identifier and the pasted text |
+| paste image | a window identifier, an image MIME type, and the bytes of a clipboard image, as the clipboard-image-paste capability defines |
 | resize | the client terminal's columns and rows, and its cell width and height in pixels, or nothing when they are unknown, as the window-sixel capability's "Cell size in pixels" defines |
 | shown | the identifiers of every window the client shows, as the layout-view capability defines; it replaces the set the client reported before |
 | focus | the identifier of the window the client focuses, or nothing when it focuses none, as the client-attach capability's "Report the focused window" defines; it replaces the window the client reported before |
@@ -132,6 +137,10 @@ Window and band identifiers SHALL name windows and bands of the client's session
 #### Scenario: Resize round trip
 - **WHEN** a client sends resize with 120 columns, 40 rows and the cell size 9 by 19 pixels, and resize with 80 columns, 24 rows and an unknown cell size
 - **THEN** the server decodes the same columns, rows and cell sizes
+
+#### Scenario: Paste image round trip
+- **WHEN** a client sends paste image naming window 2, the MIME type `image/png` and the bytes `\x89PNG\r\n`
+- **THEN** the server decodes paste image naming window 2, the MIME type `image/png` and the same bytes
 
 #### Scenario: Action round trip
 - **WHEN** a client sends consume or expel naming window 3 and the direction left

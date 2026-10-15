@@ -231,6 +231,7 @@ With the modal key style, the bindings SHALL be: Ctrl+Space as the prefix, no bi
 | `m` | `prefix m` | toggle multi mode, as the multi-mode capability defines, then return to interactive mode | client | `multi mode` |
 | `e` | `prefix e` | open the error list when `gband.action` holds `errors.open`, as the error-list capability defines, which returns to interactive mode; do nothing otherwise | client | `list the errors` |
 | `E` | `prefix E` | clear the errors when `gband.action` holds `errors.clear`, as the error-list capability defines; do nothing otherwise | client | `clear the errors` |
+| `p` | `prefix p` | paste an image from the clipboard | client | |
 | `D` | `prefix D` | detach | client | |
 | Escape | `prefix escape` | return to interactive mode | — | `interactive mode` |
 | Enter | `prefix enter` | return to interactive mode | — | `interactive mode` |
@@ -462,6 +463,14 @@ Where a scenario of this requirement names no key style, the modal key style is 
 - **WHEN** the direct key style is saved, no `user/init.lua` exists, the viewed band holds two shell windows, and the user presses Ctrl+Space then `m`, and types `echo hi` and Enter
 - **THEN** both windows print `hi`
 - **AND** `gband.keymap.list("prefix")` holds `m` bound to the action `toggle_multi`
+
+#### Scenario: Paste image binding
+- **WHEN** the default configuration is in use and `gband.keymap.list("prefix")` is read
+- **THEN** it holds `p` bound to the action `paste_image`
+
+#### Scenario: Paste image binding with the direct key style
+- **WHEN** the direct key style is saved, no `user/init.lua` exists, and `gband.keymap.list("prefix")` is read
+- **THEN** it holds `p` bound to the action `paste_image`
 
 #### Scenario: Tabs from navigation mode
 - **WHEN** no `user/init.lua` exists, the client's 80×24 terminal sets the screen area, the client has no bar, a column of width 1/2 holds two windows with automatic heights with the top one focused, and the user presses Ctrl+Space then `w`

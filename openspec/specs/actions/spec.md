@@ -132,11 +132,12 @@ Every built-in action SHALL have one Lua name, under which `gband.action` holds 
 | `send_prefix` | send the prefix key to the focused window | client |
 | `reload` | reload the configuration | client |
 | `toggle_multi` | toggle multi mode | client |
+| `paste_image` | paste an image from the clipboard | client |
 | `drag_window` | move the window with the mouse | client |
 | `drag_resize_window` | resize the window with the mouse | client |
 | `drag_band` | slide the band or switch bands with the mouse | client |
 
-A width action named after a window's column SHALL act on the box of a floating window, as the floating-windows capability defines. `toggle_column_tabbed` SHALL turn tabbed display of the window's column on or off, as the tabbed-columns capability defines, and SHALL change nothing for a floating window. `minimize_window` SHALL minimize the focused window in this client's view, as the floating-windows capability defines, and SHALL leave the view unchanged when the focused window is tiled or no window is focused. `toggle_multi` SHALL turn this client's multi mode on or off, as the multi-mode capability defines, and while multi mode is on `send_prefix` SHALL send the prefix key to every window of the viewed band instead of the focused window alone.
+A width action named after a window's column SHALL act on the box of a floating window, as the floating-windows capability defines. `toggle_column_tabbed` SHALL turn tabbed display of the window's column on or off, as the tabbed-columns capability defines, and SHALL change nothing for a floating window. `minimize_window` SHALL minimize the focused window in this client's view, as the floating-windows capability defines, and SHALL leave the view unchanged when the focused window is tiled or no window is focused. `toggle_multi` SHALL turn this client's multi mode on or off, as the multi-mode capability defines, and while multi mode is on `send_prefix` SHALL send the prefix key to every window of the viewed band instead of the focused window alone. `paste_image` SHALL read an image from the clipboard of the host the client runs on and forward it to the focused window, as the clipboard-image-paste capability defines, and SHALL send nothing when no window is focused.
 
 Actions that the configuration capability's `gband.action.register` adds SHALL sit beside the built-in actions in `gband.action` and in `gband.action.list()`, and SHALL NOT take a built-in action's name.
 
@@ -171,6 +172,10 @@ Actions that the configuration capability's `gband.action.register` adds SHALL s
 #### Scenario: Reload description
 - **WHEN** `gband.action.list()` is read
 - **THEN** the entry named `reload` has the description `reload the configuration`
+
+#### Scenario: Paste image description
+- **WHEN** `gband.action.list()` is read
+- **THEN** the entry named `paste_image` has the description `paste an image from the clipboard`
 
 #### Scenario: Multi mode by name
 - **WHEN** a binding names `gband.action.toggle_multi` and its keys are pressed, with two windows in the viewed band, and the user then types `echo hi` and Enter
