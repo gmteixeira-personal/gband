@@ -65,6 +65,11 @@ impl Region {
         )
     }
 
+    pub fn content_origin(&self) -> (i64, i64) {
+        let inset = i64::from(self.inset());
+        (self.x + inset, self.y + inset)
+    }
+
     pub fn content_cell(&self, col: u16, row: u16) -> Option<(u16, u16)> {
         let inset = i64::from(self.inset());
         let (cols, rows) = self.content_size();

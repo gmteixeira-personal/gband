@@ -1,12 +1,12 @@
 mod callbacks;
 mod graphics;
 
-use gband_core::geometry::Size;
+use gband_core::geometry::{CellSize, Size};
 use gband_core::input::{Modes, MouseEncoding, MouseTracking};
 
 use crate::callbacks::Callbacks;
 pub use crate::callbacks::{Record, decode_base64};
-use crate::graphics::Scanner;
+use crate::graphics::{Found, Scanner};
 pub use crate::graphics::{GRAPHICS_LIMIT, query_reply};
 
 pub trait Emulator: Send + 'static {
@@ -61,6 +61,8 @@ pub struct Vt100 {
     scanner: Scanner,
     graphics: Vec<Vec<u8>>,
     graphics_replies: bool,
+    sixel_start: (u16, u16),
+    sixel: Vec<(u16, u16, Vec<u8>)>,
 }
 
 impl Vt100 {
@@ -98,6 +100,18 @@ impl Vt100 {
 
     pub fn answer_graphics_queries(&mut self, answer: bool) {
         self.graphics_replies = answer;
+    }
+
+    pub fn take_sixel(&mut self) -> Vec<(u16, u16, Vec<u8>)> {
+        std::mem::take(&mut self.sixel)
+    }
+
+    pub fn set_sixel_supported(&mut self, supported: bool) {
+        self.parser.callbacks_mut().sixel_supported = supported;
+    }
+
+    pub fn set_cell_size(&mut self, cell_size: Option<CellSize>) {
+        self.parser.callbacks_mut().cell_size = cell_size;
     }
 
     fn feed(&mut self, bytes: &[u8]) {
@@ -144,24 +158,37 @@ impl Emulator for Vt100 {
             scanner: Scanner::default(),
             graphics: Vec::new(),
             graphics_replies: false,
+            sixel_start: (1, 1),
+            sixel: Vec::new(),
         }
     }
 
     fn process(&mut self, bytes: &[u8]) {
         let mut rest = bytes;
         while !rest.is_empty() {
-            let (end, sequence) = self.scanner.scan(rest);
+            let (end, found) = self.scanner.scan(rest);
             self.feed(&rest[..end]);
-            if let Some(sequence) = sequence {
-                if self.graphics_replies
-                    && let Some(reply) = query_reply(&sequence)
-                {
-                    self.parser
-                        .callbacks_mut()
-                        .write_back
-                        .extend_from_slice(&reply);
+            match found {
+                Some(Found::Graphics(sequence)) => {
+                    if self.graphics_replies
+                        && let Some(reply) = query_reply(&sequence)
+                    {
+                        self.parser
+                            .callbacks_mut()
+                            .write_back
+                            .extend_from_slice(&reply);
+                    }
+                    self.graphics.push(sequence);
                 }
-                self.graphics.push(sequence);
+                Some(Found::SixelStart) => {
+                    let (row, col) = self.parser.screen().cursor_position();
+                    self.sixel_start = (row + 1, col + 1);
+                }
+                Some(Found::Sixel(sequence)) => {
+                    let (row, col) = self.sixel_start;
+                    self.sixel.push((row, col, sequence));
+                }
+                None => {}
             }
             rest = &rest[end..];
         }

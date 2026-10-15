@@ -395,6 +395,8 @@ async fn attach_order_with_window_names() {
         session: SessionName::default(),
         cwd: "/".into(),
         graphics: false,
+        sixel: false,
+        cell: None,
     })
     .await;
     let mut received = Vec::new();

@@ -201,8 +201,12 @@ async fn attaching_to_another_session_keeps_the_screen_area() {
     assert_eq!(default.area, Size::new(120, 40));
     let observer = server.attach(0, 0).await;
     assert_eq!(observer.area, Size::new(120, 40));
-    work.send(&ClientMessage::Resize { cols: 90, rows: 25 })
-        .await;
+    work.send(&ClientMessage::Resize {
+        cols: 90,
+        rows: 25,
+        cell: None,
+    })
+    .await;
     work.wait_until(|client| client.area == Size::new(90, 25))
         .await;
     assert!(default.pump(QUIET).await);

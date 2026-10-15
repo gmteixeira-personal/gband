@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use anyhow::{Result, bail};
 use gband_client::{Connection, Link, Transport};
-use gband_core::geometry::Size;
+use gband_core::geometry::{CellSize, Size};
 use gband_core::input::{Key, KeyCode};
 use gband_core::layout::{Layout, LayoutOptions, SessionAction, WindowId};
 pub use gband_emulator::{Emulator, Grid};
@@ -125,7 +125,29 @@ impl TestServer {
 
     pub async fn attach_without_graphics(&self, cols: u16, rows: u16) -> TestClient {
         let (peer, info) = TestClient::accepted(&self.socket(), cols, rows).await;
-        TestClient::attach_with(peer, info, SessionName::default(), Path::new("/"), false).await
+        TestClient::attach_with(
+            peer,
+            info,
+            SessionName::default(),
+            Path::new("/"),
+            Offer::NONE,
+        )
+        .await
+    }
+
+    pub async fn attach_with_sixel(
+        &self,
+        cols: u16,
+        rows: u16,
+        cell: Option<CellSize>,
+    ) -> TestClient {
+        let (peer, info) = TestClient::accepted(&self.socket(), cols, rows).await;
+        let offer = Offer {
+            sixel: true,
+            cell,
+            ..Offer::NONE
+        };
+        TestClient::attach_with(peer, info, SessionName::default(), Path::new("/"), offer).await
     }
 
     pub async fn control(&self, name: &str, target: Target, operation: Operation) -> ServerMessage {
@@ -271,6 +293,22 @@ pub struct TestClient {
     pub names: HashMap<WindowId, (String, Option<String>)>,
     pub clipboards: Vec<(WindowId, String)>,
     pub graphics: Vec<(WindowId, Vec<u8>)>,
+    pub sixel: Vec<(WindowId, u16, u16, Vec<u8>)>,
+}
+
+#[derive(Clone, Copy)]
+pub struct Offer {
+    pub graphics: bool,
+    pub sixel: bool,
+    pub cell: Option<CellSize>,
+}
+
+impl Offer {
+    pub const NONE: Self = Self {
+        graphics: false,
+        sixel: false,
+        cell: None,
+    };
 }
 
 impl TestClient {
@@ -315,7 +353,11 @@ impl TestClient {
         session: SessionName,
         cwd: &Path,
     ) -> Self {
-        Self::attach_with(peer, info, session, cwd, true).await
+        let offer = Offer {
+            graphics: true,
+            ..Offer::NONE
+        };
+        Self::attach_with(peer, info, session, cwd, offer).await
     }
 
     pub async fn attach_with(
@@ -323,12 +365,14 @@ impl TestClient {
         info: ServerMessage,
         session: SessionName,
         cwd: &Path,
-        graphics: bool,
+        offer: Offer,
     ) -> Self {
         peer.send(&ClientMessage::Attach {
             session,
             cwd: cwd.to_path_buf(),
-            graphics,
+            graphics: offer.graphics,
+            sixel: offer.sixel,
+            cell: offer.cell,
         })
         .await;
         let mut client = Self {
@@ -345,6 +389,7 @@ impl TestClient {
             names: HashMap::new(),
             clipboards: Vec::new(),
             graphics: Vec::new(),
+            sixel: Vec::new(),
         };
         match client.receive().await {
             Some(ServerMessage::Layout { .. }) => {}
@@ -500,6 +545,14 @@ impl TestClient {
             }
             ServerMessage::Graphics { window, data } => {
                 self.graphics.push((*window, data.clone()));
+            }
+            ServerMessage::Sixel {
+                window,
+                col,
+                row,
+                data,
+            } => {
+                self.sixel.push((*window, *row, *col, data.clone()));
             }
             ServerMessage::WindowState { window, key, value } => {
                 let state = self.states.entry(*window).or_default();

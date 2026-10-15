@@ -66,22 +66,7 @@ async fn mismatched_version_is_rejected_and_server_keeps_serving() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn version_fourteen_client_is_rejected_by_version_sixteen() {
-    let server = TestServer::start("version-fourteen", &["/bin/sh"]).await;
-    let mut peer = Peer::connect(&server.socket()).await;
-    peer.send(&Hello {
-        version: 14,
-        cols: 80,
-        rows: 24,
-    })
-    .await;
-    let reply: HelloReply = peer.recv().await.unwrap();
-    assert_eq!(reply, HelloReply::Rejected { version: 16 });
-    assert!(peer.closes().await);
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn version_fifteen_client_is_rejected_by_version_sixteen() {
+async fn version_fifteen_client_is_rejected_by_version_seventeen() {
     let server = TestServer::start("version-fifteen", &["/bin/sh"]).await;
     let mut peer = Peer::connect(&server.socket()).await;
     peer.send(&Hello {
@@ -91,7 +76,22 @@ async fn version_fifteen_client_is_rejected_by_version_sixteen() {
     })
     .await;
     let reply: HelloReply = peer.recv().await.unwrap();
-    assert_eq!(reply, HelloReply::Rejected { version: 16 });
+    assert_eq!(reply, HelloReply::Rejected { version: 17 });
+    assert!(peer.closes().await);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn version_sixteen_client_is_rejected_by_version_seventeen() {
+    let server = TestServer::start("version-sixteen", &["/bin/sh"]).await;
+    let mut peer = Peer::connect(&server.socket()).await;
+    peer.send(&Hello {
+        version: 16,
+        cols: 80,
+        rows: 24,
+    })
+    .await;
+    let reply: HelloReply = peer.recv().await.unwrap();
+    assert_eq!(reply, HelloReply::Rejected { version: 17 });
     assert!(peer.closes().await);
 }
 

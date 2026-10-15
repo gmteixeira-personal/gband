@@ -113,7 +113,13 @@ async fn burst_of_terminal_resizes_gives_one_sigwinch() {
     ready(&mut client, window).await;
     client.show_all().await;
     for (cols, rows) in [(90, 25), (95, 28), (100, 30)] {
-        client.send(&ClientMessage::Resize { cols, rows }).await;
+        client
+            .send(&ClientMessage::Resize {
+                cols,
+                rows,
+                cell: None,
+            })
+            .await;
     }
     assert_eq!(
         winches
@@ -168,6 +174,7 @@ async fn offscreen_window_keeps_its_size_until_shown() {
         .send(&ClientMessage::Resize {
             cols: 100,
             rows: 30,
+            cell: None,
         })
         .await;
     assert_eq!(winches.settled(&mut client, a, Size::new(48, 28)).await, 1);
@@ -190,6 +197,7 @@ async fn windows_shown_by_different_clients_both_resize() {
         .send(&ClientMessage::Resize {
             cols: 100,
             rows: 30,
+            cell: None,
         })
         .await;
     assert_eq!(winches.settled(&mut first, a, Size::new(48, 28)).await, 1);
@@ -242,6 +250,7 @@ async fn hidden_tabs_sized_with_the_shown_tab() {
         .send(&ClientMessage::Resize {
             cols: 100,
             rows: 30,
+            cell: None,
         })
         .await;
     for window in [top, bottom] {
@@ -379,6 +388,7 @@ async fn unshown_floating_window_keeps_its_size_until_shown() {
         .send(&ClientMessage::Resize {
             cols: 100,
             rows: 30,
+            cell: None,
         })
         .await;
     winches.settled(&mut client, first, Size::new(48, 28)).await;

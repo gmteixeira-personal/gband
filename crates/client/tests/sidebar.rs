@@ -457,7 +457,11 @@ fn turning_the_sidebar_off() {
         .collect();
     assert_eq!(
         resizes,
-        [&Step::Send(ClientMessage::Resize { cols: 80, rows: 24 })]
+        [&Step::Send(ClientMessage::Resize {
+            cols: 80,
+            rows: 24,
+            cell: None
+        })]
     );
     client.send_layout();
     assert_eq!(client.display.ribbon_area(), Rect::new(0, 0, 80, 24));

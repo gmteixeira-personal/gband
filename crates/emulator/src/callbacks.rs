@@ -1,3 +1,4 @@
+use gband_core::geometry::CellSize;
 use vt100::{MouseProtocolEncoding, MouseProtocolMode, Screen};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -24,6 +25,8 @@ pub struct Callbacks {
     pub title_changed: bool,
     pub modify_other_keys: u8,
     pub clipboard: Option<String>,
+    pub sixel_supported: bool,
+    pub cell_size: Option<CellSize>,
     title_stack: Vec<Option<String>>,
     main_keyboard: KeyboardFlags,
     alternate_keyboard: KeyboardFlags,
@@ -246,7 +249,7 @@ impl vt100::Callbacks for Callbacks {
         params: &[&[u16]],
         c: char,
     ) {
-        if let Some(reply) = query_reply(screen, i1, i2, params, c) {
+        if let Some(reply) = query_reply(screen, self, i1, i2, params, c) {
             self.write_back.extend_from_slice(reply.as_bytes());
             return;
         }
@@ -309,6 +312,7 @@ impl vt100::Callbacks for Callbacks {
 
 fn query_reply(
     screen: &Screen,
+    callbacks: &Callbacks,
     i1: Option<u8>,
     i2: Option<u8>,
     params: &[&[u16]],
@@ -316,7 +320,29 @@ fn query_reply(
 ) -> Option<String> {
     let first = params.first().and_then(|param| param.first()).copied();
     match (i1, i2, c) {
-        (None, None, 'c') if matches!(first, None | Some(0)) => Some("\x1b[?62;22c".to_owned()),
+        (None, None, 'c') if matches!(first, None | Some(0)) => Some(
+            if callbacks.sixel_supported {
+                "\x1b[?62;4;22c"
+            } else {
+                "\x1b[?62;22c"
+            }
+            .to_owned(),
+        ),
+        (None, None, 't') => {
+            let CellSize { width, height } = callbacks.cell_size?;
+            match first? {
+                16 => Some(format!("\x1b[6;{height};{width}t")),
+                14 => {
+                    let (rows, cols) = screen.size();
+                    Some(format!(
+                        "\x1b[4;{};{}t",
+                        u32::from(rows) * u32::from(height),
+                        u32::from(cols) * u32::from(width)
+                    ))
+                }
+                _ => None,
+            }
+        }
         (None, None, 'n') => match first? {
             5 => Some("\x1b[0n".to_owned()),
             6 => {

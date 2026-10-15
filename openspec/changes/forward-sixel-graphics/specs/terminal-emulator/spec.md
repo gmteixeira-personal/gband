@@ -21,3 +21,14 @@ An emulator SHALL ignore a device control string that is not a sixel, including 
 #### Scenario: A non-sixel device control string is ignored
 - **WHEN** an emulator processes `\x1bP$qm\x1b\\`
 - **THEN** it reports no collected sixel sequence
+
+### Requirement: Cell size replies
+An emulator SHALL hold an optional cell size in pixels, unset when it is created. While it is set to a width and a height, the emulator SHALL answer `\e[16t` with `\e[6;<height>;<width>t`, and `\e[14t` with `\e[4;<rows times height>;<columns times width>t` for its own columns and rows. While it is unset, it SHALL answer neither. Answering SHALL leave the screen, the cursor and the input modes unchanged.
+
+#### Scenario: Cell size set
+- **WHEN** an emulator of 80 columns by 24 rows has the cell size 10 by 20 pixels and processes `\e[16t\e[14t`
+- **THEN** it replies `\e[6;20;10t\e[4;480;800t`
+
+#### Scenario: Cell size unset
+- **WHEN** an emulator with no cell size processes `\e[16t\e[14t`
+- **THEN** it replies nothing

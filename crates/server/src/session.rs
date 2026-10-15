@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant as StdInstant};
 
 use anyhow::{Result, bail};
-use gband_core::geometry::{Size, boxes, tiles};
+use gband_core::geometry::{CellSize, Size, boxes, tiles};
 use gband_core::layout::{
     BandId, Layout, LayoutOptions, Program, Proportion, SessionAction, WindowContent, WindowId,
 };
@@ -69,6 +69,7 @@ pub enum Command {
     },
     CloseAll,
     Barrier(oneshot::Sender<()>),
+    CellSize,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -117,6 +118,12 @@ struct PluginWindow {
 #[derive(Default)]
 pub struct Graphics {
     clients: Mutex<BTreeMap<u64, mpsc::UnboundedSender<ServerMessage>>>,
+    sixel: Mutex<BTreeMap<u64, SixelClient>>,
+}
+
+struct SixelClient {
+    sender: mpsc::UnboundedSender<ServerMessage>,
+    cell: Option<CellSize>,
 }
 
 impl Graphics {
@@ -124,8 +131,58 @@ impl Graphics {
         self.clients.lock().unwrap().insert(client, sender);
     }
 
-    pub fn detach(&self, client: u64) {
+    pub fn attach_sixel(
+        &self,
+        client: u64,
+        sender: mpsc::UnboundedSender<ServerMessage>,
+        cell: Option<CellSize>,
+    ) -> bool {
+        let mut sixel = self.sixel.lock().unwrap();
+        let before = latest_cell(&sixel);
+        sixel.insert(client, SixelClient { sender, cell });
+        latest_cell(&sixel) != before
+    }
+
+    pub fn resize_sixel(&self, client: u64, cell: Option<CellSize>) -> bool {
+        let mut sixel = self.sixel.lock().unwrap();
+        let before = latest_cell(&sixel);
+        if let Some(cell) = cell
+            && let Some(entry) = sixel.get_mut(&client)
+            && entry.cell.is_some()
+        {
+            entry.cell = Some(cell);
+        }
+        latest_cell(&sixel) != before
+    }
+
+    pub fn detach(&self, client: u64) -> bool {
         self.clients.lock().unwrap().remove(&client);
+        let mut sixel = self.sixel.lock().unwrap();
+        let before = latest_cell(&sixel);
+        sixel.remove(&client);
+        latest_cell(&sixel) != before
+    }
+
+    pub fn sixel_supported(&self) -> bool {
+        !self.sixel.lock().unwrap().is_empty()
+    }
+
+    pub fn cell_size(&self) -> Option<CellSize> {
+        latest_cell(&self.sixel.lock().unwrap())
+    }
+
+    pub fn forward_sixel(&self, window: WindowId, sequences: Vec<(u16, u16, Vec<u8>)>) {
+        let clients = self.sixel.lock().unwrap();
+        for (row, col, data) in sequences {
+            for client in clients.values() {
+                let _ = client.sender.send(ServerMessage::Sixel {
+                    window,
+                    col,
+                    row,
+                    data: data.clone(),
+                });
+            }
+        }
     }
 
     pub fn supported(&self) -> bool {
@@ -143,6 +200,10 @@ impl Graphics {
             }
         }
     }
+}
+
+fn latest_cell(clients: &BTreeMap<u64, SixelClient>) -> Option<CellSize> {
+    clients.values().rev().find_map(|client| client.cell)
 }
 
 pub struct Session {
@@ -267,6 +328,7 @@ impl Session {
             Command::Barrier(reached) => {
                 let _ = reached.send(());
             }
+            Command::CellSize => self.unsettle(),
         }
     }
 

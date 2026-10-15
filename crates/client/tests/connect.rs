@@ -87,6 +87,8 @@ async fn mismatched_server_is_kept_when_replacing_is_off() {
             session: SessionName::default(),
             cwd: runtime_dir.clone(),
             graphics: false,
+            sixel: false,
+            cell: None,
         })
         .await
         .unwrap();

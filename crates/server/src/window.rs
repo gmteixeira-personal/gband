@@ -7,7 +7,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
-use gband_core::geometry::Size;
+use gband_core::geometry::{CellSize, Size};
 use gband_core::input::{Key, Modes, MouseEvent, encode_key, encode_mouse, encode_paste};
 use gband_core::layout::WindowId;
 use gband_emulator::{Emulator, Grid, query_reply};
@@ -53,6 +53,7 @@ struct Terminal {
     agent_published: bool,
     agent_changed: bool,
     clipboard: Option<(u64, String)>,
+    cell: Option<CellSize>,
 }
 
 struct Names {
@@ -166,6 +167,7 @@ impl Window {
                 agent_published: false,
                 agent_changed: false,
                 clipboard: None,
+                cell: None,
             }),
             generation: AtomicU64::new(0),
             changed: Arc::clone(changed),
@@ -308,15 +310,21 @@ impl Window {
         if cols == 0 || rows == 0 {
             return;
         }
+        let cell = self.graphics.cell_size();
         {
             let mut terminal = self.terminal.lock().unwrap();
-            if terminal.grid.size() == size {
+            let resized = terminal.grid.size() != size;
+            if !resized && terminal.cell == cell {
                 return;
             }
             if let Some(master) = &terminal.master
-                && let Err(error) = master.resize(pty_size(size))
+                && let Err(error) = master.resize(pty_size(size, cell))
             {
                 tracing::warn!("cannot resize the PTY to {cols}x{rows}: {error:#}");
+                return;
+            }
+            terminal.cell = cell;
+            if !resized {
                 return;
             }
             terminal.grid.resize(size);
@@ -332,6 +340,10 @@ impl Window {
             terminal
                 .grid
                 .answer_graphics_queries(self.graphics.supported());
+            terminal
+                .grid
+                .set_sixel_supported(self.graphics.sixel_supported());
+            terminal.grid.set_cell_size(self.graphics.cell_size());
             terminal.grid.process(bytes);
             let forwarded: Vec<Vec<u8>> = terminal
                 .grid
@@ -341,6 +353,10 @@ impl Window {
                 .collect();
             if !forwarded.is_empty() {
                 self.graphics.forward(id, forwarded);
+            }
+            let sixel = terminal.grid.take_sixel();
+            if !sixel.is_empty() {
+                self.graphics.forward_sixel(id, sixel);
             }
             if let Some(text) = terminal.grid.take_clipboard() {
                 let stamp = self.clipboards.fetch_add(1, Ordering::AcqRel) + 1;
@@ -380,8 +396,9 @@ pub fn spawn(
         size,
         taps,
     } = request;
+    let cell = graphics.cell_size();
     let pair = native_pty_system()
-        .openpty(pty_size(size))
+        .openpty(pty_size(size, cell))
         .context("cannot open a PTY")?;
 
     let mut command = CommandBuilder::from_argv(program.to_vec());
@@ -427,6 +444,7 @@ pub fn spawn(
         agent_published: false,
         agent_changed: false,
         clipboard: None,
+        cell,
     };
     terminal.update_name(true);
     let agent_dirty = AtomicBool::new(std::mem::take(&mut terminal.agent_changed));
@@ -519,12 +537,13 @@ fn spawn_input(
     });
 }
 
-fn pty_size(size: Size) -> PtySize {
+fn pty_size(size: Size, cell: Option<CellSize>) -> PtySize {
+    let cell = cell.unwrap_or(CellSize::new(0, 0));
     PtySize {
         rows: size.rows,
         cols: size.cols,
-        pixel_width: 0,
-        pixel_height: 0,
+        pixel_width: size.cols.saturating_mul(cell.width),
+        pixel_height: size.rows.saturating_mul(cell.height),
     }
 }
 
@@ -557,6 +576,14 @@ mod tests {
             }
             Contents::Update(bytes) => grid.process(&bytes),
         }
+    }
+
+    #[test]
+    fn pty_pixels_follow_the_cell_size() {
+        let size = pty_size(Size::new(80, 24), Some(CellSize::new(10, 20)));
+        assert_eq!((size.pixel_width, size.pixel_height), (800, 480));
+        let size = pty_size(Size::new(80, 24), None);
+        assert_eq!((size.pixel_width, size.pixel_height), (0, 0));
     }
 
     #[tokio::test]
