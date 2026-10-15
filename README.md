@@ -30,7 +30,7 @@ To install the development version instead, replace `--tag v0.4.0` with `--branc
 - **Tabbed columns.** A column can show its windows one at a time, as tabs, with an indicator on its left border; see [Tabbed columns](#tabbed-columns).
 - **Agents.** gband finds Claude Code in your windows and colors its label in the sidebar by what it does: working, waiting for an answer, or done; see [Agents](#agents).
 - **Remote hosts.** `gband -r user@host` attaches to a session on another machine through your `ssh`, and your configuration, key bindings and plugins stay local; see [Remote hosts](#remote-hosts).
-- **Images.** A window that uses the kitty graphics protocol shows its images, forwarded to every attached terminal that supports graphics.
+- **Images.** A window that uses the kitty graphics protocol or sixel shows its images, forwarded to every attached terminal that supports that protocol.
 - **Modifier keys.** gband speaks the kitty keyboard protocol, so combinations like Shift+Enter and Ctrl+Enter reach programs such as Claude Code.
 - **Animated.** Scrolling, band switches, moving windows and resizes animate.
 - **Fully scriptable.** The configuration, key bindings and plugins are Lua, in the client and in the server; see [Scripting](#scripting).
