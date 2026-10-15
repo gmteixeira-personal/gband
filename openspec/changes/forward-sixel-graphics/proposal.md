@@ -47,6 +47,7 @@ gband forwards only the kitty graphics protocol (`openspec/changes/archive/2026-
 - none
 
 ### Expected Files
+- crates/core/src/geometry.rs
 - crates/emulator/src/graphics.rs
 - crates/emulator/src/lib.rs
 - crates/emulator/src/callbacks.rs
@@ -56,14 +57,19 @@ gband forwards only the kitty graphics protocol (`openspec/changes/archive/2026-
 - crates/server/src/window.rs
 - crates/server/src/session.rs
 - crates/server/src/connection.rs
-- crates/server/src/registry.rs
 - crates/server/tests/sixel.rs
 - crates/server/tests/scripting.rs
 - crates/server/tests/sync.rs
-- crates/server/tests/queries.rs
+- crates/server/tests/resize.rs
+- crates/server/tests/sessions.rs
+- crates/server/tests/windows.rs
 - crates/client/src/lib.rs
+- crates/client/src/render.rs
 - crates/client/tests/sixel.rs
 - crates/client/tests/connect.rs
+- crates/client/tests/graphics.rs
+- crates/client/tests/sidebar.rs
+- crates/client/tests/bars.rs
 - crates/test-support/src/lib.rs
 - crates/lua/src/options.rs
 - crates/lua/src/defaults.lua
