@@ -589,6 +589,7 @@ fn server(
         .transpose()?;
     let loaded = configuration(Side::Server);
     let (options_tx, options) = watch::channel(loaded.config.options.layout.clone());
+    let clipboard_image_dir = loaded.config.options.clipboard_image_dir.clone();
     let locations = loaded.locations.clone();
     let loader: gband_server::Loader = Arc::new(move || {
         let result = reload(locations.as_ref(), Side::Server);
@@ -611,6 +612,7 @@ fn server(
         area: size.unwrap_or(INITIAL_AREA),
         executable: executable::identity().context("cannot identify the gband executable")?,
         options,
+        clipboard_image_dir,
         scripting: Some(scripting),
         channel,
     };

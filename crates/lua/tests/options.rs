@@ -67,6 +67,38 @@ fn gband_set_and_gband_opt_share_the_options() {
 }
 
 #[test]
+fn clipboard_image_dir_defaults_to_unset() {
+    let scratch = Scratch::new("clip-default");
+    scratch.server("");
+    let config = scratch.loaded_server();
+    assert_eq!(config.options.clipboard_image_dir, None);
+}
+
+#[test]
+fn clipboard_image_dir_reads_back_a_string() {
+    let scratch = Scratch::new("clip-set");
+    scratch.server(
+        "gband.opt.clipboard_image_dir = '/tmp/shots'\nvalue = gband.opt.clipboard_image_dir",
+    );
+    let config = scratch.loaded_server();
+    assert_eq!(
+        config.options.clipboard_image_dir.as_deref(),
+        Some(std::path::Path::new("/tmp/shots"))
+    );
+    assert_eq!(global::<String>(&config, "value"), "/tmp/shots");
+}
+
+#[test]
+fn clipboard_image_dir_rejects_a_non_string() {
+    let scratch = Scratch::new("clip-wrong");
+    let path = scratch.server("\ngband.opt.clipboard_image_dir = 7");
+    let config = scratch.loaded_server();
+    assert_eq!(config.options.clipboard_image_dir, None);
+    let error = error_naming(&config.errors, "clipboard_image_dir");
+    assert_error_at(error, &path, 2, "clipboard_image_dir");
+}
+
+#[test]
 fn plugin_files_see_the_init_files_options() {
     let scratch = Scratch::new("plugin-sees");
     scratch.write("gband.opt.prefix = 'ctrl+b'");
@@ -270,7 +302,14 @@ fn list_holds_built_in_and_declared_options() {
         &config,
         "local names = {} for _, o in ipairs(gband.opt.list()) do names[#names + 1] = o.name end return names",
     );
-    assert_eq!(names, ["default_column_width", "width_presets"]);
+    assert_eq!(
+        names,
+        [
+            "clipboard_image_dir",
+            "default_column_width",
+            "width_presets"
+        ]
+    );
 }
 
 #[test]

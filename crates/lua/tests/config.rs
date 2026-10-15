@@ -343,6 +343,7 @@ fn defaults_reproduce_the_built_in_behaviour() {
             Action::Session(SessionCommand::MoveWindow(Vertical::Up)),
         ),
         (char_key('!'), Action::Client(ClientAction::Reload)),
+        (char_key('p'), Action::Client(ClientAction::PasteImage)),
         (char_key('D'), Action::Client(ClientAction::Detach)),
         (
             ("prefix", Chord::Key(Key::plain(KeyCode::Left))),
@@ -540,10 +541,10 @@ fn every_default_binding_is_described() {
     for (config, count, open) in [
         (
             gband_lua::defaults(gband_lua::Side::Client),
-            55,
+            56,
             "open a window",
         ),
-        (direct, 53, "open a window"),
+        (direct, 54, "open a window"),
         (floating, 8, "open a floating window"),
     ] {
         assert_described(&config, count, open);
@@ -632,6 +633,20 @@ fn copied_defaults_follow_the_saved_style() {
     assert_eq!(actions(&config), actions(&saved));
     assert_eq!(bound_keys(&config), bound_keys(&saved));
     assert_eq!(config.modes, saved.modes);
+}
+
+#[test]
+fn paste_image_action_is_listed_with_its_description() {
+    let config = gband_lua::defaults(gband_lua::Side::Client);
+    let desc: Option<String> = eval(
+        &config,
+        "for _, a in ipairs(gband.action.list()) do if a.name == 'paste_image' then return a.desc end end",
+    );
+    assert_eq!(desc.as_deref(), Some("paste an image from the clipboard"));
+    assert_eq!(
+        action_of(&config, prefixed("p")),
+        Some(Action::Client(ClientAction::PasteImage))
+    );
 }
 
 fn assert_described(config: &Config, count: usize, open: &str) {
@@ -772,7 +787,8 @@ fn settings_bound_by_the_defaults() {
     assert_eq!(position("m"), position("!") + 1);
     assert_eq!(position("e"), position("m") + 1);
     assert_eq!(position("E"), position("e") + 1);
-    assert_eq!(position("D"), position("E") + 1);
+    assert_eq!(position("p"), position("E") + 1);
+    assert_eq!(position("D"), position("p") + 1);
     let desc: String = eval(
         &config,
         "for _, entry in ipairs(gband.keymap.list('prefix')) do if entry.key == 's' then return entry.desc end end",
@@ -844,6 +860,7 @@ fn every_action_is_named() {
         "send_prefix",
         "reload",
         "toggle_multi",
+        "paste_image",
         "drag_window",
         "drag_resize_window",
         "drag_band",

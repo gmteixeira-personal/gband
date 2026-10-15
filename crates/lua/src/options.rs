@@ -43,6 +43,7 @@ pub struct Options {
     pub window_clipboard: bool,
     pub window_graphics: bool,
     pub window_sixel: bool,
+    pub clipboard_image_dir: Option<PathBuf>,
     pub tile_border: Border,
     pub floating_border: Border,
     pub focused_tile_border_chars: BorderChars,
@@ -72,6 +73,7 @@ impl Default for Options {
             window_clipboard: true,
             window_graphics: true,
             window_sixel: true,
+            clipboard_image_dir: None,
             tile_border: rounded(),
             floating_border: rounded(),
             focused_tile_border_chars: BorderChars::Named(CharSet::Rounded),
@@ -126,6 +128,9 @@ impl Options {
         if let Some(window_sixel) = patch.window_sixel {
             self.window_sixel = window_sixel;
         }
+        if let Some(dir) = patch.clipboard_image_dir {
+            self.clipboard_image_dir = Some(dir);
+        }
         if let Some(sides) = patch.tile_border_sides {
             self.tile_border.sides = sides;
         }
@@ -172,6 +177,7 @@ impl Options {
             "window_clipboard" => self.window_clipboard = defaults.window_clipboard,
             "window_graphics" => self.window_graphics = defaults.window_graphics,
             "window_sixel" => self.window_sixel = defaults.window_sixel,
+            "clipboard_image_dir" => self.clipboard_image_dir = defaults.clipboard_image_dir,
             "tile_border_sides" => self.tile_border.sides = defaults.tile_border.sides,
             "tile_border_chars" => self.tile_border.chars = defaults.tile_border.chars,
             "floating_border_sides" => self.floating_border.sides = defaults.floating_border.sides,
@@ -206,6 +212,10 @@ impl Options {
             "window_clipboard" => self.window_clipboard.into_lua(lua),
             "window_graphics" => self.window_graphics.into_lua(lua),
             "window_sixel" => self.window_sixel.into_lua(lua),
+            "clipboard_image_dir" => match &self.clipboard_image_dir {
+                Some(dir) => dir.to_string_lossy().into_owned().into_lua(lua),
+                None => Ok(Value::Nil),
+            },
             "tile_border_sides" => self.tile_border.sides.to_lua(lua),
             "tile_border_chars" => self.tile_border.chars.to_lua(lua),
             "floating_border_sides" => self.floating_border.sides.to_lua(lua),
@@ -242,7 +252,11 @@ const CLIENT_NAMES: [&str; 19] = [
     "mouse_mod",
 ];
 
-const SERVER_NAMES: [&str; 2] = ["default_column_width", "width_presets"];
+const SERVER_NAMES: [&str; 3] = [
+    "default_column_width",
+    "width_presets",
+    "clipboard_image_dir",
+];
 
 pub fn names(side: Side) -> &'static [&'static str] {
     match side {
@@ -279,8 +293,13 @@ pub(crate) fn check_name(lua: &Lua, name: &str) -> Result<(), String> {
     Err(foreign(lua, name).unwrap_or_else(|| format!("unknown option `{name}`")))
 }
 
-const BUILTIN: [(&str, &str, &str); 21] = [
+const BUILTIN: [(&str, &str, &str); 22] = [
     ("prefix", "string", "the key that starts a key sequence"),
+    (
+        "clipboard_image_dir",
+        "string",
+        "the directory under which the server writes a forwarded clipboard image before pasting its path",
+    ),
     (
         "default_column_width",
         "number",
@@ -812,6 +831,7 @@ pub struct OptionsPatch {
     window_clipboard: Option<bool>,
     window_graphics: Option<bool>,
     window_sixel: Option<bool>,
+    clipboard_image_dir: Option<PathBuf>,
     tile_border_sides: Option<Sides>,
     tile_border_chars: Option<BorderChars>,
     floating_border_sides: Option<Sides>,

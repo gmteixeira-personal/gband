@@ -104,6 +104,7 @@ pub enum ClientAction {
     SendPrefix,
     Reload,
     ToggleMulti,
+    PasteImage,
     SendKey(Key),
     DragWindow,
     DragResize(Option<Edges>),

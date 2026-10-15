@@ -1,10 +1,10 @@
 use std::ffi::OsString;
 use std::io::{Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, mpsc as std_mpsc};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use anyhow::{Context, Result};
 use gband_core::geometry::{CellSize, Size};
@@ -553,6 +553,65 @@ fn display_argv(program: &[OsString]) -> String {
         .map(|arg| arg.to_string_lossy())
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+pub const CLIPBOARD_IMAGE_SUBDIR: &str = "gband-images";
+pub const CLIPBOARD_IMAGE_MAX_AGE: Duration = Duration::from_secs(3600);
+
+#[allow(clippy::disallowed_methods)]
+pub fn clipboard_image_base(configured: Option<&Path>) -> PathBuf {
+    // Not a gband_scratch directory: a forwarded image must outlive the paste until the window
+    // program reads its path, so it defaults to the OS temp directory rather than a removable one.
+    match configured {
+        Some(dir) => dir.to_path_buf(),
+        None => std::env::temp_dir(),
+    }
+}
+
+pub fn write_clipboard_image(base: &Path, mime: &str, data: &[u8]) -> std::io::Result<PathBuf> {
+    let dir = base.join(CLIPBOARD_IMAGE_SUBDIR);
+    std::fs::create_dir_all(&dir)?;
+    prune_clipboard_images(&dir, SystemTime::now(), CLIPBOARD_IMAGE_MAX_AGE);
+    let path = dir.join(clipboard_image_name(mime));
+    std::fs::write(&path, data)?;
+    Ok(path)
+}
+
+pub fn prune_clipboard_images(dir: &Path, now: SystemTime, max_age: Duration) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let Ok(metadata) = entry.metadata() else {
+            continue;
+        };
+        if !metadata.is_file() {
+            continue;
+        }
+        let aged = metadata
+            .modified()
+            .ok()
+            .and_then(|modified| now.duration_since(modified).ok())
+            .is_some_and(|age| age > max_age);
+        if aged {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+}
+
+fn clipboard_image_name(mime: &str) -> String {
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let nanos = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_nanos())
+        .unwrap_or(0);
+    let count = COUNTER.fetch_add(1, Ordering::Relaxed);
+    let extension = match mime {
+        "image/png" => "png",
+        "image/jpeg" => "jpg",
+        _ => "bin",
+    };
+    format!("{}-{nanos}-{count}.{extension}", std::process::id())
 }
 
 #[cfg(test)]
