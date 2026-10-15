@@ -72,3 +72,6 @@ gband-scratch.workspace = true
 gband-test-support.workspace = true
 portable-pty.workspace = true
 ratatui.workspace = true
+
+[patch.crates-io]
+vt100 = { git = "https://github.com/gmteixeira-personal/vt100-rust", tag = "0.16.2-hvp" }
