@@ -13,6 +13,7 @@ local THEME_FILE = "user/theme.lua"
 local SIDEBAR_FILE = "user/sidebar.lua"
 local KEYSTYLE_FILE = "user/keystyle.lua"
 local INTERACTIVE_ON_NEW_FILE = "user/interactive_on_new.lua"
+local RESTORE_FILE = "user/floating_restore.lua"
 local MOVES = {
   j = 1, down = 1, k = -1, up = -1,
   pagedown = "page", pageup = "page", home = "first", ["end"] = "last",
@@ -62,6 +63,36 @@ local function write(file, text)
   end
 end
 
+local function forget(file)
+  local dir = gband.config_dir
+  if type(dir) == "string" then
+    os.remove(dir .. "/" .. file)
+  end
+end
+
+local function serialize(value)
+  if type(value) == "table" then
+    local parts = {}
+    for index, item in ipairs(value) do
+      parts[index] = serialize(item)
+    end
+    local keys = {}
+    for key in pairs(value) do
+      if type(key) == "string" then
+        keys[#keys + 1] = key
+      end
+    end
+    table.sort(keys)
+    for _, key in ipairs(keys) do
+      parts[#parts + 1] = key .. " = " .. serialize(value[key])
+    end
+    return "{ " .. table.concat(parts, ", ") .. " }"
+  elseif math.type(value) == "float" then
+    return string.format("%.17g", value)
+  end
+  return tostring(value)
+end
+
 local function is_name(value)
   return type(value) == "string" and value:match(NAME) ~= nil
 end
@@ -95,6 +126,196 @@ local function themes()
     end
   end
   return names
+end
+
+local function is_index(value)
+  return math.type(value) == "integer" and value >= 1
+end
+
+local function is_cell(value)
+  return math.type(value) == "integer" and value >= 0
+end
+
+local function is_size(value)
+  return type(value) == "number" and value > 0 and value <= 10000
+end
+
+local function is_list(value, valid)
+  if type(value) ~= "table" then
+    return false
+  end
+  for _, item in ipairs(value) do
+    if not valid(item) then
+      return false
+    end
+  end
+  return true
+end
+
+local function is_tile(value)
+  if type(value) ~= "table" or not is_index(value.id) then
+    return false
+  end
+  if value.rows ~= nil then
+    return value.weight == nil and is_index(value.rows)
+  end
+  return is_size(value.weight)
+end
+
+local function is_column(value)
+  return type(value) == "table"
+    and is_size(value.width)
+    and is_boolean(value.full_width)
+    and is_boolean(value.tabbed)
+    and is_list(value.windows, is_tile)
+end
+
+local function is_box(value)
+  return type(value) == "table"
+    and is_index(value.id)
+    and is_cell(value.col)
+    and is_cell(value.row)
+    and is_size(value.width)
+    and is_boolean(value.full_width)
+    and is_index(value.rows)
+end
+
+local function is_band(value)
+  return type(value) == "table"
+    and is_index(value.id)
+    and is_list(value.columns, is_column)
+    and is_list(value.floating, is_box)
+end
+
+local function is_record(value)
+  return type(value) == "table" and is_list(value.bands, is_band)
+end
+
+local function record_of(layout)
+  local bands = {}
+  for _, band in ipairs(layout.bands) do
+    local columns, floating = {}, {}
+    for _, column in ipairs(band.columns) do
+      local windows = {}
+      for _, window in ipairs(column.windows) do
+        if window.name then
+          windows[#windows + 1] = { id = window.id, rows = window.rows, weight = window.weight }
+        end
+      end
+      if #windows > 0 then
+        columns[#columns + 1] = {
+          width = column.width,
+          full_width = column.full_width,
+          tabbed = column.tabbed,
+          windows = windows,
+        }
+      end
+    end
+    for _, box in ipairs(band.floating) do
+      if box.name then
+        floating[#floating + 1] = {
+          id = box.id,
+          col = box.col,
+          row = box.row,
+          width = box.width,
+          full_width = box.full_width,
+          rows = box.rows,
+        }
+      end
+    end
+    bands[#bands + 1] = { id = band.id, columns = columns, floating = floating }
+  end
+  return { bands = bands }
+end
+
+local function floating_programs(layout)
+  local ids, floats = {}, {}
+  for _, band in ipairs(layout.bands) do
+    for _, box in ipairs(band.floating) do
+      if box.name then
+        ids[#ids + 1] = box.id
+        floats[box.id] = true
+      end
+    end
+  end
+  return ids, floats
+end
+
+local function tile_all(ids)
+  for index = #ids, 1, -1 do
+    gband.action.toggle_window_floating({ window = ids[index], floating = false })
+  end
+end
+
+local function restore_column(column)
+  local first = column.windows[1].id
+  for index = 2, #column.windows do
+    gband.action.consume_or_expel_left({ window = column.windows[index].id })
+  end
+  gband.window.set_width(first, column.width)
+  if column.full_width then
+    gband.action.toggle_full_width({ window = first })
+  end
+  for _, window in ipairs(column.windows) do
+    gband.window.set_height(window.id, window.rows and { rows = window.rows } or { weight = window.weight })
+  end
+  if column.tabbed then
+    gband.action.toggle_column_tabbed({ window = first })
+  end
+end
+
+local function restore_box(box)
+  gband.window.set_width(box.id, box.width)
+  if box.full_width then
+    gband.action.toggle_full_width({ window = box.id })
+  end
+  gband.window.set_height(box.id, { rows = box.rows })
+  gband.window.set_position(box.id, { col = box.col, row = box.row })
+end
+
+local function restore(record)
+  local ids, floats = floating_programs(gband.layout())
+  local recorded, columns, boxes = {}, {}, {}
+  for _, band in ipairs(record.bands) do
+    for _, column in ipairs(band.columns) do
+      local windows = {}
+      for _, window in ipairs(column.windows) do
+        recorded[window.id] = true
+        if floats[window.id] then
+          windows[#windows + 1] = window
+        end
+      end
+      if #windows > 0 then
+        column.windows = windows
+        columns[#columns + 1] = column
+      end
+    end
+    for _, box in ipairs(band.floating) do
+      recorded[box.id] = true
+      if floats[box.id] then
+        boxes[#boxes + 1] = box
+      end
+    end
+  end
+  local unrecorded, tiles = {}, {}
+  for _, id in ipairs(ids) do
+    if not recorded[id] then
+      unrecorded[#unrecorded + 1] = id
+    end
+  end
+  for _, column in ipairs(columns) do
+    for _, window in ipairs(column.windows) do
+      tiles[#tiles + 1] = window.id
+    end
+  end
+  tile_all(unrecorded)
+  tile_all(tiles)
+  for _, column in ipairs(columns) do
+    restore_column(column)
+  end
+  for _, box in ipairs(boxes) do
+    restore_box(box)
+  end
 end
 
 local function save(line, file, text)
@@ -217,8 +438,20 @@ local function toggle_sidebar()
 end
 
 local function step_keys(direction)
-  local at = index_of(KEY_STYLES, key_style()) or 1
+  local style = key_style()
+  local at = index_of(KEY_STYLES, style) or 1
   local next_style = KEY_STYLES[(at - 1 + direction) % #KEY_STYLES + 1]
+  if style ~= "floating" and next_style == "floating" then
+    write(RESTORE_FILE, "return " .. serialize(record_of(gband.layout())) .. "\n")
+  elseif style == "floating" and next_style ~= "floating" then
+    local record = read(RESTORE_FILE, is_record)
+    if record then
+      restore(record)
+    else
+      tile_all((floating_programs(gband.layout())))
+    end
+    forget(RESTORE_FILE)
+  end
   save(KEYS, KEYSTYLE_FILE, 'return "' .. next_style .. '"\n')
 end
 

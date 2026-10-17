@@ -2,7 +2,7 @@
 
 ### Requirement: Record the layout entering the floating style
 
-When the settings window's `keys` line switches a style other than `floating` to `floating`, the settings SHALL record the client's layout, as `gband.layout()` gives it, before the reload the switch causes floats the windows. The record SHALL hold, for each band, its tiled columns left to right with each column's `width`, `full_width` and `tabbed` state and each column's windows top to bottom with each window's height, and its floating windows with each window's box, `col`, `row`, `width`, `full_width` and `rows`.
+When the settings window's `keys` line switches a style other than `floating` to `floating`, the settings SHALL record the client's layout, as `gband.layout()` gives it, before the reload the switch causes floats the windows. The record SHALL hold only windows that run a program, as the floating-key-style capability's "Windows float" defines. It SHALL hold, for each band, its tiled columns left to right with each column's `width`, `full_width` and `tabbed` state and each column's windows top to bottom with each window's height, and its floating windows with each window's box, `col`, `row`, `width`, `full_width` and `rows`. A column that holds no window that runs a program SHALL NOT be recorded.
 
 The record SHALL persist across the reload the switch causes and across the settings window closing and reopening. It SHALL be replaced when the `keys` line switches a non-floating style to `floating` again, and discarded when the `keys` line switches `floating` to another style, as "Restore the layout leaving the floating style" defines. The `keys` line SHALL still save the key style as "Settings window keys" defines.
 
@@ -17,9 +17,9 @@ When the settings window's `keys` line switches `floating` to `modal` or `direct
 
 - A window the record holds tiled SHALL tile in its recorded band, in a column at the recorded position from the left, at the recorded position from the top within that column, so a column's windows keep their order and stacking. Its column SHALL take the recorded `width`, `full_width` and `tabbed` state, and the window SHALL take its recorded height.
 - A window the record holds floating SHALL float with its recorded box, `col`, `row`, `width`, `full_width` and `rows`.
-- A window not in the record, such as one opened while `floating` was in use, SHALL tile after the restored tiled windows of its band.
+- A floating window that runs a program and is not in the record, such as one opened while `floating` was in use, SHALL tile after the restored tiled windows of its band.
 
-A recorded window no longer in the client's layout SHALL be skipped. When the `keys` line switches `floating` to another style and no record exists, every floating window SHALL tile. The `keys` line SHALL still save the key style as "Settings window keys" defines.
+A recorded window no longer floating in the client's layout SHALL be skipped. When the `keys` line switches `floating` to another style and no record exists, every floating window that runs a program SHALL tile. A floating window that runs no program, such as the settings window, SHALL stay floating. The `keys` line SHALL still save the key style as "Settings window keys" defines.
 
 #### Scenario: Columns restored across a round trip
 - **WHEN** no `user/init.lua` exists, the modal style is saved, the viewed band holds columns with windows 1 and 2, the settings window is open on its third line, the user presses `h`, and after the reload presses `l`
