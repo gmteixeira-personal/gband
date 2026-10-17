@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - Update Purpose after archive.
+Defines how gband carries a window program's sixel images to the attached clients: the emulator collecting the program's sixel DCS sequences and recording each one's cursor position while leaving the window's screen unchanged, the server forwarding each sequence with its position to the clients whose terminal supports sixel and advertising Primary Device Attributes attribute `4` to the program by them, the client drawing each forwarded sixel at its position, reporting its terminal's cell size in pixels so the program sizes images to the cells, startup detection of the outer terminal's support, and the `window_sixel` option that turns it off.
 
 ## Requirements
 

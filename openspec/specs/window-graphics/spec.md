@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - Update Purpose after archive.
+Defines how gband carries a window program's kitty graphics images to the attached clients: the emulator collecting the program's kitty graphics APC sequences while leaving the window's screen unchanged, the server forwarding each sequence to the clients whose terminal supports kitty graphics and answering the support query by them, placement by Unicode placeholder, startup detection of the outer terminal's support, and the `window_graphics` option that turns it off.
 
 ## Requirements
 
