@@ -32,7 +32,7 @@ size 80x24 cursor 22:41 shown
 1:39 fg=8
 1:40 fg=4 bold
 1:78 fg=4 bold
-2:0 fg=10 bg=0 bold
+2:0 fg=2 bg=0 underline
 2:1 fg=8
 2:39 fg=8
 2:40 fg=4 bold
@@ -92,7 +92,7 @@ size 80x24 cursor 22:41 shown
 13:39 fg=8
 13:40 fg=4 bold
 13:78 fg=4 bold
-14:0 fg=11 bg=0 bold
+14:0 fg=3 bg=0 underline
 14:1 fg=8
 14:39 fg=8
 14:40 fg=4 bold

@@ -49,10 +49,10 @@ local function wait_column(g, expected)
   end)
 end
 
-local function wait_fg(g, row, fg, bold)
+local function wait_fg(g, row, fg, underline)
   g.wait(function(screen)
     local cell = screen.cell(row, 0)
-    return cell.fg == fg and cell.bold == bold
+    return cell.fg == fg and cell.underline == underline and not cell.bold
   end)
 end
 
@@ -105,10 +105,10 @@ t.case("agent colors", function(g)
   run_agent(g, 2)
   wait_column(g, "I 12 ─12")
   g.keys("w")
-  wait_fg(g, 14, 11, true)
+  wait_fg(g, 14, 3, true)
   g.client([[gband.window.send_keys(1, "b")]])
   wait_fg(g, 13, 1, false)
-  wait_fg(g, 2, 9, true)
+  wait_fg(g, 2, 1, true)
   g.expect_screenshot("blocked and working")
   g.client([[gband.window.send_keys(1, "w")]])
   wait_fg(g, 13, 3, false)
@@ -117,7 +117,7 @@ t.case("agent colors", function(g)
   t.eq(g.client("return gband.window_state(1).agent_state.state"), "done")
   g.expect_screenshot("done and working")
   g.keys("ctrl+space h escape")
-  wait_fg(g, 13, 12, true)
+  wait_fg(g, 13, 4, true)
   t.eq(g.client("return gband.window_state(1).agent_state.state"), "idle")
 end)
 
@@ -137,7 +137,7 @@ t.case("click an agent in another band", function(g)
   g.settle()
   t.eq(focused(g), 2)
   t.eq(g.client("return gband.view().band"), g.client("return gband.layout().bands[2].id"))
-  wait_fg(g, 14, 12, true)
+  wait_fg(g, 14, 4, true)
 end)
 
 t.case("prefix a then a position focuses that agent", function(g)

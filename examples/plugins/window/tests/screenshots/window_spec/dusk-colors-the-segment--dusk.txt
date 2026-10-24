@@ -12,7 +12,7 @@ size 60x4 cursor 1:4 shown
 1:1 fg=#b1b9f9 bold
 1:23 fg=#b1b9f9 bold
 1:48-59 fg=#e0def4 bg=#232136
-2:0 fg=#e0def4 bg=#232136 bold
+2:0 fg=#908caa bg=#232136 underline
 2:1 fg=#b1b9f9 bold
 2:23 fg=#b1b9f9 bold
 2:48-59 fg=#e0def4 bg=#232136

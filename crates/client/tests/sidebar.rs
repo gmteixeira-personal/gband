@@ -377,11 +377,13 @@ fn more_bands_than_rows() {
 fn viewed_band() {
     let (_scratch, mut client) = defaults("viewed", "", Size::new(80, 24));
     client.attach_bands(2);
-    assert!(client.style(2).bold);
-    assert!(!client.style(2).dim);
-    for row in [3, 4] {
+    assert!(client.style(2).underline);
+    for row in [2, 3, 4] {
         assert!(!client.style(row).bold, "{row}");
         assert!(client.style(row).dim, "{row}");
+    }
+    for row in [3, 4] {
+        assert!(!client.style(row).underline, "{row}");
     }
 }
 
@@ -391,9 +393,9 @@ fn view_moves_down() {
     client.attach_bands(2);
     let below = client.windows[1];
     client.focus(below);
-    assert!(client.style(3).bold);
-    assert!(!client.style(2).bold);
-    assert!(!client.style(4).bold);
+    assert!(client.style(3).underline);
+    assert!(!client.style(2).underline);
+    assert!(!client.style(4).underline);
 }
 
 #[test]
@@ -659,8 +661,8 @@ fn click_a_band_label() {
     assert_eq!(client.viewed(), 1);
     client.click(MouseButton::Left, 0, 4);
     assert_eq!(client.viewed(), 3);
-    assert!(client.style(4).bold);
-    assert!(!client.style(2).bold);
+    assert!(client.style(4).underline);
+    assert!(!client.style(2).underline);
 }
 
 #[test]
@@ -711,8 +713,8 @@ fn wheel_down_over_the_labels() {
     client.attach_bands(2);
     client.wheel(WheelDirection::Down, 0, 2, Modifiers::NONE);
     assert_eq!(client.viewed(), 2);
-    assert!(client.style(3).bold);
-    assert!(!client.style(2).bold);
+    assert!(client.style(3).underline);
+    assert!(!client.style(2).underline);
 }
 
 #[test]
@@ -862,21 +864,23 @@ fn agent_state_recolors_its_labels() {
     client.set_agent(windows[1], Some("blocked"));
     assert_eq!(client.row(13), "1");
     assert_eq!(client.style(13).fg, Some(Color::Index(1)));
-    assert_eq!(client.style(2).fg, Some(Color::Index(9)));
-    assert!(client.style(2).bold);
+    assert_eq!(client.style(2).fg, Some(Color::Index(1)));
+    assert!(!client.style(2).bold);
+    assert!(client.style(2).underline);
 }
 
 #[test]
-fn focused_agent_label_is_brighter() {
+fn focused_agent_label_is_underlined() {
     let (_scratch, mut client) = defaults("agent-focus", "", Size::new(80, 24));
     client.attach(2, 0);
     client.ready();
     let windows = client.windows.clone();
     client.set_agent(windows[1], Some("working"));
-    assert!(!client.style(13).bold);
+    assert!(!client.style(13).underline);
     client.focus(windows[1]);
-    assert_eq!(client.style(13).fg, Some(Color::Index(11)));
-    assert!(client.style(13).bold);
+    assert_eq!(client.style(13).fg, Some(Color::Index(3)));
+    assert!(!client.style(13).bold);
+    assert!(client.style(13).underline);
 }
 
 #[test]
@@ -891,7 +895,8 @@ fn click_an_agent_label() {
     client.click(MouseButton::Left, 0, 14);
     assert_eq!(client.viewed(), 2);
     assert_eq!(client.focused(), Some(windows[1]));
-    assert!(client.style(14).bold);
+    assert!(!client.style(14).bold);
+    assert!(client.style(14).underline);
 }
 
 #[test]

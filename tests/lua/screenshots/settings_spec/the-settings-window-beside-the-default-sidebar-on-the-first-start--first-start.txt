@@ -28,7 +28,7 @@ size 80x24 cursor 10:55 hidden
 0:1-39 fg=#b1b9f9 bold
 1:1 fg=#b1b9f9 bold
 1:39 fg=#b1b9f9 bold
-2:0 bold
+2:0 dim underline
 2:1 fg=#b1b9f9 bold
 2:39 fg=#b1b9f9 bold
 3:0 dim

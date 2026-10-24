@@ -16,7 +16,7 @@ size 40x8 cursor 1:2 shown
 1:2-18 fg=#e0def4 bg=#232136
 1:19 fg=#c4a7e7 bg=#232136 bold
 1:20-39 fg=#e0def4 bg=#232136
-2:0 fg=#e0def4 bg=#2a273f bold
+2:0 fg=#6e6a86 bg=#2a273f underline
 2:1 fg=#c4a7e7 bg=#232136 bold
 2:2-18 fg=#e0def4 bg=#232136
 2:19 fg=#c4a7e7 bg=#232136 bold

@@ -314,3 +314,51 @@ fn catppuccin_alias() {
     switch(&config, "catppuccin-latte");
     assert_ne!(describe(&config), mocha);
 }
+
+fn fields(config: &Config, expression: &str) -> Vec<String> {
+    let mut fields: Vec<String> = eval(
+        config,
+        &format!(
+            "local out = {{}} for k, v in pairs({expression}) do out[#out + 1] = k .. '=' .. tostring(v) end return out"
+        ),
+    );
+    fields.sort();
+    fields
+}
+
+#[test]
+fn viewed_band_underlined_under_every_theme() {
+    let config = loaded_with("viewed-band");
+    for theme in THEMES {
+        switch(&config, theme);
+        assert_eq!(
+            fields(&config, "gband.hl.get('SidebarBandActive')"),
+            ["link=SidebarBand", "underline=true"],
+            "{theme}"
+        );
+        let mut band = fields(&config, "gband.hl.get('SidebarBand', { resolve = true })");
+        band.push("underline=true".to_owned());
+        band.sort();
+        assert_eq!(
+            fields(
+                &config,
+                "gband.hl.get('SidebarBandActive', { resolve = true })"
+            ),
+            band,
+            "{theme}"
+        );
+    }
+}
+
+#[test]
+fn tokyo_night_viewed_band() {
+    let config = loaded_with("tokyo-night-viewed-band");
+    switch(&config, "tokyo-night");
+    assert_eq!(
+        fields(
+            &config,
+            "gband.hl.get('SidebarBandActive', { resolve = true })"
+        ),
+        ["fg=#565f89", "underline=true"]
+    );
+}

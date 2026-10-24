@@ -34,7 +34,7 @@ size 120x24 cursor 14:61 shown
 1:60 fg=4 bold
 1:118 fg=4 bold
 1:119 fg=8
-2:0 fg=12 bg=0 bold
+2:0 fg=4 bg=0 underline
 2:1 fg=8
 2:59 fg=8
 2:60 fg=4 bold
@@ -106,7 +106,7 @@ size 120x24 cursor 14:61 shown
 13:60 fg=4 bold
 13:118 fg=4 bold
 13:119 fg=8
-14:0 fg=12 bg=0 bold
+14:0 fg=4 bg=0 underline
 14:1 fg=8
 14:59 fg=8
 14:60 fg=4 bold
