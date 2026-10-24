@@ -104,7 +104,10 @@ fn defaults_without_a_colorscheme() {
     let config = scratch.loaded();
     assert_eq!(resolved(&config, "SidebarMode"), ["bold=true"]);
     assert_eq!(resolved(&config, "SidebarBand"), ["dim=true"]);
-    assert_eq!(resolved(&config, "SidebarBandActive"), ["bold=true"]);
+    assert_eq!(
+        resolved(&config, "SidebarBandActive"),
+        ["dim=true", "underline=true"]
+    );
     assert_eq!(resolved(&config, "SidebarError"), ["bold=true", "fg=1"]);
 }
 
@@ -556,7 +559,7 @@ fn blocked_agent() {
 }
 
 #[test]
-fn focused_agent_is_brighter() {
+fn focused_agent_takes_its_active_group() {
     let (_scratch, config) = loaded("agent-focused", &marked());
     let (layout, windows) = one_band(2);
     let agents = [(windows[0], "idle"), (windows[1], "working")];
@@ -621,8 +624,24 @@ fn state_colors_follow_the_palette() {
     let style = |row: usize| bar.lines[row][0].style;
     assert_eq!(style(13).fg, Some(Color::Index(1)));
     assert!(!style(13).bold);
-    assert_eq!(style(14).fg, Some(Color::Index(9)));
-    assert!(style(14).bold);
+    assert!(!style(13).underline);
+    assert_eq!(style(14).fg, Some(Color::Index(1)));
+    assert!(!style(14).bold);
+    assert!(style(14).underline);
+}
+
+#[test]
+fn viewed_agent_band_underlined_in_its_state_colour() {
+    let (_scratch, config) = loaded("agent-band-underline", "gband.plugin('gband.sidebar')");
+    let (layout, windows) = one_band(1);
+    let bar = presented(
+        &config,
+        agents_view(layout, &[(windows[0], "working")], None, 1, 24),
+    );
+    let style = bar.lines[2][0].style;
+    assert_eq!(style.fg, Some(Color::Index(3)));
+    assert!(!style.bold);
+    assert!(style.underline);
 }
 
 #[test]
@@ -634,7 +653,7 @@ fn agent_group_defaults() {
     assert_eq!(resolved(&config, "SidebarAgentWorking"), ["fg=yellow"]);
     assert_eq!(
         resolved(&config, "SidebarAgentWorkingActive"),
-        ["bold=true", "fg=bright_yellow"]
+        ["fg=yellow", "underline=true"]
     );
     assert_eq!(resolved(&config, "SidebarAgentBlocked"), ["fg=red"]);
     assert_eq!(resolved(&config, "SidebarAgentDone"), ["fg=green"]);
@@ -642,9 +661,27 @@ fn agent_group_defaults() {
     assert_eq!(resolved(&config, "SidebarAgentUnknown"), ["dim=true"]);
     assert_eq!(
         resolved(&config, "SidebarAgentUnknownActive"),
-        ["bold=true"]
+        ["dim=true", "underline=true"]
     );
     assert_eq!(resolved(&config, "SidebarDivider"), ["dim=true"]);
+}
+
+#[test]
+fn active_defaults_add_an_underline() {
+    let scratch = Scratch::new("agent-active-defaults");
+    scratch.user_file("colors/plain.lua", "");
+    scratch.write("gband.plugin('gband.sidebar')\ngband.colorscheme('plain')");
+    let config = scratch.loaded();
+    for (group, expected) in [
+        ("SidebarBandActive", ["dim=true", "underline=true"]),
+        ("SidebarAgentUnknownActive", ["dim=true", "underline=true"]),
+        ("SidebarAgentWorkingActive", ["fg=yellow", "underline=true"]),
+        ("SidebarAgentBlockedActive", ["fg=red", "underline=true"]),
+        ("SidebarAgentDoneActive", ["fg=green", "underline=true"]),
+        ("SidebarAgentIdleActive", ["fg=blue", "underline=true"]),
+    ] {
+        assert_eq!(resolved(&config, group), expected, "{group}");
+    }
 }
 
 fn three_bands_with_agents() -> (Layout, WindowId, WindowId) {

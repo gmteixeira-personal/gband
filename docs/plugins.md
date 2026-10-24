@@ -1461,19 +1461,21 @@ The sidebar defines these groups, as defaults, when its module is first required
 |---|---|---|
 | `SidebarMode` | `{ bold = true }` | the mode letter |
 | `SidebarBand` | `{ dim = true }` | the labels of the bands not viewed |
-| `SidebarBandActive` | `{ bold = true }` | the viewed band's label |
+| `SidebarBandActive` | `{ link = "SidebarBand", underline = true }` | the viewed band's label |
 | `SidebarError` | `{ fg = 1, bold = true }` | the error marker |
 | `SidebarAgentBlocked` | `{ fg = "red" }` | a blocked agent, and a band whose most urgent agent is blocked |
-| `SidebarAgentBlockedActive` | `{ fg = "bright_red", bold = true }` | the same, for the focused agent and the viewed band |
+| `SidebarAgentBlockedActive` | `{ link = "SidebarAgentBlocked", underline = true }` | the same, for the focused agent and the viewed band |
 | `SidebarAgentDone` | `{ fg = "green" }` | a done agent and its band |
-| `SidebarAgentDoneActive` | `{ fg = "bright_green", bold = true }` | the same, focused or viewed |
+| `SidebarAgentDoneActive` | `{ link = "SidebarAgentDone", underline = true }` | the same, focused or viewed |
 | `SidebarAgentWorking` | `{ fg = "yellow" }` | a working agent and its band |
-| `SidebarAgentWorkingActive` | `{ fg = "bright_yellow", bold = true }` | the same, focused or viewed |
+| `SidebarAgentWorkingActive` | `{ link = "SidebarAgentWorking", underline = true }` | the same, focused or viewed |
 | `SidebarAgentIdle` | `{ fg = "blue" }` | an idle agent and its band |
-| `SidebarAgentIdleActive` | `{ fg = "bright_blue", bold = true }` | the same, focused or viewed |
+| `SidebarAgentIdleActive` | `{ link = "SidebarAgentIdle", underline = true }` | the same, focused or viewed |
 | `SidebarAgentUnknown` | `{ link = "SidebarBand" }` | an agent whose screen matches no rule, and its band |
 | `SidebarAgentUnknownActive` | `{ link = "SidebarBandActive" }` | the same, focused or viewed |
 | `SidebarDivider` | `{ link = "SidebarBand" }` | the `─` between the bands and the agents |
+
+Each `Active` group draws the label as its unfocused peer does, with an underline added.
 
 The key list adds `KeyListKey`, `{ bold = true }`, and `KeyListMuted`, `{ dim = true }`, the same way.
 The Lua prompt adds `PromptCursor`, `{ reverse = true }`, which draws its cursor cell.

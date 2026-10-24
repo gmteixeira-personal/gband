@@ -1,7 +1,7 @@
 gband.hl.set("Bar", { bg = "black" })
 gband.hl.set("SidebarMode", { fg = "blue", bold = true })
 gband.hl.set("SidebarBand", { fg = "bright_black" })
-gband.hl.set("SidebarBandActive", { fg = "bright_white", bold = true })
+gband.hl.set("SidebarBandActive", { link = "SidebarBand", underline = true })
 gband.hl.set("SidebarError", { fg = "red", bold = true })
 gband.hl.set("KeyListKey", { fg = "blue", bold = true })
 gband.hl.set("KeyListMuted", { fg = "bright_black" })

@@ -34,7 +34,7 @@ size 80x24 cursor 23:52 hidden
 1:28 fg=8 bg=0
 1:29-50 fg=0 bg=4
 1:51 fg=8 bg=0
-2:0 fg=15 bg=0 bold
+2:0 fg=8 bg=0 underline
 2:21-27 fg=8
 2:28 fg=8 bg=0
 2:29 fg=7 bg=0

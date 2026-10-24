@@ -17,7 +17,7 @@ size 40x8 cursor 5:32 hidden
 1:20 fg=4 bold
 1:21 fg=8
 1:39 fg=8
-2:0 fg=15 bg=0 bold
+2:0 fg=8 bg=0 underline
 2:1 bg=0
 2:2 fg=4 bold
 2:10 fg=8 bg=0

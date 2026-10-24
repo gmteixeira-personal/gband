@@ -222,7 +222,7 @@ This version knows Claude Code, started as `claude` or run by `node` or `bun` fr
 An agent that finishes while no client is attached is still `done` at the next attach.
 
 A `─` on the sidebar's middle row splits it in two, as herdr's sidebar is: the band labels above it, and one label per agent below it, `1` to `9`, then `a` to `z`.
-A label's color is its agent's state, brighter and bold for the agent you focus, and a band label takes the color of its most urgent agent: blocked, then done, working, idle and unknown.
+A label's color is its agent's state, underlined for the agent you focus, and a band label takes the color of its most urgent agent: blocked, then done, working, idle and unknown.
 A click on an agent's label focuses its window, in whichever band it is.
 
 With the modal and direct styles, Ctrl+Space then `a` enters agents mode, and the sidebar shows `A`.
@@ -779,7 +779,7 @@ The windows keep the size they would have without it: they are drawn in the colu
 | last | a red `!` while a configuration or plugin error is reported |
 
 A new session shows `I`, then `1` and `2`, and `─` on the middle row.
-The viewed band's label is bold, and the others are dim, or in the theme's muted color.
+Band labels are dim, or in the theme's muted color, and the viewed band's label is underlined.
 A label is the band's position, so the labels stay `1`, `2`, `3` after a band is removed.
 Bands that do not fit above the `─`, and bands past the 35th, are not shown.
 A terminal of 5 rows or fewer shows no `─` and no agent, and its band labels run down to the row above the last.

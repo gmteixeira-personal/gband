@@ -80,7 +80,10 @@ fn default_sets_the_sidebar_groups() {
     for (group, expected) in [
         ("SidebarMode", "{ bold = true }"),
         ("SidebarBand", "{ dim = true }"),
-        ("SidebarBandActive", "{ bold = true }"),
+        (
+            "SidebarBandActive",
+            "{ link = 'SidebarBand', underline = true }",
+        ),
         ("SidebarError", "{ fg = 1, bold = true }"),
     ] {
         let same: bool = eval(

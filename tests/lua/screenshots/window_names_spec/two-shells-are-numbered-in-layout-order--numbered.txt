@@ -32,7 +32,7 @@ size 80x24 cursor 1:43 shown
 1:39 fg=8
 1:40 fg=4 bold
 1:78 fg=4 bold
-2:0 fg=15 bg=0 bold
+2:0 fg=8 bg=0 underline
 2:1 fg=8
 2:39 fg=8
 2:40 fg=4 bold

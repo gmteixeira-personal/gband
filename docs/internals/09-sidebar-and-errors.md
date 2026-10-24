@@ -18,7 +18,7 @@ local agents = require("gband.agents")
 ```lua defaults/lua/gband/sidebar.lua
 gband.hl.default("SidebarMode", { bold = true })
 gband.hl.default("SidebarBand", { dim = true })
-gband.hl.default("SidebarBandActive", { bold = true })
+gband.hl.default("SidebarBandActive", { link = "SidebarBand", underline = true })
 gband.hl.default("SidebarError", { fg = 1, bold = true })
 ```
 
@@ -26,18 +26,19 @@ Its groups get defaults that work without a theme: the active band bold, the oth
 
 ```lua defaults/lua/gband/sidebar.lua
 gband.hl.default("SidebarAgentBlocked", { fg = "red" })
-gband.hl.default("SidebarAgentBlockedActive", { fg = "bright_red", bold = true })
+gband.hl.default("SidebarAgentBlockedActive", { link = "SidebarAgentBlocked", underline = true })
 gband.hl.default("SidebarAgentDone", { fg = "green" })
-gband.hl.default("SidebarAgentDoneActive", { fg = "bright_green", bold = true })
+gband.hl.default("SidebarAgentDoneActive", { link = "SidebarAgentDone", underline = true })
 gband.hl.default("SidebarAgentWorking", { fg = "yellow" })
-gband.hl.default("SidebarAgentWorkingActive", { fg = "bright_yellow", bold = true })
+gband.hl.default("SidebarAgentWorkingActive", { link = "SidebarAgentWorking", underline = true })
 gband.hl.default("SidebarAgentIdle", { fg = "blue" })
-gband.hl.default("SidebarAgentIdleActive", { fg = "bright_blue", bold = true })
+gband.hl.default("SidebarAgentIdleActive", { link = "SidebarAgentIdle", underline = true })
 gband.hl.default("SidebarAgentUnknown", { link = "SidebarBand" })
 gband.hl.default("SidebarAgentUnknownActive", { link = "SidebarBandActive" })
 ```
 
-Each agent state has a group and a brighter `Active` group, for the agent this client focuses and for the viewed band.
+Each agent state has a group and an `Active` group, for the agent this client focuses and for the viewed band.
+Each `Active` group links to its unfocused peer and adds an underline, so a theme that recolors the peer recolors the `Active` label too.
 The colors are palette names, so every theme's palette colors them, and `unknown` links to the band groups, so an agent nothing is known about looks like a band label.
 
 ```lua defaults/lua/gband/sidebar.lua
@@ -275,7 +276,7 @@ Otherwise the mode letter goes on the first line, the marker on the last, and th
 ```
 
 A label for each band that fits goes between the mode letter and the divider.
-A band that holds agents takes the group of its most urgent one, and the others draw the viewed band in `SidebarBandActive`.
+A band that holds agents takes the group of its most urgent one, and the others draw the viewed band in `SidebarBandActive`, the band color underlined.
 `row` counts from 0 and `lines` from 1, hence `row + 1`.
 
 ```lua defaults/lua/gband/sidebar.lua
@@ -296,7 +297,7 @@ end
 ```
 
 The agent labels fill the bottom half, numbered as the bands are, so the label is the position that `gband.agents.focus` and agents mode take.
-The agent whose window this client focuses draws in its state's `Active` group.
+The agent whose window this client focuses draws in its state's `Active` group, its state color underlined.
 
 ### Drawing
 

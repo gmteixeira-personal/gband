@@ -1,6 +1,6 @@
 gband.hl.set("Bar", { fg = "#e0def4", bg = "#232136" })
 gband.hl.set("SidebarMode", { fg = "#c4a7e7", bold = true })
 gband.hl.set("SidebarBand", { fg = "#908caa" })
-gband.hl.set("SidebarBandActive", { fg = "#e0def4", bold = true })
+gband.hl.set("SidebarBandActive", { link = "SidebarBand", underline = true })
 gband.hl.set("SidebarError", { fg = "#eb6f92", bold = true })
 gband.hl.set("WindowSegment", { fg = "#f6c177", bold = true })

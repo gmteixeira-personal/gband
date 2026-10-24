@@ -32,7 +32,7 @@ size 80x24 cursor 3:4 shown
 1:2-38 fg=#ebdbb2 bg=#282828
 1:39 fg=#fabd2f bg=#282828 bold
 1:40-79 fg=#ebdbb2 bg=#282828
-2:0 fg=#ebdbb2 bg=#3c3836 bold
+2:0 fg=#928374 bg=#3c3836 underline
 2:1 fg=#fabd2f bg=#282828 bold
 2:2-4 fg=#cc241d bg=#282828
 2:5-38 fg=#ebdbb2 bg=#282828
