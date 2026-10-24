@@ -111,7 +111,7 @@ gband SHALL bundle these colorschemes, called themes, in this order: `default`, 
 
 `default` SHALL set no group and no field of the terminal palette. Loading it SHALL leave every group with only its default setting, as the highlights capability defines, and the terminal palette empty.
 
-Each theme other than `default` SHALL give an explicit setting to every one of these theme groups: `Bar`, `SidebarMode`, `SidebarBand`, `SidebarBandActive`, `SidebarError`, `KeyListKey`, `KeyListMuted`, `PluginWindow`, `PluginWindowBorder`, `PluginWindowTitle`, `PluginWindowCursorLine`, `PromptCursor`, `SettingsLabel`, `WindowBorder`, `WindowBorderFocused` and `ErrorBanner`. The viewed band's label, a focused window's border and the cursor line SHALL each be told apart from their unfocused or unselected peers by color or by attribute.
+Each theme other than `default` SHALL give an explicit setting to every one of these theme groups: `Bar`, `SidebarMode`, `SidebarBand`, `SidebarBandActive`, `SidebarError`, `KeyListKey`, `KeyListMuted`, `PluginWindow`, `PluginWindowBorder`, `PluginWindowTitle`, `PluginWindowCursorLine`, `PromptCursor`, `SettingsLabel`, `WindowBorder`, `WindowBorderFocused` and `ErrorBanner`. The viewed band's label, a focused window's border and the cursor line SHALL each be told apart from their unfocused or unselected peers by color or by attribute. Each such theme SHALL set `SidebarBandActive` to `{ link = "SidebarBand", underline = true }`, so the viewed band's label differs from the other band labels only by its underline.
 
 Every theme except `default` and `terminal` SHALL set every field of the terminal palette, from the default foreground, default background and 16 ANSI colors that the theme's authors publish for terminals. `solarized` SHALL use Solarized's dark background, `rose-pine` the main variant, `kanagawa` the wave variant, and `tokyo-night` the night variant. Its groups MAY use hex colors.
 
@@ -124,6 +124,15 @@ Every theme except `default` and `terminal` SHALL set every field of the termina
 #### Scenario: Every theme sets every theme group
 - **WHEN** each bundled theme other than `default` in turn is loaded with an empty `user/init.lua`
 - **THEN** `gband.hl.get` returns a table for every theme group
+
+#### Scenario: Viewed band underlined under every theme
+- **WHEN** each bundled theme other than `default` in turn is loaded with an empty `user/init.lua`
+- **THEN** `gband.hl.get("SidebarBandActive")` returns `{ link = "SidebarBand", underline = true }`
+- **AND** `SidebarBandActive` resolves to the resolved style of `SidebarBand` with `underline = true` added
+
+#### Scenario: Tokyo Night viewed band
+- **WHEN** the active colorscheme is `tokyo-night` and no group is set
+- **THEN** `SidebarBandActive` resolves to `{ fg = "#565f89", underline = true }`
 
 #### Scenario: Terminal theme uses the host palette
 - **WHEN** the active colorscheme is `terminal`
