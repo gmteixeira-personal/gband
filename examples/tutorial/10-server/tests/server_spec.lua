@@ -71,10 +71,12 @@ t.case("a reload keeps the marks", function(g)
   mark(g)
   t.eq(g.reload(), nil)
   g.settle()
-  local found = false
-  for _, line in ipairs(g.log("server")) do
-    found = found or line:find("default keeps 1 marks", 1, true) ~= nil
-  end
-  t.ok(found, "the server log counts the marks")
+  g.wait(function()
+    for _, line in ipairs(g.log("server")) do
+      if line:find("default keeps 1 marks", 1, true) then
+        return true
+      end
+    end
+  end)
   t.match(g.screen().row(0), "^Ia╭")
 end)

@@ -119,8 +119,10 @@ end)
 
 t.case("unknown option", function(g)
   g.start({ config = [[gband.plugin("gband.keylist", { table = "root" })]] })
-  g.settle()
-  local logged = table.concat(g.log("client"), "\n")
+  local logged = g.wait(function()
+    local text = table.concat(g.log("client"), "\n")
+    return text:find("`table`", 1, true) and text
+  end)
   t.match(logged, "keylist")
   t.match(logged, "`table`")
 end)

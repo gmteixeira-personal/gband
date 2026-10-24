@@ -36,10 +36,11 @@ t.case("the prompt switches the colorscheme", function(g)
   t.eq(g.client([[return gband.colorscheme()]]), "dusk")
   g.keys("ctrl+space :")
   g.run([[print(gband.palette.get().bg)]])
-  g.settle()
-  local found = false
-  for _, line in ipairs(g.log("client")) do
-    found = found or line:find("#232136", 1, true) ~= nil
-  end
-  t.ok(found, "the client log holds the background")
+  g.wait(function()
+    for _, line in ipairs(g.log("client")) do
+      if line:find("#232136", 1, true) then
+        return true
+      end
+    end
+  end)
 end)

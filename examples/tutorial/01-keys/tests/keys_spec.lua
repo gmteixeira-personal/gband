@@ -10,6 +10,12 @@ local function logged(g, text)
   return false
 end
 
+local function wait_logged(g, text)
+  g.wait(function()
+    return logged(g, text)
+  end)
+end
+
 local function start(g)
   chapter.start(g, { size = "40x8", env = { SHELL = "/bin/cat" } })
 end
@@ -61,10 +67,10 @@ t.case("prefix m marks the focused window", function(g)
   start(g)
   g.keys("ctrl+space m")
   g.settle()
-  t.ok(logged(g, "marked window 1 as a"), "the client log holds the mark")
+  wait_logged(g, "marked window 1 as a")
   g.keys("m")
   g.settle()
-  t.ok(logged(g, "unmarked window 1"), "the client log holds the unmark")
+  wait_logged(g, "unmarked window 1")
 end)
 
 t.case("ctrl and the right button mark the window under the pointer", function(g)
@@ -74,7 +80,7 @@ t.case("ctrl and the right button mark the window under the pointer", function(g
   g.mouse("press", "right", 30, 3, "ctrl")
   g.mouse("release", "right", 30, 3, "ctrl")
   g.settle()
-  t.ok(logged(g, "marked window 2 as a"), "the client log holds the mark")
+  wait_logged(g, "marked window 2 as a")
 end)
 
 t.case("ctrl and the left button mark a window by its top border", function(g)
@@ -84,7 +90,7 @@ t.case("ctrl and the left button mark a window by its top border", function(g)
   g.mouse("press", "left", 30, 0, "ctrl")
   g.mouse("release", "left", 30, 0, "ctrl")
   g.settle()
-  t.ok(logged(g, "marked window 2"), "the client log holds the mark")
+  wait_logged(g, "marked window 2")
   g.mouse("press", "left", 8, 3, "ctrl")
   g.mouse("release", "left", 8, 3, "ctrl")
   g.settle()
