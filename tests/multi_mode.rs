@@ -54,8 +54,12 @@ fn eval(env: &TestEnv, chunk: &str) -> String {
     String::from_utf8(output.stdout).unwrap().trim().to_owned()
 }
 
+fn viewed_window(env: &TestEnv) -> Option<u32> {
+    eval(env, "return gband.view().window").parse().ok()
+}
+
 fn focused_window(env: &TestEnv) -> u32 {
-    eval(env, "return gband.view().window").parse().unwrap()
+    viewed_window(env).unwrap()
 }
 
 fn started(env: &TestEnv) -> (Attached, u32) {
@@ -70,6 +74,17 @@ fn open_column(env: &TestEnv, client: &mut Attached) -> u32 {
     let before = focused_window(env);
     client.send(b"\x00n\r");
     wait_until(|| focused_window(env) != before, "the new window focused");
+    client.wait_for_prompt();
+    focused_window(env)
+}
+
+fn open_band(env: &TestEnv, client: &mut Attached) -> u32 {
+    let before = focused_window(env);
+    client.send(b"\x00un\r");
+    wait_until(
+        || viewed_window(env).is_some_and(|window| window != before),
+        "the new band's window focused",
+    );
     client.wait_for_prompt();
     focused_window(env)
 }
@@ -117,9 +132,7 @@ fn typing_reaches_every_window() {
 #[test]
 fn other_bands_receive_nothing() {
     let (env, mut client, received, [first, second]) = two_columns("multi-bands");
-    client.send(b"\x00un\r");
-    client.wait_for_prompt();
-    let third = focused_window(&env);
+    let third = open_band(&env, &mut client);
     client.send(b"\x00i\r");
     wait_until(|| focused_window(&env) == second, "band 1 viewed");
     multi_on(&mut client);
@@ -166,9 +179,7 @@ fn minimized_window_receives_the_input() {
 #[test]
 fn band_change_moves_the_input() {
     let (env, mut client, received, [first, second]) = two_columns("multi-band-change");
-    client.send(b"\x00un\r");
-    client.wait_for_prompt();
-    let third = focused_window(&env);
+    let third = open_band(&env, &mut client);
     let fourth = open_column(&env, &mut client);
     client.send(b"\x00i\r");
     wait_until(|| focused_window(&env) == second, "band 1 viewed");
