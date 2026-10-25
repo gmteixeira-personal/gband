@@ -308,7 +308,7 @@ An agent label SHALL be drawn in the group of its agent's state: `SidebarAgentBl
 - **WHEN** the agent at position 1 is `blocked` and the client focuses another window
 - **THEN** its label `1` is drawn in `SidebarAgentBlocked`
 
-#### Scenario: Focused agent is brighter
+#### Scenario: Focused agent is underlined
 - **WHEN** the agent at position 2 is `working` and the client focuses its window
 - **THEN** its label `2` is drawn in `SidebarAgentWorkingActive`
 
