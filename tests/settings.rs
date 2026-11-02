@@ -7,14 +7,15 @@ use std::time::Duration;
 
 use common::*;
 
-const LABELS: [&str; 5] = [
+const LABELS: [&str; 6] = [
     "theme    ",
     "sidebar  ",
+    "bands    ",
     "keys     ",
     "I on new ",
     "reload   ",
 ];
-const RELOAD: usize = 4;
+const RELOAD: usize = 5;
 
 fn position(screen: &Grid, text: &str) -> Option<(u16, u16)> {
     screen
@@ -253,18 +254,36 @@ fn turn_the_sidebar_off() {
 }
 
 #[test]
-fn switch_the_key_style() {
-    let env = TestEnv::new("settings-key-style");
+fn bounce_the_band_ends() {
+    let env = TestEnv::new("settings-band-ends");
     let mut client = opened(&env);
+    assert_eq!(
+        line_text(&client.screen(), LABELS[2]).as_deref(),
+        Some("bands    loop")
+    );
     press(&mut client, b"jj", 2);
     let before = reloads(&env);
     client.send(b"l");
-    reopened(&client, &env, before, 2, "keys     direct");
+    reopened(&client, &env, before, 2, "bands    bounce");
+    assert_eq!(
+        user_file(&env, "band_ends.lua").as_deref(),
+        Some("return \"bounce\"\n")
+    );
+}
+
+#[test]
+fn switch_the_key_style() {
+    let env = TestEnv::new("settings-key-style");
+    let mut client = opened(&env);
+    press(&mut client, b"jjj", 3);
+    let before = reloads(&env);
+    client.send(b"l");
+    reopened(&client, &env, before, 3, "keys     direct");
     assert_eq!(
         user_file(&env, "keystyle.lua").as_deref(),
         Some("return \"direct\"\n")
     );
-    assert!(position(&client.screen(), LABELS[3]).is_none());
+    assert!(position(&client.screen(), LABELS[4]).is_none());
     escape(&mut client);
     client.send(b"\x00");
     thread::sleep(Duration::from_millis(100));
@@ -277,16 +296,16 @@ fn switch_key_style(name: &str, saved: &str, key: &[u8], expected: &str) {
     let env = TestEnv::new(name);
     env.save_key_style(saved);
     let mut client = opened(&env);
-    press(&mut client, b"jj", 2);
+    press(&mut client, b"jjj", 3);
     let before = reloads(&env);
     client.send(key);
-    reopened(&client, &env, before, 2, &format!("keys     {expected}"));
+    reopened(&client, &env, before, 3, &format!("keys     {expected}"));
     assert_eq!(
         user_file(&env, "keystyle.lua"),
         Some(format!("return \"{expected}\"\n"))
     );
     assert_eq!(
-        position(&client.screen(), LABELS[3]).is_some(),
+        position(&client.screen(), LABELS[4]).is_some(),
         expected == "modal"
     );
 }
@@ -298,11 +317,11 @@ fn window_with_the_floating_style() {
     let client = opened(&env);
     let screen = client.screen();
     assert_eq!(
-        line_text(&screen, LABELS[2]).as_deref(),
+        line_text(&screen, LABELS[3]).as_deref(),
         Some("keys     floating")
     );
-    assert!(position(&screen, LABELS[3]).is_none());
-    assert_eq!(position(&screen, LABELS[0]), Some((10, 26)));
+    assert!(position(&screen, LABELS[4]).is_none());
+    assert_eq!(position(&screen, LABELS[0]), Some((9, 26)));
     assert_eq!(
         line_text(&screen, LABELS[RELOAD]).as_deref(),
         Some("reload   ok")
@@ -339,10 +358,10 @@ fn windows_float_after_switching_the_style() {
     client.wait_for("the settings window", |screen| {
         settings_open(screen) && cursor_line(screen) == Some(0)
     });
-    press(&mut client, b"jj", 2);
+    press(&mut client, b"jjj", 3);
     let before = reloads(&env);
     client.send(b"h");
-    reopened(&client, &env, before, 2, "keys     floating");
+    reopened(&client, &env, before, 3, "keys     floating");
     assert_eq!(
         user_file(&env, "keystyle.lua").as_deref(),
         Some("return \"floating\"\n")
@@ -444,10 +463,10 @@ fn opened_from_the_lua_prompt_leaves_the_user_file() {
     client.wait_for("the settings window", |screen| {
         settings_open(screen) && cursor_line(screen) == Some(0)
     });
-    press(&mut client, b"jj", 2);
+    press(&mut client, b"jjj", 3);
     let before = reloads(&env);
     client.send(b"\r");
-    reopened(&client, &env, before, 2, "keys     direct");
+    reopened(&client, &env, before, 3, "keys     direct");
     assert_eq!(fs::read_to_string(env.user_lua()).unwrap(), source);
 }
 
@@ -475,10 +494,10 @@ fn cannot_save() {
 fn turn_interactive_on_new_on() {
     let env = TestEnv::new("settings-interactive-fresh");
     let mut client = opened(&env);
-    press(&mut client, b"jjj", 3);
+    press(&mut client, b"jjjj", 4);
     let before = reloads(&env);
     client.send(b"\r");
-    reopened(&client, &env, before, 3, "I on new on");
+    reopened(&client, &env, before, 4, "I on new on");
     assert_eq!(
         user_file(&env, "interactive_on_new.lua").as_deref(),
         Some("return true\n")
@@ -493,10 +512,10 @@ fn turn_interactive_on_new_off() {
     let env = TestEnv::new("settings-interactive-off");
     save_interactive_on_new(&env, true);
     let mut client = opened(&env);
-    press(&mut client, b"jjj", 3);
+    press(&mut client, b"jjjj", 4);
     let before = reloads(&env);
     client.send(b"\r");
-    reopened(&client, &env, before, 3, "I on new off");
+    reopened(&client, &env, before, 4, "I on new off");
     assert_eq!(
         user_file(&env, "interactive_on_new.lua").as_deref(),
         Some("return false\n")
@@ -511,10 +530,10 @@ fn turn_interactive_on_new_back_on() {
     let env = TestEnv::new("settings-interactive-on");
     save_interactive_on_new(&env, false);
     let mut client = opened(&env);
-    press(&mut client, b"jjj", 3);
+    press(&mut client, b"jjjj", 4);
     let before = reloads(&env);
     client.send(b"h");
-    reopened(&client, &env, before, 3, "I on new on");
+    reopened(&client, &env, before, 4, "I on new on");
     assert_eq!(
         user_file(&env, "interactive_on_new.lua").as_deref(),
         Some("return true\n")
@@ -559,7 +578,7 @@ fn own_configuration_with_the_modal_preset() {
 
 fn on_the_reload_line(env: &TestEnv) -> Attached {
     let mut client = opened(env);
-    press(&mut client, b"jjjj", RELOAD);
+    press(&mut client, b"jjjjj", RELOAD);
     assert_eq!(
         line_text(&client.screen(), LABELS[RELOAD]).as_deref(),
         Some("reload   ok")

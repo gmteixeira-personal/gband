@@ -1,6 +1,6 @@
 gband.opt.prefix = "ctrl+space"
 gband.opt.center_focused_column = "never"
-gband.opt.loop_bands = true
+gband.opt.band_ends = gband.settings.band_ends() or "loop"
 gband.opt.window_titles = true
 gband.opt.animations = true
 gband.opt.animation_speed = 1

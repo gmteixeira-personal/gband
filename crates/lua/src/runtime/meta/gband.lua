@@ -3,6 +3,7 @@
 
 ---@alias gband.Side "client"|"server"|"test"
 ---@alias gband.KeyStyle "modal"|"direct"|"floating"
+---@alias gband.BandEnds "loop"|"bounce"|"stop"
 ---@alias gband.Color string|integer
 ---@alias gband.Edge "left"|"right"|"top"|"bottom"
 ---@alias gband.Binding fun(event?: gband.MouseEvent): any
@@ -623,6 +624,10 @@ function gband.settings.sidebar() end
 ---(client) The saved `I on new` setting, or nil.
 ---@return boolean?
 function gband.settings.interactive_on_new() end
+
+---(client) The saved band ends setting, or nil.
+---@return gband.BandEnds?
+function gband.settings.band_ends() end
 
 ---(client) A new list of the names the theme list shows.
 ---@return string[]

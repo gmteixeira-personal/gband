@@ -10,11 +10,11 @@ size 80x24 cursor 10:55 hidden
  8| │                       ┌settings─────────────────────┐
  9| │                       │theme    default             │
 10| │                       │sidebar  on                  │
-11| │                       │keys     modal               │
-12|─│                       │I on new off                 │
-13| │                       │reload   ok                  │
-14| │                       └─────────────────────────────┘
-15| │                                     │
+11| │                       │bands    loop                │
+12|─│                       │keys     modal               │
+13| │                       │I on new off                 │
+14| │                       │reload   ok                  │
+15| │                       └─────────────────────────────┘
 16| │                                     │
 17| │                                     │
 18| │                                     │
@@ -69,9 +69,11 @@ size 80x24 cursor 10:55 hidden
 13:26-34 dim
 13:55 fg=8
 14:1 fg=#b1b9f9 bold
-14:25-55 fg=8
+14:25 fg=8
+14:26-34 dim
+14:55 fg=8
 15:1 fg=#b1b9f9 bold
-15:39 fg=#b1b9f9 bold
+15:25-55 fg=8
 16:1 fg=#b1b9f9 bold
 16:39 fg=#b1b9f9 bold
 17:1 fg=#b1b9f9 bold

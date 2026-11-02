@@ -7,10 +7,10 @@ size 80x24 cursor 14:56 hidden
  5|                     │                                     │
  6|                     │                                     │
  7|                     │                                     │
- 8|                     │                                     │
- 9|                     │   ┌settings─────────────────────┐   │
-10|                     │   │theme    terminal            │   │
-11|                     │   │sidebar  on                  │   │
+ 8|                     │   ┌settings─────────────────────┐   │
+ 9|                     │   │theme    terminal            │   │
+10|                     │   │sidebar  on                  │   │
+11|                     │   │bands    loop                │   │
 12|─                    │   │keys     floating            │   │
 13|                     │   │reload   ok                  │   │
 14|                     │   └─────────────────────────────┘   │
@@ -45,17 +45,20 @@ size 80x24 cursor 14:56 hidden
 7:59 fg=4 bold
 8:0 bg=0
 8:21 fg=4 bold
+8:25 fg=8 bg=0
+8:26-33 fg=4 bg=0 bold
+8:34-55 fg=8 bg=0
 8:59 fg=4 bold
 9:0 bg=0
 9:21 fg=4 bold
 9:25 fg=8 bg=0
-9:26-33 fg=4 bg=0 bold
-9:34-55 fg=8 bg=0
+9:26-54 fg=0 bg=4
+9:55 fg=8 bg=0
 9:59 fg=4 bold
 10:0 bg=0
 10:21 fg=4 bold
-10:25 fg=8 bg=0
-10:26-54 fg=0 bg=4
+10:25-34 fg=8 bg=0
+10:35-54 fg=7 bg=0
 10:55 fg=8 bg=0
 10:59 fg=4 bold
 11:0 bg=0

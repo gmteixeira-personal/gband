@@ -2010,7 +2010,7 @@ local function bands_mode()
 end
 ```
 
-Bands mode reads its digits from `gband.layout().bands`, and its steps are the actions `focus_band_up` and `focus_band_down`, which follow the `loop_bands` option.
+Bands mode reads its digits from `gband.layout().bands`, and its steps are the actions `focus_band_up` and `focus_band_down`, which stop at the first and last band whatever `band_ends` holds.
 `a` switches to agents mode, as `b` in agents mode switches here.
 No binding of bands mode but Escape and Enter enters `root`, so digits and steps can look through band after band in one visit.
 

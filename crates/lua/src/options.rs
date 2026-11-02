@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use gband_core::action::Steps;
 use gband_core::input::{Key, KeyCode, Modifiers};
 use gband_core::layout::{LayoutOptions, Proportion};
-use gband_core::view::CenterFocusedColumn;
+use gband_core::view::{BandEnds, CenterFocusedColumn};
 use mlua::{IntoLua, Lua, LuaSerdeExt, Table, Value};
 use serde::de::{self, Deserializer, Visitor};
 use serde::{Deserialize, Serialize};
@@ -35,7 +35,7 @@ pub struct Options {
     pub prefix: Key,
     pub layout: LayoutOptions,
     pub center_focused_column: CenterFocusedColumn,
-    pub loop_bands: bool,
+    pub band_ends: BandEnds,
     pub window_titles: bool,
     pub animations: bool,
     pub animation_speed: f64,
@@ -65,7 +65,7 @@ impl Default for Options {
             prefix: Key::new(KeyCode::Char(' '), Modifiers::CTRL),
             layout: LayoutOptions::default(),
             center_focused_column: CenterFocusedColumn::default(),
-            loop_bands: true,
+            band_ends: BandEnds::default(),
             window_titles: true,
             animations: true,
             animation_speed: 1.0,
@@ -104,8 +104,8 @@ impl Options {
         if let Some(policy) = patch.center_focused_column {
             self.center_focused_column = policy;
         }
-        if let Some(loop_bands) = patch.loop_bands {
-            self.loop_bands = loop_bands;
+        if let Some(band_ends) = patch.band_ends {
+            self.band_ends = band_ends;
         }
         if let Some(window_titles) = patch.window_titles {
             self.window_titles = window_titles;
@@ -169,7 +169,7 @@ impl Options {
             "default_column_width" => self.layout.default_width = defaults.layout.default_width,
             "width_presets" => self.layout.presets = defaults.layout.presets,
             "center_focused_column" => self.center_focused_column = defaults.center_focused_column,
-            "loop_bands" => self.loop_bands = defaults.loop_bands,
+            "band_ends" => self.band_ends = defaults.band_ends,
             "window_titles" => self.window_titles = defaults.window_titles,
             "animations" => self.animations = defaults.animations,
             "animation_speed" => self.animation_speed = defaults.animation_speed,
@@ -204,7 +204,7 @@ impl Options {
                 .create_sequence_from(self.layout.presets.iter().map(|&preset| width(preset)))?
                 .into_lua(lua),
             "center_focused_column" => lua.to_value(&self.center_focused_column),
-            "loop_bands" => self.loop_bands.into_lua(lua),
+            "band_ends" => lua.to_value(&self.band_ends),
             "window_titles" => self.window_titles.into_lua(lua),
             "animations" => self.animations.into_lua(lua),
             "animation_speed" => self.animation_speed.into_lua(lua),
@@ -233,7 +233,7 @@ impl Options {
 const CLIENT_NAMES: [&str; 19] = [
     "prefix",
     "center_focused_column",
-    "loop_bands",
+    "band_ends",
     "window_titles",
     "animations",
     "animation_speed",
@@ -336,9 +336,9 @@ const BUILTIN: [(&str, &str, &str); 22] = [
         "when the view centres the focused column: never, always or on-overflow",
     ),
     (
-        "loop_bands",
-        "boolean",
-        "whether focus and the strip go round from a band's last column to its first",
+        "band_ends",
+        "string",
+        "what focus does past a band's last or first column: loop, bounce or stop",
     ),
     (
         "window_titles",
@@ -823,7 +823,7 @@ pub struct OptionsPatch {
     default_column_width: Option<Width>,
     width_presets: Option<Presets>,
     center_focused_column: Option<CenterFocusedColumn>,
-    loop_bands: Option<bool>,
+    band_ends: Option<BandEnds>,
     window_titles: Option<bool>,
     animations: Option<bool>,
     animation_speed: Option<AnimationSpeed>,
@@ -1102,7 +1102,7 @@ mod tests {
     #[test]
     fn every_option_is_read() {
         let options = patched(
-            "{ prefix = 'ctrl+b', default_column_width = 0.35, width_presets = { 1/2 }, center_focused_column = 'on-overflow', loop_bands = false, notify_style = 'osc777' }",
+            "{ prefix = 'ctrl+b', default_column_width = 0.35, width_presets = { 1/2 }, center_focused_column = 'on-overflow', band_ends = 'stop', notify_style = 'osc777' }",
         )
         .unwrap();
         assert_eq!(
@@ -1114,7 +1114,7 @@ mod tests {
                     presets: vec![Proportion::ONE_HALF],
                 },
                 center_focused_column: CenterFocusedColumn::OnOverflow,
-                loop_bands: false,
+                band_ends: BandEnds::Stop,
                 notify_style: NotifyStyle::Osc777,
                 ..Options::default()
             }
@@ -1157,7 +1157,8 @@ mod tests {
             "{ center_focused_column = 'sometimes' }",
             "{ prefix = 'ctrl+hyper' }",
             "{ notify_style = 'osc8' }",
-            "{ loop_bands = 'yes' }",
+            "{ band_ends = 'wrap' }",
+            "{ loop_bands = false }",
             "{ width_step = 0 }",
             "{ width_step = 10001 }",
             "{ height_step = 2 }",

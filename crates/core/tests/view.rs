@@ -3,7 +3,7 @@ use gband_core::geometry::{Size, boxes, drawn_copy, tiles};
 use gband_core::layout::{
     Direction, Layout, LayoutOptions, Proportion, SessionAction, Step, WindowHeight, WindowId,
 };
-use gband_core::view::{CenterFocusedColumn, Layer, Scene, View, ViewAction};
+use gband_core::view::{BandEnds, CenterFocusedColumn, Layer, Scene, View, ViewAction};
 
 const AREA: Size = Size::new(80, 24);
 
@@ -73,7 +73,7 @@ fn initial_view_of_an_empty_session() {
 fn focus_moves_across_columns_and_stops_at_the_edges() {
     let (layout, windows) = row_of_columns(3);
     let mut view = View::new(scene(&layout));
-    view.set_loop_bands(false);
+    view.set_band_ends(BandEnds::Stop);
     act(&mut view, &layout, &[ViewAction::FocusLeft]);
     assert_eq!(view.focused(), Some(windows[0]));
     act(
@@ -1284,7 +1284,7 @@ fn centred_column_keeps_the_camera() {
 fn policy_resumes_on_the_next_focus_change() {
     let (layout, windows) = row_of_columns(3);
     let mut view = View::new(scene(&layout));
-    view.set_loop_bands(false);
+    view.set_band_ends(BandEnds::Stop);
     act(
         &mut view,
         &layout,
@@ -1549,7 +1549,7 @@ fn short_strip_does_not_loop() {
 fn looping_off_draws_the_strip_once() {
     let (layout, windows) = row_of_columns(3);
     let mut view = view_with(&layout, CenterFocusedColumn::Always);
-    view.set_loop_bands(false);
+    view.set_band_ends(BandEnds::Stop);
     view.sync(scene(&layout));
     assert_eq!(view.camera(), -20);
     assert_eq!(view.strip(scene(&layout)), None);
@@ -1560,10 +1560,81 @@ fn looping_off_draws_the_strip_once() {
 fn looping_off_stops_focus_at_the_first_column() {
     let (layout, windows) = row_of_columns(3);
     let mut view = View::new(scene(&layout));
-    view.set_loop_bands(false);
+    view.set_band_ends(BandEnds::Stop);
     act(&mut view, &layout, &[ViewAction::FocusLeft]);
     assert_eq!(view.focused(), Some(windows[0]));
     assert_eq!(view.camera(), 0);
+}
+
+fn bouncing(layout: &Layout, policy: CenterFocusedColumn) -> View {
+    let mut view = view_with(layout, policy);
+    view.set_band_ends(BandEnds::Bounce);
+    view.sync(scene(layout));
+    view
+}
+
+#[test]
+fn bounce_scrolls_back_to_the_first_column() {
+    let (layout, windows) = row_of_columns(3);
+    let mut view = bouncing(&layout, CenterFocusedColumn::Never);
+    act(
+        &mut view,
+        &layout,
+        &[ViewAction::FocusRight, ViewAction::FocusRight],
+    );
+    assert_eq!((view.focused(), view.camera()), (Some(windows[2]), 40));
+    act(&mut view, &layout, &[ViewAction::FocusRight]);
+    assert_eq!((view.focused(), view.camera()), (Some(windows[0]), 0));
+    assert_eq!(view.strip(scene(&layout)), None);
+    assert_eq!(drawn(&view, &layout), [(windows[0], 0), (windows[1], 40)]);
+}
+
+#[test]
+fn bounce_scrolls_forward_to_the_last_column() {
+    let (layout, windows) = row_of_columns(3);
+    let mut view = bouncing(&layout, CenterFocusedColumn::Never);
+    assert_eq!(view.camera(), 0);
+    act(&mut view, &layout, &[ViewAction::FocusLeft]);
+    assert_eq!((view.focused(), view.camera()), (Some(windows[2]), 40));
+    assert_eq!(drawn(&view, &layout), [(windows[1], 0), (windows[2], 40)]);
+}
+
+#[test]
+fn bounce_from_the_first_column_goes_to_the_remembered_window() {
+    let (mut layout, windows) = row_of_columns(4);
+    stack_into_left(&mut layout, windows[3]);
+    let mut view = bouncing(&layout, CenterFocusedColumn::Never);
+    act(
+        &mut view,
+        &layout,
+        &[
+            ViewAction::FocusWindow(windows[3]),
+            ViewAction::FocusWindow(windows[0]),
+            ViewAction::FocusLeft,
+        ],
+    );
+    assert_eq!(view.focused(), Some(windows[3]));
+}
+
+#[test]
+fn bounce_on_one_column_leaves_the_view_unchanged() {
+    let (mut layout, windows) = row_of_columns(2);
+    stack_into_left(&mut layout, windows[1]);
+    let mut view = bouncing(&layout, CenterFocusedColumn::Never);
+    act(&mut view, &layout, &[ViewAction::FocusWindow(windows[0])]);
+    for action in [ViewAction::FocusRight, ViewAction::FocusLeft] {
+        act(&mut view, &layout, &[action]);
+        assert_eq!((view.focused(), view.camera()), (Some(windows[0]), 0));
+    }
+}
+
+#[test]
+fn bounce_never_loops_the_strip() {
+    let (layout, windows) = row_of_columns(3);
+    let view = bouncing(&layout, CenterFocusedColumn::Always);
+    assert_eq!(view.camera(), -20);
+    assert_eq!(view.strip(scene(&layout)), None);
+    assert_eq!(drawn(&view, &layout), [(windows[0], 20), (windows[1], 60)]);
 }
 
 #[test]
@@ -1706,7 +1777,7 @@ fn opening_left_across_the_seam() {
 fn closing_the_last_column_pulls_the_camera_back() {
     let (mut layout, windows) = row_of_columns(3);
     let mut view = View::new(scene(&layout));
-    view.set_loop_bands(false);
+    view.set_band_ends(BandEnds::Stop);
     act(&mut view, &layout, &[ViewAction::FocusWindow(windows[2])]);
     assert_eq!(view.camera(), 40);
     layout.remove(windows[2]);
@@ -1720,7 +1791,7 @@ fn closing_the_last_column_pulls_the_camera_back() {
 fn shrinking_the_last_column_pulls_the_camera_back() {
     let (mut layout, windows) = row_of_columns(3);
     let mut view = View::new(scene(&layout));
-    view.set_loop_bands(false);
+    view.set_band_ends(BandEnds::Stop);
     act(&mut view, &layout, &[ViewAction::FocusWindow(windows[2])]);
     assert_eq!(view.camera(), 40);
     apply(
@@ -1780,7 +1851,7 @@ fn pulled_back_no_further_than_0() {
 fn centred_camera_keeps_its_blank_strip() {
     let (layout, windows) = row_of_columns(3);
     let mut view = view_with(&layout, CenterFocusedColumn::Always);
-    view.set_loop_bands(false);
+    view.set_band_ends(BandEnds::Stop);
     act(&mut view, &layout, &[ViewAction::FocusWindow(windows[2])]);
     let narrow = Scene {
         layout: &layout,
@@ -2338,7 +2409,7 @@ fn reload_ends_the_peek() {
 fn peek_a_tiled_window() {
     let (layout, windows) = row_of_columns(3);
     let mut view = view_with(&layout, CenterFocusedColumn::Never);
-    view.set_loop_bands(false);
+    view.set_band_ends(BandEnds::Stop);
     view.sync(scene(&layout));
     assert_eq!(view.camera(), 0);
     act(&mut view, &layout, &[ViewAction::Peek(windows[2])]);
