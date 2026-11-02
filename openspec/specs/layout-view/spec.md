@@ -41,31 +41,43 @@ A client SHALL start by viewing the first band, with focus on the top window of 
 - **THEN** the client draws P3
 
 ### Requirement: Focus across columns
-While the tiled layer is active, focusing the column to the left or right SHALL move focus to the adjacent column in that direction. Within that column, focus SHALL go to the window this client focused most recently, or to the top window when this client has focused none of its windows. When no column exists in that direction and the configuration's `loop_bands` is on, focus SHALL go round the band: right of the last column to the first column, and left of the first column to the last. It SHALL do so whether or not the band's strip loops, as the Camera requirement defines. When no column exists in that direction and `loop_bands` is off, or the band holds one column, the view SHALL not change. While the floating layer is active, these actions SHALL move focus between floating windows, as the floating-windows capability defines.
+While the tiled layer is active, focusing the column to the left or right SHALL move focus to the adjacent column in that direction. Within that column, focus SHALL go to the window this client focused most recently, or to the top window when this client has focused none of its windows. When no column exists in that direction and the configuration's `band_ends` is `"loop"` or `"bounce"`, focus SHALL go round the band: right of the last column to the first column, and left of the first column to the last. Under `"loop"` it SHALL do so whether or not the band's strip loops, as the Camera requirement defines. Under `"bounce"` the strip never loops, so the camera SHALL scroll back across the band to the newly focused column. When no column exists in that direction and `band_ends` is `"stop"`, or the band holds one column, the view SHALL not change. While the floating layer is active, these actions SHALL move focus between floating windows, as the floating-windows capability defines.
 
 #### Scenario: Return to the remembered window
 - **WHEN** column A holds P1 and P2, the client focuses P2, focuses the column to the right, then the column to the left
 - **THEN** the client focuses P2
 
 #### Scenario: Right of the last column
-- **WHEN** `loop_bands` is on, a band holds columns A, B and C, and the client focuses a window in C and focuses the column to the right
+- **WHEN** `band_ends` is `"loop"`, a band holds columns A, B and C, and the client focuses a window in C and focuses the column to the right
 - **THEN** the client focuses a window in A
 
 #### Scenario: Left of the first column
-- **WHEN** `loop_bands` is on, a band holds columns A, B and C, A holds P1 and P2 and C holds P3 and P4, the client has focused P4 most recently in C, and it focuses P1 and then the column to the left
+- **WHEN** `band_ends` is `"loop"`, a band holds columns A, B and C, A holds P1 and P2 and C holds P3 and P4, the client has focused P4 most recently in C, and it focuses P1 and then the column to the left
 - **THEN** the client focuses P4
 
 #### Scenario: Short band still goes round
-- **WHEN** `loop_bands` is on, the terminal is 80 columns wide, a band holds two columns of 40 cells, and the client focuses the second and then the column to the right
+- **WHEN** `band_ends` is `"loop"`, the terminal is 80 columns wide, a band holds two columns of 40 cells, and the client focuses the second and then the column to the right
 - **THEN** the client focuses a window in the first column
 
 #### Scenario: One column
-- **WHEN** `loop_bands` is on, a band holds one column, and the client focuses the column to the right
+- **WHEN** `band_ends` is `"loop"`, a band holds one column, and the client focuses the column to the right
 - **THEN** the view is unchanged
 
 #### Scenario: No column to the right
-- **WHEN** `loop_bands` is off, and the client focuses a window in the last column and focuses the column to the right
+- **WHEN** `band_ends` is `"stop"`, and the client focuses a window in the last column and focuses the column to the right
 - **THEN** the focus is unchanged
+
+#### Scenario: Bounce from the last column
+- **WHEN** `band_ends` is `"bounce"`, a band holds columns A, B and C, and the client focuses a window in C and focuses the column to the right
+- **THEN** the client focuses a window in A
+
+#### Scenario: Bounce from the first column
+- **WHEN** `band_ends` is `"bounce"`, a band holds columns A, B and C, A holds P1 and C holds P3 and P4, the client has focused P4 most recently in C, and it focuses P1 and then the column to the left
+- **THEN** the client focuses P4
+
+#### Scenario: Bounce on one column
+- **WHEN** `band_ends` is `"bounce"`, a band holds one column, and the client focuses the column to the right
+- **THEN** the view is unchanged
 
 #### Scenario: Floating layer stays in its layer
 - **WHEN** the floating layer is active on the band's only floating window, and the band holds columns A and B
@@ -146,7 +158,7 @@ When the layout changes, each client's view SHALL follow it:
 ### Requirement: Camera
 Each band's camera SHALL be the strip position shown at the client terminal's left edge. A camera below 0 SHALL be allowed, and strip positions left of 0 SHALL be drawn empty while the band's strip does not loop. After every change of focus, of the layout or of the client's terminal width, the camera of the viewed band SHALL move by the configuration's `center_focused_column` policy, where the view spans from the camera to the camera plus the terminal's width. While the floating layer is active, the camera SHALL move as though the tiled window this client focused most recently in the band were focused, and SHALL NOT move when there is none.
 
-A band's strip SHALL loop while the configuration's `loop_bands` is on and the strip's width, the end of its last column, less the width of its widest column is at least the terminal's width less one. A column and its copy are the strip's width less the column's width apart, so a view at most one cell wider than that gap never shows both. A strip that does not loop SHALL be drawn once, so no window is ever drawn twice. While a strip loops:
+A band's strip SHALL loop while the configuration's `band_ends` is `"loop"` and the strip's width, the end of its last column, less the width of its widest column is at least the terminal's width less one. A column and its copy are the strip's width less the column's width apart, so a view at most one cell wider than that gap never shows both. A strip that does not loop SHALL be drawn once, so no window is ever drawn twice. While a strip loops:
 
 - Each column SHALL also stand at its strip position plus every whole multiple of the strip's width. Each of these positions is a copy of the column. The last column's copy ends at strip position 0 and the first column's copy starts at the strip's width, so the strip closes into a loop.
 - A tile's drawn copy SHALL be the copy of its column that has at least one cell inside the view. The strip's length ensures that a tile has at most one.
@@ -206,7 +218,7 @@ Under `"on-overflow"`, when focus moves from one column to another column C of t
 - **THEN** the camera stays at 40
 
 #### Scenario: Scroll right across the seam
-- **WHEN** `loop_bands` is on, the policy is `"never"`, the terminal is 80 columns wide, a band holds three columns of 40 cells at strip positions 0, 40 and 80, the third is focused with the camera at 40, and the client focuses the column to the right
+- **WHEN** `band_ends` is `"loop"`, the policy is `"never"`, the terminal is 80 columns wide, a band holds three columns of 40 cells at strip positions 0, 40 and 80, the third is focused with the camera at 40, and the client focuses the column to the right
 - **THEN** the client focuses the first column and the camera moves to 80
 - **AND** the terminal shows the third column in cells 0 to 39 and the first column in cells 40 to 79
 
@@ -215,41 +227,54 @@ Under `"on-overflow"`, when focus moves from one column to another column C of t
 - **THEN** the client focuses the second column and the camera moves to 120, which is held at 0
 
 #### Scenario: Scroll left across the seam
-- **WHEN** `loop_bands` is on, the policy is `"never"`, the terminal is 80 columns wide, a band holds three columns of 40 cells at strip positions 0, 40 and 80, the first is focused with the camera at 0, and the client focuses the column to the left
+- **WHEN** `band_ends` is `"loop"`, the policy is `"never"`, the terminal is 80 columns wide, a band holds three columns of 40 cells at strip positions 0, 40 and 80, the first is focused with the camera at 0, and the client focuses the column to the left
 - **THEN** the client focuses the third column and the camera moves to -40, which is held at 80
 - **AND** the terminal shows the third column in cells 0 to 39 and the first column in cells 40 to 79
 
 #### Scenario: Always centre across the seam
-- **WHEN** `loop_bands` is on, the policy is `"always"`, the terminal is 80 columns wide, a band holds three columns of 40 cells at strip positions 0, 40 and 80, the third is focused, and the client focuses the column to the right
+- **WHEN** `band_ends` is `"loop"`, the policy is `"always"`, the terminal is 80 columns wide, a band holds three columns of 40 cells at strip positions 0, 40 and 80, the third is focused, and the client focuses the column to the right
 - **THEN** the camera moves to 100
 - **AND** the terminal shows the last 20 cells of the third column, then the first column, then the first 20 cells of the second column
 
 #### Scenario: Strip one cell short of the terminal loops
-- **WHEN** `loop_bands` is on, the policy is `"never"`, the terminal is 79 columns wide, a band holds three columns of 39 cells at strip positions 0, 39 and 78, the third is focused with the camera at 38, and the client focuses the column to the right
+- **WHEN** `band_ends` is `"loop"`, the policy is `"never"`, the terminal is 79 columns wide, a band holds three columns of 39 cells at strip positions 0, 39 and 78, the third is focused with the camera at 38, and the client focuses the column to the right
 - **THEN** the client focuses the first column and the camera moves to 77
 - **AND** the terminal shows the last cell of the second column in cell 0, the third column in cells 1 to 39 and the first column in cells 40 to 78
 
 #### Scenario: Short strip does not loop
-- **WHEN** `loop_bands` is on, the policy is `"always"`, the terminal is 80 columns wide, a band holds two columns of 40 cells at strip positions 0 and 40, and focus moves from the second column to the first by the column to the right
+- **WHEN** `band_ends` is `"loop"`, the policy is `"always"`, the terminal is 80 columns wide, a band holds two columns of 40 cells at strip positions 0 and 40, and focus moves from the second column to the first by the column to the right
 - **THEN** the camera moves to -20 and the 20 cells left of the first column are drawn empty
 - **AND** each window is drawn once
 
 #### Scenario: Looping off
-- **WHEN** `loop_bands` is off, the policy is `"always"`, the terminal is 80 columns wide, a band holds three columns of 40 cells at strip positions 0, 40 and 80, and the first column is focused
+- **WHEN** `band_ends` is `"stop"`, the policy is `"always"`, the terminal is 80 columns wide, a band holds three columns of 40 cells at strip positions 0, 40 and 80, and the first column is focused
+- **THEN** the camera is at -20 and the 20 cells left of the first column are drawn empty
+
+#### Scenario: Bounce scrolls back to the first column
+- **WHEN** `band_ends` is `"bounce"`, the policy is `"never"`, the terminal is 80 columns wide, a band holds three columns of 40 cells at strip positions 0, 40 and 80, the third is focused with the camera at 40, and the client focuses the column to the right
+- **THEN** the client focuses the first column and the camera moves to 0
+- **AND** each window is drawn once
+
+#### Scenario: Bounce scrolls forward to the last column
+- **WHEN** `band_ends` is `"bounce"`, the policy is `"never"`, the terminal is 80 columns wide, a band holds three columns of 40 cells at strip positions 0, 40 and 80, the first is focused with the camera at 0, and the client focuses the column to the left
+- **THEN** the client focuses the third column and the camera moves to 40
+
+#### Scenario: Bounce never loops the strip
+- **WHEN** `band_ends` is `"bounce"`, the policy is `"always"`, the terminal is 80 columns wide, a band holds three columns of 40 cells at strip positions 0, 40 and 80, and the first column is focused
 - **THEN** the camera is at -20 and the 20 cells left of the first column are drawn empty
 
 #### Scenario: Opening across the seam
-- **WHEN** `loop_bands` is on, the policy is `"never"`, the terminal is 80 columns wide, a band holds two columns of 40 cells at strip positions 0 and 40, the second is focused with the camera at 0, and the layout opens a column of 40 cells right of the second, which the client focuses
+- **WHEN** `band_ends` is `"loop"`, the policy is `"never"`, the terminal is 80 columns wide, a band holds two columns of 40 cells at strip positions 0 and 40, the second is focused with the camera at 0, and the layout opens a column of 40 cells right of the second, which the client focuses
 - **THEN** the camera moves to 40
 - **AND** the terminal shows the second column in cells 0 to 39 and the new column in cells 40 to 79
 
 #### Scenario: Closing the last column pulls the camera back
-- **WHEN** `loop_bands` is off, the policy is `"never"`, the terminal is 80 columns wide, a band holds three columns of 40 cells at strip positions 0, 40 and 80, the third is focused with the camera at 40, and the third column's only window exits
+- **WHEN** `band_ends` is `"stop"`, the policy is `"never"`, the terminal is 80 columns wide, a band holds three columns of 40 cells at strip positions 0, 40 and 80, the third is focused with the camera at 40, and the third column's only window exits
 - **THEN** the client focuses the second column and the camera moves to 0
 - **AND** the terminal shows the first column in cells 0 to 39 and the second in cells 40 to 79
 
 #### Scenario: Shrinking the last column pulls the camera back
-- **WHEN** `loop_bands` is off, the policy is `"never"`, the terminal is 80 columns wide, a band holds three columns of 40 cells at strip positions 0, 40 and 80, the third is focused with the camera at 40, and the third column's width becomes 20 cells
+- **WHEN** `band_ends` is `"stop"`, the policy is `"never"`, the terminal is 80 columns wide, a band holds three columns of 40 cells at strip positions 0, 40 and 80, the third is focused with the camera at 40, and the third column's width becomes 20 cells
 - **THEN** the camera moves to 20 and the third column is drawn in cells 60 to 79
 
 #### Scenario: Narrower area pulls the camera back
@@ -262,16 +287,16 @@ Under `"on-overflow"`, when focus moves from one column to another column C of t
 - **THEN** the camera moves to 0 and cells 60 to 79 are drawn empty
 
 #### Scenario: Centred camera keeps its blank strip
-- **WHEN** `loop_bands` is off, the policy is `"always"`, the terminal is 80 columns wide, a band holds three columns of 40 cells at strip positions 0, 40 and 80, the third is focused, and the screen area changes so the columns are 30 cells wide at strip positions 0, 30 and 60
+- **WHEN** `band_ends` is `"stop"`, the policy is `"always"`, the terminal is 80 columns wide, a band holds three columns of 40 cells at strip positions 0, 40 and 80, the third is focused, and the screen area changes so the columns are 30 cells wide at strip positions 0, 30 and 60
 - **THEN** the camera moves to 35 and cells 55 to 79 are drawn empty
 
 #### Scenario: Wider terminal after crossing the seam
-- **WHEN** `loop_bands` is on, the policy is `"never"`, the terminal is 80 columns wide, a band holds four columns of 40 cells at strip positions 0, 40, 80 and 120, the first is focused with the camera at 0, the client focuses the column to the left, which focuses the fourth column with the camera held at 120, and the terminal and the screen area then widen to 100 columns, so the columns are 50 cells wide at strip positions 0, 50, 100 and 150
+- **WHEN** `band_ends` is `"loop"`, the policy is `"never"`, the terminal is 80 columns wide, a band holds four columns of 40 cells at strip positions 0, 40, 80 and 120, the first is focused with the camera at 0, the client focuses the column to the left, which focuses the fourth column with the camera held at 120, and the terminal and the screen area then widen to 100 columns, so the columns are 50 cells wide at strip positions 0, 50, 100 and 150
 - **THEN** the camera stays at 120
 - **AND** the terminal shows the last 30 cells of the third column in cells 0 to 29, the fourth column in cells 30 to 79 and the first 20 cells of the first column in cells 80 to 99
 
 #### Scenario: Narrower column after crossing the seam
-- **WHEN** `loop_bands` is on, the policy is `"never"`, the terminal is 80 columns wide, a band holds four columns of 40 cells at strip positions 0, 40, 80 and 120, the first is focused with the camera at 0, the client focuses the column to the left, which focuses the fourth column with the camera held at 120, and the first column's width then becomes 26 cells, so the columns stand at strip positions 0, 26, 66 and 106
+- **WHEN** `band_ends` is `"loop"`, the policy is `"never"`, the terminal is 80 columns wide, a band holds four columns of 40 cells at strip positions 0, 40, 80 and 120, the first is focused with the camera at 0, the client focuses the column to the left, which focuses the fourth column with the camera held at 120, and the first column's width then becomes 26 cells, so the columns stand at strip positions 0, 26, 66 and 106
 - **THEN** the camera moves to 106
 - **AND** the terminal shows the fourth column in cells 0 to 39, the first column in cells 40 to 65 and the first 14 cells of the second column in cells 66 to 79
 
@@ -300,7 +325,7 @@ After the action, every later change of focus, of the layout or of the client's 
 - **THEN** the camera stays at 20
 
 #### Scenario: Policy resumes on the next focus change
-- **WHEN** `loop_bands` is off, the policy is `"never"`, the terminal is 80 columns wide, a band holds three columns of 40 cells at strip positions 0, 40 and 80, the first is focused, the client runs `center_column`, and focus then moves to the third column
+- **WHEN** `band_ends` is `"stop"`, the policy is `"never"`, the terminal is 80 columns wide, a band holds three columns of 40 cells at strip positions 0, 40 and 80, the first is focused, the client runs `center_column`, and focus then moves to the third column
 - **THEN** the camera moves to 40
 
 #### Scenario: Center a floating window
@@ -317,7 +342,7 @@ After the action, every later change of focus, of the layout or of the client's 
 - **THEN** the camera stays at 0
 
 #### Scenario: Center the first column of a looping strip
-- **WHEN** `loop_bands` is on, the terminal is 80 columns wide, a band holds three columns of 40 cells at strip positions 0, 40 and 80, the first is focused with the camera at 0, and the client runs `center_column`
+- **WHEN** `band_ends` is `"loop"`, the terminal is 80 columns wide, a band holds three columns of 40 cells at strip positions 0, 40 and 80, the first is focused with the camera at 0, and the client runs `center_column`
 - **THEN** the camera moves to -20, which is held at 100
 - **AND** the terminal shows the last 20 cells of the third column, then the first column, then the first 20 cells of the second column
 
@@ -349,12 +374,12 @@ A view's shown windows SHALL be the windows of its viewed band whose tile, as th
 - **THEN** P4 is not shown
 
 #### Scenario: First column shown after the last
-- **WHEN** `loop_bands` is on, the screen area and the client's terminal are both 80×24, the viewed band holds three columns of width 1/2, and the camera is at strip position 80
+- **WHEN** `band_ends` is `"loop"`, the screen area and the client's terminal are both 80×24, the viewed band holds three columns of width 1/2, and the camera is at strip position 80
 - **THEN** the shown windows are those of the third and first columns
 - **AND** the first column's tile is placed at terminal column 40
 
 #### Scenario: Floating window stays in place across the seam
-- **WHEN** `loop_bands` is on, the screen area and the client's terminal are both 80×24, the viewed band holds three columns of width 1/2 and floating window P4 with its box at column 10, and the camera moves from 40 to 80
+- **WHEN** `band_ends` is `"loop"`, the screen area and the client's terminal are both 80×24, the viewed band holds three columns of width 1/2 and floating window P4 with its box at column 10, and the camera moves from 40 to 80
 - **THEN** P4's box stays at terminal column 10
 
 #### Scenario: Minimized window not shown
@@ -503,6 +528,6 @@ When the peek ends, the window SHALL return to its place in the stacking order, 
 - **THEN** the client still focuses 3
 
 #### Scenario: Peek a tiled window
-- **WHEN** `loop_bands` is off, the policy is `"never"`, the terminal is 80 columns wide, a band holds three columns of 40 cells, the first is focused with the camera at 0, and the client peeks the window of the third column
+- **WHEN** `band_ends` is `"stop"`, the policy is `"never"`, the terminal is 80 columns wide, a band holds three columns of 40 cells, the first is focused with the camera at 0, and the client peeks the window of the third column
 - **THEN** the client focuses that window and the camera moves to 40
 - **AND** when it then views the band it views by name, it focuses the window of the first column and the camera moves to 0

@@ -80,7 +80,7 @@ The `bands` table SHALL hold these bindings, each with the description its row g
 | Escape | `bands escape` | return to interactive mode | `interactive mode` |
 | Enter | `bands enter` | return to interactive mode | `interactive mode` |
 
-Only Escape and Enter SHALL leave bands mode. The digits, `k`, `j`, Up and Down SHALL keep it active, so the user can view band after band in one visit. `k`, `j`, Up and Down SHALL follow the `loop_bands` setting as those actions do. The position of a band SHALL be its label in the sidebar.
+Only Escape and Enter SHALL leave bands mode. The digits, `k`, `j`, Up and Down SHALL keep it active, so the user can view band after band in one visit. `k`, `j`, Up and Down SHALL stop at the first and last band as those actions do, whatever `band_ends` holds. The position of a band SHALL be its label in the sidebar.
 
 #### Scenario: Jump to a band
 - **WHEN** the layout holds bands 1, 2 and 3, the client views band 1, and the user presses Ctrl+Space, `b`, then `3`

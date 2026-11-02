@@ -80,7 +80,7 @@ The client configuration file SHALL be `user/init.lua` in the configuration dire
 - **THEN** the new window's column has width 1/3
 
 ### Requirement: Defaults use the public API
-The default configuration SHALL use only the `gband` API that the configuration file can use. It SHALL set the options to their declared defaults. It SHALL make its key bindings only by calling `gband.keystyle.use()` with no argument, as the key-style capability defines, so the saved key style, or the modal key style when none is saved, makes them. It SHALL make no other binding and declare no mode. It SHALL set up the key list plugin `gband.keylist` and the Lua prompt plugin `gband.prompt`, and with the floating key style the desktop plugin `gband.desktop`, only through that call. It SHALL then set up, with `gband.plugin` and no options, the bundled error list plugin `gband.errors`, then the bundled sidebar plugin `gband.sidebar` unless `gband.settings.sidebar()` returns `false`, in that order, and register the offer of the settings capability's "Offer on the first start". Evaluated alone, with no configuration directory, it SHALL produce the declared defaults of the options and the default key bindings of the client-attach capability for the modal key style.
+The default configuration SHALL use only the `gband` API that the configuration file can use. It SHALL set the options to their declared defaults, except `band_ends`, which it SHALL set to the value `gband.settings.band_ends()` returns, or to its declared default `"loop"` when that returns nil, as the settings capability's "Saved band ends" defines. It SHALL make its key bindings only by calling `gband.keystyle.use()` with no argument, as the key-style capability defines, so the saved key style, or the modal key style when none is saved, makes them. It SHALL make no other binding and declare no mode. It SHALL set up the key list plugin `gband.keylist` and the Lua prompt plugin `gband.prompt`, and with the floating key style the desktop plugin `gband.desktop`, only through that call. It SHALL then set up, with `gband.plugin` and no options, the bundled error list plugin `gband.errors`, then the bundled sidebar plugin `gband.sidebar` unless `gband.settings.sidebar()` returns `false`, in that order, and register the offer of the settings capability's "Offer on the first start". Evaluated alone, with no configuration directory, it SHALL produce the declared defaults of the options and the default key bindings of the client-attach capability for the modal key style.
 
 The default key bindings and the declaration of the `navigation` mode SHALL exist only in the key style presets. The setup of the error list and sidebar plugins and the offer of the settings window SHALL exist only in the default configuration.
 
@@ -135,6 +135,10 @@ The default key bindings and the declaration of the `navigation` mode SHALL exis
 - **WHEN** `user/sidebar.lua` holds `return false`, no `user/init.lua` exists, and a client attaches
 - **THEN** `gband.bar.list()` holds no bar
 - **AND** an error is shown as the banner on the ribbon area's bottom row
+
+#### Scenario: Band ends from the saved setting
+- **WHEN** `user/band_ends.lua` holds `return "bounce"`, no `user/init.lua` exists, and a client attaches
+- **THEN** `gband.opt.band_ends` reads `"bounce"`
 
 #### Scenario: Saved theme with a user file
 - **WHEN** `user/theme.lua` holds `return "nord"` and `user/init.lua` binds only `alt+h`
@@ -454,7 +458,7 @@ Every option SHALL have a name, a type, a declared default and a description, an
 |---|---|---|
 | `prefix` | one key, as "Key names" defines | `"ctrl+space"` |
 | `center_focused_column` | `"never"`, `"always"` or `"on-overflow"` | `"never"` |
-| `loop_bands` | a boolean | `true` |
+| `band_ends` | `"loop"`, `"bounce"` or `"stop"`: what focusing past a band's last or first column does, as the layout-view capability defines | `"loop"` |
 | `window_titles` | a boolean: whether windows show their names on their top borders, as the window-names capability defines | `true` |
 | `notify_style` | `"osc9"`, `"osc777"`, `"bell"` or `"none"` | `"osc9"` |
 | `tile_border_sides` | a list of side names, as the borders capability defines them | `{ "top", "right", "bottom", "left" }` |
@@ -477,7 +481,7 @@ A process SHALL know only the options of its own side, and options declared in i
 
 `gband.set` SHALL take one table of options. Each call SHALL change only the options the table names, and a later call SHALL override an earlier one. An unknown option name, a value of the wrong type, a value out of range or an unknown camera policy given to `gband.set` SHALL be a configuration error naming the option.
 
-Reading `gband.opt.<name>` SHALL return the option's current value: a key name for `prefix`, a number for a width or a step, a list of numbers in ascending order for `width_presets`, a string for `center_focused_column` and `notify_style`, a list of side names in the held order for `tile_border_sides` and `floating_border_sides`, the name or a new list of the eight strings for `tile_border_chars`, `focused_tile_border_chars`, `floating_border_chars` and `focused_floating_border_chars`, a boolean for `loop_bands` and `window_titles`, and the value as set for a declared option. Assigning `gband.opt.<name>` SHALL set the option. A value that the option's type rejects SHALL be reported as a configuration error at the line of the assignment, SHALL NOT fail the load, and SHALL set the option to its declared default. An assignment to a name no option declares SHALL be held until an option of that name is declared later in the same load, and then validated; one still undeclared when loading finishes SHALL be reported as a configuration error at the line of the assignment, and SHALL NOT fail the load. The error for a built-in option of the other side SHALL name the side that owns it.
+Reading `gband.opt.<name>` SHALL return the option's current value: a key name for `prefix`, a number for a width or a step, a list of numbers in ascending order for `width_presets`, a string for `center_focused_column`, `band_ends` and `notify_style`, a list of side names in the held order for `tile_border_sides` and `floating_border_sides`, the name or a new list of the eight strings for `tile_border_chars`, `focused_tile_border_chars`, `floating_border_chars` and `focused_floating_border_chars`, a boolean for `window_titles`, and the value as set for a declared option. Assigning `gband.opt.<name>` SHALL set the option. A value that the option's type rejects SHALL be reported as a configuration error at the line of the assignment, SHALL NOT fail the load, and SHALL set the option to its declared default. An assignment to a name no option declares SHALL be held until an option of that name is declared later in the same load, and then validated; one still undeclared when loading finishes SHALL be reported as a configuration error at the line of the assignment, and SHALL NOT fail the load. The error for a built-in option of the other side SHALL name the side that owns it.
 
 `gband.opt.declare(name, spec)` SHALL declare an option under its full name, as the plugins capability defines, and return that full name. `spec.type` SHALL be `"boolean"`, `"integer"`, `"number"` or `"string"`. `spec.values`, optional, SHALL list the only values allowed. `spec.default` SHALL be a valid value, and `spec.desc` an optional description. Declaring a name already declared, an unknown type, or an invalid default SHALL be an error at the line of the call. `gband.opt.list()` SHALL return one table per option of its side, built-in and declared, in ascending byte order of names, each holding `name`, `type`, `default`, `value` and `desc`.
 
@@ -558,16 +562,25 @@ Options SHALL be set and declared only while the configuration loads. Setting or
 - **THEN** the value read is `{ "top", "left" }`
 
 #### Scenario: Looping bands by default
-- **WHEN** `user/init.lua` does not set `loop_bands` and reads `gband.opt.loop_bands`
-- **THEN** the value read is `true`
+- **WHEN** `user/init.lua` does not set `band_ends` and reads `gband.opt.band_ends`
+- **THEN** the value read is `"loop"`
+
+#### Scenario: Bouncing band ends
+- **WHEN** line 3 of `user/init.lua` is `gband.set { band_ends = "bounce" }`
+- **THEN** loading succeeds and `gband.opt.band_ends` reads `"bounce"`
 
 #### Scenario: Looping bands turned off
-- **WHEN** line 3 of `user/init.lua` is `gband.set { loop_bands = false }`
-- **THEN** loading succeeds and `gband.opt.loop_bands` reads `false`
+- **WHEN** line 3 of `user/init.lua` is `gband.set { band_ends = "stop" }`
+- **THEN** loading succeeds and `gband.opt.band_ends` reads `"stop"`
 
 #### Scenario: Looping bands of the wrong type
-- **WHEN** line 3 of `user/init.lua` sets `gband.opt.loop_bands = "yes"`
-- **THEN** loading succeeds with `loop_bands` set to `true`
+- **WHEN** line 3 of `user/init.lua` sets `gband.opt.band_ends = "wrap"`
+- **THEN** loading succeeds with `band_ends` set to `"loop"`
+- **AND** an error at `user/init.lua` line 3 naming `band_ends` is reported
+
+#### Scenario: Retired looping option
+- **WHEN** line 3 of `user/init.lua` sets `gband.opt.loop_bands = false`
+- **THEN** loading succeeds with `band_ends` set to `"loop"`
 - **AND** an error at `user/init.lua` line 3 naming `loop_bands` is reported
 
 #### Scenario: Rounded borders by default

@@ -101,7 +101,7 @@ The plugin SHALL place each window that it saw open with `WindowOpened`, or that
 - **THEN** the new window floats and is focused
 
 #### Scenario: Windows float after switching the style
-- **WHEN** no `user/init.lua` exists, the modal style is saved, the viewed band holds two tiled windows, the settings window is open on its third line, and the user presses `h`
+- **WHEN** no `user/init.lua` exists, the modal style is saved, the viewed band holds two tiled windows, the settings window is open on its fourth line, and the user presses `h`
 - **THEN** `user/keystyle.lua` holds `return "floating"`
 - **AND** after the reload both windows float and the band holds no column
 

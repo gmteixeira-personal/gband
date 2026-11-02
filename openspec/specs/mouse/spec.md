@@ -432,7 +432,7 @@ At the release of a vertical drag, let B be the band whose region holds the term
 - **THEN** the second column is focused and the camera moves to 60
 
 #### Scenario: Slide past the strip's end pulls back
-- **WHEN** `loop_bands` is on, the terminal is 80 columns wide, a band holds two columns of 40 cells, the first is focused with the camera at 0, and the user drags with `drag_band` from column 70 to column 40, then releases
+- **WHEN** `band_ends` is `"loop"`, the terminal is 80 columns wide, a band holds two columns of 40 cells, the first is focused with the camera at 0, and the user drags with `drag_band` from column 70 to column 40, then releases
 - **THEN** the camera is at 30 while dragging
 - **AND** after the release the second column is focused and the camera moves to 0
 
