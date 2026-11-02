@@ -5,12 +5,14 @@ gband.hl.default("SettingsLabel", { dim = true })
 local NAME = "^[A-Za-z0-9][A-Za-z0-9_-]*$"
 local LABEL_WIDTH = 9
 local WIDTH = 31
-local THEME, SIDEBAR, KEYS, INTERACTIVE_ON_NEW = 1, 2, 3, 4
-local LABELS = { "theme", "sidebar", "keys", "I on new" }
+local THEME, SIDEBAR, BANDS, KEYS, INTERACTIVE_ON_NEW = 1, 2, 3, 4, 5
+local LABELS = { "theme", "sidebar", "bands", "keys", "I on new" }
 local RELOAD_LABEL = "reload"
 local KEY_STYLES = { "modal", "direct", "floating" }
+local BAND_ENDS = { "loop", "bounce", "stop" }
 local THEME_FILE = "user/theme.lua"
 local SIDEBAR_FILE = "user/sidebar.lua"
+local BAND_ENDS_FILE = "user/band_ends.lua"
 local KEYSTYLE_FILE = "user/keystyle.lua"
 local INTERACTIVE_ON_NEW_FILE = "user/interactive_on_new.lua"
 local RESTORE_FILE = "user/floating_restore.lua"
@@ -111,6 +113,19 @@ end
 
 local function interactive_on_new()
   return read(INTERACTIVE_ON_NEW_FILE, is_boolean)
+end
+
+local function is_band_end(value)
+  for _, name in ipairs(BAND_ENDS) do
+    if value == name then
+      return true
+    end
+  end
+  return false
+end
+
+local function band_ends()
+  return read(BAND_ENDS_FILE, is_band_end)
 end
 
 local function themes()
@@ -382,6 +397,7 @@ local function lines()
   local values = {
     tostring(gband.colorscheme()),
     sidebar() == false and "off" or "on",
+    band_ends() or "loop",
     key_style(),
   }
   if values[KEYS] == "modal" then
@@ -455,6 +471,12 @@ local function step_keys(direction)
   save(KEYS, KEYSTYLE_FILE, 'return "' .. next_style .. '"\n')
 end
 
+local function step_band_ends(direction)
+  local at = index_of(BAND_ENDS, band_ends() or "loop")
+  local next_value = BAND_ENDS[(at - 1 + direction) % #BAND_ENDS + 1]
+  save(BANDS, BAND_ENDS_FILE, 'return "' .. next_value .. '"\n')
+end
+
 local function toggle_interactive_on_new()
   local next_value = interactive_on_new() == true and "false" or "true"
   save(INTERACTIVE_ON_NEW, INTERACTIVE_ON_NEW_FILE, "return " .. next_value .. "\n")
@@ -472,6 +494,8 @@ local function change(direction)
       step_theme(direction)
     elseif line == SIDEBAR then
       toggle_sidebar()
+    elseif line == BANDS then
+      step_band_ends(direction)
     elseif line == KEYS then
       step_keys(direction)
     elseif line == INTERACTIVE_ON_NEW then
@@ -490,6 +514,8 @@ local function enter(win)
     open_list()
   elseif line == SIDEBAR then
     toggle_sidebar()
+  elseif line == BANDS then
+    step_band_ends(1)
   elseif line == KEYS then
     step_keys(1)
   elseif line == INTERACTIVE_ON_NEW then
@@ -642,6 +668,7 @@ gband.settings = {
   theme = theme,
   sidebar = sidebar,
   interactive_on_new = interactive_on_new,
+  band_ends = band_ends,
   themes = themes,
 }
 

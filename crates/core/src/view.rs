@@ -38,6 +38,15 @@ pub enum CenterFocusedColumn {
     OnOverflow,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum BandEnds {
+    #[default]
+    Loop,
+    Bounce,
+    Stop,
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 struct BandView {
     layer: Layer,
@@ -74,7 +83,7 @@ pub struct View {
     peek: Option<(WindowId, Layer)>,
     tick: u64,
     policy: CenterFocusedColumn,
-    loop_bands: bool,
+    band_ends: BandEnds,
 }
 
 impl View {
@@ -93,7 +102,7 @@ impl View {
             peek: None,
             tick: 0,
             policy,
-            loop_bands: true,
+            band_ends: BandEnds::default(),
         };
         if let Some(window) = first.first_window() {
             view.focus(first, window);
@@ -106,8 +115,8 @@ impl View {
         self.policy = policy;
     }
 
-    pub fn set_loop_bands(&mut self, loop_bands: bool) {
-        self.loop_bands = loop_bands;
+    pub fn set_band_ends(&mut self, band_ends: BandEnds) {
+        self.band_ends = band_ends;
     }
 
     pub fn band(&self) -> BandId {
@@ -244,7 +253,7 @@ impl View {
     }
 
     fn looping(&self, spans: &[Span], viewport: u16) -> Option<u32> {
-        loop_width(spans, viewport).filter(|_| self.loop_bands)
+        loop_width(spans, viewport).filter(|_| self.band_ends == BandEnds::Loop)
     }
 
     pub fn resolve(&self, command: SessionCommand) -> Option<SessionAction> {
@@ -602,10 +611,11 @@ impl View {
     fn neighbour_column(&self, band: &Band, action: ViewAction) -> Option<WindowId> {
         let (column, _) = band.locate(self.focused()?)?;
         let last = band.columns.len() - 1;
+        let wraps = self.band_ends != BandEnds::Stop;
         let target = match action {
-            ViewAction::FocusLeft if column == 0 && self.loop_bands => last,
+            ViewAction::FocusLeft if column == 0 && wraps => last,
             ViewAction::FocusLeft => column.checked_sub(1)?,
-            _ if column == last && self.loop_bands => 0,
+            _ if column == last && wraps => 0,
             _ => column + 1,
         };
         if target == column {

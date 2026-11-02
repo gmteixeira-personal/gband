@@ -117,8 +117,8 @@ fn escape_key() {
 }
 
 #[test]
-fn looping_bands() {
-    gband_test(root(), &["tests/lua/loop_bands_spec.lua"]);
+fn band_ends() {
+    gband_test(root(), &["tests/lua/band_ends_spec.lua"]);
 }
 
 #[test]

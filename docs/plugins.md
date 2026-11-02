@@ -356,7 +356,7 @@ Each built-in option belongs to one side, and each process knows only its own si
 
 | side | options |
 |---|---|
-| client | `prefix`, `center_focused_column`, `loop_bands`, `window_titles`, `animations`, `animation_speed`, `notify_style`, `window_clipboard`, `window_graphics`, `window_sixel`, `tile_border_sides`, `tile_border_chars`, `focused_tile_border_chars`, `floating_border_sides`, `floating_border_chars`, `focused_floating_border_chars`, `width_step`, `height_step`, `mouse_mod` |
+| client | `prefix`, `center_focused_column`, `band_ends`, `window_titles`, `animations`, `animation_speed`, `notify_style`, `window_clipboard`, `window_graphics`, `window_sixel`, `tile_border_sides`, `tile_border_chars`, `focused_tile_border_chars`, `floating_border_sides`, `floating_border_chars`, `focused_floating_border_chars`, `width_step`, `height_step`, `mouse_mod` |
 | server | `default_column_width`, `width_presets`, `clipboard_image_dir` |
 
 ```lua
@@ -365,7 +365,7 @@ gband.opt.default_column_width = 1/3
 local presets = gband.opt.width_presets
 ```
 
-`loop_bands`, `true` by default, makes bands circular: focus goes round from a band's last column to its first, and a long enough band is drawn as a loop; `false` stops focus at either end.
+`band_ends`, `"loop"` by default, sets what focusing past a band's last or first column does. `"loop"` makes bands circular: focus goes round from a band's last column to its first, and a long enough band is drawn as a loop. `"bounce"` sends focus from the last column to the first and from the first to the last, drawing the band once, so the view scrolls back across it. `"stop"` stops focus at either end.
 
 `window_titles`, `true` by default, draws each window's name on its top border; `false` draws none, while the names are still kept and `gband.layout()` still holds them.
 The client reads `GBAND_WINDOW_TITLES` when it starts: `off` draws no names whatever `window_titles` holds, unset or `on` leaves the option in charge, and any other value is logged as a warning and read as unset.
@@ -1371,14 +1371,15 @@ The settings window's `keys` line saves it, as "Settings" describes.
 | `gband.settings.theme()` | the theme saved in `user/theme.lua`, or nil |
 | `gband.settings.sidebar()` | the sidebar setting saved in `user/sidebar.lua`, `true` or `false`, or nil |
 | `gband.settings.interactive_on_new()` | the `I on new` setting saved in `user/interactive_on_new.lua`, `true` or `false`, or nil |
+| `gband.settings.band_ends()` | the `bands` setting saved in `user/band_ends.lua`, `"loop"`, `"bounce"` or `"stop"`, or nil |
 | `gband.settings.themes()` | a new list of the names the theme list shows |
 
-`theme`, `sidebar` and `interactive_on_new` read their file as `gband.keystyle.saved()` reads `user/keystyle.lua`, and return its value when it is a valid colorscheme name or a boolean.
+`theme`, `sidebar`, `interactive_on_new` and `band_ends` read their file as `gband.keystyle.saved()` reads `user/keystyle.lua`, and return its value when it is a valid colorscheme name, a boolean, or one of the three `band_ends` values.
 They return nil when `gband.config_dir` is nil, and when the file is missing, does not compile, raises an error or returns anything else; they report nothing.
 None of these files is ever run as configuration, a plugin file or a module.
 `themes` lists the bundled themes first, in the order "Themes" gives, without the alias `catppuccin`, then every other name for which a runtimepath entry holds `colors/<name>.lua`, in byte order.
 A name appears once, so a `user/colors/nord.lua` keeps `nord`'s place.
-These four are callable while the configuration loads and in any callback.
+These five are callable while the configuration loads and in any callback.
 
 `open` is callable wherever an action value is, and calling it while the configuration loads is an error.
 Called while the theme list is open, it closes the list as Escape does and focuses the settings window.
@@ -1390,6 +1391,7 @@ It holds these lines, each a label in `SettingsLabel` padded to 9 cells, then th
 |---|---|---|---|
 | `theme` | the name `gband.colorscheme()` returns | opens the theme list | `l` and Right load the theme after the active one in `themes()`, `h` and Left the one before, and save it |
 | `sidebar` | `off` when `sidebar()` returns `false`, `on` otherwise | saves the other value | the same as Enter |
+| `bands` | the value `band_ends()` returns, or `loop` | saves the next value of `loop`, `bounce`, `stop`, wrapping | `l` and Right save the next value, as Enter does, `h` and Left the previous one |
 | `keys` | the style `gband.keystyle.saved()` returns, or `modal` | saves the next style of `modal`, `direct`, `floating`, wrapping | `l` and Right save the next style, as Enter does, `h` and Left the previous one |
 | `I on new` | `on` when `interactive_on_new()` returns `true`, `off` otherwise | saves the other value | the same as Enter |
 | `reload` | `ok` when `gband.errors()` is empty, `1 error` for one, and `<n> errors` otherwise | dispatches `gband.action.reload` and saves nothing | nothing |
@@ -1405,7 +1407,7 @@ Enter saves the line's theme and closes the list; when that theme failed to load
 Escape and `q` load again the colorscheme that was active when the list opened, save nothing and close the list.
 Closing the list focuses the settings window.
 
-Saving writes `return "<name>"`, `return true` or `return false`, or `return "<style>"`, and a newline, to a temporary file in `user/`, and renames it over `user/theme.lua`, `user/sidebar.lua`, `user/keystyle.lua` or `user/interactive_on_new.lua`.
+Saving writes `return "<name>"`, `return true` or `return false`, `return "<value>"` or `return "<style>"`, and a newline, to a temporary file in `user/`, and renames it over `user/theme.lua`, `user/sidebar.lua`, `user/band_ends.lua`, `user/keystyle.lua` or `user/interactive_on_new.lua`.
 That reloads the configuration, as any saved `.lua` file under `user/` does.
 The client keeps the line the setting belongs to across that reload, and when the load succeeds it opens the settings window again with its cursor line there, whatever configuration file is in use.
 Enter on the `reload` line keeps that line until the client has loaded and the server has answered that its own load ended, then opens the settings window on it whether the loads worked or not, so the line counts the errors of both.
@@ -1413,9 +1415,9 @@ Calling `open` while the window is open draws its lines again, so a window a fai
 When there is no configuration directory or the write fails, the key raises an error naming the file and the reason, the settings window stays open, and the setting in use stays.
 
 The saved theme applies to every configuration, since it loads before the init file.
-The sidebar, the key style and `I on new` apply where a configuration asks for them: the default configuration sets up `gband.sidebar` unless `sidebar()` returns `false`, and calls `gband.keystyle.use()` with no argument, whose modal preset reads `interactive_on_new()`.
+The sidebar, the band ends, the key style and `I on new` apply where a configuration asks for them: the default configuration sets up `gband.sidebar` unless `sidebar()` returns `false`, sets `band_ends` to `band_ends()` or `"loop"`, and calls `gband.keystyle.use()` with no argument, whose modal preset reads `interactive_on_new()`.
 A `user/init.lua` with its own `n` binding follows the setting by comparing `interactive_on_new()` with `true`, since nil means it was never saved and reads as off.
-A `user/init.lua` that sets up the sidebar or binds its own keys keeps its choice, and the settings window then only saves the setting.
+A `user/init.lua` that sets up the sidebar, sets `band_ends` or binds its own keys keeps its choice, and the settings window then only saves the setting.
 
 On `Attached`, the default configuration opens the settings window when `gband.config_dir` is set and `theme()`, `sidebar()` and `gband.keystyle.saved()` all return nil.
 `Attached` fires once per client and never for a reload, so the window opens at most once per start, and every start offers it until one setting is saved.

@@ -1,6 +1,6 @@
 # 07 · Settings
 
-The settings window, Ctrl+Space then `s`, picks the theme, turns the sidebar on or off, chooses the key style, and reloads the configuration.
+The settings window, Ctrl+Space then `s`, picks the theme, turns the sidebar on or off, chooses what focus does at a band's ends, chooses the key style, and reloads the configuration.
 Each choice is saved to a small file under `user/`, and the default configuration reads those files as it loads.
 `gband.settings`, in `defaults/lua/gband/settings.lua`, is both: the window, built with `gband.win`, and the functions that read and write the saved choices.
 This chapter reads it in full.
@@ -19,26 +19,28 @@ gband.hl.default("SettingsLabel", { dim = true })
 local NAME = "^[A-Za-z0-9][A-Za-z0-9_-]*$"
 local LABEL_WIDTH = 9
 local WIDTH = 31
-local THEME, SIDEBAR, KEYS, INTERACTIVE_ON_NEW = 1, 2, 3, 4
-local LABELS = { "theme", "sidebar", "keys", "I on new" }
+local THEME, SIDEBAR, BANDS, KEYS, INTERACTIVE_ON_NEW = 1, 2, 3, 4, 5
+local LABELS = { "theme", "sidebar", "bands", "keys", "I on new" }
 local RELOAD_LABEL = "reload"
 local KEY_STYLES = { "modal", "direct", "floating" }
+local BAND_ENDS = { "loop", "bounce", "stop" }
 ```
 
 `NAME` is the colorscheme name rule of [03](03-colorschemes.md).
-The window has at most five lines, and each line starts with its label padded to `LABEL_WIDTH` columns.
-The first four are numbered by the four constants; the last, `reload`, moves up a line when `I on new` is absent, so it has a label and no number of its own.
-`KEY_STYLES` is the order in which the `keys` line cycles through the three key styles of [08](08-key-styles.md).
+The window has at most six lines, and each line starts with its label padded to `LABEL_WIDTH` columns.
+The first five are numbered by the five constants; the last, `reload`, moves up a line when `I on new` is absent, so it has a label and no number of its own.
+`KEY_STYLES` is the order in which the `keys` line cycles through the three key styles of [08](08-key-styles.md), and `BAND_ENDS` the order in which the `bands` line cycles through the values of the `band_ends` option.
 
 ```lua defaults/lua/gband/settings.lua
 local THEME_FILE = "user/theme.lua"
 local SIDEBAR_FILE = "user/sidebar.lua"
+local BAND_ENDS_FILE = "user/band_ends.lua"
 local KEYSTYLE_FILE = "user/keystyle.lua"
 local INTERACTIVE_ON_NEW_FILE = "user/interactive_on_new.lua"
 local RESTORE_FILE = "user/floating_restore.lua"
 ```
 
-The first four files hold one saved choice each.
+The first five files hold one saved choice each.
 `RESTORE_FILE` holds the layout recorded when the `keys` line enters the floating style, as "The floating record" below describes.
 
 ```lua defaults/lua/gband/settings.lua
@@ -193,8 +195,23 @@ local function interactive_on_new()
 end
 ```
 
+```lua defaults/lua/gband/settings.lua
+local function is_band_end(value)
+  for _, name in ipairs(BAND_ENDS) do
+    if value == name then
+      return true
+    end
+  end
+  return false
+end
+
+local function band_ends()
+  return read(BAND_ENDS_FILE, is_band_end)
+end
+```
+
 `theme` is what `start` in [03](03-colorschemes.md) reads.
-`sidebar` is read by the default configuration, in [11](11-default-configs.md), and `interactive_on_new` by the modal key style, in [08](08-key-styles.md).
+`sidebar` and `band_ends` are read by the default configuration, in [11](11-default-configs.md), and `interactive_on_new` by the modal key style, in [08](08-key-styles.md).
 Each returns nil when nothing is saved, so a caller can tell "off" from "never chosen".
 
 ```lua defaults/lua/gband/settings.lua
@@ -582,6 +599,7 @@ local function lines()
   local values = {
     tostring(gband.colorscheme()),
     sidebar() == false and "off" or "on",
+    band_ends() or "loop",
     key_style(),
   }
   if values[KEYS] == "modal" then
@@ -691,6 +709,16 @@ The record is removed once restored, so a later trip through `floating` starts f
 The actions dispatch when the key's callback returns, before the reload that `save` causes re-reads the configuration.
 
 ```lua defaults/lua/gband/settings.lua
+local function step_band_ends(direction)
+  local at = index_of(BAND_ENDS, band_ends() or "loop")
+  local next_value = BAND_ENDS[(at - 1 + direction) % #BAND_ENDS + 1]
+  save(BANDS, BAND_ENDS_FILE, 'return "' .. next_value .. '"\n')
+end
+```
+
+`step_band_ends` cycles `BAND_ENDS` as `step_keys` cycles the key styles, reading a value never saved as `loop`, the option's default.
+
+```lua defaults/lua/gband/settings.lua
 local function toggle_interactive_on_new()
   local next_value = interactive_on_new() == true and "false" or "true"
   save(INTERACTIVE_ON_NEW, INTERACTIVE_ON_NEW_FILE, "return " .. next_value .. "\n")
@@ -720,6 +748,8 @@ local function change(direction)
       step_theme(direction)
     elseif line == SIDEBAR then
       toggle_sidebar()
+    elseif line == BANDS then
+      step_band_ends(direction)
     elseif line == KEYS then
       step_keys(direction)
     elseif line == INTERACTIVE_ON_NEW then
@@ -744,6 +774,8 @@ local function enter(win)
     open_list()
   elseif line == SIDEBAR then
     toggle_sidebar()
+  elseif line == BANDS then
+    step_band_ends(1)
   elseif line == KEYS then
     step_keys(1)
   elseif line == INTERACTIVE_ON_NEW then
@@ -752,7 +784,7 @@ local function enter(win)
 end
 ```
 
-Enter on the theme line opens the theme list, on the `keys` line steps forward as `l` does, and on the `reload` line reloads.
+Enter on the theme line opens the theme list, on the `bands` and `keys` lines steps forward as `l` does, and on the `reload` line reloads.
 `open_list` is defined further down, after the functions it uses, so it is declared here first: `enter` captures the local, and by the time a key runs `enter` the local holds the function.
 
 ## The theme list
@@ -944,6 +976,7 @@ gband.settings = {
   theme = theme,
   sidebar = sidebar,
   interactive_on_new = interactive_on_new,
+  band_ends = band_ends,
   themes = themes,
 }
 ```

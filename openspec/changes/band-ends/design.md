@@ -19,7 +19,10 @@
 
 **`"on-overflow"` under bounce needs no new rule.** The policy takes S as the column next to C on the side focus came from. Moving right from the last column to the first, focus came from the last column, which lies right of C, so S is the second column. The non-looping branch already handles that.
 
+**The settings window chooses `band_ends` through a saved file, as it chooses the sidebar.** The `bands` line is the window's third line, after `sidebar`, so the modal-only `I on new` line stays directly under `keys` and `reload` stays last. The label `bands` fits the 9-cell label column with a space before the value; `band ends` would fill it. The line steps through `loop`, `bounce` and `stop`, as the `keys` line steps through the key styles, and saves `return "<value>"` to `user/band_ends.lua`. `gband.settings.band_ends()` reads that file with the existing `read` helper and accepts only the three values. The default configuration sets `gband.opt.band_ends = gband.settings.band_ends() or "loop"`, so a `user/init.lua`, which replaces the default configuration, keeps its own value. Saving writes the file, and the reload and reopen on the saved line come from the existing `save` path. Alternative considered: a line at the bottom, before `reload`. Rejected by the user: its number would change with the key style. The first-start offer keeps its three files and ignores `user/band_ends.lua`, as it ignores `user/interactive_on_new.lua`.
+
 ## Risks / Trade-offs
 
 - [Existing user configs set `loop_bands`] → The load succeeds with the default and an error names the line. The README and `docs/plugins.md` name the replacement.
+- [Moving `keys` and `I on new` down one line breaks every test and screenshot that names a settings line by number] → Section 7 of the tasks renumbers them, and the floating style test that opens the `keys` line moves with them.
 - [The test file `tests/lua/loop_bands_spec.lua` keeps an old name] → It is renamed to `tests/lua/band_ends_spec.lua`, and its registration in `tests/lua_specs.rs` is renamed with it.

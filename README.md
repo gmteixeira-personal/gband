@@ -26,7 +26,7 @@ To install the development version instead, replace `--tag v0.6.3` with `--branc
 ## Features
 
 - **Multiple bands.** Each band holds its own row of windows, and the view slides up and down between bands.
-- **Circular bands.** Focus goes round from a band's last column to its first, and a long enough band is drawn as a loop.
+- **Circular bands.** Focus goes round from a band's last column to its first, and a long enough band is drawn as a loop; `band_ends` can instead scroll back to the first column or stop at either end.
 - **Tabbed columns.** A column can show its windows one at a time, as tabs, with an indicator on its left border; see [Tabbed columns](#tabbed-columns).
 - **Agents.** gband finds Claude Code in your windows and colors its label in the sidebar by what it does: working, waiting for an answer, or done; see [Agents](#agents).
 - **Remote hosts.** `gband -r user@host` attaches to a session on another machine through your `ssh`, and your configuration, key bindings and plugins stay local; see [Remote hosts](#remote-hosts).
@@ -63,7 +63,9 @@ gband follows niri's scrollable tiling model instead, with bands in place of nir
 - Bands are circular.
   Focus goes round from a band's last column to its first, and from its first to its last.
   A band long enough to wrap around the screen is drawn as a loop, its first column following its last.
-  `gband.opt.loop_bands = false` gives every band two ends instead.
+  `gband.opt.band_ends = "bounce"` keeps focus going round but draws every band once, so the view scrolls back to the first column.
+  `gband.opt.band_ends = "stop"` gives every band two ends instead.
+  The settings window's `bands` line picks the same three values without editing a file.
 - Bands stack vertically, and the view slides up and down between them.
 - An empty band always waits below the last one.
   Opening a window in it adds a new empty band below, and a band other than the last is removed when its last window closes.
@@ -241,6 +243,7 @@ It has these lines:
 |---|---|
 | `theme` | the active theme |
 | `sidebar` | `on` or `off` |
+| `bands` | what focus does past a band's last or first column, `loop`, `bounce` or `stop`, as the `band_ends` option describes |
 | `keys` | the key style, `modal`, `direct` or `floating` |
 | `I on new` | `on` or `off`: whether `n` in navigation mode returns to interactive mode; `off` until saved `on`; shown with the modal key style only |
 | `reload` | `ok`, or the number of errors `gband.errors()` holds, such as `1 error` or `3 errors` |
@@ -248,6 +251,7 @@ It has these lines:
 `j`, `k` and the up and down arrows move between the lines.
 On `theme`, `l` or Right loads the next theme and `h` or Left the one before, and Enter opens the theme list.
 On `sidebar` and `I on new`, Enter, `h`, `l`, Left and Right switch to the other value.
+On `bands`, Enter, `l` and Right pick the next value of `loop`, `bounce` and `stop`, and `h` and Left the one before.
 On `keys`, Enter, `l` and Right pick the next style of `modal`, `direct` and `floating`, and `h` and Left the one before.
 On `reload`, Enter reloads the configuration as Ctrl+Space then `!` does and saves nothing; once this client and the server have both loaded, the box opens again on that line with the new count, whether the loads worked or not.
 Escape or `q` closes the box and saves nothing.
@@ -450,8 +454,8 @@ The copy binds its keys with `gband.keystyle.use()`, which makes the bindings of
 To edit the bindings themselves, copy a style's bindings from `defaults/keystyle/` into `user/init.lua` in place of the `gband.keystyle.use()` call.
 
 The saved theme loads before `user/init.lua` runs, so it applies to your file too, unless your file calls `gband.colorscheme` itself.
-The settings window's `sidebar`, `keys` and `I on new` lines apply only where your file asks for them, as the copy does: it sets up the sidebar unless `gband.settings.sidebar()` returns `false`, and calls `gband.keystyle.use()` with no argument, whose modal `n` returns to interactive mode only when `gband.settings.interactive_on_new()` returns `true`.
-A file that sets up the sidebar or binds its own keys keeps its choice, and the settings window then only saves the setting.
+The settings window's `sidebar`, `bands`, `keys` and `I on new` lines apply only where your file asks for them, as the copy does: it sets up the sidebar unless `gband.settings.sidebar()` returns `false`, sets `gband.opt.band_ends` to `gband.settings.band_ends()` or `"loop"`, and calls `gband.keystyle.use()` with no argument, whose modal `n` returns to interactive mode only when `gband.settings.interactive_on_new()` returns `true`.
+A file that sets up the sidebar, sets `band_ends` or binds its own keys keeps its choice, and the settings window then only saves the setting.
 An `n` binding of your own can compare `gband.settings.interactive_on_new()` with `true` to follow the `I on new` line.
 
 Without `user/init.lua`, the defaults apply.
@@ -497,7 +501,7 @@ The client options, set in `user/init.lua`, and their defaults:
 |---|---|---|
 | `prefix` | one key | `"ctrl+space"` |
 | `center_focused_column` | `"never"`, `"always"` or `"on-overflow"` | `"never"` |
-| `loop_bands` | `true` or `false`: whether focus goes round from a band's last column to its first, drawing a long enough band as a loop | `true` |
+| `band_ends` | `"loop"`, `"bounce"` or `"stop"`: what focusing past a band's last or first column does; `"loop"` goes round and draws a long enough band as a loop, `"bounce"` goes round and scrolls back across the band, `"stop"` stops at either end | `"loop"` |
 | `window_titles` | `true` or `false`: whether windows show their names on their top borders | `true` |
 | `animations` | `true` or `false`: whether the client animates changes of the layout and the view | `true` |
 | `animation_speed` | how fast animations run, from `0.1` to `10`, `2` being twice as fast as `1` | `1` |

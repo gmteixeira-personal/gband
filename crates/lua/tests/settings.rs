@@ -208,7 +208,7 @@ fn saved_settings_without_a_configuration_directory() {
     let config = gband_lua::defaults(Side::Client);
     let none: bool = eval(
         &config,
-        "return gband.settings.theme() == nil and gband.settings.sidebar() == nil and gband.settings.interactive_on_new() == nil",
+        "return gband.settings.theme() == nil and gband.settings.sidebar() == nil and gband.settings.interactive_on_new() == nil and gband.settings.band_ends() == nil",
     );
     assert!(none);
 }
@@ -312,6 +312,75 @@ fn own_configuration_with_the_modal_preset() {
     assert!(enters_root(&outcome), "{:?}", outcome.dispatched);
 }
 
+fn band_ends_option(settings: &Settings) -> String {
+    settings.get("return gband.opt.band_ends")
+}
+
+fn saved_band_ends(settings: &Settings) -> Option<String> {
+    settings.get("return gband.settings.band_ends()")
+}
+
+#[test]
+fn saved_band_ends_in_use() {
+    let settings = Settings::new(
+        "band-ends-saved",
+        &[MODAL, ("band_ends.lua", "return \"stop\"\n")],
+    );
+    assert_eq!(saved_band_ends(&settings).as_deref(), Some("stop"));
+    assert_eq!(band_ends_option(&settings), "stop");
+    assert_eq!(
+        settings.config.options.band_ends,
+        gband_core::view::BandEnds::Stop
+    );
+}
+
+#[test]
+fn band_ends_from_the_saved_setting() {
+    let settings = Settings::new(
+        "band-ends-bounce",
+        &[MODAL, ("band_ends.lua", "return \"bounce\"\n")],
+    );
+    assert_eq!(band_ends_option(&settings), "bounce");
+}
+
+#[test]
+fn band_ends_with_nothing_saved() {
+    let settings = Settings::new("band-ends-nothing", &[MODAL]);
+    assert_eq!(saved_band_ends(&settings), None);
+    assert_eq!(band_ends_option(&settings), "loop");
+}
+
+#[test]
+fn unknown_saved_band_ends_value() {
+    let settings = Settings::new(
+        "band-ends-unknown",
+        &[MODAL, ("band_ends.lua", "return \"wrap\"")],
+    );
+    assert_eq!(saved_band_ends(&settings), None);
+    assert_eq!(band_ends_option(&settings), "loop");
+}
+
+#[test]
+fn broken_band_ends_file_is_not_a_configuration_error() {
+    let settings = Settings::new(
+        "band-ends-broken",
+        &[MODAL, ("band_ends.lua", "error('boom')")],
+    );
+    assert_eq!(band_ends_option(&settings), "loop");
+}
+
+#[test]
+fn band_ends_kept_by_a_configuration_file() {
+    let settings = Settings::new(
+        "band-ends-own",
+        &[
+            ("init.lua", "gband.opt.band_ends = \"stop\""),
+            ("band_ends.lua", "return \"bounce\"\n"),
+        ],
+    );
+    assert_eq!(band_ends_option(&settings), "stop");
+}
+
 #[test]
 fn bundled_themes_only() {
     let settings = Settings::new("themes-bundled", &[INIT]);
@@ -358,6 +427,7 @@ fn window_opens() {
         [
             "theme    default",
             "sidebar  on",
+            "bands    loop",
             "keys     modal",
             "I on new off",
             "reload   ok"
@@ -373,7 +443,7 @@ fn window_beside_the_default_sidebar() {
     let frame = settings.frame();
     assert_eq!(
         (frame.col, frame.row, frame.width, frame.height),
-        (24, 8, 31, 7)
+        (24, 8, 31, 8)
     );
 }
 
@@ -382,12 +452,12 @@ fn window_with_the_direct_style() {
     let settings = Settings::new("window-direct", &[("keystyle.lua", "return \"direct\"\n")]);
     settings.open();
     let frame = settings.frame();
-    assert_eq!(frame.lines.len(), 4);
-    assert_eq!(text(&frame.lines[2]), "keys     direct");
-    assert_eq!(text(&frame.lines[3]), "reload   ok");
+    assert_eq!(frame.lines.len(), 5);
+    assert_eq!(text(&frame.lines[3]), "keys     direct");
+    assert_eq!(text(&frame.lines[4]), "reload   ok");
     assert_eq!(
         (frame.col, frame.row, frame.width, frame.height),
-        (24, 9, 31, 6)
+        (24, 8, 31, 7)
     );
 }
 
@@ -399,12 +469,12 @@ fn window_with_the_floating_style() {
     );
     settings.open();
     let frame = settings.frame();
-    assert_eq!(frame.lines.len(), 4);
-    assert_eq!(text(&frame.lines[2]), "keys     floating");
-    assert_eq!(text(&frame.lines[3]), "reload   ok");
+    assert_eq!(frame.lines.len(), 5);
+    assert_eq!(text(&frame.lines[3]), "keys     floating");
+    assert_eq!(text(&frame.lines[4]), "reload   ok");
     assert_eq!(
         (frame.col, frame.row, frame.width, frame.height),
-        (24, 9, 31, 6)
+        (24, 8, 31, 7)
     );
 }
 
@@ -415,13 +485,15 @@ fn saved_values_shown() {
         &[
             MODAL,
             ("sidebar.lua", "return false\n"),
+            ("band_ends.lua", "return \"bounce\"\n"),
             ("interactive_on_new.lua", "return true\n"),
         ],
     );
     settings.open();
     let frame = settings.frame();
     assert_eq!(text(&frame.lines[1]), "sidebar  off");
-    assert_eq!(text(&frame.lines[3]), "I on new on");
+    assert_eq!(text(&frame.lines[2]), "bands    bounce");
+    assert_eq!(text(&frame.lines[4]), "I on new on");
 }
 
 #[test]
@@ -501,14 +573,15 @@ fn turn_the_sidebar_off() {
 fn switch_the_key_style() {
     let settings = Settings::new("keys-style", &[MODAL]);
     settings.open();
-    clean(&settings.press("down"));
-    clean(&settings.press("down"));
+    for _ in 0..3 {
+        clean(&settings.press("down"));
+    }
     clean(&settings.press("l"));
     assert_eq!(
         settings.file("keystyle.lua").as_deref(),
         Some("return \"direct\"\n")
     );
-    assert_eq!(settings.config.runtime.take_settings_reopen(), Some(3));
+    assert_eq!(settings.config.runtime.take_settings_reopen(), Some(4));
     assert_eq!(settings.user_names(), ["keystyle.lua"]);
 }
 
@@ -516,15 +589,16 @@ fn step_key_style(name: &str, saved: &str, key: &str, expected: &str) {
     let saved = format!("return \"{saved}\"\n");
     let settings = Settings::new(name, &[("keystyle.lua", &saved)]);
     settings.open();
-    clean(&settings.press("down"));
-    clean(&settings.press("down"));
+    for _ in 0..3 {
+        clean(&settings.press("down"));
+    }
     clean(&settings.press(key));
     assert_eq!(
         settings.file("keystyle.lua"),
         Some(format!("return \"{expected}\"\n")),
         "{key}"
     );
-    assert_eq!(settings.config.runtime.take_settings_reopen(), Some(3));
+    assert_eq!(settings.config.runtime.take_settings_reopen(), Some(4));
 }
 
 #[test]
@@ -549,11 +623,58 @@ fn back_from_the_floating_style() {
     step_key_style("keys-back-from-floating", "floating", "h", "direct");
 }
 
+fn step_band_ends(name: &str, saved: Option<&str>, key: &str, expected: &str) {
+    let saved = saved.map(|value| format!("return \"{value}\"\n"));
+    let mut files = vec![MODAL];
+    if let Some(saved) = &saved {
+        files.push(("band_ends.lua", saved));
+    }
+    let settings = Settings::new(name, &files);
+    settings.open();
+    for _ in 0..2 {
+        clean(&settings.press("j"));
+    }
+    clean(&settings.press(key));
+    assert_eq!(
+        settings.file("band_ends.lua"),
+        Some(format!("return \"{expected}\"\n")),
+        "{key}"
+    );
+    assert_eq!(settings.config.runtime.take_settings_reopen(), Some(3));
+}
+
+#[test]
+fn bounce_the_band_ends() {
+    step_band_ends("bands-bounce", None, "l", "bounce");
+}
+
+#[test]
+fn band_ends_step_forward_from_bounce() {
+    step_band_ends("bands-forward-enter", Some("bounce"), "enter", "stop");
+    step_band_ends("bands-forward-l", Some("bounce"), "l", "stop");
+}
+
+#[test]
+fn band_ends_wrap_back_from_loop() {
+    step_band_ends("bands-back-h", None, "h", "stop");
+    step_band_ends("bands-back-left", Some("loop"), "left", "stop");
+}
+
+#[test]
+fn band_ends_step_back_from_stop() {
+    step_band_ends("bands-back-from-stop", Some("stop"), "h", "bounce");
+}
+
+#[test]
+fn band_ends_wrap_forward_from_stop() {
+    step_band_ends("bands-wrap-forward", Some("stop"), "right", "loop");
+}
+
 #[test]
 fn turn_interactive_on_new_on() {
     let settings = Settings::new("keys-interactive-fresh", &[MODAL]);
     settings.open();
-    for _ in 0..3 {
+    for _ in 0..4 {
         clean(&settings.press("j"));
     }
     clean(&settings.press("enter"));
@@ -561,7 +682,7 @@ fn turn_interactive_on_new_on() {
         settings.file("interactive_on_new.lua").as_deref(),
         Some("return true\n")
     );
-    assert_eq!(settings.config.runtime.take_settings_reopen(), Some(4));
+    assert_eq!(settings.config.runtime.take_settings_reopen(), Some(5));
     for name in ["l", "right", "h", "left"] {
         let before = settings.file("interactive_on_new.lua");
         clean(&settings.press(name));
@@ -576,7 +697,7 @@ fn turn_interactive_on_new_off() {
         &[MODAL, ("interactive_on_new.lua", "return true\n")],
     );
     settings.open();
-    for _ in 0..3 {
+    for _ in 0..4 {
         clean(&settings.press("j"));
     }
     clean(&settings.press("enter"));
@@ -584,7 +705,7 @@ fn turn_interactive_on_new_off() {
         settings.file("interactive_on_new.lua").as_deref(),
         Some("return false\n")
     );
-    assert_eq!(settings.config.runtime.take_settings_reopen(), Some(4));
+    assert_eq!(settings.config.runtime.take_settings_reopen(), Some(5));
 }
 
 #[test]
@@ -593,13 +714,13 @@ fn turn_interactive_on_new_back_on() {
         "keys-interactive-on",
         &[MODAL, ("interactive_on_new.lua", "return false\n")],
     );
-    clean(&settings.config.runtime.open_settings(4));
+    clean(&settings.config.runtime.open_settings(5));
     clean(&settings.press("h"));
     assert_eq!(
         settings.file("interactive_on_new.lua").as_deref(),
         Some("return true\n")
     );
-    assert_eq!(settings.config.runtime.take_settings_reopen(), Some(4));
+    assert_eq!(settings.config.runtime.take_settings_reopen(), Some(5));
 }
 
 #[test]
@@ -893,22 +1014,22 @@ fn enter_on_the_reload_line() {
     let settings = Settings::new("window-reload-enter", &[MODAL]);
     settings.open();
     let before = settings.user_names();
-    for _ in 0..4 {
+    for _ in 0..5 {
         clean(&settings.press("j"));
     }
-    assert_eq!(settings.cursor(), 5);
+    assert_eq!(settings.cursor(), 6);
     let outcome = settings.press("enter");
     clean(&outcome);
     assert!(reload_dispatched(&outcome), "{:?}", outcome.dispatched);
-    assert_eq!(settings.config.runtime.take_settings_reopen(), Some(5));
+    assert_eq!(settings.config.runtime.take_settings_reopen(), Some(6));
     assert_eq!(settings.user_names(), before);
 }
 
 #[test]
 fn arrows_on_the_reload_line() {
     for (name, style, line) in [
-        ("window-reload-arrows", "modal", 5),
-        ("window-reload-arrows-direct", "direct", 4),
+        ("window-reload-arrows", "modal", 6),
+        ("window-reload-arrows-direct", "direct", 5),
     ] {
         let settings = Settings::new(name, &[("keystyle.lua", &format!("return \"{style}\"\n"))]);
         settings.open();

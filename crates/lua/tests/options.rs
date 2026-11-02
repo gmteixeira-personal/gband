@@ -4,7 +4,7 @@ use common::*;
 use gband_core::action::Steps;
 use gband_core::input::Modifiers;
 use gband_core::layout::Proportion;
-use gband_core::view::CenterFocusedColumn;
+use gband_core::view::{BandEnds, CenterFocusedColumn};
 use gband_lua::{Binding, BorderChars, CharSet, ConfigError, Options, Sides};
 
 fn error_naming<'a>(errors: &'a [ConfigError], name: &str) -> &'a ConfigError {
@@ -241,6 +241,7 @@ fn list_holds_built_in_and_declared_options() {
         [
             "animation_speed",
             "animations",
+            "band_ends",
             "center_focused_column",
             "floating_border_chars",
             "floating_border_sides",
@@ -248,7 +249,6 @@ fn list_holds_built_in_and_declared_options() {
             "focused_tile_border_chars",
             "greeting",
             "height_step",
-            "loop_bands",
             "mouse_mod",
             "notify_style",
             "prefix",
@@ -383,21 +383,31 @@ fn notify_style() {
 
 #[test]
 fn looping_bands_by_default() {
-    let scratch = Scratch::new("loop-bands-default");
-    scratch.write("looping = gband.opt.loop_bands");
+    let scratch = Scratch::new("band-ends-default");
+    scratch.write("ends = gband.opt.band_ends");
     let config = scratch.loaded();
-    assert!(global::<bool>(&config, "looping"));
-    assert!(config.options.loop_bands);
+    assert_eq!(global::<String>(&config, "ends"), "loop");
+    assert_eq!(config.options.band_ends, BandEnds::Loop);
+}
+
+#[test]
+fn bouncing_band_ends() {
+    let scratch = Scratch::new("band-ends-bounce");
+    scratch.write("\n\ngband.set { band_ends = \"bounce\" }\nends = gband.opt.band_ends");
+    let config = scratch.loaded();
+    assert!(config.errors.is_empty(), "{:?}", config.errors);
+    assert_eq!(global::<String>(&config, "ends"), "bounce");
+    assert_eq!(config.options.band_ends, BandEnds::Bounce);
 }
 
 #[test]
 fn looping_bands_turned_off() {
-    let scratch = Scratch::new("loop-bands-off");
-    scratch.write("\n\ngband.set { loop_bands = false }\nlooping = gband.opt.loop_bands");
+    let scratch = Scratch::new("band-ends-stop");
+    scratch.write("\n\ngband.set { band_ends = \"stop\" }\nends = gband.opt.band_ends");
     let config = scratch.loaded();
     assert!(config.errors.is_empty(), "{:?}", config.errors);
-    assert!(!global::<bool>(&config, "looping"));
-    assert!(!config.options.loop_bands);
+    assert_eq!(global::<String>(&config, "ends"), "stop");
+    assert_eq!(config.options.band_ends, BandEnds::Stop);
 }
 
 #[test]
@@ -628,10 +638,20 @@ fn animation_options_belong_to_the_client() {
 
 #[test]
 fn looping_bands_of_the_wrong_type() {
-    let scratch = Scratch::new("loop-bands-wrong-type");
-    let path = scratch.write("gband.opt.loop_bands = false\n\ngband.opt.loop_bands = 'yes'");
+    let scratch = Scratch::new("band-ends-wrong-value");
+    let path = scratch.write("gband.opt.band_ends = 'stop'\n\ngband.opt.band_ends = \"wrap\"");
     let config = scratch.loaded();
-    assert!(config.options.loop_bands);
+    assert_eq!(config.options.band_ends, BandEnds::Loop);
+    let error = error_naming(&config.errors, "band_ends");
+    assert_error_at(error, &path, 3, "band_ends");
+}
+
+#[test]
+fn retired_looping_option() {
+    let scratch = Scratch::new("loop-bands-retired");
+    let path = scratch.write("\n\ngband.opt.loop_bands = false");
+    let config = scratch.loaded();
+    assert_eq!(config.options.band_ends, BandEnds::Loop);
     let error = error_naming(&config.errors, "loop_bands");
     assert_error_at(error, &path, 3, "loop_bands");
 }

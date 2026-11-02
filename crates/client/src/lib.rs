@@ -37,7 +37,7 @@ use gband_core::layout::{
 };
 use gband_core::names::shown_names;
 use gband_core::terminal_input::{Decoder, TerminalInput};
-use gband_core::view::{CenterFocusedColumn, Layer, Scene, View, ViewAction};
+use gband_core::view::{BandEnds, CenterFocusedColumn, Layer, Scene, View, ViewAction};
 use gband_emulator::{Emulator, Grid};
 use gband_lua::{
     BandState, Bar, Binding, Border, BorderChars, ClientStyles, Config, ConfigError,
@@ -272,7 +272,7 @@ pub struct Display {
     presentation: Presentation,
     prefix: Option<Key>,
     policy: CenterFocusedColumn,
-    loop_bands: bool,
+    band_ends: BandEnds,
     banner: Option<String>,
     errors: Vec<String>,
     from_server: Vec<bool>,
@@ -323,7 +323,7 @@ impl Display {
             presentation: Presentation::new(animations),
             prefix: None,
             policy: CenterFocusedColumn::default(),
-            loop_bands: true,
+            band_ends: BandEnds::default(),
             banner: None,
             errors: Vec::new(),
             from_server: Vec::new(),
@@ -752,12 +752,12 @@ impl Display {
         self.presentation.set_animations(options.animations);
         self.presentation
             .set_speed(options.animation_speed, Instant::now());
-        let looping = std::mem::replace(&mut self.loop_bands, options.loop_bands);
+        let ends = std::mem::replace(&mut self.band_ends, options.band_ends);
         if let Some(view) = &mut self.view {
             view.set_center_focused_column(self.policy);
-            view.set_loop_bands(self.loop_bands);
+            view.set_band_ends(self.band_ends);
         }
-        if looping != self.loop_bands {
+        if ends != self.band_ends {
             self.with_view(View::sync);
         }
     }
@@ -1121,7 +1121,7 @@ impl Display {
     fn sync(&mut self) {
         if self.view.is_none() {
             let mut view = View::with_policy(self.scene(), self.policy);
-            view.set_loop_bands(self.loop_bands);
+            view.set_band_ends(self.band_ends);
             view.sync(self.scene());
             self.view = Some(view);
             self.presentation.snap();

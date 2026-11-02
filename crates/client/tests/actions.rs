@@ -307,9 +307,9 @@ fn focus_goes_round_the_band_by_default() {
 }
 
 #[test]
-fn loop_bands_off_stops_focus_at_the_last_column() {
-    let config = Scratch::new("loop-bands-off")
-        .load("gband.set { loop_bands = false }")
+fn band_ends_stop_holds_focus_at_the_last_column() {
+    let config = Scratch::new("band-ends-stop")
+        .load("gband.set { band_ends = 'stop' }")
         .unwrap();
     let (mut display, windows) = three_columns();
     let _controls = Controls::new(config, &mut display);
@@ -317,6 +317,19 @@ fn loop_bands_off_stops_focus_at_the_last_column() {
         dispatch(&mut display, Action::View(ViewAction::FocusRight));
     }
     assert_eq!(display.focused(), Some(windows[2]));
+}
+
+#[test]
+fn band_ends_bounce_sends_focus_back_to_the_first_column() {
+    let config = Scratch::new("band-ends-bounce")
+        .load("gband.set { band_ends = 'bounce' }")
+        .unwrap();
+    let (mut display, windows) = three_columns();
+    let _controls = Controls::new(config, &mut display);
+    for _ in 0..3 {
+        dispatch(&mut display, Action::View(ViewAction::FocusRight));
+    }
+    assert_eq!(display.focused(), Some(windows[0]));
 }
 
 #[test]

@@ -53,13 +53,24 @@ t.case("focus left goes round the strip without end", function(g)
   end
 end)
 
-t.case("looping off stops focus at the last column", function(g)
+t.case("stop holds focus at the last column", function(g)
   three_windows(g, [[
-    gband.set { loop_bands = false }
+    gband.set { band_ends = "stop" }
     gband.keymap.set("prefix", "n", gband.action.open_window)
     gband.keymap.set("prefix", "l", gband.action.focus_column_right)
   ]])
   shows(g, "2,3")
   g.keys("ctrl+space l")
   shows(g, "2,3")
+end)
+
+t.case("bounce scrolls back from the last column to the first", function(g)
+  three_windows(g, [[
+    gband.set { band_ends = "bounce" }
+    gband.keymap.set("prefix", "n", gband.action.open_window)
+    gband.keymap.set("prefix", "l", gband.action.focus_column_right)
+  ]])
+  shows(g, "2,3")
+  g.keys("ctrl+space l")
+  shows(g, "1,2")
 end)

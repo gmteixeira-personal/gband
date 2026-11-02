@@ -12,7 +12,7 @@ use gband_core::input::{Modifiers, MouseButton, MouseEvent, MouseKind};
 use gband_core::layout::{
     BandId, Direction, Layout, LayoutOptions, Proportion, SessionAction, WindowHeight, WindowId,
 };
-use gband_core::view::{Scene, View, ViewAction};
+use gband_core::view::{BandEnds, Scene, View, ViewAction};
 use gband_lua::keys::parse_key;
 use gband_protocol::ServerMessage;
 use ratatui::Terminal;
@@ -622,6 +622,40 @@ fn scroll_left_across_the_seam() {
     assert!(frames.iter().any(|frame| -40 < frame[0] && frame[0] < 0));
     assert!(moving(&frames, |before, after| after >= before));
     assert!(follows_on(&frames));
+}
+
+#[test]
+fn bounce_scrolls_back_across_the_band() {
+    let (layout, [a, b, c]) = three_columns();
+    let mut view = View::new(scene(&layout));
+    view.set_band_ends(BandEnds::Bounce);
+    for _ in 0..2 {
+        view.apply(ViewAction::FocusRight, scene(&layout));
+    }
+    assert_eq!((view.focused(), view.camera()), (Some(c), 40));
+    let mut presentation = Presentation::new(Animations::On);
+    presentation.update(Instant::now(), &view_targets(&layout, &view));
+    view.apply(ViewAction::FocusRight, scene(&layout));
+    assert_eq!((view.focused(), view.camera()), (Some(a), 0));
+    let start = Instant::now();
+    presentation.update(start, &view_targets(&layout, &view));
+    let cameras: Vec<i64> = (0..=25)
+        .map(|frame| {
+            let drawn = presentation.drawn(start + ms(16 * frame));
+            let band = drawn.bands.last().unwrap();
+            assert_eq!(band.strip, None);
+            band.camera
+        })
+        .collect();
+    assert_eq!(cameras[0], 40);
+    assert_eq!(*cameras.last().unwrap(), 0);
+    assert!(cameras.iter().all(|&camera| (0..=40).contains(&camera)));
+    assert!(cameras.windows(2).all(|pair| pair[1] <= pair[0]));
+    assert!(cameras.iter().any(|&camera| 0 < camera && camera < 40));
+    assert_eq!(
+        frames(&presentation, start, &[a, b]).last().unwrap(),
+        &[0, 40]
+    );
 }
 
 #[test]
