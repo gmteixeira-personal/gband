@@ -328,7 +328,10 @@ fn saved_band_ends_in_use() {
     );
     assert_eq!(saved_band_ends(&settings).as_deref(), Some("stop"));
     assert_eq!(band_ends_option(&settings), "stop");
-    assert_eq!(settings.config.options.band_ends, gband_core::view::BandEnds::Stop);
+    assert_eq!(
+        settings.config.options.band_ends,
+        gband_core::view::BandEnds::Stop
+    );
 }
 
 #[test]

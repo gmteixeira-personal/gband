@@ -652,7 +652,10 @@ fn bounce_scrolls_back_across_the_band() {
     assert!(cameras.iter().all(|&camera| (0..=40).contains(&camera)));
     assert!(cameras.windows(2).all(|pair| pair[1] <= pair[0]));
     assert!(cameras.iter().any(|&camera| 0 < camera && camera < 40));
-    assert_eq!(frames(&presentation, start, &[a, b]).last().unwrap(), &[0, 40]);
+    assert_eq!(
+        frames(&presentation, start, &[a, b]).last().unwrap(),
+        &[0, 40]
+    );
 }
 
 #[test]
