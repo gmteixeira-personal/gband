@@ -57,7 +57,7 @@ The saved `I on new` setting SHALL live in the file `user/interactive_on_new.lua
 
 `gband.settings.interactive_on_new()` SHALL evaluate `user/interactive_on_new.lua` as "Saved theme" defines for `user/theme.lua`. It SHALL return the chunk's value when that value is a boolean, and nil in every case where `gband.settings.theme()` returns nil. It SHALL raise no error and report none. It SHALL be callable while the configuration loads and in any callback. Loading SHALL evaluate `user/interactive_on_new.lua` only in this way, never as a configuration file, a plugin file or a module.
 
-The setting is off unless `gband.settings.interactive_on_new()` returns `true`. The modal key style's `n` binding SHALL read the setting once, while the configuration loads. When the setting is on, the binding SHALL return to interactive mode after it opens a window. When it is off, the binding SHALL open the window and leave navigation mode active, as the client-attach capability defines. The direct key style SHALL NOT read the setting.
+The setting is off unless `gband.settings.interactive_on_new()` returns `true`. The `n` binding of navigation mode, in the modal key style's `prefix` and the direct key style's `navigation`, SHALL read the setting once, while the configuration loads. When the setting is on, the binding SHALL return to interactive mode after it opens a window. When it is off, the binding SHALL open the window and leave navigation mode active, as the client-attach capability defines. The direct key style's `n` in `prefix` SHALL NOT read the setting.
 
 #### Scenario: Saved file
 - **WHEN** the settings window saves `I on new` as off
@@ -67,6 +67,7 @@ The setting is off unless `gband.settings.interactive_on_new()` returns `true`. 
 - **WHEN** no `user/interactive_on_new.lua` exists and a callback calls `gband.settings.interactive_on_new()`
 - **THEN** the call returns nil
 - **AND** with the modal style, Ctrl+Space then `n` leaves navigation mode active
+- **AND** with the direct style, Ctrl+Space, Space, then `n` leaves navigation mode active
 
 #### Scenario: Unknown saved value
 - **WHEN** `user/interactive_on_new.lua` holds `return "off"` and a callback calls `gband.settings.interactive_on_new()`
@@ -106,7 +107,7 @@ The settings window SHALL have a border, the title `settings`, and its cursor li
 | 5 | `I on new` | `on` when `gband.settings.interactive_on_new()` returns `true`, `off` otherwise |
 | last | `reload` | `ok` when `gband.errors()` returns an empty list, `1 error` when it holds one error, and the number of errors followed by ` errors` otherwise |
 
-The `I on new` line SHALL be present only when the fourth line shows `modal`, and the `reload` line SHALL then be the sixth. When the fourth line shows `direct` or `floating`, the window SHALL hold the first four lines and the `reload` line as its fifth.
+The `I on new` line SHALL be present only when the fourth line shows `modal` or `direct`, and the `reload` line SHALL then be the sixth. When the fourth line shows `floating`, the window SHALL hold the first four lines and the `reload` line as its fifth.
 
 The cursor line SHALL start on the first line, except as "Reopen after a save" defines. The window's width SHALL be the smaller of 31 and the ribbon area's width. Its height SHALL be the smaller of the number of its lines plus 2 and the ribbon area's height. It SHALL be centered in the ribbon area, rounding the left and top offsets down. A line wider than the content area SHALL be cut at the content area's edge, as the plugin-windows capability defines.
 
@@ -120,8 +121,8 @@ The cursor line SHALL start on the first line, except as "Reopen after a save" d
 
 #### Scenario: Window with the direct style
 - **WHEN** `user/keystyle.lua` holds `return "direct"`, the default configuration is in use on an 80×24 terminal, and the settings window opens
-- **THEN** the window holds five lines, the fourth showing `keys     direct` and the fifth `reload   ok`
-- **AND** it is 31 columns wide and 7 rows high, and spans columns 24 to 54 and rows 8 to 14 of the 79-column ribbon area
+- **THEN** the window holds six lines, the fourth showing `keys     direct`, the fifth `I on new off` and the sixth `reload   ok`
+- **AND** it is 31 columns wide and 8 rows high, and spans columns 24 to 54 and rows 8 to 15 of the 79-column ribbon area
 
 #### Scenario: Window with the floating style
 - **WHEN** `user/keystyle.lua` holds `return "floating"`, the default configuration is in use on an 80×24 terminal, and the settings window opens
@@ -184,7 +185,7 @@ When `gband.config_dir` is nil, or a file cannot be written, the key SHALL save 
 #### Scenario: Switch the key style
 - **WHEN** no `user/init.lua` exists, the modal style is saved, the settings window is open on its fourth line, and the user presses `l`
 - **THEN** `user/keystyle.lua` holds `return "direct"`
-- **AND** within two seconds the configuration reloads with the direct style's bindings, and the reopened settings window holds five lines
+- **AND** within two seconds the configuration reloads with the direct style's bindings, and the reopened settings window holds six lines
 
 #### Scenario: Switch to the floating style
 - **WHEN** no `user/init.lua` exists, the direct style is saved, the settings window is open on its fourth line, and the user presses Enter
@@ -208,6 +209,11 @@ When `gband.config_dir` is nil, or a file cannot be written, the key SHALL save 
 - **WHEN** no `user/init.lua` exists, `user/interactive_on_new.lua` holds `return true`, the modal style is in use, the settings window is open on its fifth line, and the user presses Enter
 - **THEN** `user/interactive_on_new.lua` holds `return false`
 - **AND** after the reload the settings window is open on its fifth line showing `I on new off`, and Ctrl+Space then `n` leaves navigation mode active
+
+#### Scenario: Turn I on new on with the direct style
+- **WHEN** no `user/init.lua` and no `user/interactive_on_new.lua` exist, the direct style is in use, the settings window is open on its fifth line, and the user presses Enter
+- **THEN** `user/interactive_on_new.lua` holds `return true`
+- **AND** after the reload the settings window is open on its fifth line showing `I on new on`, and Ctrl+Space, Space, then `n` returns to interactive mode
 
 #### Scenario: Turn I on new back on
 - **WHEN** `user/interactive_on_new.lua` holds `return false`, the settings window is open on its fifth line, and the user presses `h`

@@ -242,9 +242,9 @@ With the modal key style, the bindings SHALL be: Ctrl+Space as the prefix, no bi
 | Ctrl+Space | `prefix prefix` | send the prefix key to the focused window, or to every window of the viewed band while multi mode is on, then return to interactive mode | client | `send the prefix key` |
 | any other key | — | discard the key; navigation mode stays active | — | |
 
-With the direct key style, the bindings SHALL be: Ctrl+Space as the prefix, no binding in `root`, no mode, and in `prefix` every row of the table above except Escape and Enter, in the same order. `n` SHALL be bound to open window, `m` to toggle multi mode and Ctrl+Space to send the prefix key, each to the action itself, with that action's description. Every other row SHALL be bound as with the modal key style. Each key after the prefix key SHALL end the key sequence, as in any table that is not a mode, so `root` is active again after it. Any other key, Escape and Enter included, SHALL be discarded together with the prefix key.
+With the direct key style, the bindings SHALL be: Ctrl+Space as the prefix, no binding in `root`, `navigation` declared a mode with the label `navigation`, and in `prefix` every row of the table above except Escape and Enter, in the same order, with Space in their place bound to a Lua function with the description `navigation mode` that makes `navigation` active. `n` SHALL be bound to open window, `m` to toggle multi mode and Ctrl+Space to send the prefix key, each to the action itself, with that action's description. Every other row SHALL be bound as with the modal key style. Each key after the prefix key SHALL end the key sequence, as in any table that is not a mode, so `root` is active again after it. Any other key, Escape and Enter included, SHALL be discarded together with the prefix key. In `navigation`, the direct key style SHALL make every row of the table above, in the same order, bound as with the modal key style, so the prefix key then Space enters navigation mode and every key in it behaves as in the modal key style's navigation mode.
 
-With the modal and the direct key styles, the client SHALL also hold the `agents` and `bands` modes, as the jump-modes capability's "Jump mode tables" defines. `a` and `b` in `prefix` SHALL enter them, so `agents` or `bands` is active after the key, and navigation mode is not.
+With the modal and the direct key styles, the client SHALL also hold the `agents` and `bands` modes, as the jump-modes capability's "Jump mode tables" defines. `a` and `b` in `prefix`, and with the direct key style also in `navigation`, SHALL enter them, so `agents` or `bands` is active after the key, and navigation mode is not.
 
 With the floating key style, the bindings SHALL be: Ctrl+Space as the prefix, no key binding in `root`, no mode, and in `prefix` the bindings that the floating-key-style capability's "Floating bindings" gives, in its order. The floating preset's handler of `KeyTableChanged` SHALL make `root` active again as soon as the prefix key makes `prefix` active, and SHALL open the window list, as that capability's "Leader" defines. The keys that follow SHALL therefore reach the window list, and a key bound in `prefix` SHALL run from the window list as its "Window list" defines.
 
@@ -374,6 +374,19 @@ Where a scenario of this requirement names no key style, the modal key style is 
 - **WHEN** the direct key style is saved, no `user/init.lua` exists, one window is open, and the user presses Ctrl+Space then Enter
 - **THEN** no window opens and the focused window receives nothing
 - **AND** `root` is the active table
+
+#### Scenario: Navigation mode with the direct key style
+- **WHEN** the direct key style is saved, no `user/init.lua` exists, the first of three columns is focused, and the user presses Ctrl+Space, Space, `l`, then `l`
+- **THEN** the third column is focused, no window receives a key, and navigation mode stays active
+
+#### Scenario: Open a window from direct navigation mode
+- **WHEN** the direct key style is saved, no `user/init.lua` exists, no `user/interactive_on_new.lua` exists, one window is focused, and the user presses Ctrl+Space, Space, then `n`
+- **THEN** a second window opens right of the first and is focused
+- **AND** navigation mode stays active
+
+#### Scenario: Multi mode from direct navigation mode
+- **WHEN** the direct key style is saved, no `user/init.lua` exists, the viewed band holds two shell windows, and the user presses Ctrl+Space, Space, `m`, then types `echo hi` and Enter
+- **THEN** `root` is active and both windows print `hi`
 
 #### Scenario: Named key table
 - **WHEN** `user/init.lua` binds `h` and `l` in the table `move`, and binds `prefix m` to a function that calls `gband.keymap.enter("move")`, and the user presses Ctrl+Space, `m`, then `l`, with the first of two columns focused
