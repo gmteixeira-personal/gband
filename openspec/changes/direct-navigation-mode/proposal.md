@@ -57,6 +57,7 @@ None.
 ### Expected Files
 - README.md
 - crates/client/src/bindings.rs
+- crates/harness/src/case.rs
 - crates/lua/src/bundled.rs
 - crates/lua/src/runtime/gband/jump.lua
 - crates/lua/src/runtime/gband/keylist.lua
@@ -66,16 +67,25 @@ None.
 - crates/lua/src/runtime/gband/prelude.lua
 - crates/lua/src/runtime/gband/settings.lua
 - crates/lua/src/runtime/meta/gband.lua
+- crates/lua/src/sides.rs
+- crates/lua/tests/config.rs
 - crates/lua/tests/keystyle.rs
 - crates/lua/tests/settings.rs
+- docs/internals/00-boundary.md
 - docs/internals/07-settings.md
 - docs/internals/08-key-styles.md
+- docs/internals/10-keylist-and-prompt.md
+- docs/internals/12-own-prelude.md
 - docs/plugins.md
+- docs/testing.md
 - docs/tutorial/00-setup.md
+- examples/internals/12-own-prelude/user/lua/gband/prelude.lua
 - openspec/changes/direct-navigation-mode/
 - tests/keystyle.rs
+- tests/lua/agents_spec.lua
+- tests/lua/floating_spec.lua
 - tests/lua/keylist_spec.lua
 - tests/lua/keystyle_spec.lua
-- tests/lua/screenshots/
+- tests/lua/screenshots/settings_spec/the-settings-window-with-the-direct-key-style--direct.txt
 - tests/lua/settings_spec.lua
 - tests/settings.rs
