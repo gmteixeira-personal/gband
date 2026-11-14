@@ -213,6 +213,8 @@ mod tests {
 
     use super::*;
 
+    const NAVIGATION: &str = "navigation";
+
     fn defaults() -> Keymap {
         let config = gband_lua::defaults(gband_lua::Side::Client);
         Keymap::new(&config.options, config.keymap, config.modes)
@@ -528,15 +530,21 @@ mod tests {
         let modal_entries = default_prefix_entries();
         let config = with_saved_style("direct");
         let entries = prefix_entries(&config);
+        let navigation = table_entries(&config, NAVIGATION);
         let keymap = Keymap::new(&config.options, config.keymap, config.modes);
         let keys: Vec<&str> = entries.iter().map(|(key, _, _)| key.as_str()).collect();
         let expected: Vec<&str> = modal_entries
             .iter()
             .map(|(key, _, _)| key.as_str())
-            .filter(|key| !matches!(*key, "escape" | "enter"))
+            .filter(|key| *key != "enter")
+            .map(|key| if key == "escape" { "space" } else { key })
             .collect();
         assert_eq!(keys, expected);
-        assert_eq!(keymap.modes.iter().collect::<Vec<_>>(), ["agents", "bands"]);
+        assert_eq!(
+            keymap.modes.iter().collect::<Vec<_>>(),
+            ["agents", "bands", NAVIGATION]
+        );
+        assert_eq!(navigation, modal_entries);
         assert_mouse_rows(&keymap);
         let own = [
             (
@@ -563,6 +571,14 @@ mod tests {
                 assert_eq!(action.as_deref(), Some(*name), "{key}");
                 assert_eq!(desc, described, "{key}");
                 assert_eq!(*binding, Binding::Action(*bound), "{key}");
+                continue;
+            }
+            if key == "space" {
+                assert_eq!(
+                    (action.as_deref(), desc.as_str()),
+                    (None, "navigation mode")
+                );
+                assert!(matches!(binding, Binding::Callback(_)), "{key}");
                 continue;
             }
             let index = modal_entries
@@ -597,6 +613,17 @@ mod tests {
             leader.handle(&keymap, Key::plain(KeyCode::Enter)),
             Command::Discard
         );
+        let mut leader = Leader::default();
+        leader.handle(&keymap, keymap.prefix);
+        assert!(matches!(
+            leader.handle(&keymap, char_key(' ')),
+            Command::Run(Binding::Callback(_))
+        ));
+        leader.enter(NAVIGATION.to_owned());
+        for key in [char_key('l'), char_key('l'), char_key('x')] {
+            leader.handle(&keymap, key);
+            assert_eq!(leader.active(), NAVIGATION, "{key:?}");
+        }
     }
 
     #[test]
@@ -678,7 +705,10 @@ mod tests {
                     table != PREFIX || !matches!(key.as_str(), "escape" | "enter")
                 })
                 .collect();
-            let direct_entries = table_entries(&direct, table);
+            let direct_entries: Vec<_> = table_entries(&direct, table)
+                .into_iter()
+                .filter(|(key, _, _)| table != PREFIX || key != "space")
+                .collect();
             let keys = |entries: &[(String, Option<String>, String)]| {
                 entries
                     .iter()
@@ -694,6 +724,10 @@ mod tests {
                 }
             }
         }
+        assert_eq!(
+            table_entries(&direct, NAVIGATION),
+            table_entries(&modal, PREFIX)
+        );
     }
 
     #[test]

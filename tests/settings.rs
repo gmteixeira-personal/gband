@@ -98,6 +98,17 @@ fn labelled(env: &TestEnv) -> Attached {
 
 fn new_window(client: &mut Attached) {
     client.send(b"\x00n");
+    second_window(client);
+}
+
+fn new_window_from_direct_navigation(client: &mut Attached) {
+    client.send(b"\x00 ");
+    client.wait_for("direct navigation mode", navigation);
+    client.send(b"n");
+    second_window(client);
+}
+
+fn second_window(client: &Attached) {
     client.wait_for("a second focused window", |screen| {
         tiles(screen).len() == 2 && untouched_prompt(screen) && !focused_shows(screen, "W1")
     });
@@ -283,7 +294,7 @@ fn switch_the_key_style() {
         user_file(&env, "keystyle.lua").as_deref(),
         Some("return \"direct\"\n")
     );
-    assert!(position(&client.screen(), LABELS[4]).is_none());
+    assert!(position(&client.screen(), LABELS[4]).is_some());
     escape(&mut client);
     client.send(b"\x00");
     thread::sleep(Duration::from_millis(100));
@@ -306,7 +317,7 @@ fn switch_key_style(name: &str, saved: &str, key: &[u8], expected: &str) {
     );
     assert_eq!(
         position(&client.screen(), LABELS[4]).is_some(),
-        expected == "modal"
+        expected != "floating"
     );
 }
 
@@ -523,6 +534,39 @@ fn turn_interactive_on_new_off() {
     escape(&mut client);
     new_window(&mut client);
     client.wait_for("navigation mode after the new window", navigation);
+}
+
+#[test]
+fn turn_interactive_on_new_on_with_the_direct_style() {
+    let env = TestEnv::new("settings-interactive-direct-on");
+    env.save_key_style("direct");
+    let mut client = opened(&env);
+    press(&mut client, b"jjjj", 4);
+    let before = reloads(&env);
+    client.send(b"\r");
+    reopened(&client, &env, before, 4, "I on new on");
+    assert_eq!(
+        user_file(&env, "interactive_on_new.lua").as_deref(),
+        Some("return true\n")
+    );
+    escape(&mut client);
+    client.run("clear; echo W1");
+    client.wait_for_line("W1");
+    new_window_from_direct_navigation(&mut client);
+    client.wait_for("interactive mode after the new window", interactive);
+}
+
+#[test]
+fn direct_navigation_with_nothing_saved() {
+    let env = TestEnv::new("settings-interactive-direct-unsaved");
+    env.save_key_style("direct");
+    let mut client = labelled(&env);
+    new_window_from_direct_navigation(&mut client);
+    client.wait_for("navigation mode after the new window", navigation);
+    client.send(b"h");
+    client.wait_for("the first window focused in navigation mode", |screen| {
+        focused_shows(screen, "W1") && navigation(screen)
+    });
 }
 
 #[test]

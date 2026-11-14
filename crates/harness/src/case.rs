@@ -399,13 +399,21 @@ impl Case {
     }
 
     pub fn set_time(&mut self, time: Option<i64>) -> Result<(), String> {
+        let deadline = Instant::now() + START_TIMEOUT;
         for server in [false, true] {
             let side = if server { "server" } else { "client" };
             self.endpoint(server)
                 .set_time(time)
                 .map_err(|waited| self.waited(side, waited, "setting the time"))?;
+            self.caught_up(server, deadline)
+                .map_err(|reason| format!("the {side} did not take the time: {reason}"))?;
         }
         Ok(())
+    }
+
+    fn caught_up(&mut self, server: bool, deadline: Instant) -> Result<(), String> {
+        self.eval(server, "return nil", Vec::new(), deadline)?
+            .map(drop)
     }
 
     fn collect(&mut self) {

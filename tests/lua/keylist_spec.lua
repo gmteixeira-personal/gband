@@ -182,6 +182,45 @@ t.case("title of a prefix table that is not a mode", function(g)
   t.ok(row_of(g, "┌prefix keys"), "the title is drawn")
 end)
 
+t.case("listed table from direct navigation mode", function(g)
+  g.start({ keystyle = "direct" })
+  prompts(g, 1)
+  g.keys("ctrl+space space")
+  g.settle()
+  t.eq(current_table(g), "navigation")
+  g.keys("?")
+  g.settle()
+  local win = view(g).plugin_window
+  t.ok(win, "the key list is focused")
+  t.eq(current_table(g), "root")
+  t.ok(row_of(g, "┌navigation keys"), "the title is drawn")
+  local listed = g.client([[
+    local count = 0
+    for _, entry in ipairs(gband.keymap.list("navigation")) do
+      if not require("gband.keyform").is_mouse(entry.key) then
+        count = count + 1
+      end
+    end
+    return count
+  ]])
+  t.eq(info(g, win).line_count, listed)
+  g.keys("end")
+  g.settle()
+  t.ok(row_of(g, "interactive mode"), "escape and enter are listed")
+  t.ok(not row_of(g, "navigation mode"), "space is not listed")
+end)
+
+t.case("listed table after the direct prefix key", function(g)
+  g.start({ keystyle = "direct" })
+  prompts(g, 1)
+  open(g)
+  t.ok(row_of(g, "┌prefix keys"), "the title is drawn")
+  g.keys("end")
+  g.settle()
+  local _, line = row_of(g, "navigation mode")
+  t.match(line, "│space%s+navigation mode")
+end)
+
 t.case("function binding can run", function(g)
   g.start({ config = MINIMAL })
   open(g)

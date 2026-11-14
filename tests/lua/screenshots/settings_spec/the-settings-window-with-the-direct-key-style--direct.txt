@@ -1,4 +1,4 @@
-size 80x24 cursor 14:56 hidden
+size 80x24 cursor 15:56 hidden
  0|I╭─────────────────────────────────────╮
  1| │$                                    │
  2|1│                                     │
@@ -12,9 +12,9 @@ size 80x24 cursor 14:56 hidden
 10| │                       │sidebar  on                  │
 11| │                       │bands    loop                │
 12|─│                       │keys     direct              │
-13| │                       │reload   ok                  │
-14| │                       └─────────────────────────────┘
-15| │                                     │
+13| │                       │I on new off                 │
+14| │                       │reload   ok                  │
+15| │                       └─────────────────────────────┘
 16| │                                     │
 17| │                                     │
 18| │                                     │
@@ -79,10 +79,12 @@ size 80x24 cursor 14:56 hidden
 13:55 fg=8 bg=0
 14:0 bg=0
 14:1 fg=4 bold
-14:25-55 fg=8 bg=0
+14:25-34 fg=8 bg=0
+14:35-54 fg=7 bg=0
+14:55 fg=8 bg=0
 15:0 bg=0
 15:1 fg=4 bold
-15:39 fg=4 bold
+15:25-55 fg=8 bg=0
 16:0 bg=0
 16:1 fg=4 bold
 16:39 fg=4 bold

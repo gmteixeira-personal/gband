@@ -20,6 +20,7 @@ require("gband.settings")
 require("gband.keystyle")
 require("gband.agents")
 require("gband.jump")
+require("gband.navigation")
 require("gband.colorscheme").start()
 require("mine.clock")
 ```

@@ -33,6 +33,7 @@ gband.keystyle.use()
 ```
 
 Save, and Ctrl+Space works again: with the modal style it enters navigation mode, where `h`, `j`, `k` and `l` move focus and `n` opens a window.
+With the direct style, Ctrl+Space then one key acts once, and Ctrl+Space then Space enters the same navigation mode; both styles make its keys with `gband.navigation.bind`.
 Ctrl+Space then `?` lists every key.
 The modal and direct styles also call `gband.jump.setup()`, which binds Ctrl+Space then `a` to agents mode and `b` to bands mode, where a digit jumps to an agent or a band.
 [Key styles](../plugins.md#key-styles-gbandkeystyle) describes the three styles, and chapter 01 binds keys of your own.

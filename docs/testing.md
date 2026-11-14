@@ -169,7 +169,7 @@ When the case ends, passed or failed, the runner stops the client, the server an
 | `g.wait_text(text, opts)` | waits until the screen's text holds `text` |
 | `g.client(chunk, ...)` | runs `chunk` in the client's Lua, with the arguments as `...`, and returns its results |
 | `g.server(chunk, ...)` | the same in the server's Lua |
-| `g.set_time(time)` | moves the frozen instant, as `time` of `g.start` |
+| `g.set_time(time)` | moves the frozen instant, as `time` of `g.start`, and returns once the client and the server read the new instant |
 
 `g.wait` and `g.wait_text` give up after `opts.timeout` seconds, 5 by default, and fail the case with the screenshot taken when they gave up.
 An invalid argument to any of them is an error at the line of the call.

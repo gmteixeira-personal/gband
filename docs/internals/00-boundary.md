@@ -91,6 +91,7 @@ require("gband.settings")
 require("gband.keystyle")
 require("gband.agents")
 require("gband.jump")
+require("gband.navigation")
 require("gband.colorscheme").start()
 ```
 
@@ -102,7 +103,8 @@ The order matters, because each module calls into those before it as it loads:
 - `gband.bar` and `gband.win` draw with highlight groups.
 - `gband.settings` draws its window with `gband.win`.
 - `gband.keystyle` reads the saved key style through `gband.settings`.
-- `gband.agents` lists the windows that run coding agents, and `gband.jump` builds the agents and bands modes on it; neither draws, so they come last.
+- `gband.agents` lists the windows that run coding agents, and `gband.jump` builds the agents and bands modes on it.
+- `gband.navigation` binds navigation mode, calling `gband.jump` and `gband.settings` when a preset asks; none of the three draws, so they come last.
 
 The last line loads the theme gband starts with, which `gband.settings` has saved.
 An error anywhere in the prelude fails the load, exactly as an error in `user/init.lua` does.

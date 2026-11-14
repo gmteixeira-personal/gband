@@ -27,14 +27,22 @@ local function describe(binding, descs)
   return present(descs[action]) and descs[action] or action
 end
 
-local function entries()
+local function listed_table()
+  local active = gband.keymap.current_table()
+  if active == "root" then
+    return "prefix"
+  end
+  return active
+end
+
+local function entries(listed)
   local descs = {}
   for _, action in ipairs(gband.action.list()) do
     descs[action.name] = action.desc
   end
   local prefix = key_form(gband.opt.prefix)
   local list = {}
-  for _, binding in ipairs(gband.keymap.list("prefix")) do
+  for _, binding in ipairs(gband.keymap.list(listed)) do
     if not key_form.is_mouse(binding.key) then
       local form = binding.key == "prefix" and prefix or key_form(binding.key)
       list[#list + 1] = {
@@ -87,19 +95,20 @@ local function other_float_focused(win)
 end
 
 local function open()
+  local listed = listed_table()
   gband.keymap.enter("root")
   if current and is_open(current) then
     gband.win.focus(current)
     return
   end
-  local list = entries()
+  local list = entries(listed)
   local lines, longest = lines_of(list)
   local function run(win, index)
     local entry = list[index]
     if not (entry and entry.binding) then
       return
     end
-    gband.keymap.run("prefix", entry.binding)
+    gband.keymap.run(listed, entry.binding)
     if is_open(win) and other_float_focused(win) then
       gband.win.close(win)
     end
@@ -118,7 +127,7 @@ local function open()
     end
   end
   current = gband.win.open({
-    title = gband.keymap.label("prefix") .. " keys",
+    title = gband.keymap.label(listed) .. " keys",
     width = longest + 2,
     height = math.min(math.max(#lines + 2, 3), MAX_HEIGHT),
     cursorline = true,

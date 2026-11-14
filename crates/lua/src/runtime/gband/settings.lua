@@ -366,7 +366,7 @@ local function key_style()
 end
 
 local function reload_line()
-  return key_style() == "modal" and INTERACTIVE_ON_NEW + 1 or KEYS + 1
+  return key_style() ~= "floating" and INTERACTIVE_ON_NEW + 1 or KEYS + 1
 end
 
 local function meaning(line)
@@ -400,7 +400,7 @@ local function lines()
     band_ends() or "loop",
     key_style(),
   }
-  if values[KEYS] == "modal" then
+  if values[KEYS] ~= "floating" then
     values[INTERACTIVE_ON_NEW] = interactive_on_new() == true and "on" or "off"
   end
   local out = {}

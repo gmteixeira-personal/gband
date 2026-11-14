@@ -528,9 +528,15 @@ fn with_saved_style(name: &str, style: &str) -> (Scratch, Config) {
 }
 
 fn prefix_keys(config: &Config) -> Vec<String> {
+    table_keys(config, "prefix")
+}
+
+fn table_keys(config: &Config, table: &str) -> Vec<String> {
     eval(
         config,
-        "local keys = {} for _, entry in ipairs(gband.keymap.list('prefix')) do keys[#keys + 1] = entry.key end return keys",
+        &format!(
+            "local keys = {{}} for _, entry in ipairs(gband.keymap.list('{table}')) do keys[#keys + 1] = entry.key end return keys"
+        ),
     )
 }
 
@@ -544,7 +550,7 @@ fn every_default_binding_is_described() {
             56,
             "open a window",
         ),
-        (direct, 54, "open a window"),
+        (direct, 55, "open a window"),
         (floating, 8, "open a floating window"),
     ] {
         assert_described(&config, count, open);
@@ -556,13 +562,32 @@ fn direct_style_from_the_saved_choice() {
     let (_scratch, config) = with_saved_style("saved-direct", "direct");
     let label: String = eval(&config, "return gband.keymap.label('prefix')");
     assert_eq!(label, "prefix");
-    assert_eq!(config.modes.iter().collect::<Vec<_>>(), ["agents", "bands"]);
+    assert_eq!(
+        config.modes.iter().collect::<Vec<_>>(),
+        ["agents", "bands", "navigation"]
+    );
+    let navigation: String = eval(&config, "return gband.keymap.label('navigation')");
+    assert_eq!(navigation, "navigation");
     let modal = prefix_keys(&gband_lua::defaults(gband_lua::Side::Client));
+    assert_eq!(table_keys(&config, "navigation"), modal);
     let expected: Vec<String> = modal
         .into_iter()
-        .filter(|key| !["escape", "enter"].contains(&key.as_str()))
+        .filter(|key| key != "enter")
+        .map(|key| {
+            if key == "escape" {
+                "space".to_owned()
+            } else {
+                key
+            }
+        })
         .collect();
     assert_eq!(prefix_keys(&config), expected);
+    let outcome = config.runtime.call(function_of(&config, prefixed("space")));
+    clean(&outcome);
+    assert_eq!(
+        outcome.dispatched,
+        [Dispatch::Enter("navigation".to_owned())]
+    );
     assert_eq!(root_keys(&config), MOD_ROWS);
     assert_eq!(
         action_of(&config, prefixed("n")),
@@ -666,9 +691,10 @@ fn assert_described(config: &Config, count: usize, open: &str) {
            b = 'bands mode',
            e = 'list the errors',
            E = 'clear the errors',
+           space = 'navigation mode',
          }}
          local wrong = {{}}
-         for _, table in ipairs({{ 'prefix', 'root' }}) do
+         for _, table in ipairs({{ 'prefix', 'root', 'navigation' }}) do
            for _, entry in ipairs(gband.keymap.list(table)) do
              local expected = entry.action and descs[entry.action] or functions[entry.key]
              if entry.desc == nil or entry.desc ~= expected then

@@ -648,7 +648,8 @@ Declaring a mode again replaces its label, and `gband.keymap.set` and `gband.key
 
 While a mode is active, a bound key runs its binding, any other key is discarded, and neither reaches a window or a plugin window.
 The mode stays active after each key and emits no `KeyTableChanged`, until a binding enters another table.
-The modal key style makes `prefix` a mode labelled `navigation`, and leaves it with Escape, Enter, `n`, `?`, `:` and the prefix key; the direct and floating key styles declare no mode.
+The modal key style makes `prefix` a mode labelled `navigation`, and leaves it with Escape, Enter, `n`, `?`, `:` and the prefix key.
+The direct key style makes `navigation` a mode with the same label and the same bindings, entered with the prefix key then Space; its `prefix` is no mode, and the floating key style declares none.
 A mode of your own:
 
 ```lua
@@ -1083,9 +1084,11 @@ gband.plugin("gband.keylist")
 gband.keymap.set("prefix", "?", gband.action["keylist.open"], { desc = "list the keys" })
 ```
 
-`keylist.open` opens a focused floating plugin window titled with `gband.keymap.label("prefix")` and ` keys`, `navigation keys` with the modal key style and `prefix keys` with the direct and floating ones, centred in the ribbon, with its cursor line on the first line.
+`keylist.open` lists the table that was active when it opened, or `prefix` when `root` was.
+It opens a focused floating plugin window titled with that table's `gband.keymap.label` and ` keys`: `navigation keys` from navigation mode with the modal or the direct key style, and `prefix keys` after the direct or the floating style's prefix key.
+It is centred in the ribbon, with its cursor line on the first line.
 It enters `root` as it opens, and as it focuses an open list, so the keys that follow reach the list and not navigation mode.
-It holds one line per binding of the `prefix` table, in the order `gband.keymap.list("prefix")` gives them when it opens: the key in its short form, as "Key form" describes, such as `C-space` for the prefix key, padded to two cells more than the widest key, then the binding's description, its action's description when it has none, its action's name when that is empty too, or `function`.
+It holds one line per binding of the listed table, in the order `gband.keymap.list` gives them when it opens: the key in its short form, as "Key form" describes, such as `C-space` for the prefix key, padded to two cells more than the widest key, then the binding's description, its action's description when it has none, its action's name when that is empty too, or `function`.
 The plugin window is as wide as its longest line plus its border and as high as its lines plus its border, at most 15 rows, and the ribbon caps both.
 Dispatching `keylist.open` while the list is open focuses it and opens no second one.
 
@@ -1316,8 +1319,9 @@ end, { desc = "focus a blocked agent" })
 
 ## Jump modes: `gband.jump`
 
-The client module `gband.jump`, which the prelude loads, holds one function, `gband.jump.setup()`.
-It declares two modes and binds `a` and `b` in `prefix` to enter them, so the modal and the direct presets call it right after their `i` binding:
+The client module `gband.jump`, which the prelude loads, holds one function, `gband.jump.setup(table)`.
+It declares two modes and binds `a` and `b` in `table`, or in `prefix` when `table` is nil, to enter them, so the modal and the direct presets call it right after their `i` binding.
+Calling it again for another table leaves the two modes as one call does:
 
 | mode | label | sidebar letter | keys |
 |---|---|---|---|
@@ -1330,14 +1334,33 @@ Any other key is discarded, as in any mode.
 The floating preset does not call `setup`: its window list already reaches every window.
 A configuration of your own calls `require("gband.jump").setup()` to get the same bindings.
 
+## Navigation mode: `gband.navigation`
+
+The client module `gband.navigation`, which the prelude loads, holds one function, `gband.navigation.bind(table)`.
+It makes navigation mode's bindings in `table`, in the order of the modal key style's `prefix` table, and declares no mode.
+The modal preset calls it for `prefix`, and the direct preset for `navigation`, so the two tables hold the same keys.
+Its `n` reads `gband.settings.interactive_on_new()` once, as it binds, and returns to interactive mode after opening a window only while that is `true`.
+It can only be called while the configuration loads, and `table` must be a non-empty string other than `root`.
+A navigation mode of your own:
+
+```lua
+gband.keymap.mode("nav", { label = "nav" })
+gband.navigation.bind("nav")
+gband.keymap.set("prefix", "space", function()
+  gband.keymap.enter("nav")
+end, { desc = "navigation mode" })
+```
+
 ## Key styles: `gband.keystyle`
 
 gband bundles three key style presets, the modules `gband.keystyle.modal`, `gband.keystyle.direct` and `gband.keystyle.floating`.
 Each is a file of plain top-level calls, as a `user/init.lua` is: it sets up `gband.keylist` and `gband.prompt`, whose actions it binds, then makes its bindings in `prefix`, and binds no key in `root`.
 The modal preset declares `prefix` a mode labelled `navigation` and binds Escape and Enter to return to interactive mode.
 Its `n` opens a window and returns to interactive mode only when `gband.settings.interactive_on_new()` returned `true` when the preset loaded, and otherwise leaves navigation mode active.
-The direct preset declares no mode, so each key after the prefix key acts once; it binds `n` to `open_window` and the prefix key to `send_prefix` directly.
-Both call `gband.jump.setup()` right after their `i` binding, binding `a` to agents mode and `b` to bands mode, as "Jump modes" describes.
+The direct preset's `prefix` is no mode, so each key after the prefix key acts once; it binds `n` to `open_window` and the prefix key to `send_prefix` directly.
+It binds Space, described `navigation mode`, after `D`, where the modal preset binds Escape and Enter, to enter the table `navigation`, which it declares a mode labelled `navigation` and fills with `gband.navigation.bind("navigation")`.
+The modal preset fills its `prefix` with `gband.navigation.bind("prefix")`, so the two navigation modes hold the same keys.
+Both call `gband.jump.setup()` right after their `i` binding, and `gband.navigation.bind` does the same in its table, binding `a` to agents mode and `b` to bands mode, as "Jump modes" describes.
 Both bind Ctrl+Space then `s` to `gband.settings.open`, described `settings`, right after `:`, then `!` to `reload`, described `reload the configuration`, and then `m`, then `e` and `E`, before `D`.
 `e`, described `list the errors`, and `E`, described `clear the errors`, are functions that look up `errors.open` and `errors.clear` in `gband.action` when pressed, and do nothing when `gband.errors` is not set up; looking them up at load time would find nothing, since the default configuration sets up `gband.errors` after the preset.
 The direct preset binds `m` to `toggle_multi`; the modal preset binds it to a function described `multi mode` that dispatches `toggle_multi` and returns to interactive mode, so the sidebar shows `M` at once.
@@ -1385,7 +1408,7 @@ These five are callable while the configuration loads and in any callback.
 Called while the theme list is open, it closes the list as Escape does and focuses the settings window.
 
 The settings window is a floating plugin window with a border, titled `settings`, 31 columns wide and as high as its lines plus its border, at most the ribbon's size, centred in the ribbon, with its cursor line on its first line.
-It holds these lines, each a label in `SettingsLabel` padded to 9 cells, then the value; the `I on new` line only while the `keys` line shows `modal`, and the `reload` line last:
+It holds these lines, each a label in `SettingsLabel` padded to 9 cells, then the value; the `I on new` line only while the `keys` line shows `modal` or `direct`, and the `reload` line last:
 
 | line | value | Enter | `h`, Left, `l`, Right |
 |---|---|---|---|
@@ -1415,7 +1438,7 @@ Calling `open` while the window is open draws its lines again, so a window a fai
 When there is no configuration directory or the write fails, the key raises an error naming the file and the reason, the settings window stays open, and the setting in use stays.
 
 The saved theme applies to every configuration, since it loads before the init file.
-The sidebar, the band ends, the key style and `I on new` apply where a configuration asks for them: the default configuration sets up `gband.sidebar` unless `sidebar()` returns `false`, sets `band_ends` to `band_ends()` or `"loop"`, and calls `gband.keystyle.use()` with no argument, whose modal preset reads `interactive_on_new()`.
+The sidebar, the band ends, the key style and `I on new` apply where a configuration asks for them: the default configuration sets up `gband.sidebar` unless `sidebar()` returns `false`, sets `band_ends` to `band_ends()` or `"loop"`, and calls `gband.keystyle.use()` with no argument, whose navigation mode reads `interactive_on_new()`.
 A `user/init.lua` with its own `n` binding follows the setting by comparing `interactive_on_new()` with `true`, since nil means it was never saved and reads as off.
 A `user/init.lua` that sets up the sidebar, sets `band_ends` or binds its own keys keeps its choice, and the settings window then only saves the setting.
 
