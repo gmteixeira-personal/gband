@@ -452,12 +452,13 @@ fn window_with_the_direct_style() {
     let settings = Settings::new("window-direct", &[("keystyle.lua", "return \"direct\"\n")]);
     settings.open();
     let frame = settings.frame();
-    assert_eq!(frame.lines.len(), 5);
+    assert_eq!(frame.lines.len(), 6);
     assert_eq!(text(&frame.lines[3]), "keys     direct");
-    assert_eq!(text(&frame.lines[4]), "reload   ok");
+    assert_eq!(text(&frame.lines[4]), "I on new off");
+    assert_eq!(text(&frame.lines[5]), "reload   ok");
     assert_eq!(
         (frame.col, frame.row, frame.width, frame.height),
-        (24, 8, 31, 7)
+        (24, 8, 31, 8)
     );
 }
 
@@ -1029,7 +1030,8 @@ fn enter_on_the_reload_line() {
 fn arrows_on_the_reload_line() {
     for (name, style, line) in [
         ("window-reload-arrows", "modal", 6),
-        ("window-reload-arrows-direct", "direct", 5),
+        ("window-reload-arrows-direct", "direct", 6),
+        ("window-reload-arrows-floating", "floating", 5),
     ] {
         let settings = Settings::new(name, &[("keystyle.lua", &format!("return \"{style}\"\n"))]);
         settings.open();

@@ -603,8 +603,17 @@ function gband.agents.step(delta) end
 ---@class gband.Jump
 gband.jump = {}
 
----(client) Declares the `agents` and `bands` modes with their bindings, and binds `a` and `b` in `prefix` to enter them.
-function gband.jump.setup() end
+---(client) Declares the `agents` and `bands` modes with their bindings, and binds `a` and `b` in `table`, or in `prefix` when nil, to enter them.
+---@param table string?
+function gband.jump.setup(table) end
+
+---(client) The bindings of navigation mode.
+---@class gband.Navigation
+gband.navigation = {}
+
+---(client) Makes navigation mode's bindings in `table`, which must not be `root`; callable only while the configuration loads.
+---@param table string
+function gband.navigation.bind(table) end
 
 ---(client) The settings window and the settings it saves.
 ---@class gband.Settings

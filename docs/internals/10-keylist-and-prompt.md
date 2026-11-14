@@ -139,7 +139,20 @@ end
 A line's text is the binding's description, else its action's description, else the action's name, and `function` for a binding to a function with no description.
 
 ```lua defaults/lua/gband/keylist.lua
-local function entries()
+local function listed_table()
+  local active = gband.keymap.current_table()
+  if active == "root" then
+    return "prefix"
+  end
+  return active
+end
+```
+
+The list shows the table that was active when it opened: `prefix` in the modal style's navigation mode, `navigation` in the direct style's.
+After the direct style's prefix key the table is already `root` again, or `prefix` at most, and either reads as `prefix`.
+
+```lua defaults/lua/gband/keylist.lua
+local function entries(listed)
   local descs = {}
   for _, action in ipairs(gband.action.list()) do
     descs[action.name] = action.desc
@@ -148,10 +161,10 @@ local function entries()
   local list = {}
 ```
 
-The list reads everything when it opens: the actions' descriptions, the prefix key and the bindings of `prefix`.
+The list reads everything when it opens: the actions' descriptions, the prefix key and the bindings of the listed table.
 
 ```lua defaults/lua/gband/keylist.lua
-  for _, binding in ipairs(gband.keymap.list("prefix")) do
+  for _, binding in ipairs(gband.keymap.list(listed)) do
     if not key_form.is_mouse(binding.key) then
       local form = binding.key == "prefix" and prefix or key_form(binding.key)
       list[#list + 1] = {
@@ -226,12 +239,13 @@ end
 
 ```lua defaults/lua/gband/keylist.lua
 local function open()
+  local listed = listed_table()
   gband.keymap.enter("root")
   if current and is_open(current) then
     gband.win.focus(current)
     return
   end
-  local list = entries()
+  local list = entries(listed)
   local lines, longest = lines_of(list)
 ```
 
@@ -241,14 +255,14 @@ local function open()
     if not (entry and entry.binding) then
       return
     end
-    gband.keymap.run("prefix", entry.binding)
+    gband.keymap.run(listed, entry.binding)
     if is_open(win) and other_float_focused(win) then
       gband.win.close(win)
     end
   end
 ```
 
-`run` runs a line with `gband.keymap.run("prefix", key)`, which does what pressing the key in `prefix` would.
+`run` runs a line with `gband.keymap.run(listed, key)`, which does what pressing the key in the listed table would.
 An action acts on the focused window behind the list, so you can run several in a row and the list stays open.
 But when the binding opened another floating plugin window, such as the settings window, that window now has focus, and the list closes itself rather than stay behind it.
 
@@ -274,7 +288,7 @@ A binding in `keys` wins over `gband.win`'s defaults, so with the default bindin
 
 ```lua defaults/lua/gband/keylist.lua
   current = gband.win.open({
-    title = gband.keymap.label("prefix") .. " keys",
+    title = gband.keymap.label(listed) .. " keys",
     width = longest + 2,
     height = math.min(math.max(#lines + 2, 3), MAX_HEIGHT),
     cursorline = true,

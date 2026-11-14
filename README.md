@@ -122,6 +122,7 @@ The prefix key, Ctrl+Space, gives the keys below their gband meaning, in one of 
 - **direct**: Ctrl+Space then one key acts once, and the keys that follow reach the window again, as in tmux.
   Ctrl+Space `l` `l` moves one column and types `l`.
   Escape, Enter and any other key with no binding after Ctrl+Space are discarded.
+  Ctrl+Space then Space enters navigation mode, the sidebar shows `N`, and every key works as in the modal style's navigation mode until Escape or Enter.
 - **floating**: every window floats, as on a desktop like MS Windows, and Ctrl+Space opens the window list.
   Each floating window has `[_][□][X]` on its title bar to minimize, maximize and close it, and its border moves and resizes it with the left button; see [Mouse](#mouse).
   The window list holds `New window`, `Settings`, `Multi mode` and every window, the most recent first, each with a shortcut: `n`, `s`, `m`, then `1` to `9` and `0`.
@@ -141,7 +142,7 @@ The modal and direct styles bind the same keys after Ctrl+Space; the floating st
 | `a` | enter agents mode, labelled `A` in the sidebar: `1` to `9` focus that agent and return to interactive mode, `k` or Up and `j` or Down focus the previous or next agent, and `b` switches to bands mode; see [Agents](#agents) |
 | `b` | enter bands mode, labelled `B` in the sidebar: `1` to `9` view that band, `k` or Up and `j` or Down view the band above or below, and `a` switches to agents mode; the mode stays active until Escape or Enter |
 | `c` | center the focused column in the view, or the focused floating window on the screen |
-| `n` | open a window running your shell; modal returns to interactive mode only when `I on new` is `on` |
+| `n` | open a window running your shell; in navigation mode, returns to interactive mode only when `I on new` is `on` |
 | `q` | close the window, or the key list or another floating plugin window when it has focus |
 | `[`, `]` | move the window into or out of the column to the left or right |
 | `r` | cycle the column's width through the presets |
@@ -164,8 +165,9 @@ The modal and direct styles bind the same keys after Ctrl+Space; the floating st
 | `E` | clear the errors |
 | `p` | paste an image from your local clipboard into the focused window; see [Mouse](#mouse) |
 | `D` | detach |
-| Escape, Enter | modal only: return to interactive mode |
-| Ctrl+Space | send Ctrl+Space to the window; modal returns to interactive mode |
+| Escape, Enter | in navigation mode: return to interactive mode |
+| Space | direct only: enter navigation mode |
+| Ctrl+Space | send Ctrl+Space to the window; in navigation mode, also return to interactive mode |
 
 Navigation mode changed two habits.
 Enter no longer opens a window: `n` does.
@@ -245,7 +247,7 @@ It has these lines:
 | `sidebar` | `on` or `off` |
 | `bands` | what focus does past a band's last or first column, `loop`, `bounce` or `stop`, as the `band_ends` option describes |
 | `keys` | the key style, `modal`, `direct` or `floating` |
-| `I on new` | `on` or `off`: whether `n` in navigation mode returns to interactive mode; `off` until saved `on`; shown with the modal key style only |
+| `I on new` | `on` or `off`: whether `n` in navigation mode returns to interactive mode; `off` until saved `on`; shown with the modal and direct key styles |
 | `reload` | `ok`, or the number of errors `gband.errors()` holds, such as `1 error` or `3 errors` |
 
 `j`, `k` and the up and down arrows move between the lines.
@@ -454,7 +456,7 @@ The copy binds its keys with `gband.keystyle.use()`, which makes the bindings of
 To edit the bindings themselves, copy a style's bindings from `defaults/keystyle/` into `user/init.lua` in place of the `gband.keystyle.use()` call.
 
 The saved theme loads before `user/init.lua` runs, so it applies to your file too, unless your file calls `gband.colorscheme` itself.
-The settings window's `sidebar`, `bands`, `keys` and `I on new` lines apply only where your file asks for them, as the copy does: it sets up the sidebar unless `gband.settings.sidebar()` returns `false`, sets `gband.opt.band_ends` to `gband.settings.band_ends()` or `"loop"`, and calls `gband.keystyle.use()` with no argument, whose modal `n` returns to interactive mode only when `gband.settings.interactive_on_new()` returns `true`.
+The settings window's `sidebar`, `bands`, `keys` and `I on new` lines apply only where your file asks for them, as the copy does: it sets up the sidebar unless `gband.settings.sidebar()` returns `false`, sets `gband.opt.band_ends` to `gband.settings.band_ends()` or `"loop"`, and calls `gband.keystyle.use()` with no argument, whose navigation mode `n` returns to interactive mode only when `gband.settings.interactive_on_new()` returns `true`.
 A file that sets up the sidebar, sets `band_ends` or binds its own keys keeps its choice, and the settings window then only saves the setting.
 An `n` binding of your own can compare `gband.settings.interactive_on_new()` with `true` to follow the `I on new` line.
 
@@ -549,7 +551,7 @@ A value set through `gband.opt` that the option rejects is reported, does not st
 
 `gband.keymap.mode(table, { label = ... })` makes a key table a mode: its keys act as often as you press them, and it stays active until one of its bindings enters another table.
 `gband.keymap.enter("root")` returns to interactive mode.
-The modal key style makes `prefix` a mode labelled `navigation`.
+The modal key style makes `prefix` a mode labelled `navigation`, and the direct key style makes a `navigation` table that Ctrl+Space then Space enters, filled by `gband.navigation.bind`.
 A `user/init.lua` that declares no mode keeps one-key prefix bindings: the key after the prefix acts once, and the next key goes to the window.
 To get navigation mode in such a file, declare it and bind the keys that leave it:
 
@@ -676,7 +678,7 @@ The modal and direct key styles bind no key to it, since they have no window lis
 
 ### Key list
 
-Ctrl+Space then `?` opens a list of the navigation keys in a box titled `navigation keys`, or `prefix keys` with the direct and floating key styles, over the windows, each with its description, and returns to interactive mode so the list takes the keys that follow.
+Ctrl+Space then `?` opens a list of the navigation keys in a box titled `navigation keys`, or `prefix keys` after the direct and floating key styles' prefix key, over the windows, each with its description, and returns to interactive mode so the list takes the keys that follow.
 Pressing a line's key selects that line and runs its binding, an action or a function, on the window behind the list, which stays open for the next choice: `l` focuses the column to the right, and `j` and `k` focus the window below and above.
 A binding that opens another box, such as `s` or `:`, closes the list, and that box takes the keys.
 Up and Down move through the list, PageUp, PageDown, Home and End jump through it, and Enter runs the selected line.

@@ -63,11 +63,12 @@ local function bands_mode()
   set("bands", "enter", interactive, { desc = "interactive mode" })
 end
 
-local function setup()
+local function setup(table)
+  table = table or "prefix"
   agents_mode()
   bands_mode()
-  gband.keymap.set("prefix", "a", enter_agents_mode, { desc = "agents mode" })
-  gband.keymap.set("prefix", "b", enter_bands_mode, { desc = "bands mode" })
+  gband.keymap.set(table, "a", enter_agents_mode, { desc = "agents mode" })
+  gband.keymap.set(table, "b", enter_bands_mode, { desc = "bands mode" })
 end
 
 gband.jump = {

@@ -211,7 +211,7 @@ end
 ```
 
 `theme` is what `start` in [03](03-colorschemes.md) reads.
-`sidebar` and `band_ends` are read by the default configuration, in [11](11-default-configs.md), and `interactive_on_new` by the modal key style, in [08](08-key-styles.md).
+`sidebar` and `band_ends` are read by the default configuration, in [11](11-default-configs.md), and `interactive_on_new` by navigation mode in the modal and direct key styles, in [08](08-key-styles.md).
 Each returns nil when nothing is saved, so a caller can tell "off" from "never chosen".
 
 ```lua defaults/lua/gband/settings.lua
@@ -556,7 +556,7 @@ end
 
 ```lua defaults/lua/gband/settings.lua
 local function reload_line()
-  return key_style() == "modal" and INTERACTIVE_ON_NEW + 1 or KEYS + 1
+  return key_style() ~= "floating" and INTERACTIVE_ON_NEW + 1 or KEYS + 1
 end
 ```
 
@@ -569,9 +569,9 @@ local function meaning(line)
 end
 ```
 
-`reload_line` is the line `reload` sits on: fifth with the modal style, fourth otherwise.
+`reload_line` is the line `reload` sits on: sixth with the modal and direct styles, fifth with the floating style.
 `meaning` turns a cursor line into what the keys compare with: the label for the `reload` line, and the line's own number for the others.
-Without it, the fourth line would read as `INTERACTIVE_ON_NEW` with the direct style, and `l` on `reload` would save `I on new`.
+Without it, the fifth line would read as `INTERACTIVE_ON_NEW` with the floating style, and `l` on `reload` would save `I on new`.
 
 ```lua defaults/lua/gband/settings.lua
 local function error_count()
@@ -602,7 +602,7 @@ local function lines()
     band_ends() or "loop",
     key_style(),
   }
-  if values[KEYS] == "modal" then
+  if values[KEYS] ~= "floating" then
     values[INTERACTIVE_ON_NEW] = interactive_on_new() == true and "on" or "off"
   end
   local out = {}
@@ -615,7 +615,7 @@ end
 ```
 
 Each line is two spans: the label in `SettingsLabel`, padded, and the value in the window's own style.
-The `I on new` line exists only for the modal style, since only the modal preset reads it.
+The `I on new` line exists for the modal and direct styles, since both navigation modes read it, and not for the floating style, which has none.
 It shows `on` only for a saved `true`, so a setting never saved shows `off`, as the preset reads it.
 The `reload` line comes last and counts `gband.errors()` each time the lines are built, so the window shows the errors of the moment it draws.
 

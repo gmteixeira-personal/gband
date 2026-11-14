@@ -7,8 +7,14 @@ fn save_style(scratch: &Scratch, source: &str) {
     scratch.user_file("keystyle.lua", source);
 }
 
-fn prefix_entries(config: &Config) -> Vec<(String, Option<String>, Option<String>)> {
-    let entries: Vec<mlua::Table> = eval(config, "return gband.keymap.list('prefix')");
+type Entry = (String, Option<String>, Option<String>);
+
+fn prefix_entries(config: &Config) -> Vec<Entry> {
+    table_entries(config, "prefix")
+}
+
+fn table_entries(config: &Config, table: &str) -> Vec<Entry> {
+    let entries: Vec<mlua::Table> = eval(config, &format!("return gband.keymap.list('{table}')"));
     entries
         .into_iter()
         .map(|entry| {
@@ -246,6 +252,7 @@ fn every_preset_binding_is_described() {
         ("b", "bands mode"),
         ("e", "list the errors"),
         ("E", "clear the errors"),
+        ("space", "navigation mode"),
     ];
     for style in ["modal", "direct"] {
         let scratch = Scratch::new(&format!("keystyle-described-{style}"));
@@ -466,7 +473,10 @@ fn explicit_style() {
     let config = scratch.loaded();
     assert_eq!(global::<String>(&config, "style"), "direct");
     assert_eq!(label(&config).as_deref(), Some("prefix"));
-    assert_eq!(config.modes.iter().collect::<Vec<_>>(), ["agents", "bands"]);
+    assert_eq!(
+        config.modes.iter().collect::<Vec<_>>(),
+        ["agents", "bands", "navigation"]
+    );
 }
 
 #[test]
@@ -581,4 +591,84 @@ fn jump_mode_labels() {
         );
         assert_eq!(labels, ["agents", "bands"], "{style}");
     }
+}
+
+fn keys_of(entries: &[Entry]) -> Vec<&str> {
+    entries.iter().map(|(key, _, _)| key.as_str()).collect()
+}
+
+#[test]
+fn jump_setup_binds_into_a_named_table() {
+    let scratch = Scratch::new("keystyle-jump-table");
+    scratch.write("gband.jump.setup('nav')\ngband.jump.setup('nav')");
+    let config = scratch.loaded();
+    assert!(config.errors.is_empty(), "{:?}", config.errors);
+    assert_eq!(keys_of(&table_entries(&config, "nav")), ["a", "b"]);
+    assert!(prefix_entries(&config).is_empty());
+    assert_eq!(config.modes.iter().collect::<Vec<_>>(), ["agents", "bands"]);
+    assert_eq!(table_entries(&config, "agents").len(), 9 + 2 + 2 + 3);
+}
+
+#[test]
+fn navigation_bound_into_a_named_table() {
+    let scratch = Scratch::new("keystyle-navigation-named");
+    scratch.write(
+        "gband.plugin('gband.keylist')\ngband.plugin('gband.prompt')\ngband.keymap.mode('nav', { label = 'nav' })\ngband.navigation.bind('nav')",
+    );
+    let config = scratch.loaded();
+    assert!(config.errors.is_empty(), "{:?}", config.errors);
+    let entries = table_entries(&config, "nav");
+    assert_eq!(entries[0].0, "h");
+    assert_eq!(entries[0].1.as_deref(), Some("focus_column_left"));
+    assert!(keys_of(&entries).contains(&"escape"));
+    assert!(prefix_entries(&config).is_empty());
+    assert_eq!(
+        config.modes.iter().collect::<Vec<_>>(),
+        ["agents", "bands", "nav"]
+    );
+}
+
+fn preset(style: &str) -> Config {
+    let scratch = Scratch::new(&format!("keystyle-parity-{style}"));
+    scratch.write(&format!("gband.keystyle.use('{style}')"));
+    scratch.loaded()
+}
+
+#[test]
+fn direct_navigation_equals_modal_navigation() {
+    let modal = preset("modal");
+    let direct = preset("direct");
+    assert_eq!(table_entries(&direct, "navigation"), prefix_entries(&modal));
+    let label: String = eval(&direct, "return gband.keymap.label('navigation')");
+    assert_eq!(label, "navigation");
+}
+
+#[test]
+fn same_names_in_both_presets() {
+    let modal = prefix_entries(&preset("modal"));
+    let direct = prefix_entries(&preset("direct"));
+    let modal_keys: Vec<&str> = keys_of(&modal)
+        .into_iter()
+        .filter(|key| !["escape", "enter"].contains(key))
+        .collect();
+    let direct_keys: Vec<&str> = keys_of(&direct)
+        .into_iter()
+        .filter(|key| *key != "space")
+        .collect();
+    assert_eq!(modal_keys, direct_keys);
+    for (key, action, _) in &direct {
+        let Some(action) = action else { continue };
+        let paired = modal.iter().find(|(other, _, _)| other == key);
+        if let Some((_, Some(other), _)) = paired {
+            assert_eq!(other, action, "{key}");
+        }
+    }
+}
+
+#[test]
+fn navigation_refuses_root() {
+    let scratch = Scratch::new("keystyle-navigation-root");
+    let path = scratch.write("local a = 1\ngband.navigation.bind('root')");
+    let error = scratch.load().err().expect("loading fails");
+    assert_error_at(&error, &path, 2, "root");
 }

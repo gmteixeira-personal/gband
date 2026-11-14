@@ -510,6 +510,21 @@ fn multi_mode_with_the_direct_key_style() {
 }
 
 #[test]
+fn multi_mode_from_direct_navigation_mode() {
+    let (_env, mut client) = direct_with_two_windows("keystyle-multi-direct-navigation");
+    client.send(b"\x00 ");
+    client.wait_for("direct navigation mode", |screen| {
+        sidebar_mode(screen) == "N"
+    });
+    client.send(b"m");
+    client.wait_for("the multi mode letter", |screen| {
+        sidebar_mode(screen) == "M"
+    });
+    client.run("echo hi");
+    printed_by(&client, "hi", 2);
+}
+
+#[test]
 fn navigation_mode_keeps_multi_mode() {
     let (_env, mut client) = modal_with_two_windows("keystyle-multi-navigation");
     client.send(b"\x00h\r");

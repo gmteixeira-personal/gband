@@ -2,9 +2,9 @@
 
 gband's keys come in three styles.
 In the modal style, the prefix key, Ctrl+Space, enters a navigation mode where each key acts until you leave it.
-In the direct style, each key after the prefix acts once.
+In the direct style, each key after the prefix acts once, and the prefix then Space enters the same navigation mode.
 In the floating style, every window floats as on a desktop, and the prefix key opens a list of the windows.
-This chapter reads the module that chooses between them, `defaults/lua/gband/keystyle.lua`, the three presets it chooses from, `defaults/keystyle/modal.lua`, `defaults/keystyle/direct.lua` and `defaults/keystyle/floating.lua`, the bundled plugin the floating preset sets up, `defaults/lua/gband/desktop.lua`, and the two modules behind the agents and bands modes of the other presets, `defaults/lua/gband/agents.lua` and `defaults/lua/gband/jump.lua`, in full.
+This chapter reads the module that chooses between them, `defaults/lua/gband/keystyle.lua`, the three presets it chooses from, `defaults/keystyle/modal.lua`, `defaults/keystyle/direct.lua` and `defaults/keystyle/floating.lua`, the module both navigation modes share, `defaults/lua/gband/navigation.lua`, the bundled plugin the floating preset sets up, `defaults/lua/gband/desktop.lua`, and the two modules behind the agents and bands modes of the other presets, `defaults/lua/gband/agents.lua` and `defaults/lua/gband/jump.lua`, in full.
 
 ## `gband.keystyle`
 
@@ -108,108 +108,149 @@ While a mode is active, a key it does not bind is discarded instead of reaching 
 The sidebar shows the label's first letter, `N`, while the mode is active, as [09](09-sidebar-and-errors.md) shows.
 
 ```lua defaults/keystyle/modal.lua
+require("gband.navigation").bind("prefix")
+```
+
+Every binding of navigation mode comes from `gband.navigation`, which [the next section](#navigation-mode-gbandnavigation) reads.
+The direct preset makes the same bindings in a table of its own, so the two styles' navigation modes cannot drift apart.
+
+```lua defaults/keystyle/modal.lua
+set("root", "mod+leftmouse", action.drag_window, { desc = "move the window with the mouse" })
+set("root", "mod+rightmouse", action.drag_resize_window, { desc = "resize the window with the mouse" })
+set("root", "mod+middlemouse", action.drag_band, { desc = "slide the band or switch bands with the mouse" })
+set("root", "mod+wheeldown", action.focus_band_down, { desc = "view the band below" })
+set("root", "mod+wheelup", action.focus_band_up, { desc = "view the band above" })
+```
+
+Outside the mode, the drags need the modifier, so that a plain click still reaches the program in the window.
+
+## Navigation mode: `gband.navigation`
+
+The client module `gband.navigation`, which the prelude loads, makes navigation mode's bindings in whichever table it is given.
+
+```lua defaults/lua/gband/navigation.lua
+local core = gband.core
+```
+
+```lua defaults/lua/gband/navigation.lua
 local function interactive()
   gband.keymap.enter("root")
 end
 ```
 
-Leaving the mode is entering `root` again, which the style calls interactive mode.
+Leaving the mode is entering `root` again, which the styles call interactive mode.
 
-```lua defaults/keystyle/modal.lua
-set("prefix", "h", action.focus_column_left, { desc = "focus the column to the left" })
-set("prefix", "l", action.focus_column_right, { desc = "focus the column to the right" })
-set("prefix", "j", action.focus_window_down, { desc = "focus the window below" })
-set("prefix", "k", action.focus_window_up, { desc = "focus the window above" })
-set("prefix", "u", action.focus_band_down, { desc = "view the band below" })
-set("prefix", "i", action.focus_band_up, { desc = "view the band above" })
+```lua defaults/lua/gband/navigation.lua
+local function bind(table)
+  if not core.loading() then
+    error("gband.navigation.bind can only be called while the configuration loads", 2)
+  end
+  if type(table) ~= "string" or table == "" then
+    error("gband.navigation.bind expects a key table name as a non-empty string", 2)
+  end
+  if table == "root" then
+    error("gband.navigation.bind cannot bind navigation mode in the root table", 2)
+  end
+```
+
+`bind` refuses to run after the load, as `gband.keystyle.use` does, and refuses `root`, where every key would stop reaching the window.
+Level 2 puts each error at the line of the preset or configuration that called it.
+
+```lua defaults/lua/gband/navigation.lua
+  local function set(key, target, opts)
+    gband.keymap.set(table, key, target, opts)
+  end
+  local action = gband.action
+  local interactive_on_new = gband.settings.interactive_on_new() == true
+```
+
+`set` fixes the table, so the bindings below read as one table's list.
+
+```lua defaults/lua/gband/navigation.lua
+  set("h", action.focus_column_left, { desc = "focus the column to the left" })
+  set("l", action.focus_column_right, { desc = "focus the column to the right" })
+  set("j", action.focus_window_down, { desc = "focus the window below" })
+  set("k", action.focus_window_up, { desc = "focus the window above" })
+  set("u", action.focus_band_down, { desc = "view the band below" })
+  set("i", action.focus_band_up, { desc = "view the band above" })
 ```
 
 The navigation keys, `h`, `j`, `k` and `l` for columns and windows, and `u` and `i` for bands.
 
-```lua defaults/keystyle/modal.lua
-require("gband.jump").setup()
+```lua defaults/lua/gband/navigation.lua
+  require("gband.jump").setup(table)
 ```
 
 `a` and `b` enter agents mode and bands mode, which [the last sections of this chapter](#the-agent-list-gbandagents) read.
-`setup` declares both modes and binds `a` and `b` in `prefix` itself, so each preset makes the bindings with one line, at the place in `prefix` where the key list shows them.
+`setup` declares both modes and binds `a` and `b` in the table it is given, so they sit right after `i` in the key list.
 
-```lua defaults/keystyle/modal.lua
-set("prefix", "c", action.center_column, { desc = "center the focused column" })
-```
-
-```lua defaults/keystyle/modal.lua
-local interactive_on_new = gband.settings.interactive_on_new() == true
-```
-
-```lua defaults/keystyle/modal.lua
-set("prefix", "n", function()
-  action.open_window()
-  if interactive_on_new then
-    interactive()
-  end
-end, { desc = "open a window" })
+```lua defaults/lua/gband/navigation.lua
+  set("c", action.center_column, { desc = "center the focused column" })
+  set("n", function()
+    action.open_window()
+    if interactive_on_new then
+      interactive()
+    end
+  end, { desc = "open a window" })
 ```
 
 `n` opens a window and leaves navigation mode active, so a run of layout keys can follow it, unless the `I on new` line of the settings window is turned on; then it leaves the mode so you can type in the new window.
-The choice is read once, when the preset loads, and only a saved `true` turns it on: nothing saved reads as off.
-Changing that line saves the file, which reloads the configuration and loads the preset again.
+The choice is read once, when `bind` runs, and only a saved `true` turns it on: nothing saved reads as off.
+Changing that line saves the file, which reloads the configuration and runs the preset again.
 
-```lua defaults/keystyle/modal.lua
-set("prefix", "q", action.close_window, { desc = "close the window" })
-set("prefix", "[", action.consume_or_expel_left, { desc = "consume or expel the window to the left" })
-set("prefix", "]", action.consume_or_expel_right, { desc = "consume or expel the window to the right" })
-set("prefix", "r", action.cycle_column_width, { desc = "cycle the width of the window's column" })
-set("prefix", "f", action.toggle_full_width, { desc = "toggle full width of the window's column" })
-set("prefix", "w", action.toggle_column_tabbed, { desc = "toggle tabbed display of the window's column" })
-set("prefix", "-", action.shrink_column_width, { desc = "shrink the width of the window's column" })
-set("prefix", "=", action.grow_column_width, { desc = "grow the width of the window's column" })
-set("prefix", "_", action.shrink_window_height, { desc = "shrink the height of the window" })
-set("prefix", "+", action.grow_window_height, { desc = "grow the height of the window" })
-set("prefix", "R", action.reset_window_height, { desc = "reset the height of the window" })
-set("prefix", "v", action.toggle_window_floating, { desc = "float or tile the window" })
-set("prefix", "V", action.switch_focus_floating_tiled, { desc = "switch focus between floating and tiled windows" })
-```
-
-```lua defaults/keystyle/modal.lua
-set("prefix", "ctrl+h", action.move_column_left, { desc = "move the column or floating window to the left" })
-set("prefix", "ctrl+l", action.move_column_right, { desc = "move the column or floating window to the right" })
-set("prefix", "ctrl+j", action.move_window_down, { desc = "move the window down" })
-set("prefix", "ctrl+k", action.move_window_up, { desc = "move the window up" })
-set("prefix", "ctrl+left", action.move_column_left, { desc = "move the column or floating window to the left" })
-set("prefix", "ctrl+right", action.move_column_right, { desc = "move the column or floating window to the right" })
-set("prefix", "ctrl+down", action.move_window_down, { desc = "move the window down" })
-set("prefix", "ctrl+up", action.move_window_up, { desc = "move the window up" })
+```lua defaults/lua/gband/navigation.lua
+  set("q", action.close_window, { desc = "close the window" })
+  set("[", action.consume_or_expel_left, { desc = "consume or expel the window to the left" })
+  set("]", action.consume_or_expel_right, { desc = "consume or expel the window to the right" })
+  set("r", action.cycle_column_width, { desc = "cycle the width of the window's column" })
+  set("f", action.toggle_full_width, { desc = "toggle full width of the window's column" })
+  set("w", action.toggle_column_tabbed, { desc = "toggle tabbed display of the window's column" })
+  set("-", action.shrink_column_width, { desc = "shrink the width of the window's column" })
+  set("=", action.grow_column_width, { desc = "grow the width of the window's column" })
+  set("_", action.shrink_window_height, { desc = "shrink the height of the window" })
+  set("+", action.grow_window_height, { desc = "grow the height of the window" })
+  set("R", action.reset_window_height, { desc = "reset the height of the window" })
+  set("v", action.toggle_window_floating, { desc = "float or tile the window" })
+  set("V", action.switch_focus_floating_tiled, { desc = "switch focus between floating and tiled windows" })
+  set("ctrl+h", action.move_column_left, { desc = "move the column or floating window to the left" })
+  set("ctrl+l", action.move_column_right, { desc = "move the column or floating window to the right" })
+  set("ctrl+j", action.move_window_down, { desc = "move the window down" })
+  set("ctrl+k", action.move_window_up, { desc = "move the window up" })
+  set("ctrl+left", action.move_column_left, { desc = "move the column or floating window to the left" })
+  set("ctrl+right", action.move_column_right, { desc = "move the column or floating window to the right" })
+  set("ctrl+down", action.move_window_down, { desc = "move the window down" })
+  set("ctrl+up", action.move_window_up, { desc = "move the window up" })
 ```
 
 The actions that change the layout.
 Each of the `move_*` actions is bound twice, to Ctrl with `hjkl` and to Ctrl with an arrow.
 
-```lua defaults/keystyle/modal.lua
-set("prefix", "?", action["keylist.open"], { desc = "list the keys" })
-set("prefix", ":", action["prompt.open"], { desc = "run Lua" })
-set("prefix", "N", action["prompt.rename"], { desc = "rename the window" })
-set("prefix", "s", gband.settings.open, { desc = "settings" })
-set("prefix", "!", action.reload, { desc = "reload the configuration" })
-set("prefix", "m", function()
-  action.toggle_multi()
-  interactive()
-end, { desc = "multi mode" })
-set("prefix", "e", function()
-  local open = action["errors.open"]
-  if open then
-    open()
-  end
-end, { desc = "list the errors" })
-set("prefix", "E", function()
-  local clear = action["errors.clear"]
-  if clear then
-    clear()
-  end
-end, { desc = "clear the errors" })
-set("prefix", "p", action.paste_image, { desc = "paste an image from the clipboard" })
-set("prefix", "D", action.detach, { desc = "detach" })
-set("prefix", "escape", interactive, { desc = "interactive mode" })
-set("prefix", "enter", interactive, { desc = "interactive mode" })
+```lua defaults/lua/gband/navigation.lua
+  set("?", action["keylist.open"], { desc = "list the keys" })
+  set(":", action["prompt.open"], { desc = "run Lua" })
+  set("N", action["prompt.rename"], { desc = "rename the window" })
+  set("s", gband.settings.open, { desc = "settings" })
+  set("!", action.reload, { desc = "reload the configuration" })
+  set("m", function()
+    action.toggle_multi()
+    interactive()
+  end, { desc = "multi mode" })
+  set("e", function()
+    local open = action["errors.open"]
+    if open then
+      open()
+    end
+  end, { desc = "list the errors" })
+  set("E", function()
+    local clear = action["errors.clear"]
+    if clear then
+      clear()
+    end
+  end, { desc = "clear the errors" })
+  set("p", action.paste_image, { desc = "paste an image from the clipboard" })
+  set("D", action.detach, { desc = "detach" })
+  set("escape", interactive, { desc = "interactive mode" })
+  set("enter", interactive, { desc = "interactive mode" })
 ```
 
 `?`, `:` and `N` open plugin windows, which take the keys from there on, and `s` opens the settings window.
@@ -221,48 +262,49 @@ Leaving navigation mode later by Escape or Enter keeps multi mode as it is.
 Both look up their action when pressed: the default configuration sets up `gband.errors` after the preset, so `action["errors.open"]` is still nil while the preset loads, and a configuration without the plugin gets two keys that do nothing.
 Escape and Enter return to interactive mode.
 
-```lua defaults/keystyle/modal.lua
-set("prefix", "left", action.focus_column_left, { desc = "focus the column to the left" })
-set("prefix", "right", action.focus_column_right, { desc = "focus the column to the right" })
-set("prefix", "down", action.focus_window_down, { desc = "focus the window below" })
-set("prefix", "up", action.focus_window_up, { desc = "focus the window above" })
+```lua defaults/lua/gband/navigation.lua
+  set("left", action.focus_column_left, { desc = "focus the column to the left" })
+  set("right", action.focus_column_right, { desc = "focus the column to the right" })
+  set("down", action.focus_window_down, { desc = "focus the window below" })
+  set("up", action.focus_window_up, { desc = "focus the window above" })
 ```
 
 The arrows move focus as `hjkl` do.
 
-```lua defaults/keystyle/modal.lua
-set("prefix", "prefix", function()
-  action.send_prefix()
-  interactive()
-end, { desc = "send the prefix key" })
+```lua defaults/lua/gband/navigation.lua
+  set("prefix", function()
+    action.send_prefix()
+    interactive()
+  end, { desc = "send the prefix key" })
 ```
 
 Pressing the prefix key in the mode sends it to the window, so a program in the window can still receive Ctrl+Space, and leaves the mode.
 The key name `prefix` stands for whatever `gband.opt.prefix` holds.
 
-```lua defaults/keystyle/modal.lua
-set("prefix", "leftmouse", action.drag_window, { desc = "move the window with the mouse" })
-set("prefix", "rightmouse", action.drag_resize_window, { desc = "resize the window with the mouse" })
-set("prefix", "middlemouse", action.drag_band, { desc = "slide the band or switch bands with the mouse" })
-set("prefix", "mod+leftmouse", action.drag_window, { desc = "move the window with the mouse" })
-set("prefix", "mod+rightmouse", action.drag_resize_window, { desc = "resize the window with the mouse" })
-set("prefix", "mod+middlemouse", action.drag_band, { desc = "slide the band or switch bands with the mouse" })
-set("prefix", "mod+wheeldown", action.focus_band_down, { desc = "view the band below" })
-set("prefix", "mod+wheelup", action.focus_band_up, { desc = "view the band above" })
+```lua defaults/lua/gband/navigation.lua
+  set("leftmouse", action.drag_window, { desc = "move the window with the mouse" })
+  set("rightmouse", action.drag_resize_window, { desc = "resize the window with the mouse" })
+  set("middlemouse", action.drag_band, { desc = "slide the band or switch bands with the mouse" })
+  set("mod+leftmouse", action.drag_window, { desc = "move the window with the mouse" })
+  set("mod+rightmouse", action.drag_resize_window, { desc = "resize the window with the mouse" })
+  set("mod+middlemouse", action.drag_band, { desc = "slide the band or switch bands with the mouse" })
+  set("mod+wheeldown", action.focus_band_down, { desc = "view the band below" })
+  set("mod+wheelup", action.focus_band_up, { desc = "view the band above" })
+end
 ```
 
 In the mode, the mouse buttons drag without a modifier: the left button moves a window, the right one resizes it, and the middle one slides the band.
 `mod` is the modifier `gband.opt.mouse_mod` names, Alt by default.
 
-```lua defaults/keystyle/modal.lua
-set("root", "mod+leftmouse", action.drag_window, { desc = "move the window with the mouse" })
-set("root", "mod+rightmouse", action.drag_resize_window, { desc = "resize the window with the mouse" })
-set("root", "mod+middlemouse", action.drag_band, { desc = "slide the band or switch bands with the mouse" })
-set("root", "mod+wheeldown", action.focus_band_down, { desc = "view the band below" })
-set("root", "mod+wheelup", action.focus_band_up, { desc = "view the band above" })
+```lua defaults/lua/gband/navigation.lua
+gband.navigation = {
+  bind = bind,
+}
+return gband.navigation
 ```
 
-Outside the mode, the same drags need the modifier, so that a plain click still reaches the program in the window.
+The module installs `gband.navigation` and returns it, which is what the presets' `require("gband.navigation").bind` calls.
+The presets and `bind` reach `gband.navigation` and `gband.jump` through `require`, so a copy of the prelude from before this module, as [12](12-own-prelude.md) makes, still loads both styles.
 
 ## The direct preset
 
@@ -276,7 +318,7 @@ local set = gband.keymap.set
 local action = gband.action
 ```
 
-The direct preset declares no mode.
+The direct preset's `prefix` is no mode.
 After the prefix key, gband looks the next key up in `prefix`, runs its binding and goes back to `root`.
 
 ```lua defaults/keystyle/direct.lua
@@ -355,6 +397,15 @@ set("prefix", "D", action.detach, { desc = "detach" })
 `m` is bound to `toggle_multi` itself, since every key after the prefix key ends the sequence here anyway.
 
 ```lua defaults/keystyle/direct.lua
+set("prefix", "space", function()
+  gband.keymap.enter("navigation")
+end, { desc = "navigation mode" })
+```
+
+Space after the prefix key enters navigation mode, the table `navigation` declared below, where each key acts until Escape or Enter leaves it.
+It takes the place where the modal preset binds Escape and Enter, so the two `prefix` lists differ at that one spot.
+
+```lua defaults/keystyle/direct.lua
 set("prefix", "left", action.focus_column_left, { desc = "focus the column to the left" })
 set("prefix", "right", action.focus_column_right, { desc = "focus the column to the right" })
 set("prefix", "down", action.focus_window_down, { desc = "focus the window below" })
@@ -366,7 +417,7 @@ set("prefix", "prefix", action.send_prefix, { desc = "send the prefix key to the
 ```
 
 The prefix key twice sends one prefix key to the window.
-There is no Escape or Enter binding, since there is no mode to leave.
+There is no Escape or Enter binding, since Escape and Enter after the prefix key already end the sequence.
 
 ```lua defaults/keystyle/direct.lua
 set("prefix", "leftmouse", action.drag_window, { desc = "move the window with the mouse" })
@@ -380,6 +431,14 @@ set("prefix", "mod+wheelup", action.focus_band_up, { desc = "view the band above
 ```
 
 ```lua defaults/keystyle/direct.lua
+gband.keymap.mode("navigation", { label = "navigation" })
+require("gband.navigation").bind("navigation")
+```
+
+`navigation` is a mode with the modal preset's label, so the sidebar shows `N` in it and the key list opened from it is titled `navigation keys`.
+`gband.navigation.bind` fills it with the modal preset's `prefix` bindings, so every key in it does what it does in the modal style, `I on new` included.
+
+```lua defaults/keystyle/direct.lua
 set("root", "mod+leftmouse", action.drag_window, { desc = "move the window with the mouse" })
 set("root", "mod+rightmouse", action.drag_resize_window, { desc = "resize the window with the mouse" })
 set("root", "mod+middlemouse", action.drag_band, { desc = "slide the band or switch bands with the mouse" })
@@ -388,7 +447,7 @@ set("root", "mod+wheelup", action.focus_band_up, { desc = "view the band above" 
 ```
 
 The rest is the modal preset's.
-The two files keep the same keys for the same actions, so switching styles changes only how long the prefix lasts.
+The two files keep the same keys for the same actions, so switching styles changes only how long the prefix lasts and how navigation mode is entered.
 
 ## The floating preset
 
@@ -2015,15 +2074,17 @@ Bands mode reads its digits from `gband.layout().bands`, and its steps are the a
 No binding of bands mode but Escape and Enter enters `root`, so digits and steps can look through band after band in one visit.
 
 ```lua defaults/lua/gband/jump.lua
-local function setup()
+local function setup(table)
+  table = table or "prefix"
   agents_mode()
   bands_mode()
-  gband.keymap.set("prefix", "a", enter_agents_mode, { desc = "agents mode" })
-  gband.keymap.set("prefix", "b", enter_bands_mode, { desc = "bands mode" })
+  gband.keymap.set(table, "a", enter_agents_mode, { desc = "agents mode" })
+  gband.keymap.set(table, "b", enter_bands_mode, { desc = "bands mode" })
 end
 ```
 
-`setup` binds `a` and `b` in `prefix` last, so a preset that calls it right after `i` lists them there in the key list.
+`setup` binds `a` and `b` last, in the table it is given or in `prefix`, so a preset that calls it right after `i` lists them there in the key list.
+Calling it for a second table declares the two modes again, and each `gband.keymap.set` replaces its earlier binding, so the modes stay as one call leaves them.
 
 ```lua defaults/lua/gband/jump.lua
 gband.jump = {

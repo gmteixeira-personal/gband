@@ -120,3 +120,92 @@ gband.plugin("gband.errors", { kind = "tiled" })
   t.ok(win, "the error list is focused")
   t.eq(g.client("return gband.win.info(...).kind", win), "tiled")
 end)
+
+local function columns(g)
+  return #g.client("return gband.layout().bands[1].columns")
+end
+
+local function focused(g)
+  return g.client("return gband.view().window")
+end
+
+local function current_table(g)
+  return g.client("return gband.keymap.current_table()")
+end
+
+local function direct_columns(g, count, files)
+  g.start({ keystyle = "direct", files = files })
+  g.wait_text("$")
+  for _ = 2, count do
+    local before = columns(g)
+    g.keys("ctrl+space n")
+    g.settle()
+    g.wait(function()
+      return columns(g) > before
+    end)
+  end
+  g.settle()
+end
+
+t.case("navigation mode with the direct style", function(g)
+  direct_columns(g, 3)
+  g.keys("ctrl+space h ctrl+space h")
+  g.settle()
+  t.eq(focused(g), 1)
+  g.keys("ctrl+space space")
+  g.settle()
+  t.eq(current_table(g), "navigation")
+  t.match(g.screen().row(0), "^N")
+  g.keys("l l")
+  g.settle()
+  t.eq(focused(g), 3)
+  t.eq(current_table(g), "navigation")
+  t.eq(g.client("return gband.keymap.label('navigation')"), "navigation")
+end)
+
+t.case("escape leaves direct navigation mode", function(g)
+  direct_columns(g, 2)
+  g.keys("ctrl+space space h escape")
+  g.settle()
+  t.eq(current_table(g), "root")
+  t.eq(focused(g), 1)
+  g.run("echo left")
+  g.wait_text("left")
+  t.eq(focused(g), 1)
+end)
+
+t.case("prefix key leaves direct navigation mode", function(g)
+  g.start({ keystyle = "direct" })
+  g.wait_text("$")
+  g.run("cat -v")
+  g.keys("ctrl+space space")
+  g.settle()
+  t.eq(current_table(g), "navigation")
+  g.keys("ctrl+space")
+  g.settle()
+  t.eq(current_table(g), "root")
+  g.wait_text("^@")
+end)
+
+t.case("I on new in direct navigation mode", function(g)
+  g.start({ keystyle = "direct", files = { ["user/interactive_on_new.lua"] = "return false\n" } })
+  g.wait_text("$")
+  g.keys("ctrl+space space n")
+  g.settle()
+  g.wait(function()
+    return columns(g) == 2
+  end)
+  t.eq(focused(g), 2)
+  t.eq(current_table(g), "navigation")
+end)
+
+t.case("I on new on in direct navigation mode", function(g)
+  g.start({ keystyle = "direct", files = { ["user/interactive_on_new.lua"] = "return true\n" } })
+  g.wait_text("$")
+  g.keys("ctrl+space space n")
+  g.settle()
+  g.wait(function()
+    return columns(g) == 2
+  end)
+  t.eq(current_table(g), "root")
+end)

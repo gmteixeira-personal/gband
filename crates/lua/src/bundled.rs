@@ -9,7 +9,7 @@ pub(crate) const KEY_STYLES: [(&str, &str); 3] = [
     ),
 ];
 
-pub(crate) const MODULES: [(&str, &str); 21] = [
+pub(crate) const MODULES: [(&str, &str); 22] = [
     ("prelude.lua", include_str!("runtime/gband/prelude.lua")),
     ("hl.lua", include_str!("runtime/gband/hl.lua")),
     ("palette.lua", include_str!("runtime/gband/palette.lua")),
@@ -37,6 +37,10 @@ pub(crate) const MODULES: [(&str, &str); 21] = [
     ("sidebar.lua", include_str!("runtime/gband/sidebar.lua")),
     ("agents.lua", include_str!("runtime/gband/agents.lua")),
     ("jump.lua", include_str!("runtime/gband/jump.lua")),
+    (
+        "navigation.lua",
+        include_str!("runtime/gband/navigation.lua"),
+    ),
 ];
 
 const COLORS: [(&str, &str); 16] = [
