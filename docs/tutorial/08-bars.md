@@ -49,14 +49,14 @@ end, { group = group, pattern = "marks.changed" })
 With two windows, the right one marked and focused, the bar shows `a` between the sidebar's `I` and the window:
 
 ```screen tests/screenshots/bars_spec/shows-the-bar--two-windows.txt
-Ia╭─────────────────╮╭─────────────────╮
-  │                 ││                 │
-1 │                 ││                 │
-2 │                 ││                 │
-─ │                 ││                 │
-  │                 ││                 │
-  │                 ││                 │
-  ╰─────────────────╯╰─────────────────╯
+Ia╭──────────╮╭──────────╮
+  │          ││          │
+1 │          ││          │
+2 │          ││          │
+─ │          ││          │
+  │          ││          │
+  │          ││          │
+  ╰──────────╯╰──────────╯
 ```
 
 `gband.bar.info(bar)` tells where the bar is drawn, and `on_resize` in the spec runs when its size changes, for a bar that lays out its text to fit.

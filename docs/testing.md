@@ -223,31 +223,31 @@ The handle also returns what the client wrote to its terminal since `g.start`, a
 
 ```
 size 60x4 cursor 1:4 shown
-0|I╭─────────────────────╮╭─────────────────────╮ window 1
-1| │$                    ││$                    │
-2|1│                     ││                     │
-3| ╰─────────────────────╯╰─────────────────────╯
+0|I╭─────────────╮╭─────────────╮                 window 1
+1| │$            ││$            │
+2|1│             ││             │
+3| ╰─────────────╯╰─────────────╯
 --
 0:0 fg=4 bg=0 bold
-0:1-23 fg=4 bold
-0:24-46 fg=8
+0:1-15 fg=4 bold
+0:16-30 fg=8
 0:48-55 fg=4 bg=0 bold
 0:56-59 bg=0
 1:0 bg=0
 1:1 fg=4 bold
-1:23 fg=4 bold
-1:24 fg=8
-1:46 fg=8
+1:15 fg=4 bold
+1:16 fg=8
+1:30 fg=8
 1:48-59 bg=0
-2:0 fg=15 bg=0 bold
+2:0 fg=8 bg=0 underline
 2:1 fg=4 bold
-2:23 fg=4 bold
-2:24 fg=8
-2:46 fg=8
+2:15 fg=4 bold
+2:16 fg=8
+2:30 fg=8
 2:48-59 bg=0
 3:0 bg=0
-3:1-23 fg=4 bold
-3:24-46 fg=8
+3:1-15 fg=4 bold
+3:16-30 fg=8
 3:48-59 bg=0
 ```
 

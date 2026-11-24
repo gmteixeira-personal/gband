@@ -132,8 +132,8 @@ t.case("a record kept entering floating", function(g)
       {
         id = 1,
         columns = {
-          { width = 0.5, full_width = false, tabbed = false, windows = { { id = 1, weight = 1 } } },
-          { width = 0.5, full_width = false, tabbed = false, windows = { { id = 2, weight = 1 } } },
+          { width = 1 / 3, full_width = false, tabbed = false, windows = { { id = 1, weight = 1 } } },
+          { width = 1 / 3, full_width = false, tabbed = false, windows = { { id = 2, weight = 1 } } },
         },
         floating = {},
       },

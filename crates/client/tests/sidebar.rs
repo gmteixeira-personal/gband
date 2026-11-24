@@ -6,10 +6,11 @@ use gband_client::animation::Animations;
 use gband_client::{Controls, Display, Step};
 use gband_core::geometry::Size;
 use gband_core::input::{Modifiers, MouseButton, MouseEvent, MouseKind, WheelDirection};
-use gband_core::layout::{Layout, LayoutOptions, WindowId};
+use gband_core::layout::{Layout, WindowId};
 use gband_lua::keys::parse_key;
 use gband_lua::{Bar, Color, Config, ConfigError, DEFAULTS, LoadOptions, Locations, Style};
 use gband_protocol::{ClientMessage, Key, ServerMessage, Value};
+use gband_test_support::halves;
 use insta::assert_snapshot;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
@@ -94,13 +95,7 @@ impl Client {
         let band = layout.bands()[0].id;
         for _ in 0..columns {
             let window = layout.allocate_window();
-            layout.open(
-                window,
-                band,
-                self.windows.last().copied(),
-                None,
-                &LayoutOptions::default(),
-            );
+            layout.open(window, band, self.windows.last().copied(), None, &halves());
             self.windows.push(window);
         }
         self.layout = layout;
@@ -117,7 +112,7 @@ impl Client {
         for index in 0..bands {
             let band = layout.bands()[index].id;
             let window = layout.allocate_window();
-            layout.open(window, band, None, None, &LayoutOptions::default());
+            layout.open(window, band, None, None, &halves());
             self.windows.push(window);
         }
         self.layout = layout;
@@ -128,8 +123,7 @@ impl Client {
     fn open_in_band(&mut self, index: usize) {
         let band = self.layout.bands()[index].id;
         let window = self.layout.allocate_window();
-        self.layout
-            .open(window, band, None, None, &LayoutOptions::default());
+        self.layout.open(window, band, None, None, &halves());
         self.windows.push(window);
         self.send_layout();
     }

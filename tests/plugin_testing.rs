@@ -310,7 +310,7 @@ end)
 
 t.case("files and env", function(g)
   g.start({
-    files = { ["user/lua/extra.lua"] = "return 'from files'" },
+    size = "120x24", files = { ["user/lua/extra.lua"] = "return 'from files'" },
     config = [[gband.plugin("gband.sidebar")]],
     env = { CASE_VALUE = "set by env", LANG = false },
   })

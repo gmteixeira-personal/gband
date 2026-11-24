@@ -19,10 +19,17 @@ use mlua::Table;
 
 const AREA: Size = Size::new(80, 24);
 
+fn halves() -> LayoutOptions {
+    LayoutOptions {
+        default_width: Proportion::ONE_HALF,
+        ..LayoutOptions::default()
+    }
+}
+
 fn opened(layout: &mut Layout, band: usize, after: Option<WindowId>) -> WindowId {
     let window = layout.allocate_window();
     let id = layout.bands()[band].id;
-    layout.open(window, id, after, None, &LayoutOptions::default());
+    layout.open(window, id, after, None, &halves());
     window
 }
 
@@ -87,7 +94,7 @@ fn session(action: SessionAction) -> Dispatch {
 #[test]
 fn read_the_layout() {
     let mut layout = Layout::new();
-    let options = LayoutOptions::default();
+    let options = halves();
     let band = layout.bands()[0].id;
     let (p1, p2, p3) = (
         layout.allocate_window(),
@@ -140,7 +147,7 @@ fn read_the_layout() {
 #[test]
 fn tabbed_column_in_the_layout() {
     let mut layout = Layout::new();
-    let options = LayoutOptions::default();
+    let options = halves();
     let band = layout.bands()[0].id;
     let (p1, p2) = (layout.allocate_window(), layout.allocate_window());
     layout.open(p1, band, None, None, &options);
@@ -200,7 +207,7 @@ fn read_the_view() {
 
 fn with_floating() -> Layout {
     let mut layout = two_bands();
-    let options = LayoutOptions::default();
+    let options = halves();
     let floating = layout.allocate_window();
     layout.open_floating(floating, BandId(1), None, AREA, &options);
     let (window, col, row) = (floating, 50, 3);
@@ -1478,7 +1485,7 @@ fn minimize_then_focus_keeps_the_dispatch_order() {
 fn minimized_fields(name: &str, minimized: &[u32]) -> String {
     let mut layout = with_floating();
     let window = layout.allocate_window();
-    layout.open_floating(window, BandId(1), None, AREA, &LayoutOptions::default());
+    layout.open_floating(window, BandId(1), None, AREA, &halves());
     let view = ViewState {
         minimized: minimized.iter().map(|&window| WindowId(window)).collect(),
         ..state(layout, 1, Some(1), "root")
@@ -1620,7 +1627,7 @@ fn last_focus_gives_the_stacking_order() {
     let mut layout = with_floating();
     for _ in 0..2 {
         let window = layout.allocate_window();
-        layout.open_floating(window, BandId(1), None, AREA, &LayoutOptions::default());
+        layout.open_floating(window, BandId(1), None, AREA, &halves());
     }
     assert_eq!(
         last_focus_fields("last-focus-stacking", layout, &[(1, 1), (6, 2), (4, 3)]),

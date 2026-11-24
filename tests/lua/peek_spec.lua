@@ -1,5 +1,7 @@
 local t = require("gband.test")
 
+local HALVES = "gband.opt.default_column_width = 1/2"
+
 local config = [[
   gband.bind("f5", function() gband.action.open_window({ floating = true }) end)
   gband.bind("f6", gband.action.minimize_window)
@@ -53,7 +55,7 @@ local function floating(g, index)
 end
 
 local function minimized_window(g)
-  g.start({ config = config })
+  g.start({ config = config, server_config = HALVES })
   prompts(g, 1)
   local tile = g.client("return gband.view().window")
   g.keys("f5")

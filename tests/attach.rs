@@ -12,7 +12,7 @@ use rustix::process::{Pid, Signal};
 
 #[test]
 fn first_attach_starts_a_server_in_the_client_directory() {
-    let env = TestEnv::new("first");
+    let env = TestEnv::with_half_columns("first");
     let mut client = Attached::start(&env, 100, 30);
     client.wait_for_prompt();
     client.shell_pid(&env);
@@ -207,7 +207,7 @@ fn requests_on_attach() {
 
 #[test]
 fn legacy_terminal_keys_still_reach_gband() {
-    let env = TestEnv::new("legacy-terminal");
+    let env = TestEnv::with_half_columns("legacy-terminal");
     without_bars(&env);
     let mut client = Attached::start(&env, 80, 24);
     client.wait_for_prompt();
@@ -345,7 +345,7 @@ fn without_bars(env: &TestEnv) {
 
 #[test]
 fn terminal_resize_reaches_the_program() {
-    let env = TestEnv::new("resize");
+    let env = TestEnv::with_half_columns("resize");
     without_bars(&env);
     let mut client = Attached::start(&env, 80, 24);
     client.wait_for_prompt();
@@ -358,7 +358,7 @@ fn terminal_resize_reaches_the_program() {
 
 #[test]
 fn terminal_resize_beside_the_sidebar() {
-    let env = TestEnv::new("resize-sidebar");
+    let env = TestEnv::with_half_columns("resize-sidebar");
     let mut client = Attached::start(&env, 80, 24);
     client.wait_for_prompt();
     client.shell_pid(&env);
@@ -376,7 +376,7 @@ fn started_server_takes_the_first_report() {
     client.wait_for_prompt();
     client.shell_pid(&env);
     client.run("clear; tput cols");
-    client.wait_for_line("37");
+    client.wait_for_line("24");
     thread::sleep(Duration::from_millis(300));
     let log = env.log_text("server");
     assert!(log.contains("client attached session=default"), "{log}");
@@ -399,7 +399,7 @@ fn first_report_beside_the_sidebar() {
     client.wait_for_prompt();
     client.shell_pid(&env);
     client.run("clear; tput cols");
-    client.wait_for_line("37");
+    client.wait_for_line("24");
     thread::sleep(Duration::from_millis(300));
     let log = env.log_text("server");
     assert!(log.contains("client attached session=fresh"), "{log}");
@@ -427,7 +427,7 @@ fn full_width_beside_the_sidebar() {
 
 #[test]
 fn leader_equals_grows_the_column() {
-    let env = TestEnv::new("grow");
+    let env = TestEnv::with_half_columns("grow");
     without_bars(&env);
     let mut client = Attached::start(&env, 80, 24);
     client.wait_for_prompt();
@@ -444,7 +444,7 @@ fn leader_equals_grows_the_column() {
 
 #[test]
 fn leader_c_centers_the_column() {
-    let env = TestEnv::new("center");
+    let env = TestEnv::with_half_columns("center");
     without_bars(&env);
     let mut client = Attached::start(&env, 80, 24);
     client.wait_for_prompt();
@@ -557,8 +557,8 @@ fn second_focused(screen: &Grid) -> bool {
         && !tiles[0].focused
         && tiles[0].left == 1
         && tiles[1].focused
-        && tiles[1].left == 40
-        && tiles[1].right == 78
+        && tiles[1].left == 27
+        && tiles[1].right == 52
 }
 
 fn open_second_window(env: &TestEnv) -> Attached {
@@ -726,7 +726,9 @@ fn camera_moves_through_frames(env: &TestEnv, animations: Option<&str>) -> bool 
     client.wait_for_prompt();
     client.shell_pid(env);
     client.send(b"\x00n\r");
-    client.wait_for("the second tile focused right of the first", second_focused);
+    client.wait_for("the second tile focused right of the first", |screen| {
+        tile_lefts(screen) == [1, 40] && tiles(screen)[1].focused
+    });
     client.wait_for_prompt();
     client.shell_pid(env);
     client.run("echo second-window");
@@ -758,7 +760,7 @@ fn camera_moves_through_frames(env: &TestEnv, animations: Option<&str>) -> bool 
 
 #[test]
 fn unknown_animations_value_is_logged() {
-    let env = TestEnv::new("animations-unknown");
+    let env = TestEnv::with_half_columns("animations-unknown");
     env.write_config(&defaults_with_animations(false));
     assert!(!camera_moves_through_frames(&env, Some("fast")));
     assert!(
@@ -769,21 +771,21 @@ fn unknown_animations_value_is_logged() {
 
 #[test]
 fn animations_off_by_the_option() {
-    let env = TestEnv::new("animations-option-off");
+    let env = TestEnv::with_half_columns("animations-option-off");
     env.write_config(&defaults_with_animations(false));
     assert!(!camera_moves_through_frames(&env, None));
 }
 
 #[test]
 fn environment_overrides_the_animations_option() {
-    let env = TestEnv::new("animations-environment-override");
+    let env = TestEnv::with_half_columns("animations-environment-override");
     env.write_config(&defaults_with_animations(true));
     assert!(!camera_moves_through_frames(&env, Some("off")));
 }
 
 #[test]
 fn animations_on_by_default() {
-    let env = TestEnv::new("animations-on-by-default");
+    let env = TestEnv::with_half_columns("animations-on-by-default");
     assert!(camera_moves_through_frames(&env, None));
 }
 

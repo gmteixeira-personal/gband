@@ -625,7 +625,7 @@ fn shell_line_untouched(client: &Attached, label: &str) {
 }
 
 fn with_agents(name: &str, style: &str) -> (TestEnv, Attached) {
-    let env = TestEnv::new(name);
+    let env = TestEnv::with_half_columns(name);
     env.save_key_style(style);
     let mut client = Attached::start(&env, 120, 30);
     client.wait_for_prompt();

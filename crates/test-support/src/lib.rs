@@ -8,7 +8,7 @@ use anyhow::{Result, bail};
 use gband_client::{Connection, Link, Transport};
 use gband_core::geometry::{CellSize, Size};
 use gband_core::input::{Key, KeyCode};
-use gband_core::layout::{Layout, LayoutOptions, SessionAction, WindowId};
+use gband_core::layout::{Layout, LayoutOptions, Proportion, SessionAction, WindowId};
 pub use gband_emulator::{Emulator, Grid};
 use gband_protocol::{
     ClientMessage, ExecutableId, Hello, HelloReply, IoError, MessageReader, MessageWriter,
@@ -45,6 +45,13 @@ pub fn session(name: &str) -> SessionName {
     name.parse().unwrap()
 }
 
+pub fn halves() -> LayoutOptions {
+    LayoutOptions {
+        default_width: Proportion::ONE_HALF,
+        ..LayoutOptions::default()
+    }
+}
+
 pub fn config(runtime_dir: &Path, program: &[&str]) -> ServerConfig {
     ServerConfig {
         socket: socket_path(runtime_dir),
@@ -53,7 +60,7 @@ pub fn config(runtime_dir: &Path, program: &[&str]) -> ServerConfig {
         cwd: runtime_dir.to_path_buf(),
         area: INITIAL_AREA,
         executable: IDENTITY,
-        options: tokio::sync::watch::channel(LayoutOptions::default()).1,
+        options: tokio::sync::watch::channel(halves()).1,
         clipboard_image_dir: None,
         scripting: None,
         channel: None,

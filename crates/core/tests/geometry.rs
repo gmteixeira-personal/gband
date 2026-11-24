@@ -9,18 +9,25 @@ use gband_core::layout::{
 
 const AREA: Size = Size::new(80, 24);
 
+fn halves() -> LayoutOptions {
+    LayoutOptions {
+        default_width: Proportion::ONE_HALF,
+        ..LayoutOptions::default()
+    }
+}
+
 fn single() -> (Layout, WindowId) {
     let mut layout = Layout::new();
     let window = layout.allocate_window();
     let band = layout.bands()[0].id;
-    layout.open(window, band, None, None, &LayoutOptions::default());
+    layout.open(window, band, None, None, &halves());
     (layout, window)
 }
 
 fn open_after(layout: &mut Layout, after: WindowId) -> WindowId {
     let window = layout.allocate_window();
     let band = layout.bands()[0].id;
-    layout.open(window, band, Some(after), None, &LayoutOptions::default());
+    layout.open(window, band, Some(after), None, &halves());
     window
 }
 
@@ -51,21 +58,9 @@ fn default_column_on_an_80_by_24_area() {
 fn columns_side_by_side() {
     let (mut layout, first) = single();
     let second = open_after(&mut layout, first);
-    layout.apply(
-        SessionAction::CycleWidth(first),
-        AREA,
-        &LayoutOptions::default(),
-    );
-    layout.apply(
-        SessionAction::CycleWidth(first),
-        AREA,
-        &LayoutOptions::default(),
-    );
-    layout.apply(
-        SessionAction::CycleWidth(second),
-        AREA,
-        &LayoutOptions::default(),
-    );
+    layout.apply(SessionAction::CycleWidth(first), AREA, &halves());
+    layout.apply(SessionAction::CycleWidth(first), AREA, &halves());
+    layout.apply(SessionAction::CycleWidth(second), AREA, &halves());
     let spans = column_spans(&layout.bands()[0], Size::new(90, 30));
     assert_eq!((spans[0].x, spans[0].end()), (0, 30));
     assert_eq!((spans[1].x, spans[1].end()), (30, 90));
@@ -83,7 +78,7 @@ fn stack_with_a_leftover_row() {
             direction: Direction::Left,
         },
         AREA,
-        &LayoutOptions::default(),
+        &halves(),
     );
     let tiles = first_tiles(&layout, Size::new(80, 25));
     assert_eq!(
@@ -100,11 +95,7 @@ fn stack_with_a_leftover_row() {
 #[test]
 fn full_width_fills_the_area() {
     let (mut layout, first) = single();
-    layout.apply(
-        SessionAction::ToggleFullWidth(first),
-        AREA,
-        &LayoutOptions::default(),
-    );
+    layout.apply(SessionAction::ToggleFullWidth(first), AREA, &halves());
     let tiles = first_tiles(&layout, Size::new(100, 30));
     assert_eq!(tiles[0].width, 100);
 }
@@ -150,7 +141,7 @@ fn windows_beyond_the_area_rows_get_no_height() {
                 direction: Direction::Left,
             },
             AREA,
-            &LayoutOptions::default(),
+            &halves(),
         );
     }
     let tiles = first_tiles(&layout, Size::new(80, 2));

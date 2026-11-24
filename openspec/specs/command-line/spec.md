@@ -215,7 +215,7 @@ The `gband` binary SHALL accept the option `-s <name>`, long form `--session <na
 
 #### Scenario: Server started at a size
 - **WHEN** the user runs `gband server --size 100x30` and no client has attached
-- **THEN** the session's first window, in a column of width 1/2, has a PTY of 48 columns by 28 rows
+- **THEN** the session's first window, in a column of width 1/3, has a PTY of 31 columns by 28 rows
 
 #### Scenario: Invalid size
 - **WHEN** the user runs `gband server --size 0x24`

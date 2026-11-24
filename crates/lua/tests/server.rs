@@ -16,6 +16,13 @@ use gband_protocol::{Key, Value};
 
 const AREA: Size = Size::new(80, 24);
 
+fn halves() -> LayoutOptions {
+    LayoutOptions {
+        default_width: Proportion::ONE_HALF,
+        ..LayoutOptions::default()
+    }
+}
+
 type States = BTreeMap<(String, u32), BTreeMap<String, Value>>;
 
 #[derive(Default)]
@@ -498,7 +505,7 @@ fn layout_of(windows: usize) -> Layout {
     let mut after = None;
     for _ in 0..windows {
         let window = layout.allocate_window();
-        layout.open(window, band, after, None, &LayoutOptions::default());
+        layout.open(window, band, after, None, &halves());
         after = Some(window);
     }
     layout
@@ -540,7 +547,7 @@ fn layout_of_a_session() {
 fn tabbed_column_in_the_structure() {
     let host = Arc::new(Fake::default());
     let mut layout = layout_of(2);
-    let options = LayoutOptions::default();
+    let options = halves();
     for action in [
         SessionAction::ConsumeOrExpel {
             window: WindowId(2),
@@ -594,7 +601,7 @@ fn floating_window_in_the_structure() {
     let host = Arc::new(Fake::default());
     let mut layout = layout_of(2);
     let window = WindowId(2);
-    let options = LayoutOptions::default();
+    let options = halves();
     layout.apply(
         SessionAction::ToggleFloating {
             window,

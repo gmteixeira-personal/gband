@@ -183,7 +183,7 @@ pub struct LayoutOptions {
 impl Default for LayoutOptions {
     fn default() -> Self {
         Self {
-            default_width: Proportion::ONE_HALF,
+            default_width: Proportion::ONE_THIRD,
             presets: vec![
                 Proportion::ONE_THIRD,
                 Proportion::ONE_HALF,

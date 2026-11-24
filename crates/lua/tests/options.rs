@@ -18,13 +18,13 @@ fn error_naming<'a>(errors: &'a [ConfigError], name: &str) -> &'a ConfigError {
 fn option_read_and_set_through_gband_opt() {
     let scratch = Scratch::new("read-set");
     scratch.server(
-        "gband.opt.default_column_width = 1/3\npresets = gband.opt.width_presets\nwidth = gband.opt.default_column_width",
+        "gband.opt.default_column_width = 1/2\npresets = gband.opt.width_presets\nwidth = gband.opt.default_column_width",
     );
     let config = scratch.loaded_server();
-    assert_eq!(config.options.layout.default_width, Proportion::ONE_THIRD);
+    assert_eq!(config.options.layout.default_width, Proportion::ONE_HALF);
     let presets: Vec<f64> = global(&config, "presets");
     assert_eq!(presets, [1.0 / 3.0, 1.0 / 2.0, 2.0 / 3.0]);
-    assert_eq!(global::<f64>(&config, "width"), 1.0 / 3.0);
+    assert_eq!(global::<f64>(&config, "width"), 0.5);
 }
 
 #[test]
@@ -47,10 +47,10 @@ fn built_in_reads() {
 fn invalid_value_falls_back_to_the_default() {
     let scratch = Scratch::new("invalid");
     let path = scratch.server(
-        "\n\n\ngband.opt.default_column_width = 1/3\ngband.opt.default_column_width = 'wide'",
+        "\n\n\ngband.opt.default_column_width = 1/2\ngband.opt.default_column_width = 'wide'",
     );
     let config = scratch.loaded_server();
-    assert_eq!(config.options.layout.default_width, Proportion::ONE_HALF);
+    assert_eq!(config.options.layout.default_width, Proportion::ONE_THIRD);
     let [error] = config.errors.as_slice() else {
         panic!("{:?}", config.errors);
     };
@@ -61,9 +61,9 @@ fn invalid_value_falls_back_to_the_default() {
 fn gband_set_and_gband_opt_share_the_options() {
     let scratch = Scratch::new("shared");
     scratch
-        .server("gband.set { default_column_width = 1/3 }\nwidth = gband.opt.default_column_width");
+        .server("gband.set { default_column_width = 1/2 }\nwidth = gband.opt.default_column_width");
     let config = scratch.loaded_server();
-    assert_eq!(global::<f64>(&config, "width"), 1.0 / 3.0);
+    assert_eq!(global::<f64>(&config, "width"), 0.5);
 }
 
 #[test]

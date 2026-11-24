@@ -58,9 +58,9 @@ fn height_beside_the_sidebar() {
     let tiles = client.tiles();
     assert_eq!(tiles.len(), 1);
     assert_eq!((tiles[0].top, tiles[0].bottom), (0, 23));
-    assert_eq!((tiles[0].left, tiles[0].right), (1, 39));
+    assert_eq!((tiles[0].left, tiles[0].right), (1, 26));
     tput(&mut client, "lines", "22");
-    tput(&mut client, "cols", "37");
+    tput(&mut client, "cols", "24");
 }
 
 #[test]
@@ -79,7 +79,7 @@ fn default_sidebar() {
 
 #[test]
 fn turning_the_sidebar_off() {
-    let env = TestEnv::new("sidebar-off");
+    let env = TestEnv::with_half_columns("sidebar-off");
     let mut client = attached(&env);
     client.wait_for("the sidebar on the left", |screen| sidebar_at(screen, 0));
     reload(

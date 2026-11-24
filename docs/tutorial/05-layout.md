@@ -81,14 +81,14 @@ end
 The name replaces the program's title on the top border:
 
 ```screen tests/screenshots/layout_spec/a-mark-names-the-window.txt
-I╭mark a───────────╮
- │                 │
-1│                 │
-2│                 │
-─│                 │
- │                 │
- │                 │
- ╰─────────────────╯
+I╭mark a─────╮
+ │           │
+1│           │
+2│           │
+─│           │
+ │           │
+ │           │
+ ╰───────────╯
 ```
 
 A border can show more than the window's name: a Lua function can add buttons at its right end, as [window decorations](../plugins.md#window-decorations) describe.

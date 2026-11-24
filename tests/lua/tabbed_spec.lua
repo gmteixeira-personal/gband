@@ -1,6 +1,7 @@
 local t = require("gband.test")
 
 local NO_BAR = [[gband.keystyle.use()]]
+local HALVES = "gband.opt.default_column_width = 1/2"
 
 local function act(g, chunk)
   g.client(chunk)
@@ -27,7 +28,7 @@ local function left_edge(g, first, last)
 end
 
 t.case("three tabs", function(g)
-  g.start({ config = NO_BAR })
+  g.start({ config = NO_BAR, server_config = HALVES })
   tabbed(g, 3)
   act(g, "gband.action.focus_window_up()")
   t.eq(g.client("return gband.view().window"), 2)
@@ -37,14 +38,14 @@ t.case("three tabs", function(g)
 end)
 
 t.case("one tab", function(g)
-  g.start({ config = NO_BAR })
+  g.start({ config = NO_BAR, server_config = HALVES })
   tabbed(g, 1)
   t.eq(left_edge(g, 1, 22), ("█"):rep(22))
   g.expect_screenshot("lone window")
 end)
 
 t.case("unfocused tabbed column", function(g)
-  g.start({ config = NO_BAR })
+  g.start({ config = NO_BAR, server_config = HALVES })
   tabbed(g, 2)
   act(g, "gband.action.open_window()")
   g.wait(function(screen)
@@ -58,7 +59,10 @@ t.case("unfocused tabbed column", function(g)
 end)
 
 t.case("left side not drawn", function(g)
-  g.start({ config = NO_BAR .. "\ngband.opt.tile_border_sides = { 'top', 'bottom' }" })
+  g.start({
+    config = NO_BAR .. "\ngband.opt.tile_border_sides = { 'top', 'bottom' }",
+    server_config = HALVES,
+  })
   tabbed(g, 1)
   g.run("tput cols")
   g.wait_text("38")

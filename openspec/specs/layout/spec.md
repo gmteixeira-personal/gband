@@ -47,7 +47,7 @@ The layout SHALL always hold at least one band, and its last band SHALL always b
 - **THEN** the layout holds B1, B2 with the floating window, and a new empty band B3
 
 ### Requirement: Column widths
-A column's width SHALL be a proportion of the screen area's width, and a column SHALL also carry a full-width flag. The width presets SHALL be the configuration's `width_presets`, in ascending order, which are 1/3, 1/2 and 2/3 by default. A new column SHALL have the width the open window action names, or the configuration's `default_column_width`, which is 1/2 by default, when it names none, and full width off.
+A column's width SHALL be a proportion of the screen area's width, and a column SHALL also carry a full-width flag. The width presets SHALL be the configuration's `width_presets`, in ascending order, which are 1/3, 1/2 and 2/3 by default. A new column SHALL have the width the open window action names, or the configuration's `default_column_width`, which is 1/3 by default, when it names none, and full width off.
 
 Cycling a column's width SHALL turn full width off and set the width to the smallest preset larger than the current width, or to the smallest preset when no preset is larger. A column with full width on SHALL count as width 1 while cycling. Toggling full width SHALL flip the flag and keep the proportion.
 
@@ -74,8 +74,8 @@ Setting a column's width SHALL turn full width off and set the width to the give
 - **THEN** its width is 3/4
 
 #### Scenario: Configured default width
-- **WHEN** the default column width is 1/3 and a window opens
-- **THEN** its column has width 1/3 and full width off
+- **WHEN** the default column width is 1/2 and a window opens
+- **THEN** its column has width 1/2 and full width off
 
 #### Scenario: Toggle full width keeps the proportion
 - **WHEN** a column of width 1/3 has full width toggled twice
@@ -173,7 +173,7 @@ A window SHALL leave the layout when its program exits, whether the program exit
 ### Requirement: Consume or expel
 Consume or expel SHALL name a window and a direction, left or right.
 
-When the window shares its column with other windows, it SHALL be expelled: it leaves its column and is placed alone in a new column of width 1/2, immediately to the left or right of its old column.
+When the window shares its column with other windows, it SHALL be expelled: it leaves its column and is placed alone in a new column as wide as the configuration's `default_column_width`, immediately to the left or right of its old column.
 
 When the window is alone in its column, it SHALL be consumed: it is appended at the bottom of the adjacent column in that direction, and its own column is removed. When no column exists in that direction, nothing SHALL change.
 

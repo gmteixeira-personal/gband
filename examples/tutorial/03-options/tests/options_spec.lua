@@ -37,7 +37,7 @@ t.case("the resize steps are a twentieth", function(g)
   t.eq(g.client("return gband.opt.width_step, gband.opt.height_step"), 0.05)
   g.keys("alt+r l escape")
   g.settle()
-  t.eq(g.client("return gband.layout().bands[1].columns[1].width"), 0.55)
+  t.eq(g.client("return gband.layout().bands[1].columns[1].width"), 23 / 60)
 end)
 
 t.case("animations run twice as fast", function(g)

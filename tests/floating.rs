@@ -6,7 +6,7 @@ use gband_lua::DEFAULTS;
 const PREFIX: &[u8] = b"\x00";
 
 fn env(name: &str) -> TestEnv {
-    let env = TestEnv::new(name);
+    let env = TestEnv::with_half_columns(name);
     env.write_config(&DEFAULTS.replace("gband.plugin(\"gband.sidebar\")", ""));
     env
 }

@@ -86,7 +86,7 @@ When the `ssh` executable cannot be started, the client SHALL print one line to 
 #### Scenario: Relay starts the server
 - **WHEN** no server is running and the user runs `gband relay -s work --size 100x30` in `/home/u`
 - **THEN** a server starts that hosts exactly one session, named `work`, whose working directory is `/home/u`
-- **AND** the session's first window, in a column of width 1/2, has a PTY of 48 columns by 28 rows
+- **AND** the session's first window, in a column of width 1/3, has a PTY of 31 columns by 28 rows
 
 #### Scenario: Server ends the session
 - **WHEN** the only window of the relayed session exits

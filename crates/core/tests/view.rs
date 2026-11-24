@@ -7,6 +7,13 @@ use gband_core::view::{BandEnds, CenterFocusedColumn, Layer, Scene, View, ViewAc
 
 const AREA: Size = Size::new(80, 24);
 
+fn halves() -> LayoutOptions {
+    LayoutOptions {
+        default_width: Proportion::ONE_HALF,
+        ..LayoutOptions::default()
+    }
+}
+
 fn scene(layout: &Layout) -> Scene<'_> {
     Scene {
         layout,
@@ -18,11 +25,7 @@ fn scene(layout: &Layout) -> Scene<'_> {
 fn open(layout: &mut Layout, band: usize, after: Option<WindowId>) -> WindowId {
     let window = layout.allocate_window();
     let id = layout.bands()[band].id;
-    assert!(
-        !layout
-            .open(window, id, after, None, &LayoutOptions::default())
-            .is_empty()
-    );
+    assert!(!layout.open(window, id, after, None, &halves()).is_empty());
     window
 }
 
@@ -43,7 +46,7 @@ fn stack_into_left(layout: &mut Layout, window: WindowId) {
             direction: Direction::Left,
         },
         AREA,
-        &LayoutOptions::default(),
+        &halves(),
     );
 }
 
@@ -208,7 +211,7 @@ fn focused_window_expelled_keeps_focus() {
             direction: Direction::Right,
         },
         AREA,
-        &LayoutOptions::default(),
+        &halves(),
     );
     view.sync(scene(&layout));
     assert_eq!(view.focused(), Some(windows[1]));
@@ -338,11 +341,7 @@ fn camera_scrolls_just_enough_and_back() {
 #[test]
 fn camera_aligns_a_wide_column_to_its_start() {
     let (mut layout, windows) = row_of_columns(2);
-    layout.apply(
-        SessionAction::ToggleFullWidth(windows[1]),
-        AREA,
-        &LayoutOptions::default(),
-    );
+    layout.apply(SessionAction::ToggleFullWidth(windows[1]), AREA, &halves());
     let mut view = View::new(Scene {
         layout: &layout,
         area: Size::new(100, 24),
@@ -380,7 +379,7 @@ fn view_with(layout: &Layout, policy: CenterFocusedColumn) -> View {
 fn columns_of(width: Proportion, count: usize) -> (Layout, Vec<WindowId>) {
     let options = LayoutOptions {
         default_width: width,
-        ..LayoutOptions::default()
+        ..halves()
     };
     let mut layout = Layout::new();
     let mut windows = Vec::new();
@@ -448,7 +447,7 @@ fn on_overflow_follows_a_width_change_as_never() {
             by: Proportion::TENTH,
         },
         AREA,
-        &LayoutOptions::default(),
+        &halves(),
     );
     view.sync(scene(&layout));
     assert_eq!(view.camera(), 8);
@@ -461,7 +460,7 @@ fn on_overflow_centres_a_new_column_that_does_not_fit_beside_the_focus() {
     let opened = layout.allocate_window();
     let options = LayoutOptions {
         default_width: Proportion::TWO_THIRDS,
-        ..LayoutOptions::default()
+        ..halves()
     };
     layout.open(
         opened,
@@ -645,11 +644,7 @@ fn column_beyond_the_right_edge_is_not_shown() {
 fn partly_visible_column_is_shown() {
     let (mut layout, windows) = row_of_columns(2);
     for &window in &windows {
-        layout.apply(
-            SessionAction::CycleWidth(window),
-            AREA,
-            &LayoutOptions::default(),
-        );
+        layout.apply(SessionAction::CycleWidth(window), AREA, &halves());
     }
     let mut view = View::new(scene(&layout));
     act(&mut view, &layout, &[ViewAction::FocusRight]);
@@ -753,7 +748,7 @@ fn viewing_the_viewed_or_an_unknown_band_changes_nothing() {
 }
 
 fn apply(layout: &mut Layout, action: SessionAction) {
-    layout.apply(action, AREA, &LayoutOptions::default());
+    layout.apply(action, AREA, &halves());
 }
 
 fn float(layout: &mut Layout, window: WindowId) {
@@ -1163,7 +1158,7 @@ fn box_below_a_small_terminal() {
             row: 40,
         },
         area,
-        &LayoutOptions::default(),
+        &halves(),
     );
     let small = Scene {
         layout: &layout,
@@ -2644,11 +2639,7 @@ fn attach_starts_the_focus_order_again() {
 }
 
 fn toggle_tabbed(layout: &mut Layout, window: WindowId) {
-    layout.apply(
-        SessionAction::ToggleTabbed(window),
-        AREA,
-        &LayoutOptions::default(),
-    );
+    layout.apply(SessionAction::ToggleTabbed(window), AREA, &halves());
 }
 
 fn tabbed_then_column() -> (Layout, Vec<WindowId>) {

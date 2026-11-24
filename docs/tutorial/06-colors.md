@@ -83,14 +83,14 @@ With `dusk` active, the client log shows `#232136`.
 With `dusk`, a marked window looks the same in text, since a code block cannot show colors:
 
 ```screen tests/screenshots/colors_spec/dusk-sets-mark-and-the-palette.txt
-I╭mark a───────────╮
- │                 │
-1│                 │
-2│                 │
-─│                 │
- │                 │
- │                 │
- ╰─────────────────╯
+I╭mark a─────╮
+ │           │
+1│           │
+2│           │
+─│           │
+ │           │
+ │           │
+ ╰───────────╯
 ```
 
 Its reference file, under the chapter's `tests/screenshots/`, lists the colors of every cell.

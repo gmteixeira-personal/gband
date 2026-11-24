@@ -188,7 +188,7 @@ fn defaults_reproduce_the_built_in_behaviour() {
     let server = gband_lua::defaults(gband_lua::Side::Server);
     assert!(server.errors.is_empty(), "{:?}", server.errors);
     assert_eq!(server.options, Options::default());
-    assert_eq!(server.options.layout.default_width, Proportion::ONE_HALF);
+    assert_eq!(server.options.layout.default_width, Proportion::ONE_THIRD);
     assert_eq!(
         server.options.layout.presets,
         [
@@ -1014,8 +1014,8 @@ fn toggle_floating_by_name() {
 
 #[test]
 fn partial_update() {
-    let config = server_loaded("partial", "gband.set { default_column_width = 1/3 }");
-    assert_eq!(config.options.layout.default_width, Proportion::ONE_THIRD);
+    let config = server_loaded("partial", "gband.set { default_column_width = 1/2 }");
+    assert_eq!(config.options.layout.default_width, Proportion::ONE_HALF);
     assert_eq!(
         config.options.layout.presets,
         Options::default().layout.presets

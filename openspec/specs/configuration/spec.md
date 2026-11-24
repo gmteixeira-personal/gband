@@ -76,8 +76,8 @@ The client configuration file SHALL be `user/init.lua` in the configuration dire
 - **THEN** `client.lua` reads `"ctrl+b"`
 
 #### Scenario: Plugin sets a width option
-- **WHEN** a plugin's `server.lua` sets `gband.opt.default_column_width` to `1/3`, and a client starts a server and opens a window
-- **THEN** the new window's column has width 1/3
+- **WHEN** a plugin's `server.lua` sets `gband.opt.default_column_width` to `1/2`, and a client starts a server and opens a window
+- **THEN** the new window's column has width 1/2
 
 ### Requirement: Defaults use the public API
 The default configuration SHALL use only the `gband` API that the configuration file can use. It SHALL set the options to their declared defaults, except `band_ends`, which it SHALL set to the value `gband.settings.band_ends()` returns, or to its declared default `"loop"` when that returns nil, as the settings capability's "Saved band ends" defines. It SHALL make its key bindings only by calling `gband.keystyle.use()` with no argument, as the key-style capability defines, so the saved key style, or the modal key style when none is saved, makes them. It SHALL make no other binding and declare no mode. It SHALL set up the key list plugin `gband.keylist` and the Lua prompt plugin `gband.prompt`, and with the floating key style the desktop plugin `gband.desktop`, only through that call. It SHALL then set up, with `gband.plugin` and no options, the bundled error list plugin `gband.errors`, then the bundled sidebar plugin `gband.sidebar` unless `gband.settings.sidebar()` returns `false`, in that order, and register the offer of the settings capability's "Offer on the first start". Evaluated alone, with no configuration directory, it SHALL produce the declared defaults of the options and the default key bindings of the client-attach capability for the modal key style.
@@ -363,9 +363,9 @@ Each process SHALL watch the `user` directory and every directory beneath it. Wi
 - **THEN** within two seconds Alt+K runs the new binding
 
 #### Scenario: New default width
-- **WHEN** a session holds a column of width 1/2 and the user sets `default_column_width` to `1/3` in `user/server.lua`
-- **THEN** that column keeps width 1/2
-- **AND** a window opened after the reload has a column of width 1/3
+- **WHEN** a session holds a column of width 1/3 and the user sets `default_column_width` to `1/2` in `user/server.lua`
+- **THEN** that column keeps width 1/3
+- **AND** a window opened after the reload has a column of width 1/2
 
 #### Scenario: File removed
 - **WHEN** `user/init.lua` bound `alt+h` and the user deletes it
@@ -474,7 +474,7 @@ The built-in server options SHALL be:
 
 | option | value | default |
 |---|---|---|
-| `default_column_width` | a number greater than 0 and at most 10000 | `1/2` |
+| `default_column_width` | a number greater than 0 and at most 10000 | `1/3` |
 | `width_presets` | a list of one or more numbers, each greater than 0 and at most 10000 | `{ 1/3, 1/2, 2/3 }` |
 
 A process SHALL know only the options of its own side, and options declared in its own Lua state. A width and a step SHALL each be read as the fraction closest to the number whose denominator is at most 100, in lowest terms, so `1/3` reads as 1/3. The width presets SHALL be held in ascending order with duplicates removed. A list of side names SHALL hold only `top`, `right`, `bottom` and `left`, and SHALL be held in that order with duplicates removed; an empty list is valid.
@@ -493,8 +493,8 @@ Options SHALL be set and declared only while the configuration loads. Setting or
 - **AND** Ctrl+A reaches the focused window as `\x01`
 
 #### Scenario: Partial update
-- **WHEN** `user/server.lua` calls `gband.set { default_column_width = 1/3 }`
-- **THEN** the default column width is 1/3
+- **WHEN** `user/server.lua` calls `gband.set { default_column_width = 1/2 }`
+- **THEN** the default column width is 1/2
 - **AND** the width presets are 1/3, 1/2 and 2/3
 
 #### Scenario: Later call wins
@@ -526,13 +526,13 @@ Options SHALL be set and declared only while the configuration loads. Setting or
 - **THEN** loading fails with an error naming `center_focused_column`
 
 #### Scenario: Option read and set through gband.opt
-- **WHEN** `user/server.lua` sets `gband.opt.default_column_width = 1/3` and then reads `gband.opt.width_presets`
-- **THEN** the default column width is 1/3
+- **WHEN** `user/server.lua` sets `gband.opt.default_column_width = 1/2` and then reads `gband.opt.width_presets`
+- **THEN** the default column width is 1/2
 - **AND** the value read is `{ 1/3, 1/2, 2/3 }`
 
 #### Scenario: Invalid value falls back to the default
-- **WHEN** line 4 of `user/server.lua` sets `gband.opt.default_column_width = 1/3` and line 5 sets `gband.opt.default_column_width = "wide"`
-- **THEN** loading succeeds with the default column width 1/2
+- **WHEN** line 4 of `user/server.lua` sets `gband.opt.default_column_width = 1/2` and line 5 sets `gband.opt.default_column_width = "wide"`
+- **THEN** loading succeeds with the default column width 1/3
 - **AND** an error at `user/server.lua` line 5 naming `default_column_width` is reported
 
 #### Scenario: Declared plugin option

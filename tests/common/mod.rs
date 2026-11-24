@@ -26,6 +26,12 @@ impl TestEnv {
         env
     }
 
+    pub fn with_half_columns(name: &str) -> Self {
+        let env = Self::new(name);
+        env.write_server_config("gband.opt.default_column_width = 1/2\n");
+        env
+    }
+
     pub fn without_settings(name: &str) -> Self {
         let scratch = Scratch::new("e2e", name);
         Self {

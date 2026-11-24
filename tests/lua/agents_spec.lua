@@ -1,5 +1,6 @@
 local t = require("gband.test")
 
+local HALVES = "gband.opt.default_column_width = 1/2"
 local FIXTURES = "crates/server/tests/fixtures/claude/"
 
 local function read(name)
@@ -24,7 +25,7 @@ local function column(screen)
 end
 
 local function start(g, size)
-  g.start({ size = size or "80x24", files = FILES })
+  g.start({ size = size or "80x24", server_config = HALVES, files = FILES })
   g.wait_text("$")
 end
 

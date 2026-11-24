@@ -21,16 +21,16 @@ The server process SHALL hold one Lua state of its own, which serves every sessi
 The server configuration file SHALL be `user/server.lua` in the configuration directory of the machine the server runs on. Loading SHALL use one new Lua state, starting from the declared defaults of the server options, and SHALL evaluate the server init file and then the `server.lua` files the plugins capability sources from the runtimepath. The server init file SHALL be the server configuration file when it exists, and the default server configuration otherwise. The default server configuration SHALL be built into the executable, SHALL use only the server's `gband` API, and evaluated alone SHALL produce the declared defaults of the server options. A missing server configuration file SHALL NOT be an error. Loading SHALL apply all of the configuration or none of it as the configuration capability's "Last good configuration" defines, with the server init file in place of the init file.
 
 #### Scenario: Width set for the server
-- **WHEN** `user/server.lua` sets `gband.opt.default_column_width = 1/3`, and a client starts a server and opens a window
-- **THEN** the new window's column has width 1/3
+- **WHEN** `user/server.lua` sets `gband.opt.default_column_width = 1/2`, and a client starts a server and opens a window
+- **THEN** the new window's column has width 1/2
 
 #### Scenario: No server configuration file
 - **WHEN** no `user/server.lua` exists and a client starts a server
 - **THEN** no error is reported and the server options have their declared defaults
 
 #### Scenario: Broken server file at start
-- **WHEN** `user/server.lua` sets `default_column_width` to `1/3` and then raises an error, and a client starts a server and opens a window
-- **THEN** the new window's column has width 1/2
+- **WHEN** `user/server.lua` sets `default_column_width` to `1/2` and then raises an error, and a client starts a server and opens a window
+- **THEN** the new window's column has width 1/3
 - **AND** the client shows the error prefixed with `server: `
 
 ### Requirement: Server events

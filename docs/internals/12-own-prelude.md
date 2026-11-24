@@ -71,12 +71,12 @@ gband.plugin("gband.sidebar")
 With one window open, the clock sits at the right edge and the sidebar at the left:
 
 ```screen tests/screenshots/own_prelude_spec/the-own-prelude-adds-the-clock--the-clock.txt
-I╭───────────────╮                 12:00
- │               │
-1│               │
-─│               │
- │               │
- ╰───────────────╯
+I╭─────────╮                       12:00
+ │         │
+1│         │
+─│         │
+ │         │
+ ╰─────────╯
 ```
 
 ## The tests

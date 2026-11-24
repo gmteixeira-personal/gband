@@ -4,10 +4,11 @@ use std::time::Instant;
 use gband_client::animation::Animations;
 use gband_client::{Controls, Display, Step};
 use gband_core::geometry::Size;
-use gband_core::layout::{Layout, LayoutOptions, SessionAction, WindowId};
+use gband_core::layout::{Layout, SessionAction, WindowId};
 use gband_lua::keys::parse_key;
 use gband_lua::{Config, LoadOptions, Locations};
 use gband_protocol::{ClientMessage, ServerMessage};
+use gband_test_support::halves;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::layout::Rect;
@@ -73,13 +74,7 @@ impl Client {
         let mut windows = Vec::new();
         for _ in 0..columns {
             let window = layout.allocate_window();
-            layout.open(
-                window,
-                band,
-                windows.last().copied(),
-                None,
-                &LayoutOptions::default(),
-            );
+            layout.open(window, band, windows.last().copied(), None, &halves());
             windows.push(window);
         }
         let mut client = Self {
@@ -108,11 +103,8 @@ impl Client {
 
     fn full_width(&mut self, window: WindowId) {
         let area = self.display.reported_size();
-        self.layout.apply(
-            SessionAction::ToggleFullWidth(window),
-            area,
-            &LayoutOptions::default(),
-        );
+        self.layout
+            .apply(SessionAction::ToggleFullWidth(window), area, &halves());
         self.settle();
     }
 

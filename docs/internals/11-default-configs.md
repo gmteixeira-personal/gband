@@ -77,11 +77,11 @@ The window opens in a handler and not at top level, since `gband.settings.open` 
 ## The server
 
 ```lua defaults/server.lua
-gband.opt.default_column_width = 1/2
+gband.opt.default_column_width = 1/3
 gband.opt.width_presets = { 1/3, 1/2, 2/3 }
 ```
 
-The server's default configuration sets its two options to their defaults: the width of a new column, half the screen, and the widths that cycling a column steps through.
+The server's default configuration sets its two options to their defaults: the width of a new column, a third of the screen, and the widths that cycling a column steps through.
 The server has no prelude and no `gband.core`; everything it offers is the Rust API.
 
 ## What the earlier chapters add up to

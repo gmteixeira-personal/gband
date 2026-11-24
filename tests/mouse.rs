@@ -22,7 +22,7 @@ const WHEEL_UP: u16 = 64;
 const WHEEL_DOWN: u16 = 65;
 
 fn env(name: &str) -> TestEnv {
-    let env = TestEnv::new(name);
+    let env = TestEnv::with_half_columns(name);
     env.write_config(&DEFAULTS.replace("gband.plugin(\"gband.sidebar\")", ""));
     env
 }

@@ -95,7 +95,7 @@ fn server_starts_its_session_at_the_given_size() {
         || fs::read_to_string(&size).is_ok_and(|text| text.ends_with('\n')),
         "the window's size",
     );
-    assert_eq!(fs::read_to_string(&size).unwrap(), "28 48\n");
+    assert_eq!(fs::read_to_string(&size).unwrap(), "28 31\n");
     let output = env.command(GBAND, &["kill-server"]).output().unwrap();
     assert_eq!(output.status.code(), Some(0), "{output:?}");
     assert_eq!(wait_process_exit(&mut server).code(), Some(0));

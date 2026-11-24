@@ -9,13 +9,12 @@ use gband_client::{Controls, Display, Step, dispatch};
 use gband_core::action::Action;
 use gband_core::geometry::Size;
 use gband_core::input::{Key, Modifiers, MouseButton, MouseEvent, MouseKind, WheelDirection};
-use gband_core::layout::{
-    Direction, Layout, LayoutOptions, Proportion, SessionAction, WindowHeight, WindowId,
-};
+use gband_core::layout::{Direction, Layout, Proportion, SessionAction, WindowHeight, WindowId};
 use gband_core::view::ViewAction;
 use gband_lua::keys::parse_key;
 use gband_lua::{Config, ConfigError, DEFAULTS, LoadOptions, Locations};
 use gband_protocol::{ClientMessage, ServerMessage};
+use gband_test_support::halves;
 
 struct Scratch(gband_scratch::Scratch);
 
@@ -76,13 +75,7 @@ fn layout_of(count: usize) -> (Layout, Vec<WindowId>) {
     let mut windows = Vec::new();
     for _ in 0..count {
         let window = layout.allocate_window();
-        layout.open(
-            window,
-            band,
-            windows.last().copied(),
-            None,
-            &LayoutOptions::default(),
-        );
+        layout.open(window, band, windows.last().copied(), None, &halves());
         windows.push(window);
     }
     (layout, windows)
@@ -284,7 +277,7 @@ fn layout_change_without_a_window_change() {
             direction: Direction::Left,
         },
         Size::new(80, 24),
-        &LayoutOptions::default(),
+        &halves(),
     );
     client.receive([shown(&layout)]);
     assert_eq!(client.log(), ["LayoutChanged "]);
@@ -294,7 +287,7 @@ fn layout_change_without_a_window_change() {
 fn column_tabbed() {
     let (_scratch, mut client) = recording("layout-tabbed", "");
     let (mut layout, windows) = layout_of(2);
-    let options = LayoutOptions::default();
+    let options = halves();
     client.receive([shown(&layout), ServerMessage::Focus(windows[1])]);
     for action in [
         SessionAction::ToggleTabbed(windows[1]),
@@ -314,7 +307,7 @@ fn column_tabbed() {
 fn moving_a_floating_box_is_a_layout_change() {
     let (_scratch, mut client) = recording("layout-floating", "");
     let (mut layout, windows) = layout_of(2);
-    let options = LayoutOptions::default();
+    let options = halves();
     let window = windows[1];
     layout.apply(
         SessionAction::ToggleFloating {
@@ -353,7 +346,7 @@ gband.bind('alt+n', function() gband.window.minimize(2) end)",
                 floating: None,
             },
             Size::new(80, 24),
-            &LayoutOptions::default(),
+            &halves(),
         );
     }
     client.receive([shown(&layout), ServerMessage::Focus(windows[2])]);
@@ -376,7 +369,7 @@ fn heights_alone_are_no_layout_change() {
             direction: Direction::Left,
         },
         Size::new(80, 24),
-        &LayoutOptions::default(),
+        &halves(),
     );
     client.receive([shown(&layout)]);
     client.clear();
@@ -387,7 +380,7 @@ fn heights_alone_are_no_layout_change() {
             by: Proportion::TENTH,
         },
         Size::new(80, 24),
-        &LayoutOptions::default(),
+        &halves(),
     );
     client.receive([shown(&layout)]);
     assert_eq!(client.log(), Vec::<String>::new());
@@ -441,7 +434,7 @@ fn area_and_shape_change_once() {
             width: Proportion::ONE_THIRD,
         },
         Size::new(100, 30),
-        &LayoutOptions::default(),
+        &halves(),
     );
     client.receive([shown_in(&layout, 100, 30)]);
     assert_eq!(client.log(), ["LayoutChanged "]);
@@ -801,20 +794,14 @@ fn box_cell_of_a_cut_tile() {
     let mut layout = Layout::new();
     let band = layout.bands()[0].id;
     let first = layout.allocate_window();
-    layout.open(
-        first,
-        band,
-        None,
-        Some(Proportion::ONE_HALF),
-        &LayoutOptions::default(),
-    );
+    layout.open(first, band, None, Some(Proportion::ONE_HALF), &halves());
     let second = layout.allocate_window();
     layout.open(
         second,
         band,
         Some(first),
         Some(Proportion::new(5, 8)),
-        &LayoutOptions::default(),
+        &halves(),
     );
     client.receive([shown(&layout)]);
     dispatch(&mut client.display, Action::View(ViewAction::FocusRight));
@@ -949,7 +936,7 @@ fn peek_into_another_band() {
     let (mut layout, windows) = layout_of(1);
     let below = layout.allocate_window();
     let band = layout.bands()[1].id;
-    layout.open(below, band, None, None, &LayoutOptions::default());
+    layout.open(below, band, None, None, &halves());
     client.receive([shown(&layout), ServerMessage::Focus(windows[0])]);
     client.clear();
     client.press("alt+p");
@@ -979,7 +966,7 @@ gband.bind('alt+f', function() gband.window.focus(2) end)",
                 floating: None,
             },
             Size::new(80, 24),
-            &LayoutOptions::default(),
+            &halves(),
         );
     }
     client.receive([shown(&layout), ServerMessage::Focus(windows[2])]);

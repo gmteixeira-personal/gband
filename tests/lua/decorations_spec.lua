@@ -18,7 +18,12 @@ end
 
 local function floated(g, opts)
   opts = opts or {}
-  g.start({ window_titles = true, config = opts.config or CONFIG, size = opts.size })
+  g.start({
+    window_titles = true,
+    config = opts.config or CONFIG,
+    server_config = "gband.opt.default_column_width = 1/2",
+    size = opts.size,
+  })
   g.wait_text("$")
   g.client("gband.action.open_window()")
   g.wait(function()

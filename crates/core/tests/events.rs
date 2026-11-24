@@ -7,10 +7,17 @@ use gband_core::layout::{
 
 const AREA: Size = Size::new(80, 24);
 
+fn halves() -> LayoutOptions {
+    LayoutOptions {
+        default_width: Proportion::ONE_HALF,
+        ..LayoutOptions::default()
+    }
+}
+
 fn open(layout: &mut Layout, band: usize, after: Option<WindowId>) -> (WindowId, Vec<LayoutEvent>) {
     let window = layout.allocate_window();
     let id = layout.bands()[band].id;
-    let events = layout.open(window, id, after, None, &LayoutOptions::default());
+    let events = layout.open(window, id, after, None, &halves());
     (window, events)
 }
 
@@ -98,7 +105,7 @@ fn consume_into_the_left_neighbour_moves_one_window() {
             direction: Direction::Left,
         },
         AREA,
-        &LayoutOptions::default(),
+        &halves(),
     );
     assert_eq!(
         events,
@@ -122,7 +129,7 @@ fn expel_to_the_right_moves_one_window() {
             direction: Direction::Left,
         },
         AREA,
-        &LayoutOptions::default(),
+        &halves(),
     );
     let events = layout.apply(
         SessionAction::ConsumeOrExpel {
@@ -130,7 +137,7 @@ fn expel_to_the_right_moves_one_window() {
             direction: Direction::Right,
         },
         AREA,
-        &LayoutOptions::default(),
+        &halves(),
     );
     assert_eq!(
         events,
@@ -155,7 +162,7 @@ fn consume_at_the_edge_produces_nothing() {
                 .apply(
                     SessionAction::ConsumeOrExpel { window, direction },
                     AREA,
-                    &LayoutOptions::default()
+                    &halves()
                 )
                 .is_empty()
         );
@@ -178,35 +185,19 @@ fn cycling_and_toggling_widths_report_the_column() {
         }]
     };
     assert_eq!(
-        layout.apply(
-            SessionAction::CycleWidth(second),
-            AREA,
-            &LayoutOptions::default()
-        ),
+        layout.apply(SessionAction::CycleWidth(second), AREA, &halves()),
         changed(Proportion::TWO_THIRDS, false)
     );
     assert_eq!(
-        layout.apply(
-            SessionAction::CycleWidth(second),
-            AREA,
-            &LayoutOptions::default()
-        ),
+        layout.apply(SessionAction::CycleWidth(second), AREA, &halves()),
         changed(Proportion::ONE_THIRD, false)
     );
     assert_eq!(
-        layout.apply(
-            SessionAction::ToggleFullWidth(second),
-            AREA,
-            &LayoutOptions::default()
-        ),
+        layout.apply(SessionAction::ToggleFullWidth(second), AREA, &halves()),
         changed(Proportion::ONE_THIRD, true)
     );
     assert_eq!(
-        layout.apply(
-            SessionAction::ToggleFullWidth(second),
-            AREA,
-            &LayoutOptions::default()
-        ),
+        layout.apply(SessionAction::ToggleFullWidth(second), AREA, &halves()),
         changed(Proportion::ONE_THIRD, false)
     );
 }
@@ -219,20 +210,12 @@ fn actions_on_a_missing_window_produce_nothing() {
     assert!(layout.remove(missing).is_empty());
     assert!(
         layout
-            .apply(
-                SessionAction::CycleWidth(missing),
-                AREA,
-                &LayoutOptions::default()
-            )
+            .apply(SessionAction::CycleWidth(missing), AREA, &halves())
             .is_empty()
     );
     assert!(
         layout
-            .apply(
-                SessionAction::ToggleFullWidth(missing),
-                AREA,
-                &LayoutOptions::default()
-            )
+            .apply(SessionAction::ToggleFullWidth(missing), AREA, &halves())
             .is_empty()
     );
 }
@@ -247,7 +230,7 @@ fn growing_a_column_width_reports_it_once() {
         by: Proportion::TENTH,
     };
     assert_eq!(
-        layout.apply(grow, AREA, &LayoutOptions::default()),
+        layout.apply(grow, AREA, &halves()),
         [LayoutEvent::ColumnWidthChanged {
             band: band(&layout, 0),
             column: 0,
@@ -261,13 +244,9 @@ fn growing_a_column_width_reports_it_once() {
         by: Proportion::TENTH,
     };
     for _ in 0..6 {
-        layout.apply(shrink.clone(), AREA, &LayoutOptions::default());
+        layout.apply(shrink.clone(), AREA, &halves());
     }
-    assert!(
-        layout
-            .apply(shrink.clone(), AREA, &LayoutOptions::default())
-            .is_empty()
-    );
+    assert!(layout.apply(shrink.clone(), AREA, &halves()).is_empty());
 }
 
 fn second_column_stack() -> (Layout, WindowId, WindowId) {
@@ -281,7 +260,7 @@ fn second_column_stack() -> (Layout, WindowId, WindowId) {
             direction: Direction::Left,
         },
         AREA,
-        &LayoutOptions::default(),
+        &halves(),
     );
     (layout, top, bottom)
 }
@@ -297,7 +276,7 @@ fn growing_a_window_height_reports_the_column() {
                 by: Proportion::TENTH,
             },
             AREA,
-            &LayoutOptions::default()
+            &halves()
         ),
         [LayoutEvent::WindowHeightsChanged {
             band: band(&layout, 0),
@@ -317,24 +296,16 @@ fn height_steps_at_the_limits_produce_nothing() {
             by: Proportion::TENTH,
         };
         for _ in 0..presses {
-            assert!(
-                !layout
-                    .apply(action.clone(), AREA, &LayoutOptions::default())
-                    .is_empty()
-            );
+            assert!(!layout.apply(action.clone(), AREA, &halves()).is_empty());
         }
         let before = layout.clone();
-        assert!(
-            layout
-                .apply(action.clone(), AREA, &LayoutOptions::default())
-                .is_empty()
-        );
+        assert!(layout.apply(action.clone(), AREA, &halves()).is_empty());
         assert_eq!(layout, before);
     }
 }
 
 fn apply(layout: &mut Layout, action: SessionAction) -> Vec<LayoutEvent> {
-    layout.apply(action, AREA, &LayoutOptions::default())
+    layout.apply(action, AREA, &halves())
 }
 
 fn row_of_three() -> (Layout, [WindowId; 3]) {
@@ -511,7 +482,7 @@ fn opening_floating_in_the_empty_band() {
     let mut layout = Layout::new();
     let window = layout.allocate_window();
     let empty = band(&layout, 0);
-    let events = layout.open_floating(window, empty, None, AREA, &LayoutOptions::default());
+    let events = layout.open_floating(window, empty, None, AREA, &halves());
     let record = *layout.floating(window).unwrap();
     assert_eq!(
         events,
@@ -565,7 +536,7 @@ fn toggling_tabs_reports_the_column() {
             tab_rows,
         }]
     };
-    let mut act = |action| layout.apply(action, AREA, &LayoutOptions::default());
+    let mut act = |action| layout.apply(action, AREA, &halves());
     assert_eq!(
         act(SessionAction::ToggleTabbed(second)),
         changed(true, None)
@@ -595,17 +566,13 @@ fn toggling_tabs_of_a_floating_or_missing_window_produces_nothing() {
             floating: None,
         },
         AREA,
-        &LayoutOptions::default(),
+        &halves(),
     );
     let before = layout.clone();
     for window in [second, WindowId(99)] {
         assert!(
             layout
-                .apply(
-                    SessionAction::ToggleTabbed(window),
-                    AREA,
-                    &LayoutOptions::default()
-                )
+                .apply(SessionAction::ToggleTabbed(window), AREA, &halves())
                 .is_empty()
         );
     }
@@ -616,7 +583,7 @@ fn toggling_tabs_of_a_floating_or_missing_window_produces_nothing() {
 fn unchanged_tab_height_produces_nothing() {
     let mut layout = Layout::new();
     let (first, _) = open(&mut layout, 0, None);
-    let mut act = |action| layout.apply(action, AREA, &LayoutOptions::default());
+    let mut act = |action| layout.apply(action, AREA, &halves());
     act(SessionAction::ToggleTabbed(first));
     assert!(act(SessionAction::ResetHeight(first)).is_empty());
     assert!(

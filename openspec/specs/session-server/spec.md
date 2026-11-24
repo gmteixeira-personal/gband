@@ -93,7 +93,7 @@ On creating a session, the server SHALL open that session's first window. Every 
 
 #### Scenario: Size before any client
 - **WHEN** the server starts and no client has attached
-- **THEN** the first window's PTY is 38 columns by 22 rows
+- **THEN** the first window's PTY is 24 columns by 22 rows
 
 #### Scenario: Command line program
 - **WHEN** a client asks to open a window naming the command line `echo $GBAND_WINDOW; sleep 5`
@@ -518,7 +518,7 @@ On start, the server SHALL create one session, named by the `-s` option the comm
 
 #### Scenario: Session started at a size
 - **WHEN** the user runs `gband server --size 79x24` and no client has attached
-- **THEN** the session's first window, in a column of width 1/2, has a PTY of 37 columns by 22 rows
+- **THEN** the session's first window, in a column of width 1/3, has a PTY of 24 columns by 22 rows
 
 ### Requirement: Attach creates a missing session
 When a client asks to attach to a session the server does not host, the server SHALL create that session and attach the client to it. The new session's working directory SHALL be the working directory the client sent with its request, or the server's working directory when the client sent an empty path or one that is not a directory on the server's machine, and its screen area SHALL start as the size the client's hello carries, which is its reported size. A client attaching to a session that exists SHALL NOT create one.

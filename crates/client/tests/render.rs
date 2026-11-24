@@ -9,7 +9,7 @@ use gband_client::render::{
 };
 use gband_core::geometry::{Size, boxes, tiles};
 use gband_core::layout::{
-    Direction, Layout, LayoutOptions, Proportion, SessionAction, Step, WindowHeight, WindowId,
+    Direction, Layout, Proportion, SessionAction, Step, WindowHeight, WindowId,
 };
 use gband_core::view::{CenterFocusedColumn, Scene, View, ViewAction};
 use gband_emulator::{Emulator, Grid};
@@ -19,6 +19,7 @@ use gband_lua::{
     Bar, BarSide, Border, BorderChars, CharSet, ClientStyles, Color, DecorationSpan, Options,
     Palette, Sides, Slot, Style, WindowName, WindowNames,
 };
+use gband_test_support::halves;
 use insta::assert_snapshot;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
@@ -54,13 +55,7 @@ impl Fixture {
         let mut windows = Vec::new();
         for _ in 0..columns {
             let window = layout.allocate_window();
-            layout.open(
-                window,
-                band,
-                windows.last().copied(),
-                None,
-                &LayoutOptions::default(),
-            );
+            layout.open(window, band, windows.last().copied(), None, &halves());
             windows.push(window);
         }
         let view = View::new(Scene {
@@ -108,8 +103,7 @@ impl Fixture {
     }
 
     fn change(&mut self, action: SessionAction, viewport_cols: u16) {
-        self.layout
-            .apply(action, self.area, &LayoutOptions::default());
+        self.layout.apply(action, self.area, &halves());
         let scene = Scene {
             layout: &self.layout,
             area: self.area,
@@ -430,9 +424,7 @@ fn band_switch_mid_slide() {
     let (mut fixture, windows) = Fixture::new(Size::new(60, 12), 1, 60);
     let below = fixture.layout.bands()[1].id;
     let window = fixture.layout.allocate_window();
-    fixture
-        .layout
-        .open(window, below, None, None, &LayoutOptions::default());
+    fixture.layout.open(window, below, None, None, &halves());
     fixture.reset_grids();
     fixture.write(windows[0], b"upper");
     fixture.write(window, b"lower");

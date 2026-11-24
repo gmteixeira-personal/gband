@@ -98,14 +98,14 @@ gband.keymap.set("prefix", "M", gband.action.list_marks)
 ```
 
 ```screen tests/screenshots/plugin_windows_spec/the-list-jumps-to-the-line-under-the-cursor--two-marks.txt
-I╭─────────────────╮╭─────────────────╮
- │                 ││                 │
-1│       ┌marks───────────────┐       │
-2│       │a window 2 in band 1│       │
-─│       │b window 1 in band 1│       │
- │       └────────────────────┘       │
- │                 ││                 │
- ╰─────────────────╯╰─────────────────╯
+I╭───────────╮╭───────────╮
+ │           ││           │
+1│       ┌marks───────────────┐
+2│       │a window 2 in band 1│
+─│       │b window 1 in band 1│
+ │       └────────────────────┘
+ │           ││           │
+ ╰───────────╯╰───────────╯
 ```
 
 ## Keeping it current

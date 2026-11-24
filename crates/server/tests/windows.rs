@@ -286,7 +286,7 @@ async fn stacked_windows_share_the_height() {
 #[tokio::test(flavor = "multi_thread")]
 async fn new_default_width_applies_to_columns_opened_after_it() {
     let runtime_dir = runtime_dir("reload-width");
-    let (options, receiver) = tokio::sync::watch::channel(LayoutOptions::default());
+    let (options, receiver) = tokio::sync::watch::channel(halves());
     let config = gband_server::ServerConfig {
         options: receiver,
         ..config(&runtime_dir, &["/bin/sh"])
@@ -296,7 +296,7 @@ async fn new_default_width_applies_to_columns_opened_after_it() {
     let first = client.first();
     options.send_replace(LayoutOptions {
         default_width: Proportion::ONE_THIRD,
-        ..LayoutOptions::default()
+        ..halves()
     });
     let second = client.open_after(first).await;
     let width = |client: &TestClient, window: WindowId| {

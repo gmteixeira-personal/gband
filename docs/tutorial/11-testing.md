@@ -102,14 +102,14 @@ From then on, a change that draws differently fails with a diff of the rows that
 The list's reference, from the case `lists the marks in letter order`:
 
 ```screen plugins/marks/tests/screenshots/marks_spec/lists-the-marks-in-letter-order--two-marks.txt
-Ib╭─────────────────╮╭─────────────────╮
-  │                 ││                 │
-1 │       ┌marks───────────────┐       │
-2 │       │a window 2 in band 1│       │
-─ │       │b window 1 in band 1│       │
-  │       └────────────────────┘       │
-  │                 ││                 │
-  ╰─────────────────╯╰─────────────────╯
+Ib╭──────────╮╭──────────╮
+  │          ││          │
+1 │       ┌marks───────────────┐
+2 │       │a window 2 in band 1│
+─ │       │b window 1 in band 1│
+  │       └────────────────────┘
+  │          ││          │
+  ╰──────────╯╰──────────╯
 ```
 
 The time is frozen at noon on 1 January 2025 in every case, so a clock in a bar draws the same on every run.

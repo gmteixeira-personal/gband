@@ -10,11 +10,12 @@ use gband_core::action::Action;
 use gband_core::geometry::{Size, Tile, drawn_copy};
 use gband_core::input::{Modifiers, MouseButton, MouseEvent, MouseKind};
 use gband_core::layout::{
-    BandId, Direction, Layout, LayoutOptions, Proportion, SessionAction, WindowHeight, WindowId,
+    BandId, Direction, Layout, Proportion, SessionAction, WindowHeight, WindowId,
 };
 use gband_core::view::{BandEnds, Scene, View, ViewAction};
 use gband_lua::keys::parse_key;
 use gband_protocol::ServerMessage;
+use gband_test_support::halves;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 
@@ -461,7 +462,7 @@ fn three_columns() -> (Layout, [WindowId; 3]) {
     for index in 0..3usize {
         let window = layout.allocate_window();
         let after = index.checked_sub(1).map(|before| windows[before]);
-        layout.open(window, band, after, None, &LayoutOptions::default());
+        layout.open(window, band, after, None, &halves());
         windows[index] = window;
     }
     (layout, windows)
@@ -484,7 +485,7 @@ fn toggle(layout: &mut Layout, window: WindowId) {
             floating: None,
         },
         AREA,
-        &LayoutOptions::default(),
+        &halves(),
     );
 }
 
@@ -531,7 +532,7 @@ fn moving_a_floating_window_does_not_animate() {
             direction: Direction::Right,
         },
         AREA,
-        &LayoutOptions::default(),
+        &halves(),
     );
     let start = Instant::now();
     presentation.update(start, &layout_targets(&layout));
@@ -879,7 +880,7 @@ fn floating_box_follows_the_pointer_at_once() {
             band,
             (window != tiled).then_some(tiled),
             None,
-            &LayoutOptions::default(),
+            &halves(),
         );
     }
     for action in [
@@ -902,7 +903,7 @@ fn floating_box_follows_the_pointer_at_once() {
             row: 4,
         },
     ] {
-        layout.apply(action, area, &LayoutOptions::default());
+        layout.apply(action, area, &halves());
     }
     let mut display = Display::new(area, Animations::On);
     display.apply(ServerMessage::Layout {
@@ -946,8 +947,8 @@ fn minimize_and_restore_at_once() {
     let band = layout.bands()[0].id;
     let p1 = layout.allocate_window();
     let p3 = layout.allocate_window();
-    layout.open(p1, band, None, None, &LayoutOptions::default());
-    layout.open(p3, band, Some(p1), None, &LayoutOptions::default());
+    layout.open(p1, band, None, None, &halves());
+    layout.open(p3, band, Some(p1), None, &halves());
     toggle(&mut layout, p3);
     let mut display = Display::new(AREA, Animations::On);
     display.apply(ServerMessage::Layout {
@@ -988,8 +989,8 @@ fn peek_at_once() {
     let band = layout.bands()[0].id;
     let p1 = layout.allocate_window();
     let p3 = layout.allocate_window();
-    layout.open(p1, band, None, None, &LayoutOptions::default());
-    layout.open(p3, band, Some(p1), None, &LayoutOptions::default());
+    layout.open(p1, band, None, None, &halves());
+    layout.open(p3, band, Some(p1), None, &halves());
     toggle(&mut layout, p3);
     let mut display = Display::new(AREA, Animations::On);
     display.apply(ServerMessage::Layout {

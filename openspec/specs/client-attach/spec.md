@@ -48,7 +48,7 @@ When nothing accepts connections on the socket path, `gband attach` SHALL start 
 #### Scenario: Started server at the reported size
 - **WHEN** no server is running, the default configuration is in use and the user runs `gband attach` in an 80×24 terminal
 - **THEN** the client starts `gband server` with `--size 79x24`
-- **AND** the session's first window starts with a PTY of 37 columns by 22 rows and is not resized after the client attaches
+- **AND** the session's first window starts with a PTY of 24 columns by 22 rows and is not resized after the client attaches
 
 #### Scenario: Started server survives its terminal
 - **WHEN** `gband attach` started the server and the terminal emulator window running the client is closed
@@ -680,7 +680,7 @@ The client SHALL send each key press and repeat that the key bindings do not con
 #### Scenario: First report beside the sidebar
 - **WHEN** the default configuration is in use and the user runs `gband attach -s fresh` in an 80×24 terminal, creating the session
 - **THEN** the client's hello carries the size 79×24
-- **AND** the session's first window starts with a PTY of 37 columns by 22 rows
+- **AND** the session's first window starts with a PTY of 24 columns by 22 rows
 
 #### Scenario: Height beside the sidebar
 - **WHEN** the client's terminal is 80×24, the sidebar is a left bar 1 column wide, and the only window runs `tput lines`

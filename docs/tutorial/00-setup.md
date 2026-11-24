@@ -55,14 +55,14 @@ The modal and direct styles bind Ctrl+Space then `e` to the error list and `E` t
 On a terminal 40 columns wide and 8 rows high, gband now looks like this:
 
 ```screen tests/screenshots/setup_spec/the-configuration-loads.txt
-I╭─────────────────╮
- │                 │
-1│                 │
-2│                 │
-─│                 │
- │                 │
- │                 │
- ╰─────────────────╯
+I╭───────────╮
+ │           │
+1│           │
+2│           │
+─│           │
+ │           │
+ │           │
+ ╰───────────╯
 ```
 
 ## The Lua prompt
@@ -92,14 +92,14 @@ The load fails at that line, and gband keeps the configuration it last loaded, s
 The sidebar's last row shows a red `!`:
 
 ```screen tests/screenshots/setup_spec/a-broken-file-keeps-the-last-configuration--the-error-marker.txt
-I╭─────────────────╮
- │                 │
-1│                 │
-2│                 │
-─│                 │
- │                 │
- │                 │
-!╰─────────────────╯
+I╭───────────╮
+ │           │
+1│           │
+2│           │
+─│           │
+ │           │
+ │           │
+!╰───────────╯
 ```
 
 Ctrl+Space then `e`, or a left click on `!`, lists the errors with their files and line numbers: here `user/init.lua:5: attempt to call a nil value (field 'plugn')`.

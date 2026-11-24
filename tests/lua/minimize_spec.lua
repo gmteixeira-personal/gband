@@ -1,5 +1,7 @@
 local t = require("gband.test")
 
+local HALVES = "gband.opt.default_column_width = 1/2"
+
 local config = [[
   gband.bind("f5", function() gband.action.open_window({ floating = true }) end)
   gband.bind("f6", gband.action.minimize_window)
@@ -31,7 +33,7 @@ local function open_floating(g)
 end
 
 t.case("minimizing hides the floating window", function(g)
-  g.start({ config = config })
+  g.start({ config = config, server_config = HALVES })
   prompts(g, 1)
   local tile = open_floating(g)
   t.ok(g.client("return gband.view().floating"))
@@ -45,7 +47,7 @@ t.case("minimizing hides the floating window", function(g)
 end)
 
 t.case("focus restores a minimized window", function(g)
-  g.start({ config = config })
+  g.start({ config = config, server_config = HALVES })
   prompts(g, 1)
   open_floating(g)
   local window = floating(g).id
@@ -60,7 +62,7 @@ t.case("focus restores a minimized window", function(g)
 end)
 
 t.case("a reload keeps the window minimized", function(g)
-  g.start({ config = config })
+  g.start({ config = config, server_config = HALVES })
   prompts(g, 1)
   open_floating(g)
   g.keys("f6")

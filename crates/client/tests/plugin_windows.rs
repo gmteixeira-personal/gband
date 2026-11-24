@@ -5,13 +5,12 @@ use gband_client::animation::Animations;
 use gband_client::{Controls, Display, Step};
 use gband_core::geometry::Size;
 use gband_core::input::{Modifiers, MouseButton, MouseEvent, MouseKind, WheelDirection};
-use gband_core::layout::{
-    BandId, Layout, LayoutOptions, Proportion, SessionAction, WindowContent, WindowId,
-};
+use gband_core::layout::{BandId, Layout, Proportion, SessionAction, WindowContent, WindowId};
 use gband_emulator::{Emulator, Grid};
 use gband_lua::keys::parse_key;
 use gband_lua::{Config, ConfigError, DEFAULTS, LoadOptions, Locations};
 use gband_protocol::{ClientMessage, ServerMessage};
+use gband_test_support::halves;
 
 struct Scratch(gband_scratch::Scratch);
 
@@ -66,13 +65,7 @@ impl Client {
         let mut windows = Vec::new();
         for _ in 0..2 {
             let window = layout.allocate_window();
-            layout.open(
-                window,
-                band,
-                windows.last().copied(),
-                None,
-                &LayoutOptions::default(),
-            );
+            layout.open(window, band, windows.last().copied(), None, &halves());
             windows.push(window);
         }
         controls.attached(&mut display, "main");
@@ -121,7 +114,7 @@ impl Client {
             band,
             Some(self.windows[0]),
             Some(Proportion::new(1, 4)),
-            &LayoutOptions::default(),
+            &halves(),
         );
         let steps = self.receive(vec![
             self.layout_message(),
@@ -638,13 +631,9 @@ fn focus_from_the_server_after_the_floats_own_key_keeps_it_focused() {
     );
     let opened = client.layout.allocate_window();
     let band = client.layout.bands()[0].id;
-    client.layout.open(
-        opened,
-        band,
-        Some(client.windows[0]),
-        None,
-        &LayoutOptions::default(),
-    );
+    client
+        .layout
+        .open(opened, band, Some(client.windows[0]), None, &halves());
     let layout = client.layout_message();
     client.receive(vec![layout, ServerMessage::Focus(opened)]);
     assert_eq!(client.display.focused(), Some(opened));

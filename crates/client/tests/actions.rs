@@ -10,14 +10,14 @@ use gband_core::geometry::Size;
 use gband_core::geometry::tiles;
 use gband_core::input::{Key, Modifiers, MouseButton, MouseEvent, MouseKind, WheelDirection};
 use gband_core::layout::{
-    BandId, Direction, Layout, LayoutOptions, Program, Proportion, SessionAction, Vertical,
-    WindowContent, WindowHeight, WindowId,
+    BandId, Direction, Layout, Program, Proportion, SessionAction, Vertical, WindowContent,
+    WindowHeight, WindowId,
 };
 use gband_core::view::ViewAction;
 use gband_lua::keys::parse_key;
 use gband_lua::{Config, ConfigError, DEFAULTS, LoadOptions, Locations};
 use gband_protocol::{Answer, ClientMessage, Key as ValueKey, Operation, ServerMessage, Value};
-use gband_test_support::{TIMEOUT, TestClient, TestServer};
+use gband_test_support::{TIMEOUT, TestClient, TestServer, halves};
 use tokio::time::timeout;
 
 fn one(display: &mut Display, action: Action) -> Step {
@@ -181,13 +181,7 @@ fn three_columns() -> (Display, Vec<WindowId>) {
     let mut windows = Vec::new();
     for _ in 0..3 {
         let window = layout.allocate_window();
-        layout.open(
-            window,
-            band,
-            windows.last().copied(),
-            None,
-            &LayoutOptions::default(),
-        );
+        layout.open(window, band, windows.last().copied(), None, &halves());
         windows.push(window);
     }
     let mut display = Display::new(Size::new(80, 24), Animations::Off);
@@ -204,14 +198,8 @@ fn new_actions_resolve_against_the_view() {
     let mut layout = Layout::new();
     let band = layout.bands()[0].id;
     let windows: Vec<WindowId> = (0..2).map(|_| layout.allocate_window()).collect();
-    layout.open(windows[0], band, None, None, &LayoutOptions::default());
-    layout.open(
-        windows[1],
-        band,
-        Some(windows[0]),
-        None,
-        &LayoutOptions::default(),
-    );
+    layout.open(windows[0], band, None, None, &halves());
+    layout.open(windows[1], band, Some(windows[0]), None, &halves());
     layout.apply(
         SessionAction::ToggleFloating {
             window: windows[1],
@@ -219,7 +207,7 @@ fn new_actions_resolve_against_the_view() {
             floating: None,
         },
         Size::new(80, 24),
-        &LayoutOptions::default(),
+        &halves(),
     );
     let mut display = Display::new(Size::new(80, 24), Animations::Off);
     display.apply(ServerMessage::Layout {
@@ -356,8 +344,8 @@ fn center_column_on_a_floating_window_sends_its_centred_position() {
     let band = layout.bands()[0].id;
     let tiled = layout.allocate_window();
     let floating = layout.allocate_window();
-    layout.open(tiled, band, None, None, &LayoutOptions::default());
-    layout.open(floating, band, Some(tiled), None, &LayoutOptions::default());
+    layout.open(tiled, band, None, None, &halves());
+    layout.open(floating, band, Some(tiled), None, &halves());
     for action in [
         SessionAction::ToggleFloating {
             window: floating,
@@ -370,7 +358,7 @@ fn center_column_on_a_floating_window_sends_its_centred_position() {
             row: 0,
         },
     ] {
-        layout.apply(action, Size::new(80, 24), &LayoutOptions::default());
+        layout.apply(action, Size::new(80, 24), &halves());
     }
     let mut display = Display::new(Size::new(80, 24), Animations::Off);
     display.apply(ServerMessage::Layout {
@@ -860,13 +848,7 @@ fn columns_of(count: usize, width: Option<Proportion>) -> (Layout, Vec<WindowId>
     let mut windows = Vec::new();
     for _ in 0..count {
         let window = layout.allocate_window();
-        layout.open(
-            window,
-            band,
-            windows.last().copied(),
-            width,
-            &LayoutOptions::default(),
-        );
+        layout.open(window, band, windows.last().copied(), width, &halves());
         windows.push(window);
     }
     (layout, windows)
@@ -886,7 +868,7 @@ fn float(layout: &mut Layout, window: WindowId, width: Proportion, rows: u16, co
         },
         SessionAction::SetPosition { window, col, row },
     ] {
-        layout.apply(action, AREA, &LayoutOptions::default());
+        layout.apply(action, AREA, &halves());
     }
 }
 
@@ -953,7 +935,7 @@ impl Mouse {
 
     fn apply(&mut self, steps: &[Step]) {
         for action in sent(steps) {
-            self.layout.apply(action, AREA, &LayoutOptions::default());
+            self.layout.apply(action, AREA, &halves());
         }
         self.display.apply(ServerMessage::Layout {
             cols: AREA.cols,
@@ -1518,7 +1500,7 @@ fn grow_a_window_down() {
             direction: Direction::Left,
         },
         AREA,
-        &LayoutOptions::default(),
+        &halves(),
     );
     let mut mouse = dragging("mouse-grow-down", layout);
     let steps = mouse.drag(MouseButton::Right, (20, 10), (20, 14));
@@ -1667,7 +1649,7 @@ fn named_top_edge_of_a_columns_first_window() {
             direction: Direction::Left,
         },
         AREA,
-        &LayoutOptions::default(),
+        &halves(),
     );
     let mut mouse = resizing_by("named-top-first", "'top'", layout);
     let steps = mouse.drag(MouseButton::Right, (20, 6), (20, 2));
@@ -1774,7 +1756,7 @@ fn open_in(layout: &mut Layout, band: usize, width: Option<Proportion>) -> Windo
     let window = layout.allocate_window();
     let band = layout.bands()[band].id;
     let after = layout.band(band).and_then(|band| band.windows().last());
-    layout.open(window, band, after, width, &LayoutOptions::default());
+    layout.open(window, band, after, width, &halves());
     window
 }
 
@@ -2602,21 +2584,9 @@ fn minimize_the_focused_window_by_number() {
 fn minimize_a_window_of_another_band_by_number() {
     let mut layout = Layout::new();
     let first = layout.allocate_window();
-    layout.open(
-        first,
-        layout.bands()[0].id,
-        None,
-        None,
-        &LayoutOptions::default(),
-    );
+    layout.open(first, layout.bands()[0].id, None, None, &halves());
     let other = layout.allocate_window();
-    layout.open(
-        other,
-        layout.bands()[1].id,
-        None,
-        None,
-        &LayoutOptions::default(),
-    );
+    layout.open(other, layout.bands()[1].id, None, None, &halves());
     layout.apply(
         SessionAction::ToggleFloating {
             window: other,
@@ -2624,7 +2594,7 @@ fn minimize_a_window_of_another_band_by_number() {
             floating: None,
         },
         AREA,
-        &LayoutOptions::default(),
+        &halves(),
     );
     let mut mouse = Mouse::new(
         "minimize-other-band",
@@ -2945,7 +2915,7 @@ fn multi_mode_sends_keys_in_layout_order() {
             direction: Direction::Left,
         },
         AREA,
-        &LayoutOptions::default(),
+        &halves(),
     );
     float(&mut layout, windows[0], Proportion::ONE_HALF, 10, 5, 5);
     open_in(&mut layout, 1, None);

@@ -84,7 +84,7 @@ fn repeated_focus_moves() {
 
 #[test]
 fn repeated_resize_then_escape() {
-    let env = TestEnv::new("navigation-resize");
+    let env = TestEnv::with_half_columns("navigation-resize");
     env.write_config(&gband_lua::DEFAULTS.replace("gband.plugin(\"gband.sidebar\")", ""));
     let mut client = attached(&env);
     client.send(b"\x00==");
@@ -111,7 +111,7 @@ fn enter_returns_to_interactive_mode() {
 
 fn second_tile_focused(screen: &Grid) -> bool {
     let tiles = tiles(screen);
-    tiles.len() == 2 && tiles[1].focused && tiles[1].left == 40 && tiles[1].right == 78
+    tiles.len() == 2 && tiles[1].focused && tiles[1].left == 27 && tiles[1].right == 52
 }
 
 #[test]

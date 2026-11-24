@@ -58,7 +58,7 @@ fn focused_left(screen: &Grid) -> Option<u16> {
 }
 
 fn second_focused(screen: &Grid) -> bool {
-    focused_left(screen) == Some(40)
+    matches!(focused_left(screen), Some(26 | 27))
 }
 
 fn first_row(screen: &Grid) -> String {
@@ -317,7 +317,9 @@ fn no_configuration_file() {
 #[test]
 fn xdg_config_home_is_honoured() {
     let env = TestEnv::new("config-xdg");
-    env.write_server_config("gband.set { width_presets = { 1/4, 1/2 } }");
+    env.write_server_config(
+        "gband.set { default_column_width = 1/2, width_presets = { 1/4, 1/2 } }",
+    );
     env.write_config("gband.bind('prefix r', gband.action.cycle_column_width)");
     let mut client = Attached::start(&env, 80, 24);
     client.wait_for_prompt();
@@ -390,7 +392,7 @@ fn spawn_a_command_line() {
     client.send(b"\x1bn");
     client.wait_for("the spawned window focused", |screen| {
         let tiles = tiles(screen);
-        tiles.len() == 2 && tiles[1].focused && tiles[1].left == 40
+        tiles.len() == 2 && tiles[1].focused && tiles[1].left == 26
     });
     client.wait_for_line("spawned");
 }
@@ -427,7 +429,7 @@ fn broken_file_at_start_keeps_the_defaults() {
     thread::sleep(Duration::from_millis(300));
     client.send(b"\x00n");
     client.wait_for("the second tile focused", |screen| {
-        focused_top(screen) == Some(40) && tops(screen).len() == 2
+        focused_top(screen) == Some(27) && tops(screen).len() == 2
     });
 }
 
@@ -504,14 +506,14 @@ fn file_removed_restores_the_defaults() {
 #[test]
 fn plugin_sets_a_width_option() {
     let env = TestEnv::new("config-plugin-width");
-    env.write_server_plugin("widths", "gband.opt.default_column_width = 1/3\n");
+    env.write_server_plugin("widths", "gband.opt.default_column_width = 1/2\n");
     let mut client = Attached::start(&env, 80, 24);
     client.wait_for_prompt();
     client.shell_pid(&env);
     client.send(b"\x00n");
-    client.wait_for("a second column of width 1/3", |screen| {
+    client.wait_for("a second column of width 1/2", |screen| {
         let tiles = tiles(screen);
-        tiles.len() == 2 && tiles[1].focused && tiles[0].left == 1 && tiles[1].left == 27
+        tiles.len() == 2 && tiles[1].focused && tiles[0].left == 1 && tiles[1].left == 40
     });
     assert!(!env.log_text("server").contains("configuration error"));
 }
@@ -550,7 +552,7 @@ fn infinite_loop_in_setup() {
     client.wait_for_text("$");
     client.send(b"\x00n");
     client.wait_for("the second tile focused", |screen| {
-        tops(screen).len() == 2 && focused_top(screen) == Some(60)
+        tops(screen).len() == 2 && focused_top(screen) == Some(40)
     });
     wait_until(
         || {
@@ -581,16 +583,16 @@ fn open_second_window(client: &mut Attached, env: &TestEnv) -> (u16, u16) {
 #[test]
 fn width_set_for_the_server() {
     let env = TestEnv::new("config-server-width");
-    env.write_server_config("gband.opt.default_column_width = 1/3");
+    env.write_server_config("gband.opt.default_column_width = 1/2");
     let mut client = Attached::start(&env, 80, 24);
-    assert_eq!(open_second_window(&mut client, &env), (27, 26));
+    assert_eq!(open_second_window(&mut client, &env), (40, 39));
 }
 
 #[test]
 fn no_server_configuration_file() {
     let env = TestEnv::new("config-no-server-file");
     let mut client = Attached::start(&env, 80, 24);
-    assert_eq!(open_second_window(&mut client, &env), (40, 39));
+    assert_eq!(open_second_window(&mut client, &env), (27, 26));
     assert!(!env.log_text("server").contains("configuration error"));
     assert!(env.server_lua().parent().unwrap().is_dir());
     assert_eq!(
@@ -602,15 +604,15 @@ fn no_server_configuration_file() {
 #[test]
 fn broken_server_file_at_start() {
     let env = TestEnv::new("config-broken-server");
-    env.write_server_config("gband.opt.default_column_width = 1/3\nerror('broken')\n");
+    env.write_server_config("gband.opt.default_column_width = 1/2\nerror('broken')\n");
     let mut client = Attached::start(&env, 120, 24);
     let expected = format!("server: {}:2: broken", env.server_lua().display());
     client.wait_for("the error marker", sidebar_error);
     error_logged(&env, &expected);
     client.wait_for_text("$");
     client.send(b"\x00n");
-    client.wait_for("a second column of width 1/2", |screen| {
-        tops(screen).len() == 2 && focused_top(screen) == Some(60)
+    client.wait_for("a second column of width 1/3", |screen| {
+        tops(screen).len() == 2 && focused_top(screen) == Some(40)
     });
 }
 
@@ -652,10 +654,10 @@ fn new_default_width() {
     client.wait_for_prompt();
     client.shell_pid(&env);
     let seen = reloads(&env, "server");
-    env.write_server_config("gband.opt.default_column_width = 1/3");
+    env.write_server_config("gband.opt.default_column_width = 1/2");
     wait_for_reload(&env, "server", seen);
     let (left, width) = open_second_window(&mut client, &env);
-    assert_eq!((left, width), (40, 26));
+    assert_eq!((left, width), (27, 39));
 }
 
 fn label_plugin(env: &TestEnv, label: &str) {

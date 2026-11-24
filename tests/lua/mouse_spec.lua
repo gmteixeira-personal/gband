@@ -1,5 +1,7 @@
 local t = require("gband.test")
 
+local HALVES = "gband.opt.default_column_width = 1/2"
+
 local NAVIGATION = [[
   gband.keymap.mode("prefix")
   gband.keymap.set("prefix", "n", function() gband.action.open_window() end)
@@ -44,7 +46,7 @@ local function printed(g, text)
 end
 
 t.case("select across rows", function(g)
-  g.start({ size = "40x8", config = "" })
+  g.start({ size = "40x8", config = "", server_config = HALVES })
   printed(g, "hello world\\nsecond line")
   local row = row_of(g, "^│hello world")
   drag(g, 1 + 6, row, 1 + 5, row + 1)
@@ -87,7 +89,7 @@ t.case("typing clears the selection", function(g)
 end)
 
 t.case("lifted tile and its drop place", function(g)
-  g.start({ size = "80x12", config = NAVIGATION })
+  g.start({ size = "80x12", config = NAVIGATION, server_config = HALVES })
   g.keys("ctrl+space n")
   g.settle()
   g.keys("ctrl+space")
@@ -234,7 +236,7 @@ t.case("box fields reach handlers", function(g)
   g.mouse("press", "left", 5, 0)
   g.mouse("release", "left", 5, 0)
   g.settle()
-  t.eq(g.client("return seen"), { { 5, 0, 40, 24, "nil" } })
+  t.eq(g.client("return seen"), { { 5, 0, 26, 24, "nil" } })
 end)
 
 t.case("a declined wheel step scrolls a plugin window", function(g)

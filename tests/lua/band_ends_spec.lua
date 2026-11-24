@@ -1,5 +1,7 @@
 local t = require("gband.test")
 
+local HALVES = "gband.opt.default_column_width = 1/2"
+
 local function labels(screen)
   local found = {}
   for label in screen.row(1):gmatch("W(%d)") do
@@ -14,7 +16,7 @@ local function shows(g, expected)
 end
 
 local function three_windows(g, config)
-  g.start({ config = config })
+  g.start({ config = config, server_config = HALVES })
   for index = 1, 3 do
     if index > 1 then
       g.keys("ctrl+space n enter")

@@ -361,7 +361,7 @@ Each built-in option belongs to one side, and each process knows only its own si
 
 ```lua
 -- user/server.lua
-gband.opt.default_column_width = 1/3
+gband.opt.default_column_width = 1/2
 local presets = gband.opt.width_presets
 ```
 

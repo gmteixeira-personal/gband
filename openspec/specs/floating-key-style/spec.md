@@ -93,7 +93,7 @@ The plugin SHALL place each window that it saw open with `WindowOpened`, or that
 
 #### Scenario: First window of a new session
 - **WHEN** no `user/init.lua` exists, `user/keystyle.lua` holds `return "floating"`, and a client with an 80×24 terminal attaches to a new session
-- **THEN** the session's first window floats with the box record width 1/2, full width off, `rows` 20, `col` 20 and `row` 2
+- **THEN** the session's first window floats with the box record width 1/3, full width off, `rows` 20, `col` 26 and `row` 2
 - **AND** the band holds no column
 
 #### Scenario: Spawned window floats
@@ -126,12 +126,12 @@ The plugin SHALL place each window that it saw open with `WindowOpened`, or that
 - **THEN** window 1 is tiled, and it is still tiled after the next layout the client receives
 
 #### Scenario: New windows cascade
-- **WHEN** `user/init.lua` calls only `gband.keystyle.use("floating")`, the client's 80×24 terminal sets the screen area, the only window floats with a 40×20 box at column 20 and row 2, and the user picks `New window` in the window list twice
-- **THEN** the first new window's box is at column 22 and row 3, and the second's at column 24 and row 4
+- **WHEN** `user/init.lua` calls only `gband.keystyle.use("floating")`, the client's 80×24 terminal sets the screen area, the only window floats with a 26×20 box at column 27 and row 2, and the user picks `New window` in the window list twice
+- **THEN** the first new window's box is at column 29 and row 3, and the second's at column 31 and row 4
 
 #### Scenario: Cascade stops at the edge
-- **WHEN** three floating windows of the band have 40×20 boxes at column 20 and row 2, column 22 and row 3, and column 24 and row 4, and the user picks `New window`
-- **THEN** the new window keeps its box at column 20 and row 2
+- **WHEN** three floating windows of the band have 26×20 boxes at column 27 and row 2, column 29 and row 3, and column 31 and row 4, and the user picks `New window`
+- **THEN** the new window keeps its box at column 27 and row 2
 
 ### Requirement: Title bar buttons
 The desktop plugin's decorations function SHALL return, for a floating window that runs a program, three spans: `[_]`, the minimize button; `[□]`, the maximize button, or `[❐]` while the window counts as maximized, as "Maximize, restore and tile" defines; and `[X]`, the close button. It SHALL return nil for every other window. The first two spans SHALL take the style `require("gband.hl").drawn("DesktopButton")` returns, and `[X]` the style it returns for `DesktopClose`.

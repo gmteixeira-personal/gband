@@ -397,7 +397,7 @@ fn relay_starts_the_server() {
         || fs::read_to_string(&size).is_ok_and(|text| text.ends_with('\n')),
         "the window's size",
     );
-    assert_eq!(fs::read_to_string(&size).unwrap(), "28 48\n");
+    assert_eq!(fs::read_to_string(&size).unwrap(), "28 31\n");
     assert_eq!(
         fs::read_to_string(&cwd).unwrap().trim_end(),
         remote.home.to_str().unwrap()

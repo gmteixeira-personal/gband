@@ -1,4 +1,4 @@
-size 30x8 cursor 5:4 shown
+size 43x8 cursor 5:4 shown
 0|I╭cargo test -╮
 1| │$ printf '\0│
 2|1│33]2;cargo t│

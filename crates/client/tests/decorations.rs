@@ -6,12 +6,11 @@ use gband_client::animation::Animations;
 use gband_client::color::ColorSupport;
 use gband_client::{Controls, Display};
 use gband_core::geometry::Size;
-use gband_core::layout::{
-    Layout, LayoutOptions, Proportion, SessionAction, WindowHeight, WindowId,
-};
+use gband_core::layout::{Layout, Proportion, SessionAction, WindowHeight, WindowId};
 use gband_lua::keys::parse_key;
 use gband_lua::{Config, LoadOptions, Locations, Side};
 use gband_protocol::ServerMessage;
+use gband_test_support::halves;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::buffer::Buffer;
@@ -71,13 +70,8 @@ impl Client {
         let band = self.layout.bands()[0].id;
         for _ in 0..columns {
             let window = self.layout.allocate_window();
-            self.layout.open(
-                window,
-                band,
-                self.windows.last().copied(),
-                None,
-                &LayoutOptions::default(),
-            );
+            self.layout
+                .open(window, band, self.windows.last().copied(), None, &halves());
             self.windows.push(window);
         }
         self.send_layout();
@@ -87,15 +81,14 @@ impl Client {
     fn open_in_band(&mut self, index: usize) {
         let band = self.layout.bands()[index].id;
         let window = self.layout.allocate_window();
-        self.layout
-            .open(window, band, None, None, &LayoutOptions::default());
+        self.layout.open(window, band, None, None, &halves());
         self.windows.push(window);
         self.send_layout();
     }
 
     fn apply(&mut self, action: SessionAction) {
         let area = self.display.reported_size();
-        self.layout.apply(action, area, &LayoutOptions::default());
+        self.layout.apply(action, area, &halves());
         self.send_layout();
     }
 
